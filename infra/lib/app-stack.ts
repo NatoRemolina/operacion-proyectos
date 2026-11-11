@@ -43,12 +43,6 @@ export class AppStack extends Stack {
 
     // El acceso lo controla la propia aplicación (sesión y roles); la dirección es pública.
     const url = vivo.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
-    new lambda.CfnPermission(this, "InvocarPorUrl", {
-      action: "lambda:InvokeFunction",
-      functionName: vivo.functionArn,
-      principal: "*",
-      invokedViaFunctionUrl: true,
-    });
 
     const aviso = new acciones.SnsAction(props.avisos);
     const alarma = (nombre: string, metrica: cloudwatch.Metric, umbral: number, periodos = 1) =>
