@@ -7,6 +7,16 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 
 RAIZ = Path(__file__).resolve().parent.parent
+
+# En la nube la configuración llega en un único secreto; aquí solo se conoce su ARN.
+# Se lee una vez por arranque del proceso.
+if os.getenv("SECRETO_ARN"):
+    import boto3
+
+    _secreto = boto3.client("secretsmanager").get_secret_value(SecretId=os.environ["SECRETO_ARN"])["SecretString"]
+    for _k, _v in json.loads(_secreto).items():
+        os.environ.setdefault(_k, _v if isinstance(_v, str) else json.dumps(_v))
+
 load_dotenv(RAIZ / ".env")
 
 
@@ -35,9 +45,27 @@ SUPABASE_BUCKET = _txt("SUPABASE_BUCKET") or "soportes"
 
 APP_CLAVE = _txt("APP_CLAVE")
 
+# "local" es el equipo de quien desarrolla o evalúa; cualquier otro valor es un despliegue.
+ENTORNO = _txt("ENTORNO") or ("nube" if os.getenv("SECRETO_ARN") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") else "local")
+LOCAL = ENTORNO == "local"
+ES_SQLITE = not DATABASE_URL or DATABASE_URL.startswith("sqlite")
+
+# Falla cerrado: un despliegue sin base, almacenamiento o control de acceso no arranca.
+if not LOCAL:
+    _faltan = [n for n, v in (("DATABASE_URL", DATABASE_URL and not ES_SQLITE), ("SUPABASE_URL", SUPABASE_URL),
+                              ("SUPABASE_SERVICE_KEY", SUPABASE_SERVICE_KEY), ("APP_CLAVE", APP_CLAVE)) if not v]
+    if _faltan:
+        raise RuntimeError("Configuración incompleta para un despliegue: faltan " + ", ".join(_faltan))
+
+# Topes de una subida
+MAX_BYTES_SOPORTE = 4_500_000
+MAX_ARCHIVOS_POR_CARGA = 6
+
 DIR_RESPALDO = RAIZ / "datos" / "respaldo"
 DIR_EJEMPLOS = RAIZ / "datos" / "ejemplos"
 DIR_ARCHIVOS = RAIZ / "datos" / "archivos"
+# Fuera de local el disco del contenedor es de solo lectura salvo /tmp
+DIR_RESPALDO_ESCRITURA = DIR_RESPALDO if not (os.getenv("SECRETO_ARN") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")) else Path("/tmp/respaldo")
 
 # Umbral de confianza para aprobar un gasto sin revisión humana
 UMBRAL_CONFIANZA = 0.85

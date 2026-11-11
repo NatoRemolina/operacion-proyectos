@@ -6,6 +6,7 @@ igual. El resultado siempre indica su origen: "en vivo" o "guardado".
 """
 import base64
 import email
+import hashlib
 import json
 import re
 from email import policy
@@ -68,11 +69,17 @@ def _en_vivo(contenido: bytes, mime: str) -> dict:
     return json.loads(re.search(r"\{.*\}", texto, re.S).group(0))
 
 
-def _guardado(nombre: str) -> dict | None:
+def _guardado(contenido: bytes) -> dict | None:
+    """Lectura guardada de un soporte de ejemplo. Se reconoce por el contenido, no por el nombre del archivo."""
     archivo = config.DIR_EJEMPLOS / "esperados.json"
     if not archivo.is_file():
         return None
-    return json.loads(archivo.read_text()).get(nombre)
+    huella = hashlib.sha256(contenido).hexdigest()
+    for nombre, lectura in json.loads(archivo.read_text()).items():
+        ejemplo = config.DIR_EJEMPLOS / nombre
+        if ejemplo.is_file() and hashlib.sha256(ejemplo.read_bytes()).hexdigest() == huella:
+            return lectura
+    return None
 
 
 def _num(valor):
@@ -91,19 +98,27 @@ def extraer(contenido: bytes, mime: str, nombre: str) -> dict:
             datos, origen = _en_vivo(contenido, mime), "en vivo"
         except Exception as e:  # la demostración no debe caerse por un fallo externo
             error = f"Fallo de la extracción en vivo: {type(e).__name__}"
-    if datos is None:
-        datos = _guardado(nombre)
-    if datos is None:
-        return {**{c: None for c in CAMPOS}, "confianza": 0.0, "dudas": CAMPOS, "origen_dato": "sin datos",
-                "error": error or "Sin clave del modelo y sin extracción guardada para este archivo: completar a mano."}
+    if datos is None and not activo:
+        datos = _guardado(contenido)  # solo cuando no hay modelo configurado; un fallo en vivo nunca cae aquí
+    if not isinstance(datos, dict):
+        return {**{c: None for c in CAMPOS}, "confianza": 0.0, "dudas": list(CAMPOS), "origen_dato": "sin datos",
+                "error": error or "Sin modelo de lenguaje configurado y sin lectura guardada para este archivo: completar a mano."}
     salida = {c: datos.get(c) for c in CAMPOS}
     for c in ("subtotal", "impuesto", "propina", "total"):
         salida[c] = _num(salida[c])
+    for c in ("comercio", "fecha", "metodo_pago", "canal_reserva", "ciudad"):
+        salida[c] = str(salida[c])[:200] if salida[c] not in (None, "") else None
+    if salida["fecha"] and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", salida["fecha"]):
+        salida["fecha"] = None
     if salida["categoria"] not in config.CATEGORIAS:
         salida["categoria"] = "otros"
-    salida["moneda"] = (salida["moneda"] or "").upper() or None
-    salida["confianza"] = max(0.0, min(1.0, float(datos.get("confianza") or 0)))
-    salida["dudas"] = list(datos.get("dudas") or [])
+    salida["moneda"] = (str(salida["moneda"] or "")).upper()[:3] or None
+    try:
+        salida["confianza"] = max(0.0, min(1.0, float(datos.get("confianza") or 0)))
+    except (TypeError, ValueError):
+        salida["confianza"] = 0.0
+    dudas = datos.get("dudas")
+    salida["dudas"] = [str(d)[:40] for d in dudas][:12] if isinstance(dudas, list) else []
     salida["origen_dato"] = origen
     salida["error"] = error
     return salida

@@ -1,0 +1,4 @@
+-r requirements.txt
+# Entrenamiento del modelo de precios y pruebas
+pandas==2.2.*
+pytest==8.3.*

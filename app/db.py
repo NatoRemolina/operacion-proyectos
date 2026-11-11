@@ -18,6 +18,8 @@ def _url() -> str:
     if not url:
         (config.RAIZ / "datos").mkdir(exist_ok=True)
         return f"sqlite:///{config.RAIZ / 'datos' / 'local.db'}"
+    if url.startswith("sqlite"):
+        return url
     for prefijo in ("postgresql://", "postgres://"):
         if url.startswith(prefijo):
             return "postgresql+psycopg://" + url[len(prefijo):]
@@ -25,11 +27,14 @@ def _url() -> str:
 
 
 _args = {}
-if config.DATABASE_URL:
-    # El agrupador de conexiones de Supabase no admite sentencias preparadas
-    # Autocommit y sin comprobación previa: cada consulta es un solo viaje de red hasta la base
-    _args = {"connect_args": {"prepare_threshold": None}, "pool_recycle": 240, "pool_size": 5,
-             "isolation_level": "AUTOCOMMIT"}
+if not config.ES_SQLITE:
+    # El agrupador de conexiones no admite sentencias preparadas. Autocommit: cada consulta es un solo viaje de red.
+    _args = {"connect_args": {"prepare_threshold": None}, "isolation_level": "AUTOCOMMIT"}
+    if config.LOCAL:
+        _args.update(pool_size=5, pool_recycle=240)
+    else:
+        # En la nube cada instancia mantiene pocas conexiones y las comprueba al reanudar tras una pausa
+        _args.update(pool_size=2, max_overflow=2, pool_recycle=120, pool_pre_ping=True)
 motor = create_engine(_url(), **_args)
 
 meta = MetaData()
@@ -95,6 +100,7 @@ gastos = _tabla(
     Column("metodo_pago", Text), Column("canal_reserva", Text),
     Column("confianza", Float), Column("estado", Text), Column("alertas", Text),
     Column("origen_dato", Text), Column("creado", Text),
+    Column("extraido", Text),  # lectura original del modelo, intacta, para medir cuánto se corrige
 )
 eventos = _tabla(
     "eventos",
@@ -113,6 +119,11 @@ observaciones = _tabla(
 historial_ruta = _tabla(
     "historial_ruta",  # precio diario más bajo de un viaje concreto durante los 60 días previos
     Column("busqueda", Text), Column("origen", Text), Column("destino", Text), Column("fecha", Text), Column("precio", Float),
+)
+
+busquedas = _tabla(
+    "busquedas",  # respuestas del buscador de precios, compartidas entre instancias
+    Column("clave", Text), Column("cuerpo", Text), Column("creado", Text),
 )
 
 TABLAS = {t.name: t for t in meta.sorted_tables}

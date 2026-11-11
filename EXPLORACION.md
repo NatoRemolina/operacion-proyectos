@@ -354,3 +354,38 @@ Lectura honesta:
 Ajustes que pidió la conexión remota: modo de confirmación automática para que cada consulta sea un solo viaje de red, memoria corta (60 s) para los catálogos y conversión de valores decimales. Seguridad del proyecto: las tablas no se exponen por la API pública y tienen seguridad por filas activada; la aplicación entra con la contraseña de la base, que vive solo en `.env`.
 
 Sin configuración, la aplicación sigue usando SQLite y carpeta local, de modo que quien evalúe puede ejecutarla sin cuenta.
+
+## 10. Visión del producto (audio de la candidata, 11 nov)
+
+Fuente: nota de voz de unos siete minutos en la que la candidata explica la idea completa. Transcripción automática; lo marcado **[Por confirmar]** no se oyó con claridad.
+
+**Recorrido que describe**
+
+1. Una persona de la empresa (piloto o gestor de proyecto) entra a la plataforma **con sus credenciales** y hace una solicitud de viaje: fechas, horas, origen y destino.
+2. La plataforma consulta los precios en el buscador y devuelve las mejores opciones.
+3. **Todo lo consultado se guarda**, para no desperdiciar lo que ya se pagó por consultar y para formar un conjunto de datos propio.
+4. Al principio, las mejores opciones las ordena un **agente con los parámetros que la empresa define como importantes** (fechas, horarios, si incluye maleta y demás reglas de negocio), para que la persona no tenga que revisarlas todas.
+5. La persona elige la opción y **dice por qué**. Esa elección queda como la variable objetivo, y el motivo como contexto en texto.
+6. Con suficientes elecciones guardadas se entrena un modelo (árbol de decisión, con sus pesos) que propone la mejor opción directamente.
+7. El registro de gastos del segundo reto vive **en la misma plataforma**, en otra sección.
+8. Hay **dos tipos de usuario**: el individual, que hace solicitudes, y el administrador, que ve todos los datos y la analítica (viajes tomados, costos, gráficas).
+9. Es un producto mínimo viable, pero con estructura completa: interfaz, servidor, base de datos y despliegue.
+
+**Contraste con lo construido**
+
+| Idea | Estado |
+|---|---|
+| Solicitud con fechas, horas, origen y destino | Hecho |
+| Consulta de precios y mejores opciones | Hecho |
+| Guardar todo lo consultado como datos tabulares | Hecho (`observaciones`, `historial_ruta`, respaldos) |
+| Ordenar según reglas de negocio de la empresa | Hecho en parte: costo total esperado, descartes y catálogo de reglas. **Falta** una pantalla donde la empresa declare sus prioridades en lenguaje llano |
+| Agente que recomienda | Hecho (grafo de estados); el modo con modelo de lenguaje sigue sin probar |
+| Elegir y decir por qué | Hecho en parte: la decisión guarda un motivo en texto libre. **Falta** guardar el motivo de forma estructurada y marcar si se siguió la recomendación |
+| Elección como variable objetivo | **Falta** dejar el conjunto etiquetado listo: cada opción mostrada, con la marca de cuál se eligió |
+| Modelo que aprende de las elecciones | Fase 2 por diseño: requiere historial. Hoy hay un modelo de precio esperado, que es otra cosa |
+| Reto 2 en la misma plataforma | Hecho |
+| Credenciales y dos tipos de usuario | **Falta.** Hoy hay una contraseña compartida y un nombre libre |
+| Analítica para el administrador | Hecha, pero visible para cualquiera |
+| Despliegue | Pendiente |
+
+**Lectura.** La idea coincide con la arquitectura actual y corrige el orden correcto del aprendizaje: primero reglas y agente, después modelo, cuando existan elecciones reales. Lo que falta para que la plataforma cuente esa historia completa son tres piezas: usuarios con rol, motivo estructurado de la decisión y conjunto de datos etiquetado.

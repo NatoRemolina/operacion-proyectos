@@ -39,6 +39,7 @@
 </table></div>
 
 <h2>Hoteles</h2>
+{% if not hoteles %}<p class="nota">No hay hoteles para esta ciudad y fechas. Puedes guardar la decisión solo con el vuelo.</p>{% endif %}
 <div class="tarjeta tabla"><table>
 <tr><th></th><th>Hotel</th><th class="d">Por noche</th><th class="d">Total {{ noches }} noches</th><th>Calificación</th><th>Fidelización</th><th>Origen</th></tr>
 {% for o in hoteles %}<tr>

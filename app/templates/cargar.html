@@ -1,13 +1,15 @@
 {% extends "base.html" %}{% block cuerpo %}
 <h1>Cargar soportes</h1><p class="sub">Tres canales, un solo destino. Esta misma página funciona desde el celular para tomar la foto del recibo.</p>
 <div class="dos">
-<form method="post" action="/gastos/cargar" enctype="multipart/form-data" class="tarjeta">
+<form method="post" action="/gastos/cargar" enctype="multipart/form-data" class="tarjeta" id="carga">
   <h3>Subir archivos o tomar foto</h3>
-  <p><input type="file" name="archivos" multiple accept="image/*,application/pdf,.eml" capture="environment" required></p>
+  <p><input type="file" name="archivos" multiple accept="image/*,application/pdf,.eml" required></p>
+  <p class="eti">Fotos, PDF o correos (.eml). Las fotos se reducen antes de enviarse; máximo 4,5 MB por archivo y 6 archivos por envío.</p>
   <div class="campos"><div><label>Proyecto</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
   <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
   <div><label>Canal</label><select name="canal"><option value="web">Carga web</option><option value="celular">Foto desde celular</option></select></div></div>
   <p><button>Procesar</button></p>
+  <ul id="avance" class="eti" style="padding-left:18px"></ul>
 </form>
 <div>
 <form method="post" action="/gastos/ejemplos" class="tarjeta">
@@ -25,4 +27,42 @@
   <input type="hidden" name="canal" value="correo"><p><button>Leer buzón</button></p>
 </form></div>
 </div>
+<script>
+// Cada archivo viaja en su propia petición y las fotos se reducen en el navegador:
+// así una foto de celular de varios megas no supera el límite del servidor ni gasta datos de más.
+const LADO_MAX = 2000, CALIDAD = 0.8;
+async function reducir(archivo) {
+  if (!archivo.type.startsWith('image/')) return archivo;
+  try {
+    const mapa = await createImageBitmap(archivo);
+    const escala = Math.min(1, LADO_MAX / Math.max(mapa.width, mapa.height));
+    const lienzo = document.createElement('canvas');
+    lienzo.width = Math.round(mapa.width * escala); lienzo.height = Math.round(mapa.height * escala);
+    lienzo.getContext('2d').drawImage(mapa, 0, 0, lienzo.width, lienzo.height);
+    const blob = await new Promise(r => lienzo.toBlob(r, 'image/jpeg', CALIDAD));
+    return blob && blob.size < archivo.size ? new File([blob], archivo.name.replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'}) : archivo;
+  } catch (e) { return archivo; }  // formato que el navegador no decodifica: se envía tal cual
+}
+document.getElementById('carga').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, lista = document.getElementById('avance'), boton = f.querySelector('button');
+  const archivos = [...f.querySelector('input[type=file]').files];
+  boton.disabled = true; lista.textContent = '';
+  let fallos = 0;
+  for (const [i, original] of archivos.entries()) {
+    const li = document.createElement('li'); li.textContent = `${i + 1} de ${archivos.length} · ${original.name}: leyendo…`; lista.appendChild(li);
+    const datos = new FormData();
+    for (const campo of ['proyecto_id', 'viajero_id', 'canal']) datos.append(campo, f.elements[campo].value);
+    datos.append('archivos', await reducir(original));
+    try {
+      const r = await fetch('/gastos/cargar', {method: 'POST', body: datos, headers: {'X-Envio': 'pagina'}});
+      const j = await r.json();
+      if (j.errores && j.errores.length) { fallos++; li.textContent = j.errores.join(' '); li.style.color = 'var(--mal)'; }
+      else li.textContent = `${original.name}: procesado`;
+    } catch (e) { fallos++; li.textContent = `${original.name}: no se pudo enviar. Revisa la conexión.`; li.style.color = 'var(--mal)'; }
+  }
+  boton.disabled = false;
+  if (!fallos) location.href = '/gastos';
+});
+</script>
 {% endblock %}

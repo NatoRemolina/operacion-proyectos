@@ -17,3 +17,8 @@ __pycache__/
 
 # Archivos subidos en modo local
 datos/archivos/
+
+# Infraestructura
+infra/node_modules/
+infra/cdk.out/
+infra/cdk.context.json

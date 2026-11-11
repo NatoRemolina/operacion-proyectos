@@ -2,7 +2,12 @@
 .env.*
 .venv
 .git
+infra
+tests
+docs
 datos/local.db
 datos/archivos
-__pycache__
+**/__pycache__
 *.pyc
+*.md
+*.pdf

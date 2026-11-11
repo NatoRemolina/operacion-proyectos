@@ -12,13 +12,17 @@ la llamada falla, responde el nodo determinista, que arma la explicación desde 
 import json
 from typing import TypedDict
 
+import time
+from functools import lru_cache
+
 import httpx
-from langgraph.graph import END, START, StateGraph
 
 from .. import config, db
 from . import costo
 
-MAX_VUELTAS = 6
+MAX_VUELTAS = 3
+PLAZO_TOTAL_S = 60   # toda la conversación con el modelo, no cada llamada
+ESPERA_LLAMADA_S = 30
 
 SISTEMA = """Eres un asistente que ayuda a un equipo de operaciones a elegir el viaje de un piloto de dron.
 Usa las herramientas para consultar las opciones, sus desgloses, las reglas y el historial de precios.
@@ -36,6 +40,7 @@ class Estado(TypedDict, total=False):
     modo: str
     pasos: list        # herramientas usadas, para mostrar el recorrido
     vueltas: int
+    inicio: float
 
 
 # ---------- herramientas ----------
@@ -152,7 +157,7 @@ def nodo_modelo(e: Estado) -> Estado:
     mensajes = e.get("mensajes") or [{"role": "user", "content":
         (e.get("pregunta") or "¿Cuál opción recomiendas y por qué?") + f"\n\nAnálisis previo de la aplicación:\n{e['base']}"}]
     try:
-        r = httpx.post(config.MODELO_API_URL, timeout=90,
+        r = httpx.post(config.MODELO_API_URL, timeout=ESPERA_LLAMADA_S,
                        headers={"x-api-key": config.MODELO_API_KEY, "content-type": "application/json", **config.MODELO_CABECERAS},
                        json={"model": config.MODELO_NOMBRE, "max_tokens": 900, "system": SISTEMA, "tools": _esquemas(), "messages": mensajes})
         r.raise_for_status()
@@ -161,13 +166,15 @@ def nodo_modelo(e: Estado) -> Estado:
         return {"respuesta": e["base"], "modo": f"determinista (falló el modelo de lenguaje: {type(error).__name__})", "mensajes": mensajes}
     mensajes = mensajes + [{"role": "assistant", "content": contenido}]
     texto = "".join(b.get("text", "") for b in contenido if b.get("type") == "text").strip()
-    return {"mensajes": mensajes, "respuesta": texto, "modo": "modelo de lenguaje con herramientas", "vueltas": e.get("vueltas", 0) + 1}
+    return {"mensajes": mensajes, "respuesta": texto or e["base"], "modo": "modelo de lenguaje con herramientas",
+            "vueltas": e.get("vueltas", 0) + 1, "inicio": e.get("inicio") or time.monotonic()}
 
 
 def _siguiente(e: Estado) -> str:
     ultimo = (e.get("mensajes") or [{}])[-1]
     pide = ultimo.get("role") == "assistant" and any(b.get("type") == "tool_use" for b in ultimo.get("content", []))
-    return "herramientas" if pide and e.get("vueltas", 0) < MAX_VUELTAS else "fin"
+    a_tiempo = time.monotonic() - (e.get("inicio") or time.monotonic()) < PLAZO_TOTAL_S
+    return "herramientas" if pide and a_tiempo and e.get("vueltas", 0) < MAX_VUELTAS else "fin"
 
 
 def nodo_herramientas(e: Estado) -> Estado:
@@ -185,7 +192,11 @@ def nodo_herramientas(e: Estado) -> Estado:
     return {"mensajes": e["mensajes"] + [{"role": "user", "content": resultados}], "pasos": pasos}
 
 
-def _construir():
+@lru_cache(maxsize=1)
+def _grafo():
+    """El grafo se arma la primera vez que se usa: la biblioteca pesa y no hace falta para arrancar."""
+    from langgraph.graph import END, START, StateGraph
+
     g = StateGraph(Estado)
     g.add_node("resumen", nodo_resumen)
     g.add_node("modelo", nodo_modelo)
@@ -197,14 +208,12 @@ def _construir():
     return g.compile()
 
 
-GRAFO = _construir()
-
 
 def recomendar(c: dict, pregunta: str = "", solo_determinista: bool = False) -> dict:
     """Devuelve {texto, modo, pasos}."""
     if solo_determinista:
         r = nodo_resumen({"c": c})
         return {"texto": r["base"], "modo": "determinista", "pasos": r["pasos"]}
-    fin = GRAFO.invoke({"c": c, "pregunta": pregunta})
+    fin = _grafo().invoke({"c": c, "pregunta": pregunta})
     return {"texto": fin.get("respuesta") or fin["base"], "modo": fin.get("modo") or "determinista (sin clave del modelo de lenguaje)",
             "pasos": fin.get("pasos", [])}

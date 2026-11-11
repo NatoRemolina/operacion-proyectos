@@ -4,7 +4,7 @@
 <div class="dos">
   <div class="tarjeta"><h3>Opción elegida</h3>
     <p><b>{{ d.vuelo.aerolinea }} {{ d.vuelo.numeros|join(' + ') }}</b> · {{ decision.tarifa }}<br>{{ d.vuelo.sale }} → {{ d.vuelo.llega }} · {{ 'directo' if d.vuelo.escalas == 0 else d.vuelo.escalas ~ ' escala(s)' }} {{ m.origen(d.origen_vuelo) }}</p>
-    <p><b>{{ d.hotel.nombre }}</b> · {{ noches }} noches {{ m.origen(d.origen_hotel) }}</p>
+    {% if d.hotel %}<p><b>{{ d.hotel.nombre }}</b> · {{ noches }} noches {{ m.origen(d.origen_hotel) }}</p>{% else %}<p class="eti">Sin hotel en esta decisión.</p>{% endif %}
     <p class="eti">Consulta de: {{ sol.solicitado_por or '—' }}<br>Motivo: {{ decision.motivo or '—' }}<br>Aprueba: {{ decision.aprobado_por or '—' }}</p></div>
   <div class="tarjeta"><h3>Total previsto</h3><div class="num">{{ decision.total|dinero }}</div>
     <p class="eti">Incluye el riesgo de cambio y descuenta el valor de las millas; el desembolso real se compara en el tablero del proyecto.</p></div>

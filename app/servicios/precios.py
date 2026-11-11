@@ -21,13 +21,23 @@ def _slug(texto: str) -> str:
 
 
 def _leer(nombre: str):
+    """Busca una respuesta ya pagada: primero en los archivos del repositorio, luego en la tabla compartida."""
     archivo = config.DIR_RESPALDO / nombre
-    return json.loads(archivo.read_text()) if archivo.is_file() else None
+    if archivo.is_file():
+        return json.loads(archivo.read_text())
+    fila = db.uno("select cuerpo from busquedas where clave=:c order by id desc limit 1", c=nombre)
+    return json.loads(fila["cuerpo"]) if fila else None
 
 
 def _guardar(nombre: str, datos: dict):
-    config.DIR_RESPALDO.mkdir(parents=True, exist_ok=True)
-    (config.DIR_RESPALDO / nombre).write_text(json.dumps(datos, ensure_ascii=False))
+    """Una respuesta pagada no se pierde: va a la tabla compartida. El archivo es una copia de conveniencia."""
+    cuerpo = json.dumps(datos, ensure_ascii=False)
+    db.insertar("busquedas", clave=nombre, cuerpo=cuerpo, creado=db.ahora())
+    try:
+        config.DIR_RESPALDO_ESCRITURA.mkdir(parents=True, exist_ok=True)
+        (config.DIR_RESPALDO_ESCRITURA / nombre).write_text(cuerpo)
+    except OSError:
+        pass  # disco de solo lectura: la tabla ya lo tiene
 
 
 def _consultar(parametros: dict, entidad: str, entidad_id: int | None, que: str) -> dict:

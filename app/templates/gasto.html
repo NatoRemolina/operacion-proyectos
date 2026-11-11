@@ -4,7 +4,7 @@
 <div class="dos">
 <div class="tarjeta"><h3>Soporte original</h3>
   {% if g.mime and g.mime.startswith('image/') %}<img src="/gastos/{{ g.id }}/soporte" alt="Soporte" style="max-width:100%;border:1px solid var(--linea);border-radius:6px">
-  {% else %}<iframe src="/gastos/{{ g.id }}/soporte" style="width:100%;height:520px;border:1px solid var(--linea);border-radius:6px"></iframe>{% endif %}</div>
+  {% else %}<iframe src="/gastos/{{ g.id }}/soporte" sandbox title="Soporte original" style="width:100%;height:520px;border:1px solid var(--linea);border-radius:6px"></iframe>{% endif %}</div>
 <form method="post" action="/gastos/{{ g.id }}" class="tarjeta"><h3>Datos leídos</h3>
   <div class="campos">
     <div><label>Comercio</label><input name="comercio" value="{{ g.comercio or '' }}"></div>
@@ -22,6 +22,10 @@
     <div><label>Quién revisa</label><input name="revisor" placeholder="Nombre"></div>
   </div>
   <p style="margin-top:16px"><button name="accion" value="aprobar">Guardar y aprobar</button> <button class="mal" name="accion" value="rechazar">Rechazar</button></p>
+  {% if g.estado == 'revision' %}<details><summary>Aprobar con excepción</summary>
+    <p class="eti">Para un gasto legítimo que las reglas no dejan pasar (por ejemplo, dos peajes iguales el mismo día). El motivo queda en la auditoría.</p>
+    <div class="fila"><input name="motivo_excepcion" placeholder="Motivo de la excepción" style="flex:1;min-width:200px"><button class="sec" name="accion" value="excepcion">Aprobar con excepción</button></div>
+  </details>{% endif %}
 </form></div>
 <h2>Recorrido de este dato</h2>
 <div class="tarjeta tabla"><table><tr><th>Momento (UTC)</th><th>Paso</th><th>Detalle</th><th>Fuente</th><th class="d">ms</th></tr>

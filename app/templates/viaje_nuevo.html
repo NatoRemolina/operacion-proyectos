@@ -33,4 +33,12 @@
   </div>
   <p style="margin-top:18px"><button>Buscar y comparar</button> <span class="eti">Una ruta nueva gasta dos consultas (vuelos y hoteles) y tarda unos segundos.</span></p>
 </form>
+<script>
+// La hora límite se refiere al día de llegada: al cambiar la ida, se mueve con ella y conserva la hora.
+const ida = document.querySelector('[name=ida]'), limite = document.querySelector('[name=llegar_antes]'), regreso = document.querySelector('[name=regreso]');
+ida.addEventListener('change', () => {
+  if (limite.value) limite.value = ida.value + 'T' + limite.value.slice(11, 16);
+  if (regreso.value <= ida.value) { const d = new Date(ida.value); d.setDate(d.getDate() + 3); regreso.value = d.toISOString().slice(0, 10); }
+});
+</script>
 {% endblock %}

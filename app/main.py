@@ -1,13 +1,13 @@
 """Rutas de la aplicación: viajes (reto 1), gastos (reto 2), tablero y flujo de la información."""
 import hashlib
 import hmac
-import mimetypes
+import re
 from datetime import date
 from pathlib import Path
 from urllib.parse import quote, unquote
 
 from fastapi import FastAPI, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -24,7 +24,9 @@ plantillas.env.globals.update(modo=config.modo, categorias=config.CATEGORIAS)
 plantillas.env.filters["dinero"] = lambda v, m="USD": "—" if v is None else f"{v:,.2f} {m}"
 plantillas.env.filters["json"] = db.de_json
 
-sembrar()
+# En local la base se prepara sola; en un despliegue la migración es un paso aparte (python -m datos.semilla)
+if config.LOCAL:
+    sembrar()
 
 
 # ---------- acceso ----------
@@ -52,9 +54,9 @@ def entrar(request: Request, error: int = 0):
 
 @app.post("/entrar")
 def entrar_enviar(clave: str = Form("")):
-    if config.APP_CLAVE and hmac.compare_digest(clave, config.APP_CLAVE):
+    if config.APP_CLAVE and hmac.compare_digest(clave.encode(), config.APP_CLAVE.encode()):
         r = RedirectResponse("/", status_code=303)
-        r.set_cookie("sesion", _firma(), httponly=True, samesite="lax", max_age=7 * 86400)
+        r.set_cookie("sesion", _firma(), httponly=True, samesite="lax", secure=not config.LOCAL, max_age=12 * 3600)
         return r
     return RedirectResponse("/entrar?error=1", status_code=303)
 
@@ -116,9 +118,18 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(...), orige
     desde, hacia = aeropuertos.resolver(origen), aeropuertos.resolver(destino)
     if not desde or not hacia:
         malo = origen if not desde else destino
-        return RedirectResponse(f"/viajes/nuevo?error=No+reconozco+%22{malo}%22.+Elige+una+ciudad+de+la+lista+o+escribe+el+c%C3%B3digo+de+tres+letras+del+aeropuerto.", status_code=303)
-    if regreso <= ida:
+        return RedirectResponse(f"/viajes/nuevo?error=No+reconozco+%22{quote(malo[:40])}%22.+Elige+una+ciudad+de+la+lista+o+escribe+el+c%C3%B3digo+de+tres+letras+del+aeropuerto.", status_code=303)
+    try:
+        f_ida, f_regreso = date.fromisoformat(ida), date.fromisoformat(regreso)
+    except ValueError:
+        return RedirectResponse("/viajes/nuevo?error=Las+fechas+no+son+v%C3%A1lidas.", status_code=303)
+    if f_regreso <= f_ida:
         return RedirectResponse("/viajes/nuevo?error=El+regreso+debe+ser+posterior+a+la+ida.", status_code=303)
+    ida, regreso = f_ida.isoformat(), f_regreso.isoformat()
+    # La hora límite siempre se refiere al día de llegada: se conserva la hora y se ata a la fecha de ida
+    hora = llegar_antes[11:16] if len(llegar_antes) >= 16 else ""
+    llegar_antes = f"{ida}T{hora}" if re.fullmatch(r"\d\d:\d\d", hora) else ""
+    prob_cambio, baterias_n = min(max(prob_cambio, 0), 100), max(baterias_n, 0)
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
     solicitado_por, viajero_nuevo = solicitado_por.strip()[:80], viajero_nuevo.strip()[:80]
     if not solicitado_por:
@@ -155,6 +166,8 @@ def _registrar_ahorro(sid: int, c: dict | None = None):
         mejor, barato = c["vuelos"][0]["ev"]["total"], c["mas_barato"]["ev"]["total"]
         db.actualizar("solicitudes", sid, precio_min_buscador=c["mas_barato"]["v"]["precio"], costo_mas_barato=barato,
                       costo_mejor=mejor, ahorro_potencial=round(max(barato - mejor, 0), 2))
+    elif c:
+        db.actualizar("solicitudes", sid, ahorro_potencial=0)  # sin vuelos válidos: no hay nada que comparar
 
 
 def _comparacion(sid: int) -> dict | None:
@@ -244,24 +257,28 @@ def viaje_tarifas(sid: int, oid: int):
 
 
 @app.post("/viajes/{sid}/decidir")
-def viaje_decidir(sid: int, vuelo_id: int = Form(...), hotel_id: int = Form(...), motivo: str = Form(""),
+def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), motivo: str = Form(""),
                   aprobado_por: str = Form("")):
     c = _comparacion(sid)
+    if not c:
+        return RedirectResponse("/", status_code=303)
     vuelo = next((v for v in c["vuelos"] + c["descartados"] if v["id"] == vuelo_id), None)
-    hotel = next((h for h in c["hoteles"] if h["id"] == hotel_id), None)
-    if not vuelo or not hotel:
+    hotel = next((h for h in c["hoteles"] if h["id"] == hotel_id), None)  # puede no haber hoteles para la ciudad
+    if not vuelo:
         return RedirectResponse(f"/viajes/{sid}", status_code=303)
     lineas = [{**l, "grupo": "vuelo"} for l in vuelo["ev"]["lineas"]]
-    lineas.append({"concepto": f"Hotel: {hotel['h']['nombre']} ({c['noches']} noches)", "valor": hotel["h"]["total"],
-                   "origen": "buscador", "grupo": "hotel"})
+    if hotel:
+        lineas.append({"concepto": f"Hotel: {hotel['h']['nombre']} ({c['noches']} noches)", "valor": hotel["h"]["total"],
+                       "origen": "buscador", "grupo": "hotel"})
     if c["carro"]:
         lineas.append({"concepto": f"Carro de alquiler ({c['noches']} días x {c['sol']['carro_dia']:.0f})",
                        "valor": c["carro"], "origen": "supuesto", "grupo": "alquiler_carro"})
     total = round(sum(l["valor"] for l in lineas), 2)
     did = db.insertar("decisiones", solicitud_id=sid, proyecto_id=c["sol"]["proyecto_id"], vuelo_id=vuelo_id,
-                      hotel_id=hotel_id, tarifa=vuelo["ev"]["tarifa"]["nombre"],
-                      desglose={"lineas": lineas, "avisos": vuelo["ev"]["avisos"], "vuelo": vuelo["v"], "hotel": hotel["h"],
-                                "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"],
+                      hotel_id=hotel["id"] if hotel else None, tarifa=vuelo["ev"]["tarifa"]["nombre"],
+                      desglose={"lineas": lineas, "avisos": vuelo["ev"]["avisos"], "vuelo": vuelo["v"],
+                                "hotel": hotel["h"] if hotel else None,
+                                "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
                                 "aviso": c["aviso"], "baterias": c["baterias"],
                                 # lo que se evita frente a la opción más barata del buscador, por costo esperado
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
@@ -280,40 +297,81 @@ def viaje_ficha(request: Request, sid: int):
 
 
 # ---------- reto 2: gastos ----------
-def _procesar(contenido: bytes, nombre: str, mime: str, canal: str, proyecto_id: int | None, viajero_id: int | None) -> int:
+class SoporteRechazado(ValueError):
+    """El archivo no se acepta; el mensaje se muestra a quien lo subió."""
+
+
+def _tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
+    """Tipo según el contenido, no según lo que declara quien sube. Devuelve (tipo, extensión) o None."""
+    if contenido[:3] == b"\xff\xd8\xff":
+        return "image/jpeg", "jpg"
+    if contenido[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png", "png"
+    if contenido[:4] == b"RIFF" and contenido[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    if contenido[:5] == b"%PDF-":
+        return "application/pdf", "pdf"
+    if nombre.lower().endswith(".eml"):
+        cabecera = contenido[:4000].decode("utf-8", "ignore").lower()
+        if not cabecera.lstrip().startswith("<") and sum(c in cabecera for c in ("from:", "subject:", "date:", "to:")) >= 2:
+            return "message/rfc822", "eml"
+    return None
+
+
+def _nombre_visible(nombre: str) -> str:
+    """Nombre original solo para mostrarlo: sin rutas ni caracteres de control."""
+    limpio = re.sub(r"[\x00-\x1f\\/]", "_", Path(nombre or "soporte").name)[:120]
+    return limpio or "soporte"
+
+
+def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None, viajero_id: int | None) -> int:
+    if not contenido:
+        raise SoporteRechazado("El archivo está vacío.")
+    if len(contenido) > config.MAX_BYTES_SOPORTE:
+        raise SoporteRechazado(f"El archivo pesa {len(contenido) / 1e6:.1f} MB; el máximo es {config.MAX_BYTES_SOPORTE / 1e6:.1f} MB.")
+    tipo = _tipo_real(contenido, nombre)
+    if not tipo:
+        raise SoporteRechazado("Tipo de archivo no admitido. Se aceptan fotos (JPG, PNG, WebP), PDF y correos (.eml).")
+    mime, extension = tipo
+    nombre = _nombre_visible(nombre)
     huella = hashlib.sha256(contenido).hexdigest()
-    ruta = almacen.guardar(f"{huella[:12]}_{nombre}", contenido, mime)
+    try:
+        ruta = almacen.guardar(almacen.clave(huella, extension), contenido, mime)
+    except Exception as e:
+        raise SoporteRechazado(f"No se pudo guardar el archivo ({type(e).__name__}). Intenta de nuevo.") from e
     doc = db.insertar("documentos", nombre=nombre, mime=mime, canal=canal, ruta=ruta, huella=huella, creado=db.ahora())
     gid = db.insertar("gastos", documento_id=doc, proyecto_id=proyecto_id, viajero_id=viajero_id, estado="procesando", creado=db.ahora())
     eventos.registrar("gasto", gid, "documento recibido", f"{nombre} ({mime})", f"canal: {canal}")
+    # Un archivo idéntico ya leído no se vuelve a pagar: se reutiliza su lectura
+    previo = db.uno("""select g.extraido from gastos g join documentos d on d.id=g.documento_id
+                       where d.huella=:h and g.id<>:i and g.extraido is not null order by g.id limit 1""", h=huella, i=gid)
     with eventos.cronometro() as t:
-        x = extraccion.extraer(contenido, mime, nombre)
+        x = {**db.de_json(previo["extraido"], {}), "origen_dato": "reutilizado", "error": None} if previo else \
+            extraccion.extraer(contenido, mime, nombre)
     eventos.registrar("gasto", gid, "datos extraídos", x.get("error") or f"{x['comercio']} · {x['total']} {x['moneda']} · confianza {x['confianza']:.0%}",
                       f"modelo ({x['origen_dato']})", t())
     proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
     r = validacion.revisar(x, proyecto, gid)
     if x.get("error"):
+        # Una lectura fallida nunca se aprueba sola
         r["alertas"].insert(0, x["error"])
+        r["estado"] = "revision"
+    original = {c: x.get(c) for c in extraccion.CAMPOS} | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
     db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c != "ciudad"}, confianza=x["confianza"],
-                  origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], total_usd=r["total_usd"])
+                  origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], total_usd=r["total_usd"],
+                  extraido=None if x.get("error") else original)
     eventos.registrar("gasto", gid, "aprobado sin intervención" if r["estado"] == "aprobado_auto" else "enviado a revisión",
                       " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
     return gid
 
 
-def _mime(nombre: str, declarado: str | None) -> str:
-    if nombre.lower().endswith(".eml"):
-        return "message/rfc822"
-    return declarado if declarado and declarado != "application/octet-stream" else (mimetypes.guess_type(nombre)[0] or "application/octet-stream")
-
-
 @app.get("/gastos", response_class=HTMLResponse)
-def gastos(request: Request, estado: str = ""):
+def gastos(request: Request, estado: str = "", aviso: str = ""):
     filtro = "where g.estado=:e" if estado else ""
     filas = db.todos(f"""select g.*, p.nombre proyecto, v.nombre viajero, d.nombre archivo, d.canal from gastos g
                          left join proyectos p on p.id=g.proyecto_id left join viajeros v on v.id=g.viajero_id
                          left join documentos d on d.id=g.documento_id {filtro} order by g.id desc""", e=estado)
-    return plantillas.TemplateResponse(request, "gastos.html", _ctx(gastos=filas, estado=estado, ind=_indicadores()))
+    return plantillas.TemplateResponse(request, "gastos.html", _ctx(gastos=filas, estado=estado, ind=_indicadores(), aviso=aviso[:300]))
 
 
 @app.get("/gastos/cargar", response_class=HTMLResponse)
@@ -324,14 +382,23 @@ def gastos_cargar(request: Request):
 
 
 @app.post("/gastos/cargar")
-async def gastos_cargar_enviar(archivos: list[UploadFile], proyecto_id: int = Form(0), viajero_id: int = Form(0),
-                               canal: str = Form("web")):
-    for a in archivos:
-        contenido = await a.read()
-        if contenido:
-            _procesar(contenido, a.filename or "soporte", _mime(a.filename or "", a.content_type), canal,
-                      proyecto_id or None, viajero_id or None)
-    return RedirectResponse("/gastos", status_code=303)
+def gastos_cargar_enviar(request: Request, archivos: list[UploadFile], proyecto_id: int = Form(0), viajero_id: int = Form(0),
+                         canal: str = Form("web")):
+    """Función normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor."""
+    canal = canal if canal in ("web", "celular") else "web"
+    hechos, errores = [], []
+    for a in archivos[:config.MAX_ARCHIVOS_POR_CARGA]:
+        try:
+            hechos.append(_procesar(a.file.read(config.MAX_BYTES_SOPORTE + 1), a.filename or "soporte", canal,
+                                    proyecto_id or None, viajero_id or None))
+        except SoporteRechazado as e:
+            errores.append(f"{_nombre_visible(a.filename or '')}: {e}")
+    if len(archivos) > config.MAX_ARCHIVOS_POR_CARGA:
+        errores.append(f"Solo se procesan {config.MAX_ARCHIVOS_POR_CARGA} archivos por envío.")
+    if request.headers.get("x-envio") == "pagina":  # la página envía un archivo por petición y muestra el avance
+        return JSONResponse({"gastos": hechos, "errores": errores}, status_code=200 if hechos or not errores else 400)
+    destino = "/gastos" + (f"?aviso={quote(' '.join(errores)[:300])}" if errores else "")
+    return RedirectResponse(destino, status_code=303)
 
 
 @app.post("/gastos/ejemplos")
@@ -340,7 +407,10 @@ def gastos_ejemplos(nombres: list[str] = Form([]), proyecto_id: int = Form(0), v
     for n in nombres:
         archivo = config.DIR_EJEMPLOS / Path(n).name
         if archivo.is_file():
-            _procesar(archivo.read_bytes(), archivo.name, _mime(archivo.name, None), canal, proyecto_id or None, viajero_id or None)
+            try:
+                _procesar(archivo.read_bytes(), archivo.name, "correo" if canal == "correo" else canal, proyecto_id or None, viajero_id or None)
+            except SoporteRechazado:
+                continue
     return RedirectResponse("/gastos", status_code=303)
 
 
@@ -361,20 +431,39 @@ def gasto_soporte(gid: int):
     contenido = almacen.leer(d["ruta"]) if d else None
     if contenido is None:
         return Response("No disponible", status_code=404)
-    mime = "text/plain; charset=utf-8" if d["mime"] == "message/rfc822" else d["mime"]
-    return Response(contenido, media_type=mime, headers={"Content-Disposition": "inline"})
+    # Solo se sirven en línea tipos inertes; el resto se muestra como texto. El contenido se aísla del resto de la página.
+    mime = d["mime"] if d["mime"] in ("image/jpeg", "image/png", "image/webp", "application/pdf") else "text/plain; charset=utf-8"
+    return Response(contenido, media_type=mime, headers={
+        "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "Cache-Control": "private, no-store"})
 
 
 def _numero(texto: str):
-    texto = (texto or "").strip().replace(",", ".")
-    return round(float(texto), 2) if texto else None
+    """Acepta 1234.56, 1234,56, 1.234,56 y 1,234.56. Un valor ilegible queda vacío en vez de romper la página."""
+    t = re.sub(r"[^0-9.,-]", "", texto or "")
+    if not t:
+        return None
+    if "," in t and "." in t:  # el último separador es el decimal
+        decimal = "," if t.rfind(",") > t.rfind(".") else "."
+        t = t.replace("." if decimal == "," else ",", "").replace(decimal, ".")
+    elif t.count(",") + t.count(".") == 1:
+        sep = "," if "," in t else "."
+        entero, _, cola = t.partition(sep)
+        t = entero + cola if len(cola) == 3 and entero not in ("", "0", "-") else entero + "." + cola  # 45.000 son miles
+    else:
+        t = t.replace(",", "").replace(".", "") if t.count(",") > 1 or t.count(".") > 1 else t
+    try:
+        return round(float(t), 2)
+    except ValueError:
+        return None
 
 
 @app.post("/gastos/{gid}")
 def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0), viajero_id: int = Form(0),
                   comercio: str = Form(""), fecha: str = Form(""), categoria: str = Form("otros"),
                   subtotal: str = Form(""), impuesto: str = Form(""), propina: str = Form(""), total: str = Form(""),
-                  moneda: str = Form(""), metodo_pago: str = Form(""), canal_reserva: str = Form(""), revisor: str = Form("")):
+                  moneda: str = Form(""), metodo_pago: str = Form(""), canal_reserva: str = Form(""), revisor: str = Form(""),
+                  motivo_excepcion: str = Form("")):
     if accion == "rechazar":
         db.actualizar("gastos", gid, estado="rechazado")
         eventos.registrar("gasto", gid, "rechazado en revisión", "", revisor or "revisor")
@@ -387,10 +476,18 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
     # Una persona confirmó los datos: la confianza de lectura deja de ser el criterio
     r = validacion.revisar({**campos, "confianza": 1.0, "dudas": []}, proyecto, gid)
     estado = "aprobado" if r["estado"] == "aprobado_auto" else "revision"
+    # Excepción justificada: una persona responde por un gasto que las reglas no dejan pasar (dos peajes iguales el mismo día)
+    excepcion = accion == "excepcion" and estado == "revision"
+    if excepcion and len(motivo_excepcion.strip()) < 8:
+        r["alertas"].append("Para aprobar con excepción hay que escribir el motivo.")
+    elif excepcion and campos["total"] is not None and campos["moneda"] and r["total_usd"] is not None:
+        estado = "aprobado"
+        r["alertas"].append(f"Aprobado con excepción: {motivo_excepcion.strip()[:200]}")
     db.actualizar("gastos", gid, **campos, proyecto_id=proyecto_id or None, viajero_id=viajero_id or None,
                   estado=estado, alertas=r["alertas"], total_usd=r["total_usd"])
-    eventos.registrar("gasto", gid, "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión",
-                      " ".join(r["alertas"]), revisor or "revisor")
+    paso = "aprobado con excepción" if excepcion and estado == "aprobado" else \
+        "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión"
+    eventos.registrar("gasto", gid, paso, " ".join(r["alertas"]), revisor or "revisor")
     return RedirectResponse("/gastos" if estado == "aprobado" else f"/gastos/{gid}", status_code=303)
 
 
@@ -424,7 +521,10 @@ def proyecto(request: Request, pid: int):
 def proyecto_exportar(pid: int):
     filas = db.todos("select id,fecha,comercio,categoria,total,moneda,total_usd,estado,metodo_pago,origen_dato from gastos where proyecto_id=:i order by fecha", i=pid)
     columnas = ["id", "fecha", "comercio", "categoria", "total", "moneda", "total_usd", "estado", "metodo_pago", "origen_dato"]
-    lineas = [",".join(columnas)] + [",".join('"' + str(f[c] if f[c] is not None else "").replace('"', "'") + '"' for c in columnas) for f in filas]
+    def celda(v):  # texto que empieza como fórmula se neutraliza para las hojas de cálculo
+        t = str(v if v is not None else "").replace('"', "'")
+        return '"' + ("'" + t if t[:1] in "=+-@" and not isinstance(v, (int, float)) else t) + '"'
+    lineas = [",".join(columnas)] + [",".join(celda(f[c]) for c in columnas) for f in filas]
     return Response("\n".join(lineas), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="gastos_proyecto_{pid}.csv"'})
 
