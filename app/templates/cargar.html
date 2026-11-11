@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Cargar soportes</h1><p class="sub">Tres canales, un solo destino. Esta misma página funciona desde el celular para tomar la foto del recibo.</p>
+<div class="dos">
+<form method="post" action="/gastos/cargar" enctype="multipart/form-data" class="tarjeta">
+  <h3>Subir archivos o tomar foto</h3>
+  <p><input type="file" name="archivos" multiple accept="image/*,application/pdf,.eml" capture="environment" required></p>
+  <div class="campos"><div><label>Proyecto</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Canal</label><select name="canal"><option value="web">Carga web</option><option value="celular">Foto desde celular</option></select></div></div>
+  <p><button>Procesar</button></p>
+</form>
+<div>
+<form method="post" action="/gastos/ejemplos" class="tarjeta">
+  <h3>Soportes de ejemplo</h3><p class="eti">Recibos y facturas ficticios en USD y EUR, uno de ellos ilegible a propósito.</p>
+  {% for e in ejemplos %}<label><input type="checkbox" name="nombres" value="{{ e }}" checked> {{ e }}</label>{% endfor %}
+  <div class="campos" style="margin-top:10px"><div><label>Proyecto</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
+  <input type="hidden" name="canal" value="web"><p><button>Procesar seleccionados</button></p>
+</form>
+<form method="post" action="/gastos/ejemplos" class="tarjeta">
+  <h3>Buzón de correo (simulado)</h3><p class="eti">Lee los correos de la carpeta de ejemplos como si llegaran a un buzón de gastos.</p>
+  {% for e in correos %}<label><input type="checkbox" name="nombres" value="{{ e }}" checked> {{ e }}</label>{% endfor %}
+  <div class="campos" style="margin-top:10px"><div><label>Proyecto</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
+  <input type="hidden" name="canal" value="correo"><p><button>Leer buzón</button></p>
+</form></div>
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
+<div class="fila"><div><h1>Ficha de decisión · viaje #{{ sol.id }}</h1><p class="sub">{{ sol.proyecto }} · {{ sol.viajero }} · guardada {{ decision.creado }} UTC</p></div>
+<span class="der noimp"><button class="sec" onclick="window.print()">Imprimir o guardar PDF</button> <a class="boton sec" href="/proyectos/{{ sol.proyecto_id }}">Ver proyecto</a></span></div>
+<div class="dos">
+  <div class="tarjeta"><h3>Opción elegida</h3>
+    <p><b>{{ d.vuelo.aerolinea }} {{ d.vuelo.numeros|join(' + ') }}</b> · {{ decision.tarifa }}<br>{{ d.vuelo.sale }} → {{ d.vuelo.llega }} · {{ 'directo' if d.vuelo.escalas == 0 else d.vuelo.escalas ~ ' escala(s)' }} {{ m.origen(d.origen_vuelo) }}</p>
+    <p><b>{{ d.hotel.nombre }}</b> · {{ noches }} noches {{ m.origen(d.origen_hotel) }}</p>
+    <p class="eti">Consulta de: {{ sol.solicitado_por or '—' }}<br>Motivo: {{ decision.motivo or '—' }}<br>Aprueba: {{ decision.aprobado_por or '—' }}</p></div>
+  <div class="tarjeta"><h3>Total previsto</h3><div class="num">{{ decision.total|dinero }}</div>
+    <p class="eti">Incluye el riesgo de cambio y descuenta el valor de las millas; el desembolso real se compara en el tablero del proyecto.</p></div>
+</div>
+<div class="tarjeta"><h3>Desglose</h3>{{ m.desglose(d.lineas, decision.total) }}</div>
+<div class="tarjeta"><h3>Por qué</h3><ul>
+  <li>{{ d.baterias.texto }}</li>{% if d.aviso %}<li>{{ d.aviso }}</li>{% endif %}{% for a in d.avisos %}<li>{{ a }}</li>{% endfor %}
+  <li>Cada cifra indica su origen: <span class="chip ok">buscador</span> precio real capturado, <span class="chip azul">regla</span> catálogo propio con fuente, <span class="chip aviso">supuesto</span> valor editable.</li></ul></div>
+{% endblock %}

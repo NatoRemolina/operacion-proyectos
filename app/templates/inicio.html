@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Del viaje planeado al gasto conciliado</h1>
+<p class="sub">Dos herramientas pequeñas sobre los mismos datos: decidir un viaje de grabación por su costo real, y recoger los gastos de cada proyecto sin perseguir soportes.</p>
+
+<div class="rejilla">
+  <div class="tarjeta"><div class="eti">Viajes decididos</div><div class="num">{{ ind.decisiones }}</div><div class="eti">Previsto: {{ ind.previsto|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">Gastos recibidos</div><div class="num">{{ ind.gastos }}</div><div class="eti">Real aprobado: {{ ind.real|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">Procesados sin intervención</div><div class="num">{{ ind.auto }} <small>de {{ ind.gastos }} ({{ ind.pct_auto }}%)</small></div><div class="barra"><i style="width:{{ ind.pct_auto }}%"></i></div></div>
+  <div class="tarjeta"><div class="eti">Esperan revisión</div><div class="num">{{ ind.revision }}</div><div class="eti"><a href="/gastos?estado=revision">Abrir bandeja</a></div></div>
+</div>
+
+<div class="dos">
+  <div class="tarjeta"><h3>1 · Planear un viaje de grabación</h3>
+    <p>Una solicitud con el piloto, su equipo y la fecha. La herramienta trae vuelos y hoteles reales, descarta lo que no sirve y ordena por <b>costo total esperado</b>: precio, equipaje, riesgo de cambio de fecha y millas.</p>
+    <a class="boton" href="/viajes/nuevo">Planear viaje</a></div>
+  <div class="tarjeta"><h3>2 · Recoger los gastos del proyecto</h3>
+    <p>Fotos, PDF y correos entran por un solo lugar. Los datos se leen solos; lo claro se aprueba sin intervención y solo las excepciones llegan a una persona.</p>
+    <a class="boton" href="/gastos/cargar">Cargar soportes</a> <a class="boton sec" href="/gastos">Ver gastos</a></div>
+</div>
+
+<h2>Qué cambia en el proceso</h2>
+<div class="dos">
+  <div class="tarjeta"><h3>Viajes</h3><table class="antes">
+    <tr><th>Hoy</th><th>Con la herramienta</th></tr>
+    <tr><td>A. Recibir la necesidad</td><td>A. Llenar una solicitud</td></tr>
+    <tr><td class="tachado">B. Buscar en varias páginas y copiar precios</td><td>Desaparece</td></tr>
+    <tr><td class="tachado">C. Comparar a ojo y revisar condiciones</td><td>Desaparece</td></tr>
+    <tr><td>D. Proponer y aprobar por mensajes</td><td>D. Aprobar la ficha de decisión</td></tr></table></div>
+  <div class="tarjeta"><h3>Gastos</h3><table class="antes">
+    <tr><th>Hoy</th><th>Con la herramienta</th></tr>
+    <tr><td>A. El viajero guarda el recibo</td><td>A. Lo envía desde el celular o por correo</td></tr>
+    <tr><td class="tachado">B. Finanzas pide los soportes que faltan</td><td>El tablero muestra cuáles faltan</td></tr>
+    <tr><td class="tachado">C. Digitar cada gasto en una hoja</td><td>Desaparece</td></tr>
+    <tr><td>D. Revisar y asignar al proyecto</td><td>D. Revisar solo las excepciones</td></tr></table></div>
+</div>
+
+{% if solicitudes %}<h2>Consultas de viaje registradas</h2><div class="tarjeta tabla"><table>
+<tr><th>#</th><th>Registrada por</th><th>Cuándo (UTC)</th><th>Proyecto</th><th>Viajero</th><th>Ruta</th><th>Fechas</th><th>Estado</th></tr>
+{% for s in solicitudes %}<tr><td><a href="/viajes/{{ s.id }}">{{ s.id }}</a></td><td>{{ s.solicitado_por or '—' }}</td><td class="mono">{{ s.creado }}</td><td>{{ s.proyecto }}</td><td>{{ s.viajero }}</td><td>{{ s.origen }} → {{ s.destino }}</td><td>{{ s.ida }} a {{ s.regreso }}</td><td><span class="chip {{ 'ok' if s.estado == 'decidido' else 'azul' }}">{{ s.estado }}</span></td></tr>{% endfor %}
+</table></div>{% endif %}
+{% endblock %}

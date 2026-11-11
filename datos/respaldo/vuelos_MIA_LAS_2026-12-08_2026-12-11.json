@@ -1,0 +1,1106 @@
+{
+  "search_metadata": {
+    "id": "6af4dd32614ebabe4102d081",
+    "status": "Success",
+    "json_endpoint": "https://serpapi.com/searches/dgKCRSgE0BK7HpN8NgAWZ8D0HzrmBc1B_B4X79bw3oY/6af4dd32614ebabe4102d081.json",
+    "markdown_endpoint": "https://serpapi.com/searches/dgKCRSgE0BK7HpN8NgAWZ8D0HzrmBc1B_B4X79bw3oY/6af4dd32614ebabe4102d081.md",
+    "created_at": "2026-11-11 21:25:06 UTC",
+    "processed_at": "2026-11-11 21:25:06 UTC",
+    "google_flights_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhoeEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDTEFTGh4SCjIwMjYtMTItMTFqBwgBEgNMQVNyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+    "raw_html_file": "https://serpapi.com/searches/dgKCRSgE0BK7HpN8NgAWZ8D0HzrmBc1B_B4X79bw3oY/6af4dd32614ebabe4102d081.html",
+    "prettify_html_file": "https://serpapi.com/searches/dgKCRSgE0BK7HpN8NgAWZ8D0HzrmBc1B_B4X79bw3oY/6af4dd32614ebabe4102d081.prettify",
+    "total_time_taken": 1.31
+  },
+  "search_parameters": {
+    "engine": "google_flights",
+    "hl": "en",
+    "gl": "us",
+    "departure_id": "MIA",
+    "arrival_id": "LAS",
+    "outbound_date": "2026-12-08",
+    "return_date": "2026-12-11",
+    "currency": "USD"
+  },
+  "best_flights": [
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 05:01"
+          },
+          "arrival_airport": {
+            "name": "Denver International Airport",
+            "id": "DEN",
+            "time": "2026-12-08 07:39"
+          },
+          "duration": 278,
+          "airplane": "Airbus A321neo",
+          "airline": "Frontier",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+          "travel_class": "Economy",
+          "flight_number": "F9 1279",
+          "legroom": "28 in",
+          "extensions": [
+            "Below average legroom (28 in)",
+            "Carbon emissions estimate: 159 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "Denver International Airport",
+            "id": "DEN",
+            "time": "2026-12-08 08:23"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 09:25"
+          },
+          "duration": 122,
+          "airplane": "Airbus A321neo",
+          "airline": "Frontier",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+          "travel_class": "Economy",
+          "flight_number": "F9 2349",
+          "legroom": "28 in",
+          "extensions": [
+            "Below average legroom (28 in)",
+            "Carbon emissions estimate: 73 kg"
+          ]
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 44,
+          "name": "Denver International Airport",
+          "id": "DEN"
+        }
+      ],
+      "total_duration": 444,
+      "carbon_emissions": {
+        "this_flight": 233000,
+        "typical_for_this_route": 317000,
+        "difference_percent": -26
+      },
+      "price": 282,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZzFHT1RFeU56bDhSamt5TXpRNUdnc0lwTndCRUFJYUExVlRSRGdjY0tUY0FRPT0iLFtbIk1JQSIsIjIwMjYtMTItMDgiLCJERU4iLG51bGwsIkY5IiwiMTI3OSJdLFsiREVOIiwiMjAyNi0xMi0wOCIsIkxBUyIsbnVsbCwiRjkiLCIyMzQ5Il1dXQ=="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 09:48"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 12:24"
+          },
+          "duration": 336,
+          "airplane": "Boeing 737",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 1851",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 269 kg"
+          ]
+        }
+      ],
+      "total_duration": 336,
+      "carbon_emissions": {
+        "this_flight": 269000,
+        "typical_for_this_route": 317000,
+        "difference_percent": -15
+      },
+      "price": 458,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZ1pCUVRFNE5URWFDd2pVNVFJUUFob0RWVk5FT0J4dzFPVUMiLFtbIk1JQSIsIjIwMjYtMTItMDgiLCJMQVMiLG51bGwsIkFBIiwiMTg1MSJdXV0="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 17:04"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 19:39"
+          },
+          "duration": 335,
+          "airplane": "Boeing 737MAX 8 Passenger",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 2941",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 227 kg"
+          ],
+          "often_delayed_by_over_30_min": true
+        }
+      ],
+      "total_duration": 335,
+      "carbon_emissions": {
+        "this_flight": 228000,
+        "typical_for_this_route": 317000,
+        "difference_percent": -28
+      },
+      "price": 458,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZ1pCUVRJNU5ERWFDd2pVNVFJUUFob0RWVk5FT0J4dzFPVUMiLFtbIk1JQSIsIjIwMjYtMTItMDgiLCJMQVMiLG51bGwsIkFBIiwiMjk0MSJdXV0="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 10:50"
+          },
+          "arrival_airport": {
+            "name": "Phoenix Sky Harbor International Airport",
+            "id": "PHX",
+            "time": "2026-12-08 14:04"
+          },
+          "duration": 314,
+          "airplane": "Airbus A321neo",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 620",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 219 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "Phoenix Sky Harbor International Airport",
+            "id": "PHX",
+            "time": "2026-12-08 14:40"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 14:53"
+          },
+          "duration": 73,
+          "airplane": "Airbus A319",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 1541",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power outlet",
+            "Stream media to your device",
+            "Carbon emissions estimate: 77 kg"
+          ],
+          "often_delayed_by_over_30_min": true
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 36,
+          "name": "Phoenix Sky Harbor International Airport",
+          "id": "PHX"
+        }
+      ],
+      "total_duration": 423,
+      "carbon_emissions": {
+        "this_flight": 298000,
+        "typical_for_this_route": 317000,
+        "difference_percent": -6
+      },
+      "price": 468,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZ3hCUVRZeU1IeEJRVEUxTkRFYUN3aW83UUlRQWhvRFZWTkVPQnh3cU8wQyIsW1siTUlBIiwiMjAyNi0xMi0wOCIsIlBIWCIsbnVsbCwiQUEiLCI2MjAiXSxbIlBIWCIsIjIwMjYtMTItMDgiLCJMQVMiLG51bGwsIkFBIiwiMTU0MSJdXV0="
+    }
+  ],
+  "other_flights": [
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 10:54"
+          },
+          "arrival_airport": {
+            "name": "Dallas Fort Worth International Airport",
+            "id": "DFW",
+            "time": "2026-12-08 13:32"
+          },
+          "duration": 218,
+          "airplane": "Airbus A320neo",
+          "airline": "Frontier",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+          "travel_class": "Economy",
+          "flight_number": "F9 2135",
+          "legroom": "28 in",
+          "extensions": [
+            "Below average legroom (28 in)",
+            "Carbon emissions estimate: 127 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "Dallas Fort Worth International Airport",
+            "id": "DFW",
+            "time": "2026-12-08 18:01"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 19:07"
+          },
+          "duration": 186,
+          "airplane": "Airbus A320neo",
+          "airline": "Frontier",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+          "travel_class": "Economy",
+          "flight_number": "F9 1649",
+          "legroom": "28 in",
+          "extensions": [
+            "Below average legroom (28 in)",
+            "Carbon emissions estimate: 117 kg"
+          ]
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 269,
+          "name": "Dallas Fort Worth International Airport",
+          "id": "DFW"
+        }
+      ],
+      "total_duration": 673,
+      "carbon_emissions": {
+        "this_flight": 245000,
+        "typical_for_this_route": 317000,
+        "difference_percent": -23
+      },
+      "price": 279,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZzFHT1RJeE16VjhSamt4TmpRNUdnc0l1dGtCRUFJYUExVlRSRGdjY0xyWkFRPT0iLFtbIk1JQSIsIjIwMjYtMTItMDgiLCJERlciLG51bGwsIkY5IiwiMjEzNSJdLFsiREZXIiwiMjAyNi0xMi0wOCIsIkxBUyIsbnVsbCwiRjkiLCIxNjQ5Il1dXQ=="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 15:41"
+          },
+          "arrival_airport": {
+            "name": "Hartsfield-Jackson Atlanta International Airport",
+            "id": "ATL",
+            "time": "2026-12-08 17:53"
+          },
+          "duration": 132,
+          "airplane": "Airbus A321neo",
+          "airline": "Frontier",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+          "travel_class": "Economy",
+          "flight_number": "F9 3059",
+          "legroom": "28 in",
+          "extensions": [
+            "Below average legroom (28 in)",
+            "Carbon emissions estimate: 73 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "Hartsfield-Jackson Atlanta International Airport",
+            "id": "ATL",
+            "time": "2026-12-08 18:49"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 20:27"
+          },
+          "duration": 278,
+          "airplane": "Airbus A320neo",
+          "airline": "Frontier",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+          "travel_class": "Economy",
+          "flight_number": "F9 3923",
+          "legroom": "28 in",
+          "extensions": [
+            "Below average legroom (28 in)",
+            "Carbon emissions estimate: 180 kg"
+          ],
+          "often_delayed_by_over_30_min": true
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 56,
+          "name": "Hartsfield-Jackson Atlanta International Airport",
+          "id": "ATL"
+        }
+      ],
+      "total_duration": 466,
+      "carbon_emissions": {
+        "this_flight": 253000,
+        "typical_for_this_route": 317000,
+        "difference_percent": -20
+      },
+      "price": 282,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/F9.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZzFHT1RNd05UbDhSamt6T1RJekdnc0lwTndCRUFJYUExVlRSRGdjY0tUY0FRPT0iLFtbIk1JQSIsIjIwMjYtMTItMDgiLCJBVEwiLG51bGwsIkY5IiwiMzA1OSJdLFsiQVRMIiwiMjAyNi0xMi0wOCIsIkxBUyIsbnVsbCwiRjkiLCIzOTIzIl1dXQ=="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 17:30"
+          },
+          "arrival_airport": {
+            "name": "St. Louis Lambert International Airport",
+            "id": "STL",
+            "time": "2026-12-08 19:30"
+          },
+          "duration": 180,
+          "airplane": "Boeing 737MAX 8 Passenger",
+          "airline": "Southwest",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/WN.png",
+          "travel_class": "Economy",
+          "flight_number": "WN 3522",
+          "legroom": "31 in",
+          "extensions": [
+            "Average legroom (31 in)",
+            "Free Wi-Fi",
+            "In-seat USB outlet",
+            "Stream media to your device",
+            "Carbon emissions estimate: 134 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "St. Louis Lambert International Airport",
+            "id": "STL",
+            "time": "2026-12-08 20:20"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 22:00"
+          },
+          "duration": 220,
+          "airplane": "Boeing 737MAX 8 Passenger",
+          "airline": "Southwest",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/WN.png",
+          "travel_class": "Economy",
+          "flight_number": "WN 2229",
+          "legroom": "31 in",
+          "extensions": [
+            "Average legroom (31 in)",
+            "Free Wi-Fi",
+            "In-seat USB outlet",
+            "Stream media to your device",
+            "Carbon emissions estimate: 172 kg"
+          ]
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 50,
+          "name": "St. Louis Lambert International Airport",
+          "id": "STL"
+        }
+      ],
+      "total_duration": 450,
+      "carbon_emissions": {
+        "this_flight": 307000,
+        "typical_for_this_route": 317000,
+        "difference_percent": -3
+      },
+      "price": 439,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/WN.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZzFYVGpNMU1qSjhWMDR5TWpJNUdnc0l3TllDRUFJYUExVlRSRGdjY01EV0FnPT0iLFtbIk1JQSIsIjIwMjYtMTItMDgiLCJTVEwiLG51bGwsIldOIiwiMzUyMiJdLFsiU1RMIiwiMjAyNi0xMi0wOCIsIkxBUyIsbnVsbCwiV04iLCIyMjI5Il1dXQ=="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 05:10"
+          },
+          "arrival_airport": {
+            "name": "Dallas Fort Worth International Airport",
+            "id": "DFW",
+            "time": "2026-12-08 07:42"
+          },
+          "duration": 212,
+          "airplane": "Airbus A321",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 1226",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 176 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "Dallas Fort Worth International Airport",
+            "id": "DFW",
+            "time": "2026-12-08 08:51"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 09:52"
+          },
+          "duration": 181,
+          "airplane": "Airbus A321",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 1584",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 162 kg"
+          ]
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 69,
+          "name": "Dallas Fort Worth International Airport",
+          "id": "DFW"
+        }
+      ],
+      "total_duration": 462,
+      "carbon_emissions": {
+        "this_flight": 339000,
+        "typical_for_this_route": 317000,
+        "difference_percent": 7
+      },
+      "price": 468,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZzFCUVRFeU1qWjhRVUV4TlRnMEdnc0lxTzBDRUFJYUExVlRSRGdjY0tqdEFnPT0iLFtbIk1JQSIsIjIwMjYtMTItMDgiLCJERlciLG51bGwsIkFBIiwiMTIyNiJdLFsiREZXIiwiMjAyNi0xMi0wOCIsIkxBUyIsbnVsbCwiQUEiLCIxNTg0Il1dXQ=="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 07:00"
+          },
+          "arrival_airport": {
+            "name": "Phoenix Sky Harbor International Airport",
+            "id": "PHX",
+            "time": "2026-12-08 10:19"
+          },
+          "duration": 319,
+          "airplane": "Airbus A321neo",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 3240",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 219 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "Phoenix Sky Harbor International Airport",
+            "id": "PHX",
+            "time": "2026-12-08 11:11"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 11:29"
+          },
+          "duration": 78,
+          "airplane": "Airbus A321",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 2940",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 70 kg"
+          ]
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 52,
+          "name": "Phoenix Sky Harbor International Airport",
+          "id": "PHX"
+        }
+      ],
+      "total_duration": 449,
+      "carbon_emissions": {
+        "this_flight": 290000,
+        "typical_for_this_route": 317000,
+        "difference_percent": -9
+      },
+      "price": 468,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZzFCUVRNeU5EQjhRVUV5T1RRd0dnc0lxTzBDRUFJYUExVlRSRGdjY0tqdEFnPT0iLFtbIk1JQSIsIjIwMjYtMTItMDgiLCJQSFgiLG51bGwsIkFBIiwiMzI0MCJdLFsiUEhYIiwiMjAyNi0xMi0wOCIsIkxBUyIsbnVsbCwiQUEiLCIyOTQwIl1dXQ=="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 12:15"
+          },
+          "arrival_airport": {
+            "name": "Dallas Fort Worth International Airport",
+            "id": "DFW",
+            "time": "2026-12-08 14:43"
+          },
+          "duration": 208,
+          "airplane": "Airbus A321",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 3064",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 176 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "Dallas Fort Worth International Airport",
+            "id": "DFW",
+            "time": "2026-12-08 15:50"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 16:46"
+          },
+          "duration": 176,
+          "airplane": "Boeing 737",
+          "airline": "American",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+          "travel_class": "Economy",
+          "flight_number": "AA 468",
+          "legroom": "30 in",
+          "extensions": [
+            "Average legroom (30 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Stream media to your device",
+            "Carbon emissions estimate: 149 kg"
+          ]
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 67,
+          "name": "Dallas Fort Worth International Airport",
+          "id": "DFW"
+        }
+      ],
+      "total_duration": 451,
+      "carbon_emissions": {
+        "this_flight": 326000,
+        "typical_for_this_route": 317000,
+        "difference_percent": 3
+      },
+      "price": 468,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/AA.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZ3hCUVRNd05qUjhRVUUwTmpnYUN3aW83UUlRQWhvRFZWTkVPQnh3cU8wQyIsW1siTUlBIiwiMjAyNi0xMi0wOCIsIkRGVyIsbnVsbCwiQUEiLCIzMDY0Il0sWyJERlciLCIyMDI2LTEyLTA4IiwiTEFTIixudWxsLCJBQSIsIjQ2OCJdXV0="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Miami International Airport",
+            "id": "MIA",
+            "time": "2026-12-08 08:15"
+          },
+          "arrival_airport": {
+            "name": "Hartsfield-Jackson Atlanta International Airport",
+            "id": "ATL",
+            "time": "2026-12-08 10:17"
+          },
+          "duration": 122,
+          "airplane": "Boeing 757",
+          "airline": "Delta",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/DL.png",
+          "travel_class": "Economy",
+          "flight_number": "DL 1261",
+          "legroom": "31 in",
+          "extensions": [
+            "Average legroom (31 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Live TV",
+            "Carbon emissions estimate: 128 kg"
+          ]
+        },
+        {
+          "departure_airport": {
+            "name": "Hartsfield-Jackson Atlanta International Airport",
+            "id": "ATL",
+            "time": "2026-12-08 11:00"
+          },
+          "arrival_airport": {
+            "name": "Harry Reid International Airport",
+            "id": "LAS",
+            "time": "2026-12-08 12:28"
+          },
+          "duration": 268,
+          "airplane": "Boeing 757",
+          "airline": "Delta",
+          "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/DL.png",
+          "travel_class": "Economy",
+          "flight_number": "DL 824",
+          "legroom": "31 in",
+          "extensions": [
+            "Average legroom (31 in)",
+            "Free Wi-Fi",
+            "In-seat power & USB outlets",
+            "Live TV",
+            "Carbon emissions estimate: 261 kg"
+          ]
+        }
+      ],
+      "layovers": [
+        {
+          "duration": 43,
+          "name": "Hartsfield-Jackson Atlanta International Airport",
+          "id": "ATL"
+        }
+      ],
+      "total_duration": 433,
+      "carbon_emissions": {
+        "this_flight": 390000,
+        "typical_for_this_route": 317000,
+        "difference_percent": 23
+      },
+      "price": 508,
+      "type": "Round trip",
+      "airline_logo": "https://www.gstatic.com/flights/airline_logos/70px/DL.png",
+      "extensions": [
+        "Checked baggage for a fee",
+        "Bag and fare conditions depend on the return flight"
+      ],
+      "departure_token": "WyJDalJJVTJabU1ucEpWRnBTWVZWQlFVazFRbmRDUnkwdExTMHRMWGxzYW1neE5TMXVNVUZCUVVGQlIzSXdNMVJOUkZFMVFrMUJFZ3hFVERFeU5qRjhSRXc0TWpRYUN3aXpqQU1RQWhvRFZWTkVPQnh3czR3RCIsW1siTUlBIiwiMjAyNi0xMi0wOCIsIkFUTCIsbnVsbCwiREwiLCIxMjYxIl0sWyJBVEwiLCIyMDI2LTEyLTA4IiwiTEFTIixudWxsLCJETCIsIjgyNCJdXV0="
+    }
+  ],
+  "price_insights": {
+    "lowest_price": 279,
+    "price_level": "typical",
+    "typical_price_range": [
+      180,
+      330
+    ],
+    "price_history": [
+      [
+        1789185600,
+        255
+      ],
+      [
+        1789272000,
+        255
+      ],
+      [
+        1789358400,
+        237
+      ],
+      [
+        1789444800,
+        237
+      ],
+      [
+        1789531200,
+        276
+      ],
+      [
+        1789617600,
+        265
+      ],
+      [
+        1789704000,
+        265
+      ],
+      [
+        1789790400,
+        265
+      ],
+      [
+        1789876800,
+        319
+      ],
+      [
+        1789963200,
+        316
+      ],
+      [
+        1790049600,
+        300
+      ],
+      [
+        1790136000,
+        256
+      ],
+      [
+        1790222400,
+        245
+      ],
+      [
+        1790308800,
+        221
+      ],
+      [
+        1790395200,
+        231
+      ],
+      [
+        1790481600,
+        246
+      ],
+      [
+        1790568000,
+        246
+      ],
+      [
+        1790654400,
+        268
+      ],
+      [
+        1790740800,
+        268
+      ],
+      [
+        1790827200,
+        299
+      ],
+      [
+        1790913600,
+        299
+      ],
+      [
+        1791000000,
+        299
+      ],
+      [
+        1791086400,
+        329
+      ],
+      [
+        1791172800,
+        310
+      ],
+      [
+        1791259200,
+        251
+      ],
+      [
+        1791345600,
+        251
+      ],
+      [
+        1791432000,
+        251
+      ],
+      [
+        1791518400,
+        251
+      ],
+      [
+        1791604800,
+        310
+      ],
+      [
+        1791691200,
+        310
+      ],
+      [
+        1791777600,
+        310
+      ],
+      [
+        1791864000,
+        279
+      ],
+      [
+        1791950400,
+        279
+      ],
+      [
+        1792036800,
+        241
+      ],
+      [
+        1792123200,
+        241
+      ],
+      [
+        1792209600,
+        374
+      ],
+      [
+        1792296000,
+        330
+      ],
+      [
+        1792382400,
+        235
+      ],
+      [
+        1792468800,
+        211
+      ],
+      [
+        1792555200,
+        211
+      ],
+      [
+        1792641600,
+        196
+      ],
+      [
+        1792728000,
+        201
+      ],
+      [
+        1792814400,
+        248
+      ],
+      [
+        1792900800,
+        249
+      ],
+      [
+        1792987200,
+        208
+      ],
+      [
+        1793073600,
+        182
+      ],
+      [
+        1793160000,
+        182
+      ],
+      [
+        1793246400,
+        237
+      ],
+      [
+        1793332800,
+        238
+      ],
+      [
+        1793419200,
+        214
+      ],
+      [
+        1793505600,
+        195
+      ],
+      [
+        1793595600,
+        195
+      ],
+      [
+        1793682000,
+        246
+      ],
+      [
+        1793768400,
+        243
+      ],
+      [
+        1793854800,
+        248
+      ],
+      [
+        1793941200,
+        245
+      ],
+      [
+        1794027600,
+        248
+      ],
+      [
+        1794114000,
+        224
+      ],
+      [
+        1794200400,
+        224
+      ],
+      [
+        1794286800,
+        248
+      ],
+      [
+        1794373200,
+        279
+      ]
+    ]
+  },
+  "airports": [
+    {
+      "departure": [
+        {
+          "airport": {
+            "id": "MIA",
+            "name": "Miami International Airport"
+          },
+          "city": "Miami",
+          "country": "United States",
+          "country_code": "US",
+          "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRjsG6ybk9C2oSVnPZUal-6l7EimKLf5gtMAhOumgD16nXBwB4X0lHH3nh-178HKbonabZtnDMdZKfDEQ",
+          "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRScvUK_JtYRXmQWoXHiT98Ajl1KTuUVO40d0Q678OpK1xyyWI8VIkHqzXE9BHfY5R35UpgbeEdcf1IhMDncXwDo29wOABY9MIUzCFLkwU"
+        }
+      ],
+      "arrival": [
+        {
+          "airport": {
+            "id": "LAS",
+            "name": "Harry Reid International Airport"
+          },
+          "city": "Las Vegas",
+          "country": "United States",
+          "country_code": "US",
+          "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQxzlQKvw3ufT2AIJBpJ5abnavHzCQtmtXAoDFf7TfPscbI_2venzoI8JxedJ3xJomFf3qr-8IXHTYW-Q",
+          "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS01Bm3sjZsZDN26n9Hxmpje0Clftk0ckL52qQPUIsxbihJsPb00aSeAVGvkdOcZbZ2paRYvPMVGHTiX-HjHAztabiDkHTA2bqM-mTG1nQ"
+        }
+      ]
+    },
+    {
+      "departure": [
+        {
+          "airport": {
+            "id": "LAS",
+            "name": "Harry Reid International Airport"
+          },
+          "city": "Las Vegas",
+          "country": "United States",
+          "country_code": "US",
+          "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQxzlQKvw3ufT2AIJBpJ5abnavHzCQtmtXAoDFf7TfPscbI_2venzoI8JxedJ3xJomFf3qr-8IXHTYW-Q",
+          "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS01Bm3sjZsZDN26n9Hxmpje0Clftk0ckL52qQPUIsxbihJsPb00aSeAVGvkdOcZbZ2paRYvPMVGHTiX-HjHAztabiDkHTA2bqM-mTG1nQ"
+        }
+      ],
+      "arrival": [
+        {
+          "airport": {
+            "id": "MIA",
+            "name": "Miami International Airport"
+          },
+          "city": "Miami",
+          "country": "United States",
+          "country_code": "US",
+          "image": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRjsG6ybk9C2oSVnPZUal-6l7EimKLf5gtMAhOumgD16nXBwB4X0lHH3nh-178HKbonabZtnDMdZKfDEQ",
+          "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRScvUK_JtYRXmQWoXHiT98Ajl1KTuUVO40d0Q678OpK1xyyWI8VIkHqzXE9BHfY5R35UpgbeEdcf1IhMDncXwDo29wOABY9MIUzCFLkwU"
+        }
+      ]
+    }
+  ]
+}

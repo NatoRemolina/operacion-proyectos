@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
+<div class="fila"><div><h1>Gastos</h1><p class="sub">{{ ind.auto }} de {{ ind.gastos }} entraron sin intervención ({{ ind.pct_auto }}%). {{ ind.revision }} esperan revisión.</p></div>
+<a class="boton der" href="/gastos/cargar">Cargar soportes</a></div>
+<p class="fila"><a class="chip {{ 'azul' if not estado }}" href="/gastos">Todos</a><a class="chip {{ 'azul' if estado == 'revision' }}" href="/gastos?estado=revision">En revisión</a><a class="chip {{ 'azul' if estado == 'aprobado_auto' }}" href="/gastos?estado=aprobado_auto">Aprobados automáticos</a><a class="chip {{ 'azul' if estado == 'aprobado' }}" href="/gastos?estado=aprobado">Aprobados por una persona</a></p>
+<div class="tarjeta tabla"><table>
+<tr><th>#</th><th>Fecha</th><th>Comercio</th><th>Categoría</th><th>Proyecto</th><th class="d">Total</th><th class="d">USD</th><th>Canal</th><th>Lectura</th><th>Estado</th></tr>
+{% for g in gastos %}<tr>
+  <td><a href="/gastos/{{ g.id }}">{{ g.id }}</a></td><td>{{ g.fecha or '—' }}</td><td><a href="/gastos/{{ g.id }}">{{ g.comercio or g.archivo }}</a>
+  {% for a in (g.alertas|json or []) %}<br><span class="eti">⚠ {{ a }}</span>{% endfor %}</td>
+  <td>{{ categorias.get(g.categoria, '—') }}</td><td>{{ g.proyecto or '—' }}</td>
+  <td class="d">{{ g.total|dinero(g.moneda or '') }}</td><td class="d">{{ g.total_usd|dinero }}</td>
+  <td><span class="chip">{{ g.canal }}</span></td>
+  <td>{{ m.origen(g.origen_dato) }} <span class="eti">{{ '%.0f'|format((g.confianza or 0) * 100) }}%</span></td><td>{{ m.estado(g.estado) }}</td></tr>
+{% else %}<tr><td colspan="10">Todavía no hay gastos. <a href="/gastos/cargar">Carga los soportes de ejemplo</a>.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

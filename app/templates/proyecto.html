@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
+<div class="fila"><div><h1>{{ p.nombre }}</h1><p class="sub">{{ p.cliente }} · {{ p.ciudad }} · {{ p.fecha_inicio }} a {{ p.fecha_fin }}</p></div>
+<a class="boton sec der" href="/proyectos/{{ p.id }}/exportar.csv">Exportar gastos (CSV)</a></div>
+<div class="rejilla">
+  <div class="tarjeta"><div class="eti">Previsto (fichas de decisión)</div><div class="num">{{ tot_previsto|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">Real aprobado</div><div class="num">{{ tot_real|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">Diferencia</div><div class="num" style="color:{{ 'var(--mal)' if tot_real > tot_previsto and tot_previsto else 'var(--ok)' }}">{{ (tot_real - tot_previsto)|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">En revisión</div><div class="num">{{ pendientes }}</div></div>
+</div>
+{% if faltantes %}<p class="nota aviso"><b>Soportes faltantes:</b> hay gasto previsto pero no ha llegado soporte de {{ faltantes|join(', ') }}.</p>{% endif %}
+{% if not decisiones %}<p class="nota">Este proyecto aún no tiene un viaje decidido, así que no hay presupuesto previsto. <a href="/viajes/nuevo">Planear viaje</a>.</p>{% endif %}
+<div class="dos">
+  <div class="tarjeta"><h3>Previsto frente a real por categoría (USD)</h3><canvas id="g" height="220"></canvas></div>
+  <div class="tarjeta tabla"><h3>Detalle</h3><table><tr><th>Categoría</th><th class="d">Previsto</th><th class="d">Real</th><th class="d">Diferencia</th></tr>
+  {% for f in filas %}<tr><td>{{ f.nombre }}</td><td class="d">{{ '%.2f'|format(f.previsto) }}</td><td class="d">{{ '%.2f'|format(f.real) }}</td><td class="d">{{ '%+.2f'|format(f.real - f.previsto) }}</td></tr>{% endfor %}
+  <tr><td><b>Total</b></td><td class="d"><b>{{ '%.2f'|format(tot_previsto) }}</b></td><td class="d"><b>{{ '%.2f'|format(tot_real) }}</b></td><td class="d"><b>{{ '%+.2f'|format(tot_real - tot_previsto) }}</b></td></tr></table>
+  <p class="eti">El previsto incluye solo desembolsos (precio, equipaje, hotel, carro); el riesgo de cambio y las millas no se cuentan aquí.</p></div>
+</div>
+<h2>Gastos del proyecto</h2>
+<div class="tarjeta tabla"><table><tr><th>#</th><th>Fecha</th><th>Comercio</th><th>Categoría</th><th>Viajero</th><th class="d">Total</th><th class="d">USD</th><th>Estado</th></tr>
+{% for g in gastos %}<tr><td><a href="/gastos/{{ g.id }}">{{ g.id }}</a></td><td>{{ g.fecha or '—' }}</td><td>{{ g.comercio or '—' }}</td><td>{{ categorias.get(g.categoria, '—') }}</td><td>{{ g.viajero or '—' }}</td><td class="d">{{ g.total|dinero(g.moneda or '') }}</td><td class="d">{{ g.total_usd|dinero }}</td><td>{{ m.estado(g.estado) }}</td></tr>
+{% else %}<tr><td colspan="8">Sin gastos todavía.</td></tr>{% endfor %}</table></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const filas = {{ filas|tojson }};
+if (window.Chart && filas.length) new Chart(document.getElementById('g'), {type:'bar',
+  data:{labels:filas.map(f=>f.nombre),datasets:[{label:'Previsto',data:filas.map(f=>f.previsto),backgroundColor:'#9db8d6'},{label:'Real',data:filas.map(f=>f.real),backgroundColor:'#0b5cab'}]},
+  options:{plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true}}}});
+</script>
+{% endblock %}

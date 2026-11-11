@@ -1,0 +1,22 @@
+From: Reservas <reservas@aerolinea-ejemplo.test>
+To: andres.molina@empresa-ejemplo.test
+Subject: Your trip confirmation and receipt - MIA to LAS
+Date: Fri, 20 Nov 2026 10:12:00 -0500
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+Thank you for your purchase.
+
+Passenger: ANDRES MOLINA
+Record locator: QX7T2L
+Issued: November 20, 2026
+
+Miami (MIA) -> Las Vegas (LAS)   Tue, Dec 8, 2026   AA 1851   Main Cabin
+Las Vegas (LAS) -> Miami (MIA)   Fri, Dec 11, 2026  AA 1851   Main Cabin
+
+Base fare            USD 521.86
+Taxes and fees       USD  66.14
+Total paid           USD 588.00
+Form of payment: VISA ending 4417
+Purchased directly from the airline.

@@ -1,0 +1,38 @@
+:root{--fondo:#f6f7f9;--tarjeta:#fff;--tinta:#16202c;--suave:#5b6877;--linea:#e2e6eb;--marca:#0b5cab;--marca2:#e8f1fb;
+--ok:#12805c;--okf:#e5f6ef;--aviso:#9a6200;--avisof:#fdf3dc;--mal:#b42318;--malf:#fdeceb;--gris:#eef1f4}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--fondo);color:var(--tinta)}
+a{color:var(--marca);text-decoration:none}a:hover{text-decoration:underline}
+header{background:#0d1b2a;color:#fff}header .in{max-width:1180px;margin:auto;padding:12px 20px;display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+header a{color:#cfd9e6;font-weight:500}header a.act,header a:hover{color:#fff;text-decoration:none}header .logo{font-weight:700;color:#fff;font-size:16px;margin-right:8px}
+.modo{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;font-size:12px}
+main{max-width:1180px;margin:auto;padding:24px 20px 60px}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 10px}h3{font-size:15px;margin:0 0 6px}
+.sub{color:var(--suave);margin:0 0 18px}
+.tarjeta{background:var(--tarjeta);border:1px solid var(--linea);border-radius:10px;padding:18px;margin-bottom:16px}
+.rejilla{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.dos{display:grid;gap:16px;grid-template-columns:1fr 1fr}@media(max-width:800px){.dos{grid-template-columns:1fr}}
+.num{font-size:30px;font-weight:700;line-height:1.1}.num small{font-size:14px;color:var(--suave);font-weight:500}
+.eti{color:var(--suave);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;color:var(--suave);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+th,td{padding:9px 10px;border-bottom:1px solid var(--linea);vertical-align:top}tr:last-child td{border-bottom:0}td.d,th.d{text-align:right;white-space:nowrap}
+.tabla{overflow-x:auto}
+.chip{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;background:var(--gris);color:var(--suave);white-space:nowrap}
+.chip.ok{background:var(--okf);color:var(--ok)}.chip.aviso{background:var(--avisof);color:var(--aviso)}.chip.mal{background:var(--malf);color:var(--mal)}.chip.azul{background:var(--marca2);color:var(--marca)}
+.nota{border-left:4px solid var(--marca);background:var(--marca2);padding:12px 14px;border-radius:6px;margin:0 0 16px}
+.nota.aviso{border-color:#d99a00;background:var(--avisof)}.nota.mal{border-color:var(--mal);background:var(--malf)}.nota.ok{border-color:var(--ok);background:var(--okf)}
+form .campos{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+label{display:block;font-size:13px;font-weight:600;color:var(--suave);margin-bottom:4px}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid #c9d1da;border-radius:7px;font:inherit;background:#fff}
+input[type=checkbox],input[type=radio]{width:auto}
+button,.boton{display:inline-block;background:var(--marca);color:#fff;border:0;border-radius:7px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+button.sec,.boton.sec{background:#fff;color:var(--marca);border:1px solid var(--marca)}button.peq{padding:5px 10px;font-size:13px}button.mal{background:var(--mal)}
+.boton:hover{text-decoration:none}
+details summary{cursor:pointer;color:var(--marca);font-size:13px}details table{margin-top:8px;background:var(--fondo);border-radius:6px}
+.flujo{display:flex;gap:0;flex-wrap:wrap;align-items:stretch}.paso{flex:1;min-width:150px;background:#fff;border:1px solid var(--linea);padding:14px;position:relative}
+.paso:first-child{border-radius:10px 0 0 10px}.paso:last-child{border-radius:0 10px 10px 0}.paso b{display:block;font-size:24px}
+.paso:not(:last-child)::after{content:"→";position:absolute;right:-9px;top:38%;background:#fff;color:var(--suave);z-index:1;font-weight:700}
+.antes td:first-child{color:var(--suave)}.tachado{text-decoration:line-through;color:var(--suave)}
+.barra{height:10px;background:var(--gris);border-radius:99px;overflow:hidden}.barra i{display:block;height:100%;background:var(--marca)}
+.fila{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.der{margin-left:auto}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+@media print{header,.noimp{display:none}body{background:#fff}.tarjeta{border:0;padding:0}}

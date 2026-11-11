@@ -1,0 +1,8 @@
+.env
+.env.*
+.venv
+.git
+datos/local.db
+datos/archivos
+__pycache__
+*.pyc

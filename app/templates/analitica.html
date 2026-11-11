@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Analítica</h1>
+<p class="sub">Todo sale de consultas y precios reales registrados{% if a.desde %} desde el {{ a.desde }}{% endif %}. No hay historial simulado: con pocas consultas, las cifras son pequeñas a propósito.</p>
+
+<div class="rejilla">
+  <div class="tarjeta"><div class="eti">Consultas de viaje registradas</div><div class="num">{{ a.consultas }}</div><div class="eti">{{ a.decisiones }} con decisión guardada</div></div>
+  <div class="tarjeta"><div class="eti">Ahorro identificado</div><div class="num">{{ a.ahorro_potencial|dinero }}</div><div class="eti">en {{ a.consultas_con_ahorro }} consulta(s) donde lo más barato no era lo mejor</div></div>
+  <div class="tarjeta"><div class="eti">Ahorro capturado en decisiones</div><div class="num">{{ a.ahorro_capturado|dinero }}</div><div class="eti">frente a elegir por precio</div></div>
+  <div class="tarjeta"><div class="eti">Anticipación media</div><div class="num">{{ a.anticipacion_media if a.anticipacion_media is not none else '—' }} <small>días</small></div><div class="eti">entre la consulta y el viaje</div></div>
+</div>
+<p class="nota"><b>Cómo se mide el ahorro.</b> Costo total esperado de la opción más barata del buscador menos el de la opción recomendada. Es un valor esperado (incluye el riesgo de cambio y el equipaje), no dinero ya ahorrado, y depende de los supuestos de la página Reglas.</p>
+
+<h2>Frecuencia de viajes</h2>
+<div class="dos">
+  <div class="tarjeta"><h3>Consultas por semana</h3><canvas id="gSem" height="200"></canvas></div>
+  <div class="tarjeta tabla"><h3>Rutas más consultadas</h3><table><tr><th>Ruta</th><th class="d">Consultas</th></tr>
+    {% for r, n in a.por_ruta %}<tr><td>{{ r }}</td><td class="d">{{ n }}</td></tr>{% else %}<tr><td colspan="2">Sin consultas.</td></tr>{% endfor %}</table>
+    <h3 style="margin-top:14px">Por viajero</h3><table>{% for r, n in a.por_viajero %}<tr><td>{{ r }}</td><td class="d">{{ n }}</td></tr>{% endfor %}</table>
+    <h3 style="margin-top:14px">Quién consulta</h3><table>{% for r, n in a.por_persona %}<tr><td>{{ r }}</td><td class="d">{{ n }}</td></tr>{% endfor %}</table></div>
+</div>
+
+<h2>Ahorro por consulta</h2>
+<div class="tarjeta tabla"><table><tr><th>#</th><th>Ruta</th><th>Ida</th><th>Registrada por</th><th class="d">Precio mínimo buscador</th><th class="d">Costo esperado del más barato</th><th class="d">Costo esperado recomendado</th><th class="d">Ahorro identificado</th></tr>
+{% for d in a.detalle_ahorro %}<tr><td><a href="/viajes/{{ d.id }}">{{ d.id }}</a></td><td>{{ d.ruta }}</td><td>{{ d.ida }}</td><td>{{ d.por or '—' }}</td><td class="d">{{ '%.0f'|format(d.precio_min or 0) }}</td><td class="d">{{ '%.2f'|format(d.costo_mas_barato or 0) }}</td><td class="d">{{ '%.2f'|format(d.costo_mejor or 0) }}</td><td class="d"><b>{{ '%.2f'|format(d.ahorro or 0) }}</b></td></tr>
+{% else %}<tr><td colspan="8">Sin consultas todavía.</td></tr>{% endfor %}</table></div>
+
+<h2>Precio de las rutas consultadas en los últimos 60 días</h2>
+<div class="dos">
+  <div class="tarjeta"><canvas id="gHist" height="220"></canvas></div>
+  <div class="tarjeta tabla"><table><tr><th>Viaje</th><th class="d">Mínimo 60 días</th><th class="d">Hoy</th><th class="d">Sobre el mínimo</th></tr>
+  {% for h in a.historiales %}<tr><td>{{ h.ruta }}</td><td class="d">{{ '%.0f'|format(h.minimo) }}</td><td class="d">{{ '%.0f'|format(h.actual) }}</td><td class="d">{{ '%+.0f'|format(h.sobre_minimo) }}</td></tr>
+  {% else %}<tr><td colspan="4">Sin historial.</td></tr>{% endfor %}</table>
+  <p class="eti">Precio más bajo que el buscador registró cada día para esas mismas fechas de viaje. Sirve para ver cuánto cuesta consultar tarde.</p></div>
+</div>
+
+<h2>Modelo de precio esperado</h2>
+<div class="dos">
+  <div class="tarjeta"><h3>Conjunto de datos</h3>
+    <p><b>{{ a.observaciones.n }}</b> vuelos observados en <b>{{ a.observaciones.b }}</b> búsquedas de <b>{{ a.observaciones.r }}</b> rutas{% if a.observaciones.desde %}, capturados desde el {{ a.observaciones.desde }}{% endif %}.</p>
+    {% if a.modelo %}{% set f = a.modelo %}
+      <p>{% if a.modelo_utilizable %}<span class="chip ok">Modelo en uso</span>{% else %}<span class="chip aviso">Modelo no utilizable todavía</span>{% endif %}
+      entrenado el {{ f.entrenado }} UTC con {{ f.filas }} filas · validación: {{ f.validacion }}.</p>
+      {% if f.metricas.modelo %}<table><tr><th></th><th class="d">Error medio (USD)</th><th class="d">Error porcentual</th></tr>
+        <tr><td>Modelo</td><td class="d">{{ f.metricas.modelo.mae }}</td><td class="d">{{ f.metricas.modelo.mape }} %</td></tr>
+        <tr><td>Línea base (mediana de la ruta)</td><td class="d">{{ f.metricas.linea_base.mae }}</td><td class="d">{{ f.metricas.linea_base.mape }} %</td></tr></table>{% endif %}
+      {% if not f.datos_suficientes %}<p class="nota aviso">Hay {{ f.filas }} filas y el mínimo fijado es {{ f.minimo_filas }}: con tan pocos datos el modelo no se muestra en las comparaciones.</p>
+      {% elif not f.supera_linea_base %}<p class="nota aviso">El modelo no supera a la línea base, así que no se muestra en las comparaciones.</p>{% endif %}
+    {% else %}<p class="nota aviso">Todavía no se ha entrenado ningún modelo.</p>{% endif %}
+    <p class="eti">Aprende de una foto de pocos días de captura: sirve para comparar opciones entre sí, no para predecir cuándo comprar.</p></div>
+  <div class="tarjeta"><h3>Qué variables pesan más</h3>{% if a.modelo %}<canvas id="gImp" height="220"></canvas>{% else %}<p class="eti">Sin modelo.</p>{% endif %}</div>
+</div>
+<div class="tarjeta tabla"><h3>Precio medio observado por aerolínea</h3><table><tr><th>Aerolínea</th><th class="d">Vuelos vistos</th><th class="d">Precio medio (USD)</th><th class="d">Escalas medias</th></tr>
+{% for x in a.por_aerolinea %}<tr><td>{{ x.aerolinea }}</td><td class="d">{{ x.n }}</td><td class="d">{{ '%.0f'|format(x.medio) }}</td><td class="d">{{ '%.1f'|format(x.escalas) }}</td></tr>{% endfor %}</table>
+<p class="eti">Mezcla rutas distintas: es descriptivo, no una comparación entre aerolíneas.</p></div>
+
+<h2>Gastos</h2>
+<div class="dos">
+  <div class="tarjeta"><h3>Cómo entraron</h3><canvas id="gGas" height="200"></canvas></div>
+  <div class="tarjeta tabla"><h3>Por qué van a revisión</h3><table>{% for m, n in a.gastos.motivos %}<tr><td>{{ m }}</td><td class="d">{{ n }}</td></tr>{% else %}<tr><td>Sin gastos en revisión.</td></tr>{% endfor %}</table></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const a = {{ a|tojson }};
+const azul = '#0b5cab', tonos = ['#0b5cab', '#d98200', '#12805c', '#8a4fd3'];
+if (window.Chart) {
+  new Chart(document.getElementById('gSem'), {type:'bar', data:{labels:a.semanas.etiquetas.map(s=>'Semana del '+s), datasets:[{label:'Consultas', data:a.semanas.valores, backgroundColor:azul}]}, options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}}}});
+  if (a.historiales.length) new Chart(document.getElementById('gHist'), {type:'line', data:{labels:a.historiales[0].fechas, datasets:a.historiales.map((h,i)=>({label:h.ruta, data:h.precios, borderColor:tonos[i%4], pointRadius:0, tension:.2}))}, options:{plugins:{legend:{position:'bottom'}}, scales:{x:{ticks:{maxTicksLimit:6}}}}});
+  if (a.modelo && document.getElementById('gImp')) new Chart(document.getElementById('gImp'), {type:'bar', data:{labels:a.modelo.importancia.map(d=>d.variable), datasets:[{data:a.modelo.importancia.map(d=>Math.round(d.peso*100)), backgroundColor:azul}]}, options:{indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{title:{display:true, text:'% de la ganancia'}}}}});
+  new Chart(document.getElementById('gGas'), {type:'doughnut', data:{labels:['Aprobado automático','Aprobado por una persona','En revisión'], datasets:[{data:[a.gastos.auto, a.gastos.manual, a.gastos.revision], backgroundColor:['#12805c','#0b5cab','#d98200']}]}, options:{plugins:{legend:{position:'bottom'}}}});
+}
+</script>
+{% endblock %}

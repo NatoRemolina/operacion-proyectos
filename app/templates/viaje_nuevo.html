@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Planear un viaje de grabación</h1>
+<p class="sub">Escribe una ciudad o el código del aeropuerto. Los valores iniciales son el caso de ejemplo, que tiene precios guardados; cualquier otra ruta se consulta en vivo{% if modo().precios != 'en vivo' %} <b>(ahora no hay clave del buscador: solo funciona el caso guardado)</b>{% endif %}.</p>
+{% if error %}<p class="nota mal">{{ error }}</p>{% endif %}
+<datalist id="aeropuertos">{% for n, c in aeropuertos %}<option value="{{ n }} ({{ c }})">{% endfor %}</datalist>
+<form method="post" action="/viajes" class="tarjeta">
+  <h3>Quién y para qué</h3>
+  <div class="campos">
+    <div><label>Tu nombre (queda registrado en la consulta)</label><input name="solicitado_por" value="{{ mi_nombre }}" required maxlength="80" placeholder="Nombre y apellido"></div>
+    <div><label>Proyecto</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }} ({{ v.base }})</option>{% endfor %}</select></div>
+    <div><label>O registrar un viajero nuevo</label><input name="viajero_nuevo" maxlength="80" placeholder="Nombre (opcional)"></div>
+  </div>
+  <h2>Ruta y fechas</h2>
+  <div class="campos">
+    <div><label>Origen (ciudad o aeropuerto)</label><input name="origen" value="Miami (MIA)" list="aeropuertos" required></div>
+    <div><label>Destino (ciudad o aeropuerto)</label><input name="destino" value="Las Vegas (LAS)" list="aeropuertos" required></div>
+    <div><label>Ciudad del hotel (vacío = la del destino)</label><input name="ciudad" value=""></div>
+    <div><label>Ida</label><input type="date" name="ida" value="2026-12-08" required></div>
+    <div><label>Regreso</label><input type="date" name="regreso" value="2026-12-11" required></div>
+    <div><label>Debe llegar antes de (opcional)</label><input type="datetime-local" name="llegar_antes" value="2026-12-08T18:00"></div>
+  </div>
+  <h2>Equipo</h2>
+  <div class="campos">
+    <div><label>Baterías de repuesto</label><input type="number" name="baterias_n" value="4" min="0"></div>
+    <div><label>Capacidad de cada una (Wh)</label><input type="number" name="baterias_wh" value="77" min="0" step="0.1"></div>
+    <div><label>&nbsp;</label><label><input type="checkbox" name="maleta" checked> Lleva maleta facturada</label></div>
+  </div>
+  <h2>Supuestos del viaje</h2>
+  <div class="campos">
+    <div><label>Probabilidad de cambio de fecha (%)</label><input type="number" name="prob_cambio" value="25" min="0" max="100"></div>
+    <div><label>Carro de alquiler por día (USD, 0 = sin carro)</label><input type="number" name="carro_dia" value="65" min="0"></div>
+  </div>
+  <p style="margin-top:18px"><button>Buscar y comparar</button> <span class="eti">Una ruta nueva gasta dos consultas (vuelos y hoteles) y tarda unos segundos.</span></p>
+</form>
+{% endblock %}

@@ -1,0 +1,113 @@
+{
+  "entrenado": "2026-11-11 22:02:11",
+  "filas": 760,
+  "busquedas": 42,
+  "rutas": 10,
+  "capturas": [
+    "2026-11-11"
+  ],
+  "variables": [
+    "ruta",
+    "aerolinea",
+    "escalas",
+    "duracion_min",
+    "hora_salida",
+    "dia_semana",
+    "anticipacion",
+    "noches",
+    "tipico_min",
+    "tipico_max"
+  ],
+  "categorias": {
+    "ruta": [
+      "ATL-ORD",
+      "CDG-FCO",
+      "DFW-DEN",
+      "JFK-LAX",
+      "LAX-LAS",
+      "LHR-MAD",
+      "MAD-BCN",
+      "MAD-LIS",
+      "MIA-JFK",
+      "MIA-LAS"
+    ],
+    "aerolinea": [
+      "Air Europa",
+      "Air France",
+      "Alaska",
+      "American",
+      "Austrian",
+      "British Airways",
+      "Contour Airlines",
+      "Delta",
+      "Frontier",
+      "ITA",
+      "Iberia",
+      "JSX",
+      "JetBlue",
+      "KLM",
+      "Lufthansa",
+      "Ryanair",
+      "SWISS",
+      "Southwest",
+      "Tap Air Portugal",
+      "United",
+      "Volotea",
+      "Vueling",
+      "easyJet"
+    ]
+  },
+  "metricas": {
+    "modelo": {
+      "mae": 115.96,
+      "mape": 36.3
+    },
+    "linea_base": {
+      "mae": 142.65,
+      "mape": 48.7
+    }
+  },
+  "supera_linea_base": true,
+  "datos_suficientes": true,
+  "utilizable": true,
+  "importancia": [
+    {
+      "variable": "tipico_max",
+      "peso": 0.431
+    },
+    {
+      "variable": "tipico_min",
+      "peso": 0.142
+    },
+    {
+      "variable": "dia_semana",
+      "peso": 0.085
+    },
+    {
+      "variable": "anticipacion",
+      "peso": 0.084
+    },
+    {
+      "variable": "ruta",
+      "peso": 0.08
+    },
+    {
+      "variable": "aerolinea",
+      "peso": 0.077
+    },
+    {
+      "variable": "escalas",
+      "peso": 0.048
+    },
+    {
+      "variable": "duracion_min",
+      "peso": 0.039
+    },
+    {
+      "variable": "hora_salida",
+      "peso": 0.015
+    }
+  ],
+  "validacion": "5 pliegues por búsqueda completa",
+  "minimo_filas": 200
+}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block cuerpo %}
+<h1>Flujo de la información</h1>
+<p class="sub">Qué le pasa a cada dato desde que entra hasta que queda disponible, con qué fuente y cuánto tarda. Todo sale de la bitácora de eventos.</p>
+<h2>Gastos: del soporte al dato aprobado</h2>
+<div class="flujo">
+  <div class="paso"><b>{{ pasos.get('documento recibido', 0) }}</b>Recibidos<div class="eti">web, celular, correo</div></div>
+  <div class="paso"><b>{{ pasos.get('datos extraídos', 0) }}</b>Leídos<div class="eti">modelo multimodal</div></div>
+  <div class="paso"><b>{{ pasos.get('aprobado sin intervención', 0) }}</b>Aprobados solos<div class="eti">reglas de validación</div></div>
+  <div class="paso"><b>{{ pasos.get('enviado a revisión', 0) }}</b>A revisión<div class="eti">excepciones</div></div>
+  <div class="paso"><b>{{ pasos.get('corregido y aprobado', 0) }}</b>Corregidos<div class="eti">por una persona</div></div>
+</div>
+<h2>Viajes: de la solicitud a la decisión</h2>
+<div class="flujo">
+  <div class="paso"><b>{{ pasos.get('solicitud recibida', 0) }}</b>Solicitudes</div>
+  <div class="paso"><b>{{ pasos.get('consulta externa', 0) }}</b>Consultas en vivo<div class="eti">buscador de precios</div></div>
+  <div class="paso"><b>{{ pasos.get('lectura de respaldo', 0) }}</b>Lecturas de respaldo<div class="eti">respuestas guardadas</div></div>
+  <div class="paso"><b>{{ pasos.get('opciones guardadas', 0) }}</b>Comparaciones</div>
+  <div class="paso"><b>{{ pasos.get('decisión guardada', 0) }}</b>Decisiones<div class="eti">ficha contra el proyecto</div></div>
+</div>
+<div class="dos" style="margin-top:20px">
+  <div class="tarjeta tabla"><h3>Fuentes que intervinieron</h3><table><tr><th>Fuente</th><th class="d">Eventos</th><th class="d">Tiempo medio (ms)</th></tr>
+  {% for f in fuentes %}<tr><td>{{ f.fuente }}</td><td class="d">{{ f.n }}</td><td class="d">{{ '%.0f'|format(f.ms or 0) }}</td></tr>{% endfor %}</table></div>
+  <div class="tarjeta"><h3>Dónde vive cada cosa</h3><table>
+  {% set md = modo() %}<tr><td>Precios de vuelos y hoteles</td><td><span class="chip">{{ md.precios }}</span></td></tr>
+  <tr><td>Lectura de soportes</td><td><span class="chip">{{ md.extraccion }}</span></td></tr>
+  <tr><td>Datos (tablas)</td><td><span class="chip azul">{{ md.datos }}</span></td></tr>
+  <tr><td>Archivos originales</td><td><span class="chip azul">{{ md.archivos }}</span></td></tr></table>
+  <p class="eti">Consultas externas pagadas hasta ahora: {{ ind.externas }}.</p></div>
+</div>
+<h2>Últimos eventos</h2>
+<div class="tarjeta tabla"><table><tr><th>Momento (UTC)</th><th>Dato</th><th>Paso</th><th>Detalle</th><th>Fuente</th><th class="d">ms</th></tr>
+{% for e in eventos %}<tr><td class="mono">{{ e.momento }}</td>
+<td>{% if e.entidad == 'gasto' %}<a href="/gastos/{{ e.entidad_id }}">gasto #{{ e.entidad_id }}</a>{% elif e.entidad == 'solicitud' and e.entidad_id %}<a href="/viajes/{{ e.entidad_id }}">viaje #{{ e.entidad_id }}</a>{% else %}{{ e.entidad }} #{{ e.entidad_id }}{% endif %}</td>
+<td><b>{{ e.paso }}</b></td><td>{{ e.detalle }}</td><td>{{ e.fuente }}</td><td class="d">{{ e.duracion_ms or '' }}</td></tr>
+{% else %}<tr><td colspan="6">Sin eventos todavía.</td></tr>{% endfor %}</table></div>
+{% endblock %}

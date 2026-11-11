@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block titulo %}Operación de proyectos{% endblock %}</title>
+<link rel="stylesheet" href="/static/estilo.css"></head>
+<body>
+<header><div class="in">
+  <a class="logo" href="/">Operación de proyectos</a>
+  <a href="/viajes/nuevo">Planear viaje</a>
+  <a href="/gastos">Gastos</a>
+  {% for p in proyectos %}<a href="/proyectos/{{ p.id }}">{{ p.ciudad }}</a>{% endfor %}
+  <a href="/analitica">Analítica</a>
+  <a href="/flujo">Flujo de la información</a>
+  <a href="/reglas">Reglas</a>
+  <span class="modo">{% set md = modo() %}
+    <span class="chip {{ 'ok' if md.precios == 'en vivo' else 'aviso' }}">Precios: {{ md.precios }}</span>
+    <span class="chip {{ 'ok' if md.extraccion == 'en vivo' else 'aviso' }}">Lectura: {{ md.extraccion }}</span>
+    <span class="chip azul">Datos: {{ md.datos }}</span>
+  </span>
+</div></header>
+<main>{% block cuerpo %}{% endblock %}</main>
+</body></html>

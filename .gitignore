@@ -1,0 +1,19 @@
+# Claves y configuración local
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Datos locales
+*.db
+*.sqlite3
+
+# Sistema
+.DS_Store
+
+# Archivos subidos en modo local
+datos/archivos/
