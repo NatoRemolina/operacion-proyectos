@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
-<div class="fila"><div><h1>Gastos</h1><p class="sub">{{ ind.auto }} de {{ ind.gastos }} entraron sin intervención ({{ ind.pct_auto }}%). {{ ind.revision }} esperan revisión.</p></div>
+<div class="fila"><div><h1>Gastos</h1><p class="sub">{% if ind %}{{ ind.auto }} de {{ ind.gastos }} entraron sin intervención ({{ ind.pct_auto }}%). {{ ind.revision }} esperan revisión.{% else %}Tus soportes y su estado. La revisión la hace administración.{% endif %}</p></div>
 <a class="boton der" href="/gastos/cargar">Cargar soportes</a></div>
 {% if aviso %}<p class="nota aviso">{{ aviso }}</p>{% endif %}
 <p class="fila"><a class="chip {{ 'azul' if not estado }}" href="/gastos">Todos</a><a class="chip {{ 'azul' if estado == 'revision' }}" href="/gastos?estado=revision">En revisión</a><a class="chip {{ 'azul' if estado == 'aprobado_auto' }}" href="/gastos?estado=aprobado_auto">Aprobados automáticos</a><a class="chip {{ 'azul' if estado == 'aprobado' }}" href="/gastos?estado=aprobado">Aprobados por una persona</a></p>

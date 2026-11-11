@@ -6,8 +6,10 @@ from .. import db
 
 
 def registrar(entidad: str, entidad_id: int | None, paso: str, detalle: str = "", fuente: str = "", duracion_ms: int = 0):
+    from . import acceso  # el usuario de la petición en curso firma cada evento
+    u = acceso.actual()
     db.insertar("eventos", momento=db.ahora(), entidad=entidad, entidad_id=entidad_id, paso=paso,
-                detalle=detalle[:500], fuente=fuente, duracion_ms=duracion_ms)
+                detalle=detalle[:500], fuente=fuente, duracion_ms=duracion_ms, usuario_id=u["id"] if u else None)
 
 
 @contextmanager

@@ -58,6 +58,32 @@ def sembrar():
                         nota=nota, fuente=fuente, confianza=confianza, verificado=HOY)
     from app.servicios import precios
     precios.cargar_respaldos()
+    sembrar_cuentas()
+
+
+# Cuentas de demostración para ejecutar en local sin configurar nada. Nunca se crean en una base compartida.
+DEMO = [("admin@demo.local", "Administración (demo)", "admin", "demo-admin-2026", None),
+        ("piloto@demo.local", "Andrés Molina", "usuario", "demo-piloto-2026", 1)]
+
+
+def sembrar_cuentas():
+    import os
+
+    from app import config
+    from app.servicios import acceso
+    if db.uno("select id from usuarios limit 1"):
+        return
+    if config.ES_SQLITE and config.LOCAL:
+        for correo, nombre, rol, clave, viajero in DEMO:
+            acceso.crear_usuario(correo, nombre, rol, clave, viajero)
+        return
+    # Base compartida: el primer administrador sale de la configuración, una sola vez
+    correo, clave = os.getenv("ADMIN_INICIAL_CORREO", ""), os.getenv("ADMIN_INICIAL_CLAVE", "")
+    if correo and clave:
+        acceso.crear_usuario(correo, "Administración", "admin", clave)
+        demo_correo, demo_clave = os.getenv("USUARIO_DEMO_CORREO", ""), os.getenv("USUARIO_DEMO_CLAVE", "")
+        if demo_correo and demo_clave:
+            acceso.crear_usuario(demo_correo, "Andrés Molina", "usuario", demo_clave, 1)
 
 
 if __name__ == "__main__":

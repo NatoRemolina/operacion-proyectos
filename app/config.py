@@ -55,7 +55,7 @@ ES_SQLITE = not DATABASE_URL or DATABASE_URL.startswith("sqlite")
 # Falla cerrado: un despliegue sin base, almacenamiento o control de acceso no arranca.
 if not LOCAL:
     _faltan = [n for n, v in (("DATABASE_URL", DATABASE_URL and not ES_SQLITE), ("SUPABASE_URL", SUPABASE_URL),
-                              ("SUPABASE_SERVICE_KEY", SUPABASE_SERVICE_KEY), ("APP_CLAVE", APP_CLAVE)) if not v]
+                              ("SUPABASE_SERVICE_KEY", SUPABASE_SERVICE_KEY)) if not v]
     if _faltan:
         raise RuntimeError("Configuración incompleta para un despliegue: faltan " + ", ".join(_faltan))
 

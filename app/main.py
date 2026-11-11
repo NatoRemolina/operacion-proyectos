@@ -1,10 +1,9 @@
 """Rutas de la aplicación: viajes (reto 1), gastos (reto 2), tablero y flujo de la información."""
 import hashlib
-import hmac
 import re
 from datetime import date
 from pathlib import Path
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -14,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from datos.semilla import sembrar
 
 from . import aeropuertos, config, db
-from .servicios import agente, almacen, analitica, costo, eventos, extraccion, modelo, precios, validacion
+from .servicios import acceso, agente, almacen, analitica, costo, eventos, extraccion, modelo, precios, validacion
 
 AQUI = Path(__file__).parent
 app = FastAPI(title="Operación de proyectos")
@@ -30,15 +29,21 @@ if config.LOCAL:
 
 
 # ---------- acceso ----------
-def _firma() -> str:
-    return hmac.new(config.APP_CLAVE.encode(), b"sesion", hashlib.sha256).hexdigest()
-
-
 @app.middleware("http")
-async def acceso(request: Request, call_next):
-    libre = request.url.path.startswith(("/static", "/entrar", "/salud"))
-    if config.APP_CLAVE and not libre and request.cookies.get("sesion") != _firma():
-        return RedirectResponse("/entrar", status_code=303)
+async def control_de_acceso(request: Request, call_next):
+    """Identifica a quien llama y aplica el nivel de la ruta antes de ejecutar nada."""
+    ruta = request.url.path
+    necesario = acceso.nivel(ruta)
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not acceso.mismo_origen(request.headers):
+        return Response("Petición rechazada: no viene de esta página.", status_code=403)
+    usuario = None if necesario == "publica" and ruta != "/entrar" else acceso.usuario_de(request.cookies.get(acceso.COOKIE))
+    acceso.fijar(usuario)
+    request.state.usuario = usuario
+    if necesario != "publica":
+        if not usuario:
+            return Response(status_code=401) if ruta.startswith("/api") else RedirectResponse("/entrar", status_code=303)
+        if necesario == "admin" and not acceso.es_admin(usuario):
+            return Response("Esta sección es solo para administradores.", status_code=403)
     return await call_next(request)
 
 
@@ -48,33 +53,47 @@ def salud():
 
 
 @app.get("/entrar", response_class=HTMLResponse)
-def entrar(request: Request, error: int = 0):
-    return plantillas.TemplateResponse(request, "entrar.html", {"error": error})
+def entrar(request: Request, error: str = ""):
+    if request.state.usuario:
+        return RedirectResponse("/", status_code=303)
+    return plantillas.TemplateResponse(request, "entrar.html", {"error": error[:120], "demo": config.ES_SQLITE and config.LOCAL})
 
 
 @app.post("/entrar")
-def entrar_enviar(clave: str = Form("")):
-    if config.APP_CLAVE and hmac.compare_digest(clave.encode(), config.APP_CLAVE.encode()):
-        r = RedirectResponse("/", status_code=303)
-        r.set_cookie("sesion", _firma(), httponly=True, samesite="lax", secure=not config.LOCAL, max_age=12 * 3600)
-        return r
-    return RedirectResponse("/entrar?error=1", status_code=303)
+def entrar_enviar(correo: str = Form(""), clave: str = Form("")):
+    usuario, mensaje = acceso.autenticar(correo, clave)
+    if not usuario:
+        eventos.registrar("acceso", None, "ingreso fallido", correo.strip().lower()[:80], "formulario")
+        return RedirectResponse(f"/entrar?error={quote(mensaje)}", status_code=303)
+    acceso.fijar(usuario)
+    eventos.registrar("acceso", usuario["id"], "ingreso", usuario["correo"], "formulario")
+    return acceso.abrir_sesion(RedirectResponse("/", status_code=303), usuario["id"])
+
+
+@app.post("/salir")
+def salir(request: Request):
+    return acceso.cerrar_sesion(RedirectResponse("/entrar", status_code=303), request.cookies.get(acceso.COOKIE))
 
 
 # ---------- utilidades ----------
-def _nombre(request: Request) -> str:
-    """Nombre de quien usa la aplicación, recordado en el navegador."""
-    return unquote(request.cookies.get("nombre", ""))
+def _yo() -> dict:
+    return acceso.actual() or {}
 
 
-def _recordar(respuesta, nombre: str):
-    if nombre:
-        respuesta.set_cookie("nombre", quote(nombre), max_age=90 * 86400, samesite="lax")
-    return respuesta
+def _solicitud_propia(sid: int) -> bool:
+    return acceso.puede_ver(_yo(), db.uno("select usuario_id, viajero_id from solicitudes where id=:i", i=sid))
+
+
+def _gasto_propio(gid: int) -> bool:
+    return acceso.puede_ver(_yo(), db.uno("select usuario_id, viajero_id from gastos where id=:i", i=gid))
+
+
+NO_ENCONTRADO = Response("No encontrado.", status_code=404)
 
 
 def _ctx(**extra):
-    return {"proyectos": db.todos_cache("select * from proyectos order by id"),
+    return {"yo": _yo(), "es_admin": acceso.es_admin(_yo()),
+            "proyectos": db.todos_cache("select * from proyectos order by id"),
             "viajeros": db.todos_cache("select * from viajeros order by id"), **extra}
 
 
@@ -95,18 +114,22 @@ def _indicadores() -> dict:
 # ---------- inicio ----------
 @app.get("/", response_class=HTMLResponse)
 def inicio(request: Request):
+    donde, p = acceso.alcance(_yo(), "s")
+    donde_g, pg = acceso.alcance(_yo(), "g")
     return plantillas.TemplateResponse(request, "inicio.html", _ctx(
-        ind=_indicadores(),
-        solicitudes=db.todos("""select s.*, p.nombre proyecto, v.nombre viajero from solicitudes s
+        ind=_indicadores() if acceso.es_admin(_yo()) else None,
+        solicitudes=db.todos(f"""select s.*, p.nombre proyecto, v.nombre viajero from solicitudes s
                                 left join proyectos p on p.id=s.proyecto_id left join viajeros v on v.id=s.viajero_id
-                                order by s.id desc limit 15""")))
+                                where {donde} order by s.id desc limit 15""", **p),
+        mis_gastos=db.todos(f"""select g.id, g.comercio, g.fecha, g.total, g.moneda, g.estado from gastos g
+                                where {donde_g} order by g.id desc limit 8""", **pg)))
 
 
 # ---------- reto 1: viajes ----------
 @app.get("/viajes/nuevo", response_class=HTMLResponse)
 def viaje_nuevo(request: Request, error: str = ""):
     return plantillas.TemplateResponse(request, "viaje_nuevo.html", _ctx(
-        aeropuertos=aeropuertos.AEROPUERTOS, error=error, mi_nombre=_nombre(request)))
+        aeropuertos=aeropuertos.AEROPUERTOS, error=error))
 
 
 @app.post("/viajes")
@@ -131,9 +154,7 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(...), orige
     llegar_antes = f"{ida}T{hora}" if re.fullmatch(r"\d\d:\d\d", hora) else ""
     prob_cambio, baterias_n = min(max(prob_cambio, 0), 100), max(baterias_n, 0)
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
-    solicitado_por, viajero_nuevo = solicitado_por.strip()[:80], viajero_nuevo.strip()[:80]
-    if not solicitado_por:
-        return RedirectResponse("/viajes/nuevo?error=Escribe+tu+nombre+para+registrar+la+consulta.", status_code=303)
+    solicitado_por, viajero_nuevo = _yo()["nombre"], viajero_nuevo.strip()[:80]  # quien consulta sale de la sesión
     if viajero_nuevo:
         existente = db.uno("select id from viajeros where lower(nombre)=lower(:n)", n=viajero_nuevo)
         viajero_id = existente["id"] if existente else db.insertar("viajeros", nombre=viajero_nuevo, base=desde[1], rol="Viajero")
@@ -141,7 +162,7 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(...), orige
                       destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
                       llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,
                       maleta=1 if maleta else 0, prob_cambio=prob_cambio / 100, carro_dia=carro_dia,
-                      estado="buscando", creado=db.ahora(), solicitado_por=solicitado_por)
+                      estado="buscando", creado=db.ahora(), solicitado_por=solicitado_por, usuario_id=_yo()["id"])
     eventos.registrar("solicitud", sid, "solicitud recibida", f"{origen}-{destino} {ida} a {regreso}", f"formulario · {solicitado_por}")
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
     vuelos, origen_v, _ = precios.buscar_vuelos(sol["origen"], sol["destino"], ida, regreso, sid)
@@ -156,7 +177,7 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(...), orige
     db.actualizar("solicitudes", sid, estado="comparando")
     eventos.registrar("solicitud", sid, "opciones guardadas", f"{len(vuelos)} vuelos y {min(len(hoteles), 12)} hoteles", "aplicación")
     _registrar_ahorro(sid)
-    return _recordar(RedirectResponse(f"/viajes/{sid}", status_code=303), solicitado_por)
+    return RedirectResponse(f"/viajes/{sid}", status_code=303)
 
 
 def _registrar_ahorro(sid: int, c: dict | None = None):
@@ -222,29 +243,31 @@ def _comparacion(sid: int) -> dict | None:
 
 @app.get("/viajes/{sid}", response_class=HTMLResponse)
 def viaje(request: Request, sid: int):
-    c = _comparacion(sid)
+    c = _comparacion(sid) if _solicitud_propia(sid) else None
     if not c:
-        return RedirectResponse("/", status_code=303)
+        return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "viaje.html", _ctx(
-        **c, mi_nombre=_nombre(request), agente=agente.recomendar(c, solo_determinista=True)))
+        **c, agente=agente.recomendar(c, solo_determinista=True)))
 
 
 @app.post("/viajes/{sid}/agente", response_class=HTMLResponse)
 def viaje_agente(request: Request, sid: int, pregunta: str = Form("")):
     """Pregunta al agente. Con modelo de lenguaje usa las herramientas; sin él, responde el análisis determinista."""
-    c = _comparacion(sid)
+    c = _comparacion(sid) if _solicitud_propia(sid) else None
     if not c:
-        return RedirectResponse("/", status_code=303)
+        return NO_ENCONTRADO
     with eventos.cronometro() as t:
         r = agente.recomendar(c, pregunta.strip()[:400])
     eventos.registrar("solicitud", sid, "recomendación del agente", (pregunta.strip()[:120] or "recomendación general")
                       + " · herramientas: " + (", ".join(r["pasos"]) or "ninguna"), r["modo"], t())
-    return plantillas.TemplateResponse(request, "viaje.html", _ctx(**c, mi_nombre=_nombre(request), agente=r, pregunta=pregunta))
+    return plantillas.TemplateResponse(request, "viaje.html", _ctx(**c, agente=r, pregunta=pregunta))
 
 
 @app.post("/viajes/{sid}/tarifas/{oid}")
 def viaje_tarifas(sid: int, oid: int):
     """Trae las familias tarifarias reales de un vuelo (dos consultas al buscador)."""
+    if not _solicitud_propia(sid):
+        return NO_ENCONTRADO
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
     o = db.uno("select * from opciones where id=:i and solicitud_id=:s", i=oid, s=sid)
     if sol and o:
@@ -259,9 +282,10 @@ def viaje_tarifas(sid: int, oid: int):
 @app.post("/viajes/{sid}/decidir")
 def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), motivo: str = Form(""),
                   aprobado_por: str = Form("")):
-    c = _comparacion(sid)
+    c = _comparacion(sid) if _solicitud_propia(sid) else None
     if not c:
-        return RedirectResponse("/", status_code=303)
+        return NO_ENCONTRADO
+    aprobado_por = _yo()["nombre"]
     vuelo = next((v for v in c["vuelos"] + c["descartados"] if v["id"] == vuelo_id), None)
     hotel = next((h for h in c["hoteles"] if h["id"] == hotel_id), None)  # puede no haber hoteles para la ciudad
     if not vuelo:
@@ -282,7 +306,7 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
                                 "aviso": c["aviso"], "baterias": c["baterias"],
                                 # lo que se evita frente a la opción más barata del buscador, por costo esperado
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
-                      total=total, motivo=motivo, aprobado_por=aprobado_por, creado=db.ahora())
+                      total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=_yo()["id"])
     db.actualizar("solicitudes", sid, estado="decidido")
     eventos.registrar("solicitud", sid, "decisión guardada", f"Total previsto {total:.2f} USD (ficha #{did})", aprobado_por or "usuario")
     return RedirectResponse(f"/viajes/{sid}/ficha", status_code=303)
@@ -290,6 +314,8 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
 
 @app.get("/viajes/{sid}/ficha", response_class=HTMLResponse)
 def viaje_ficha(request: Request, sid: int):
+    if not _solicitud_propia(sid):
+        return NO_ENCONTRADO
     c = _comparacion(sid)
     if not c or not c["decision"]:
         return RedirectResponse(f"/viajes/{sid}", status_code=303)
@@ -339,8 +365,10 @@ def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None
         ruta = almacen.guardar(almacen.clave(huella, extension), contenido, mime)
     except Exception as e:
         raise SoporteRechazado(f"No se pudo guardar el archivo ({type(e).__name__}). Intenta de nuevo.") from e
-    doc = db.insertar("documentos", nombre=nombre, mime=mime, canal=canal, ruta=ruta, huella=huella, creado=db.ahora())
-    gid = db.insertar("gastos", documento_id=doc, proyecto_id=proyecto_id, viajero_id=viajero_id, estado="procesando", creado=db.ahora())
+    yo = _yo().get("id")
+    doc = db.insertar("documentos", nombre=nombre, mime=mime, canal=canal, ruta=ruta, huella=huella, creado=db.ahora(), usuario_id=yo)
+    gid = db.insertar("gastos", documento_id=doc, proyecto_id=proyecto_id, viajero_id=viajero_id, estado="procesando",
+                      creado=db.ahora(), usuario_id=yo)
     eventos.registrar("gasto", gid, "documento recibido", f"{nombre} ({mime})", f"canal: {canal}")
     # Un archivo idéntico ya leído no se vuelve a pagar: se reutiliza su lectura
     previo = db.uno("""select g.extraido from gastos g join documentos d on d.id=g.documento_id
@@ -367,11 +395,13 @@ def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None
 
 @app.get("/gastos", response_class=HTMLResponse)
 def gastos(request: Request, estado: str = "", aviso: str = ""):
-    filtro = "where g.estado=:e" if estado else ""
+    donde, p = acceso.alcance(_yo(), "g")
+    filtro = " and g.estado=:e" if estado else ""
     filas = db.todos(f"""select g.*, p.nombre proyecto, v.nombre viajero, d.nombre archivo, d.canal from gastos g
                          left join proyectos p on p.id=g.proyecto_id left join viajeros v on v.id=g.viajero_id
-                         left join documentos d on d.id=g.documento_id {filtro} order by g.id desc""", e=estado)
-    return plantillas.TemplateResponse(request, "gastos.html", _ctx(gastos=filas, estado=estado, ind=_indicadores(), aviso=aviso[:300]))
+                         left join documentos d on d.id=g.documento_id where {donde}{filtro} order by g.id desc""", e=estado, **p)
+    return plantillas.TemplateResponse(request, "gastos.html", _ctx(
+        gastos=filas, estado=estado, ind=_indicadores() if acceso.es_admin(_yo()) else None, aviso=aviso[:300]))
 
 
 @app.get("/gastos/cargar", response_class=HTMLResponse)
@@ -417,9 +447,9 @@ def gastos_ejemplos(nombres: list[str] = Form([]), proyecto_id: int = Form(0), v
 @app.get("/gastos/{gid}", response_class=HTMLResponse)
 def gasto(request: Request, gid: int):
     g = db.uno("""select g.*, d.nombre archivo, d.mime, d.canal from gastos g
-                  left join documentos d on d.id=g.documento_id where g.id=:i""", i=gid)
+                  left join documentos d on d.id=g.documento_id where g.id=:i""", i=gid) if _gasto_propio(gid) else None
     if not g:
-        return RedirectResponse("/gastos", status_code=303)
+        return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "gasto.html", _ctx(
         g=g, alertas=db.de_json(g["alertas"], []),
         eventos=db.todos("select * from eventos where entidad='gasto' and entidad_id=:i order by id", i=gid)))
@@ -427,6 +457,8 @@ def gasto(request: Request, gid: int):
 
 @app.get("/gastos/{gid}/soporte")
 def gasto_soporte(gid: int):
+    if not _gasto_propio(gid):
+        return NO_ENCONTRADO
     d = db.uno("select d.* from documentos d join gastos g on g.documento_id=d.id where g.id=:i", i=gid)
     contenido = almacen.leer(d["ruta"]) if d else None
     if contenido is None:
@@ -464,8 +496,14 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
                   subtotal: str = Form(""), impuesto: str = Form(""), propina: str = Form(""), total: str = Form(""),
                   moneda: str = Form(""), metodo_pago: str = Form(""), canal_reserva: str = Form(""), revisor: str = Form(""),
                   motivo_excepcion: str = Form("")):
+    # Revisar es tarea de administración: nadie aprueba su propio gasto
+    if not acceso.es_admin(_yo()):
+        return Response("Solo un administrador puede revisar gastos.", status_code=403)
+    if not db.uno("select id from gastos where id=:i", i=gid):
+        return NO_ENCONTRADO
+    revisor = _yo()["nombre"]
     if accion == "rechazar":
-        db.actualizar("gastos", gid, estado="rechazado")
+        db.actualizar("gastos", gid, estado="rechazado", revisado_por=_yo()["id"])
         eventos.registrar("gasto", gid, "rechazado en revisión", "", revisor or "revisor")
         return RedirectResponse("/gastos?estado=revision", status_code=303)
     campos = {"comercio": comercio.strip() or None, "fecha": fecha or None, "categoria": categoria,
@@ -484,7 +522,7 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
         estado = "aprobado"
         r["alertas"].append(f"Aprobado con excepción: {motivo_excepcion.strip()[:200]}")
     db.actualizar("gastos", gid, **campos, proyecto_id=proyecto_id or None, viajero_id=viajero_id or None,
-                  estado=estado, alertas=r["alertas"], total_usd=r["total_usd"])
+                  estado=estado, alertas=r["alertas"], total_usd=r["total_usd"], revisado_por=_yo()["id"])
     paso = "aprobado con excepción" if excepcion and estado == "aprobado" else \
         "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión"
     eventos.registrar("gasto", gid, paso, " ".join(r["alertas"]), revisor or "revisor")
@@ -590,6 +628,61 @@ def api_eventos(limite: int = 200):
     return db.todos("select * from eventos order by id desc limit :l", l=min(limite, 1000))
 
 
+# ---------- administración de usuarios ----------
+@app.get("/admin/usuarios", response_class=HTMLResponse)
+def usuarios_pagina(request: Request, aviso: str = ""):
+    return plantillas.TemplateResponse(request, "usuarios.html", _ctx(
+        aviso=aviso[:200], roles=acceso.ROLES,
+        usuarios=db.todos("""select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, v.nombre viajero,
+                             (select max(ultima) from sesiones s where s.usuario_id=u.id) ultima
+                             from usuarios u left join viajeros v on v.id=u.viajero_id order by u.id""")))
+
+
+def _admins_activos(excepto: int = 0) -> int:
+    return db.uno("select count(*) n from usuarios where rol='admin' and activo=1 and id<>:i", i=excepto)["n"]
+
+
+@app.post("/admin/usuarios")
+def usuario_crear(correo: str = Form(...), nombre: str = Form(""), rol: str = Form("usuario"), clave: str = Form(...),
+                  viajero_id: int = Form(0)):
+    try:
+        uid = acceso.crear_usuario(correo, nombre, rol, clave, viajero_id or None)
+    except ValueError as e:
+        return RedirectResponse(f"/admin/usuarios?aviso={quote(str(e))}", status_code=303)
+    eventos.registrar("usuario", uid, "cuenta creada", f"{correo.strip().lower()} · {rol}", _yo()["nombre"])
+    return RedirectResponse("/admin/usuarios?aviso=Cuenta+creada.", status_code=303)
+
+
+@app.post("/admin/usuarios/{uid}")
+def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clave: str = Form("")):
+    u = db.uno("select * from usuarios where id=:i", i=uid)
+    if not u:
+        return NO_ENCONTRADO
+    aviso = "Hecho."
+    if accion == "rol" and rol in acceso.ROLES:
+        if u["rol"] == "admin" and rol != "admin" and (uid == _yo()["id"] or not _admins_activos(uid)):
+            aviso = "No puedes quitarte tu propio rol ni dejar la plataforma sin administradores."
+        else:
+            db.actualizar("usuarios", uid, rol=rol)
+            acceso.cerrar_todas(uid)
+            eventos.registrar("usuario", uid, "rol cambiado", f"{u['correo']}: {u['rol']} → {rol}", _yo()["nombre"])
+    elif accion == "estado":
+        if u["activo"] and (uid == _yo()["id"] or (u["rol"] == "admin" and not _admins_activos(uid))):
+            aviso = "No puedes desactivar tu propia cuenta ni al último administrador."
+        else:
+            db.actualizar("usuarios", uid, activo=0 if u["activo"] else 1, fallos=0, bloqueado_hasta=None)
+            acceso.cerrar_todas(uid)
+            eventos.registrar("usuario", uid, "cuenta desactivada" if u["activo"] else "cuenta reactivada", u["correo"], _yo()["nombre"])
+    elif accion == "clave":
+        if len(clave) < 10:
+            aviso = "La contraseña debe tener al menos 10 caracteres."
+        else:
+            db.actualizar("usuarios", uid, clave_hash=acceso.hash_clave(clave), fallos=0, bloqueado_hasta=None)
+            acceso.cerrar_todas(uid)
+            eventos.registrar("usuario", uid, "contraseña restablecida", u["correo"], _yo()["nombre"])
+    return RedirectResponse(f"/admin/usuarios?aviso={quote(aviso)}", status_code=303)
+
+
 # ---------- catálogo de reglas ----------
 @app.get("/reglas", response_class=HTMLResponse)
 def reglas(request: Request):
@@ -601,5 +694,5 @@ def reglas(request: Request):
 @app.post("/reglas/{rid}")
 def regla_guardar(rid: int, valor: str = Form(...)):
     db.actualizar("reglas", rid, valor=valor.strip(), verificado=db.ahora()[:10])
-    eventos.registrar("regla", rid, "regla editada", f"nuevo valor: {valor.strip()}", "usuario")
+    eventos.registrar("regla", rid, "regla editada", f"nuevo valor: {valor.strip()[:80]}", _yo().get("nombre", "usuario"))
     return RedirectResponse("/reglas", status_code=303)

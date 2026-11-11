@@ -31,7 +31,7 @@ def test_hora_limite_sigue_a_la_fecha_de_ida(cliente):
 
 
 def test_entradas_invalidas_no_crean_solicitud(cliente):
-    for cambios in (dict(ida="no-es-fecha"), dict(regreso="2026-12-01"), dict(origen="xyz123"), dict(solicitado_por="")):
+    for cambios in (dict(ida="no-es-fecha"), dict(regreso="2026-12-01"), dict(origen="xyz123")):
         assert "error" in str(_crear(cliente, **cambios)), cambios
 
 

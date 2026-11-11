@@ -6,7 +6,7 @@
 <form method="post" action="/viajes" class="tarjeta">
   <h3>Quién y para qué</h3>
   <div class="campos">
-    <div><label>Tu nombre (queda registrado en la consulta)</label><input name="solicitado_por" value="{{ mi_nombre }}" required maxlength="80" placeholder="Nombre y apellido"></div>
+
     <div><label>Proyecto</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
     <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }} ({{ v.base }})</option>{% endfor %}</select></div>
     <div><label>O registrar un viajero nuevo</label><input name="viajero_nuevo" maxlength="80" placeholder="Nombre (opcional)"></div>

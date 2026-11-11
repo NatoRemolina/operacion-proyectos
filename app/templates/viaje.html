@@ -53,7 +53,7 @@
 
 <div class="tarjeta noimp"><h3>Guardar la decisión</h3>
   <p class="eti">Carro de alquiler estimado: {{ carro|dinero }} (supuesto editable en la solicitud). La ficha queda guardada contra el proyecto y su total pasa a ser el presupuesto previsto.</p>
-  <div class="campos"><div><label>Motivo</label><input name="motivo" placeholder="Por qué esta opción"></div><div><label>Aprueba</label><input name="aprobado_por" placeholder="Nombre" value="{{ mi_nombre }}"></div></div>
+  <div class="campos"><div><label>Motivo</label><input name="motivo" placeholder="Por qué esta opción"></div><div><label>Decide</label><input value="{{ yo.nombre }}" disabled></div></div>
   <p><button>Guardar ficha de decisión</button></p></div>
 </form>
 {% endblock %}

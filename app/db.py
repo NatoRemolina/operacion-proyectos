@@ -62,7 +62,7 @@ solicitudes = _tabla(
     Column("ida", Text), Column("regreso", Text), Column("llegar_antes", Text),
     Column("baterias_n", Integer), Column("baterias_wh", Float), Column("maleta", Integer),
     Column("prob_cambio", Float), Column("carro_dia", Float),
-    Column("estado", Text), Column("creado", Text), Column("solicitado_por", Text),
+    Column("estado", Text), Column("creado", Text), Column("solicitado_por", Text), Column("usuario_id", Integer),
     # Se calculan al registrar la consulta y alimentan la analítica
     Column("precio_min_buscador", Float), Column("costo_mas_barato", Float),
     Column("costo_mejor", Float), Column("ahorro_potencial", Float),
@@ -84,12 +84,12 @@ decisiones = _tabla(
     Column("solicitud_id", Integer), Column("proyecto_id", Integer),
     Column("vuelo_id", Integer), Column("hotel_id", Integer), Column("tarifa", Text),
     Column("desglose", Text), Column("total", Float), Column("motivo", Text),
-    Column("aprobado_por", Text), Column("creado", Text),
+    Column("aprobado_por", Text), Column("creado", Text), Column("usuario_id", Integer),
 )
 documentos = _tabla(
     "documentos",
     Column("nombre", Text), Column("mime", Text), Column("canal", Text),
-    Column("ruta", Text), Column("huella", Text), Column("creado", Text),
+    Column("ruta", Text), Column("huella", Text), Column("creado", Text), Column("usuario_id", Integer),
 )
 gastos = _tabla(
     "gastos",
@@ -100,12 +100,14 @@ gastos = _tabla(
     Column("metodo_pago", Text), Column("canal_reserva", Text),
     Column("confianza", Float), Column("estado", Text), Column("alertas", Text),
     Column("origen_dato", Text), Column("creado", Text),
+    Column("usuario_id", Integer), Column("revisado_por", Integer),
     Column("extraido", Text),  # lectura original del modelo, intacta, para medir cuánto se corrige
 )
 eventos = _tabla(
     "eventos",
     Column("momento", Text), Column("entidad", Text), Column("entidad_id", Integer),
     Column("paso", Text), Column("detalle", Text), Column("fuente", Text), Column("duracion_ms", Integer),
+    Column("usuario_id", Integer),
 )
 
 observaciones = _tabla(
@@ -121,6 +123,17 @@ historial_ruta = _tabla(
     Column("busqueda", Text), Column("origen", Text), Column("destino", Text), Column("fecha", Text), Column("precio", Float),
 )
 
+usuarios = _tabla(
+    "usuarios",
+    Column("correo", Text, unique=True), Column("nombre", Text), Column("rol", Text), Column("activo", Integer),
+    Column("clave_hash", Text), Column("viajero_id", Integer), Column("fallos", Integer),
+    Column("bloqueado_hasta", Text), Column("creado", Text),
+)
+sesiones = _tabla(
+    "sesiones",  # solo la huella del token: la tabla no sirve para suplantar a nadie
+    Column("huella", Text, unique=True), Column("usuario_id", Integer),
+    Column("creada", Text), Column("ultima", Text), Column("expira", Text),
+)
 busquedas = _tabla(
     "busquedas",  # respuestas del buscador de precios, compartidas entre instancias
     Column("clave", Text), Column("cuerpo", Text), Column("creado", Text),

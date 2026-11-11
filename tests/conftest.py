@@ -24,8 +24,26 @@ config.DIR_ARCHIVOS = _tmp / "archivos"
 from app.main import app  # noqa: E402
 
 
+def _con_sesion(correo: str, clave: str) -> TestClient:
+    c = TestClient(app)
+    assert c.post("/entrar", data={"correo": correo, "clave": clave}, follow_redirects=False).headers["location"] == "/"
+    return c
+
+
 @pytest.fixture(scope="session")
 def cliente():
+    """Administrador de demostración."""
+    return _con_sesion("admin@demo.local", "demo-admin-2026")
+
+
+@pytest.fixture(scope="session")
+def piloto():
+    """Usuario individual de demostración, vinculado al viajero 1."""
+    return _con_sesion("piloto@demo.local", "demo-piloto-2026")
+
+
+@pytest.fixture()
+def anonimo():
     return TestClient(app)
 
 
