@@ -347,7 +347,7 @@ def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None
                        where d.huella=:h and g.id<>:i and g.extraido is not null order by g.id limit 1""", h=huella, i=gid)
     with eventos.cronometro() as t:
         x = {**db.de_json(previo["extraido"], {}), "origen_dato": "reutilizado", "error": None} if previo else \
-            extraccion.extraer(contenido, mime, nombre)
+            extraccion.extraer(contenido, mime, nombre, gid)
     eventos.registrar("gasto", gid, "datos extraídos", x.get("error") or f"{x['comercio']} · {x['total']} {x['moneda']} · confianza {x['confianza']:.0%}",
                       f"modelo ({x['origen_dato']})", t())
     proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None

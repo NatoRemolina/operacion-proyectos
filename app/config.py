@@ -29,6 +29,8 @@ SERPAPI_KEY = _txt("SERPAPI_KEY")
 MODELO_API_URL = _txt("MODELO_API_URL")
 MODELO_API_KEY = _txt("MODELO_API_KEY")
 MODELO_NOMBRE = _txt("MODELO_NOMBRE")
+# Formato de la API del modelo: "gemini" (generateContent) o "mensajes"
+MODELO_FORMATO = _txt("MODELO_FORMATO") or ("gemini" if "generativelanguage" in MODELO_API_URL else "mensajes")
 try:
     MODELO_CABECERAS = json.loads(_txt("MODELO_CABECERAS") or "{}")
 except json.JSONDecodeError:

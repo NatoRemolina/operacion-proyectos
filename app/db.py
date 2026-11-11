@@ -126,6 +126,13 @@ busquedas = _tabla(
     Column("clave", Text), Column("cuerpo", Text), Column("creado", Text),
 )
 
+llamadas_modelo = _tabla(
+    "llamadas_modelo",  # una fila por llamada al modelo de lenguaje: base del monitoreo de uso y costo
+    Column("momento", Text), Column("uso", Text), Column("entidad_id", Integer), Column("modelo", Text),
+    Column("tokens_entrada", Integer), Column("tokens_salida", Integer), Column("latencia_ms", Integer),
+    Column("estado_http", Integer), Column("motivo_parada", Text), Column("error", Text),
+)
+
 TABLAS = {t.name: t for t in meta.sorted_tables}
 
 

@@ -14,6 +14,7 @@ from email import policy
 import httpx
 
 from .. import config
+from . import llm
 
 CAMPOS = ["comercio", "fecha", "categoria", "subtotal", "impuesto", "propina", "total",
           "moneda", "metodo_pago", "canal_reserva", "ciudad"]
@@ -69,6 +70,27 @@ def _en_vivo(contenido: bytes, mime: str) -> dict:
     return json.loads(re.search(r"\{.*\}", texto, re.S).group(0))
 
 
+TEXTO, NUMERO = {"type": "STRING", "nullable": True}, {"type": "NUMBER", "nullable": True}
+ESQUEMA = {"type": "OBJECT", "properties": {
+    "comercio": TEXTO, "fecha": TEXTO, "categoria": {"type": "STRING", "enum": list(config.CATEGORIAS)},
+    "subtotal": NUMERO, "impuesto": NUMERO, "propina": NUMERO, "total": NUMERO, "moneda": TEXTO,
+    "metodo_pago": TEXTO, "canal_reserva": TEXTO, "ciudad": TEXTO,
+    "confianza": {"type": "NUMBER"}, "dudas": {"type": "ARRAY", "items": {"type": "STRING"}}},
+    "required": ["comercio", "fecha", "categoria", "total", "moneda", "confianza", "dudas"]}
+
+
+def _con_cliente(contenido: bytes, mime: str, entidad_id: int | None) -> dict:
+    """Lectura con el cliente único: salida con esquema fijo, de modo que siempre llega un JSON con los mismos campos."""
+    if mime == "message/rfc822":
+        texto, adjunto, mime_adjunto = _correo(contenido)
+        parte = llm.parte_archivo(adjunto, mime_adjunto) if adjunto else llm.parte_texto(texto[:20000])
+    else:
+        parte = llm.parte_archivo(contenido, mime)
+    candidato = llm.generar([{"role": "user", "parts": [parte, llm.parte_texto(INSTRUCCION)]}],
+                            uso="recibo", entidad_id=entidad_id, esquema=ESQUEMA)
+    return llm.json_de(candidato)
+
+
 def _guardado(contenido: bytes) -> dict | None:
     """Lectura guardada de un soporte de ejemplo. Se reconoce por el contenido, no por el nombre del archivo."""
     archivo = config.DIR_EJEMPLOS / "esperados.json"
@@ -89,13 +111,16 @@ def _num(valor):
         return None
 
 
-def extraer(contenido: bytes, mime: str, nombre: str) -> dict:
+def extraer(contenido: bytes, mime: str, nombre: str, entidad_id: int | None = None) -> dict:
     """Devuelve {campos..., confianza, dudas, origen_dato, error}."""
     activo = config.modo()["extraccion"] == "en vivo"
     datos, origen, error = None, "guardado", None
     if activo:
         try:
-            datos, origen = _en_vivo(contenido, mime), "en vivo"
+            datos = _con_cliente(contenido, mime, entidad_id) if llm.activo() else _en_vivo(contenido, mime)
+            origen = "en vivo"
+        except llm.ErrorDelModelo as e:
+            error = f"No se pudo leer el soporte: {e}"
         except Exception as e:  # la demostración no debe caerse por un fallo externo
             error = f"Fallo de la extracción en vivo: {type(e).__name__}"
     if datos is None and not activo:

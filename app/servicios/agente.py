@@ -18,9 +18,9 @@ from functools import lru_cache
 import httpx
 
 from .. import config, db
-from . import costo
+from . import costo, llm
 
-MAX_VUELTAS = 3
+MAX_VUELTAS = 5
 PLAZO_TOTAL_S = 60   # toda la conversación con el modelo, no cada llamada
 ESPERA_LLAMADA_S = 30
 
@@ -153,7 +153,25 @@ def _hay_modelo(e: Estado) -> str:
     return "modelo" if config.modo()["extraccion"] == "en vivo" and e["c"]["vuelos"] else "fin"
 
 
+def _nodo_modelo_cliente(e: Estado) -> Estado:
+    """Turno del modelo con el cliente único. El historial se devuelve tal cual lo entregó el modelo."""
+    pregunta = (e.get("pregunta") or "¿Cuál opción recomiendas y por qué?") + f"\n\nAnálisis previo de la aplicación:\n{e['base']}"
+    contenidos = e.get("mensajes") or [{"role": "user", "parts": [llm.parte_texto(pregunta)]}]
+    declaraciones = [{"name": n, "description": d, **({"parameters": {"type": "OBJECT", "properties": {k: {"type": v["type"].upper()} for k, v in p.items()}, "required": list(p)}} if p else {})}
+                     for n, (_f, d, p) in HERRAMIENTAS.items()]
+    try:
+        candidato = llm.generar(contenidos, uso="agente", entidad_id=e["c"]["sol"]["id"], sistema=SISTEMA,
+                                herramientas=declaraciones, tope_salida=4096)
+    except llm.ErrorDelModelo as error:
+        return {"respuesta": e["base"], "modo": f"determinista ({error})", "mensajes": contenidos}
+    contenidos = contenidos + [candidato["content"]]
+    return {"mensajes": contenidos, "respuesta": llm.texto_de(candidato) or e["base"], "modo": "modelo de lenguaje con herramientas",
+            "vueltas": e.get("vueltas", 0) + 1, "inicio": e.get("inicio") or time.monotonic()}
+
+
 def nodo_modelo(e: Estado) -> Estado:
+    if llm.activo():
+        return _nodo_modelo_cliente(e)
     mensajes = e.get("mensajes") or [{"role": "user", "content":
         (e.get("pregunta") or "¿Cuál opción recomiendas y por qué?") + f"\n\nAnálisis previo de la aplicación:\n{e['base']}"}]
     try:
@@ -172,13 +190,27 @@ def nodo_modelo(e: Estado) -> Estado:
 
 def _siguiente(e: Estado) -> str:
     ultimo = (e.get("mensajes") or [{}])[-1]
-    pide = ultimo.get("role") == "assistant" and any(b.get("type") == "tool_use" for b in ultimo.get("content", []))
+    pide = (ultimo.get("role") == "assistant" and any(b.get("type") == "tool_use" for b in ultimo.get("content", []))) or \
+           (ultimo.get("role") == "model" and any("functionCall" in p for p in ultimo.get("parts", [])))
     a_tiempo = time.monotonic() - (e.get("inicio") or time.monotonic()) < PLAZO_TOTAL_S
     return "herramientas" if pide and a_tiempo and e.get("vueltas", 0) < MAX_VUELTAS else "fin"
 
 
 def nodo_herramientas(e: Estado) -> Estado:
     resultados, pasos = [], list(e.get("pasos", []))
+    if e["mensajes"][-1].get("role") == "model":
+        for p in e["mensajes"][-1]["parts"]:
+            llamada = p.get("functionCall")
+            if not llamada:
+                continue
+            funcion = HERRAMIENTAS.get(llamada.get("name"))
+            try:
+                salida = funcion[0](e["c"], **(llamada.get("args") or {})) if funcion else {"error": "Herramienta desconocida."}
+            except Exception as error:
+                salida = {"error": type(error).__name__}
+            pasos.append(llamada.get("name"))
+            resultados.append({"functionResponse": {"name": llamada.get("name"), "response": json.loads(json.dumps(salida, default=str))}})
+        return {"mensajes": e["mensajes"] + [{"role": "user", "parts": resultados}], "pasos": pasos}
     for b in e["mensajes"][-1]["content"]:
         if b.get("type") != "tool_use":
             continue
