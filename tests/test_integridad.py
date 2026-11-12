@@ -709,3 +709,36 @@ def test_concurrencia_de_presupuesto_y_envios_en_postgres():
         with crudo.connect() as c:
             c.execute(text(f"drop schema if exists {esquema} cascade"))
         crudo.dispose()
+
+
+# ---------- Telegram: una entrega que falla no queda como procesada ----------
+def test_telegram_una_entrega_que_falla_queda_en_error_y_se_puede_reintentar(anonimo, monkeypatch):
+    from app import config
+    from app.servicios import telegram
+    enviados = []
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+    monkeypatch.setattr(config, "TELEGRAM_WEBHOOK_SECRETO", "secreto-de-pruebas")
+    monkeypatch.setattr(telegram, "_llamar", lambda metodo, **d: enviados.append((metodo, d)) or {})
+    original, fallos = telegram._mensaje, []
+
+    def a_veces_falla(m, registro):
+        if not fallos:
+            fallos.append(1)
+            registro["_chat"] = (m.get("chat") or {}).get("id")
+            raise RuntimeError("fallo inesperado")
+        return original(m, registro)
+
+    monkeypatch.setattr(telegram, "_mensaje", a_veces_falla)
+    entrega = {"update_id": 880777, "message": {"chat": {"id": 880777, "type": "private"}, "text": "hola"}}
+
+    def enviar():
+        return anonimo.post("/telegram/webhook", json=entrega, headers={"X-Telegram-Bot-Api-Secret-Token": "secreto-de-pruebas"})
+
+    assert enviar().json()["estado"] == "error"
+    assert db.uno("select estado from telegram_mensajes where update_id=880777")["estado"] == "error"
+    assert any(m == "sendMessage" and "No pude" in d["text"] for m, d in enviados)   # la persona recibe respuesta
+    segundo = enviar().json()["estado"]
+    assert segundo not in ("error", "repetido")
+    assert db.uno("select estado from telegram_mensajes where update_id=880777")["estado"] == segundo
+    assert enviar().json()["estado"] == "repetido"
+    assert db.uno("select count(*) n from telegram_mensajes where update_id=880777")["n"] == 1

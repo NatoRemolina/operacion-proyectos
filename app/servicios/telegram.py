@@ -8,6 +8,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 import httpx
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
@@ -135,7 +136,9 @@ def procesar(update: dict) -> str:
     try:
         mid = db.insertar("telegram_mensajes", update_id=update.get("update_id"), estado="recibido", momento=db.ahora())
     except IntegrityError:
-        return "repetido"   # Telegram reintenta: la misma entrega no se procesa dos veces
+        mid = _retomar_si_fallo(update.get("update_id"))
+        if not mid:
+            return "repetido"   # Telegram reintenta: la misma entrega no se procesa dos veces
     registro = {"estado": "procesado"}
     try:
         if "callback_query" in update:
@@ -147,10 +150,27 @@ def procesar(update: dict) -> str:
     except gastos.SoporteRechazado as e:
         registro["estado"] = "rechazado"
         _responder(registro, f"No pude registrar el archivo: {e}")
+    except Exception:
+        # Un fallo inesperado no queda como «procesado»: la misma entrega se puede volver a procesar
+        registro["estado"] = "error"
+        _responder(registro, "No pude procesar tu mensaje por un problema de nuestro lado. Vuelve a enviarlo en un momento.")
+        raise
     finally:
         chat = registro.pop("_chat", None)
         db.actualizar("telegram_mensajes", mid, chat_id=chat, **registro)
     return registro["estado"]
+
+
+def _retomar_si_fallo(update_id) -> int | None:
+    """Una entrega que quedó en `error` se puede procesar otra vez; la marca se cambia en una sola sentencia,
+    así dos reintentos simultáneos no la toman los dos. Devuelve el registro retomado o None."""
+    previa = db.uno("select id from telegram_mensajes where update_id=:u and estado='error'", u=update_id)
+    if not previa:
+        return None
+    with db.transaccion() as c:
+        tomada = c.execute(text("update telegram_mensajes set estado='recibido', momento=:m where id=:i and estado='error'"),
+                           {"m": db.ahora(), "i": previa["id"]}).rowcount
+    return previa["id"] if tomada else None
 
 
 def _responder(registro: dict, texto: str, botones=None):
