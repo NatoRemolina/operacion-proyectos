@@ -52,6 +52,7 @@ const formularioSchema = z.object({
       ciudad: z.string().nullable(),
       inicio: z.string().nullable(),
       fin: z.string().nullable(),
+      para_otra_persona: z.boolean(),
     }),
   ),
   viajeros: z.array(
@@ -153,6 +154,7 @@ export const cotizacionSchema = z.object({
       total_usd: dineroSchema,
       siguio_recomendacion: z.boolean(),
       creado: z.string(),
+      aviso: z.string().nullable(),
     })
     .nullable(),
   viaje: z

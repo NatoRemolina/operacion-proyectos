@@ -11,7 +11,7 @@ import {
   type LugarSugerido,
   type ReglasCarretera,
 } from "../domain/cotizar";
-import { Marca } from "./piezas";
+import { Marca, PRESION } from "./piezas";
 
 const CONTROL =
   "block min-h-11 w-full rounded-lg border border-borde-campo bg-superficie px-3 py-2 text-base text-texto " +
@@ -44,6 +44,7 @@ function ComboLugar({
   ayudaId,
   error,
   entradaRef,
+  onSalir,
 }: {
   id: string;
   etiqueta: string;
@@ -56,6 +57,8 @@ function ComboLugar({
   ayudaId?: string;
   error?: string | null;
   entradaRef?: Ref<HTMLInputElement>;
+  /** Al salir del campo: valida lo escrito. */
+  onSalir?: () => void;
 }) {
   const sugerencias = useSugerenciasLugar(texto);
   const buscarAhora = useBuscarLugarAhora();
@@ -138,7 +141,10 @@ function ComboLugar({
           setActivo(-1);
         }}
         onKeyDown={alPresionar}
-        onBlur={() => setAbierta(false)}
+        onBlur={() => {
+          setAbierta(false);
+          onSalir?.();
+        }}
       />
       {error ? (
         <p id={`${id}-error`} className="text-sm font-semibold text-error">
@@ -147,7 +153,7 @@ function ComboLugar({
         </p>
       ) : null}
       <div
-        className={`se-mueve absolute inset-x-0 top-full z-20 mt-1 origin-top overflow-hidden rounded-tarjeta border border-linea bg-superficie shadow-lg transition-[opacity,transform] duration-150 ease-out starting:scale-y-95 starting:opacity-0 motion-reduce:starting:scale-y-100 ${
+        className={`se-mueve absolute inset-x-0 top-full z-20 mt-1 origin-top overflow-hidden rounded-tarjeta border border-linea bg-superficie shadow-lg transition-[opacity,scale] duration-150 ease-out starting:scale-y-95 starting:opacity-0 motion-reduce:starting:scale-y-100 ${
           visible ? "" : "hidden"
         }`}
       >
@@ -199,6 +205,7 @@ export function CampoLugar({
   onCambio,
   error,
   entradaRef,
+  onSalir,
 }: {
   id: string;
   etiqueta: string;
@@ -207,6 +214,7 @@ export function CampoLugar({
   onCambio: (valor: LadoElegido) => void;
   error?: string | null;
   entradaRef?: Ref<HTMLInputElement>;
+  onSalir?: () => void;
 }) {
   const agregarRef = useRef<HTMLInputElement>(null);
   const ayudaId = useId();
@@ -232,6 +240,7 @@ export function CampoLugar({
         ayudaId={ayudaId}
         error={error}
         entradaRef={entradaRef}
+        onSalir={onSalir}
       />
       <p id={ayudaId} aria-live="polite" className="text-sm text-texto-secundario">
         {ayuda}
@@ -253,7 +262,7 @@ export function CampoLugar({
                   <button
                     type="button"
                     aria-label={`Quitar ${a.iata}`}
-                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura se-mueve motion-safe:active:scale-[0.97]"
+                    className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESION}`}
                     onClick={() => onCambio(quitarAeropuerto(valor, a.iata))}
                   >
                     Quitar

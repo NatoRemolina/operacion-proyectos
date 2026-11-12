@@ -132,7 +132,7 @@ describe("Comparación de una cotización", () => {
       puede_decidir: false,
       bloqueo: "El viaje V-2026-0031 ya está aprobado: para cambiar la decisión, administración debe reabrirlo.",
       decision: { id: 3, vuelo_id: RECOMENDADA.id, hotel_id: null, motivo: null, razones: [], total_usd: "980.00",
-        siguio_recomendacion: true, creado: "2026-11-12T20:00:00Z" },
+        siguio_recomendacion: true, creado: "2026-11-12T20:00:00Z", aviso: null },
       viaje: { id: 31, codigo: "V-2026-0031", estado: "aprobado", estado_texto: "Aprobado", presupuesto_usd: "1240.58" },
     };
     renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(aprobada) });
@@ -140,4 +140,71 @@ describe("Comparación de una cotización", () => {
     expect(screen.getByText("V-2026-0031")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Guardar decisión/ })).not.toBeInTheDocument();
   });
+
+  it("si todos los vuelos quedan descartados, se elige uno con su razón y el porqué, o se cotiza con otros datos", async () => {
+    const descartados: Cotizacion = { ...COTIZACION_MOAB, vuelos: [], recomendada_id: null, mas_barata_id: null, aviso: null };
+    const usuario = userEvent.setup();
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(descartados) });
+    expect(await screen.findByText("Ningún vuelo cumple")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Cotizar con otros datos" })[0]).toHaveAttribute("href", "/cotizar");
+    const opciones = screen.getAllByRole("radio", { name: /costo total esperado/ });
+    expect(opciones).toHaveLength(COTIZACION_MOAB.descartados.length);
+    // la razón se ve sin abrir nada
+    expect(screen.getByText("Con el traslado llega a las 20:10, después de la hora límite.")).toBeVisible();
+    await usuario.click(opciones[1]!);
+    await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
+    expect(await screen.findByText(/cuenta por qué/)).toBeInTheDocument();
+    await usuario.type(screen.getByLabelText(/Por qué eliges este vuelo/), "La grabación puede empezar más tarde");
+    await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
+    expect(await screen.findByRole("heading", { name: /^Viaje V-2026-\d{4} creado, pendiente de aprobación$/ })).toBeInTheDocument();
+  });
+
+  it("lo escrito en la decisión se conserva si hay que volver a entrar y se borra al decidir", async () => {
+    window.sessionStorage.clear();
+    const usuario = userEvent.setup();
+    const repo = repositorio(COTIZACION_MOAB);
+    const primera = renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repo });
+    await screen.findByRole("heading", { level: 1, name: "MIA → Moab" });
+    await usuario.click(screen.getByRole("radio", { name: /F9 1279/ }));
+    await usuario.type(screen.getByLabelText(/Por qué eliges este vuelo/), "Sale más temprano");
+    await usuario.click(screen.getByRole("checkbox", { name: "Mejor horario" }));
+    primera.unmount();
+
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repo });
+    await screen.findByRole("heading", { level: 1, name: "MIA → Moab" });
+    expect(screen.getByRole("radio", { name: /F9 1279/ })).toBeChecked();
+    expect(screen.getByLabelText(/Por qué eliges este vuelo/)).toHaveValue("Sale más temprano");
+    expect(await screen.findByRole("checkbox", { name: "Mejor horario" })).toBeChecked();
+    await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
+    await screen.findByRole("heading", { name: /creado, pendiente de aprobación$/ });
+    expect(Object.keys(window.sessionStorage).filter((k) => k.startsWith("cotizar-decision-"))).toEqual([]);
+  });
+
+  it("si la decisión se tomó sin consultar en vivo por el tope del día, lo dice", async () => {
+    const decidida: Cotizacion = {
+      ...COTIZACION_MOAB,
+      estado: "decidido",
+      decision: { id: 3, vuelo_id: RECOMENDADA.id, hotel_id: null, motivo: null, razones: [], total_usd: "980.00",
+        siguio_recomendacion: true, creado: "2026-11-12T20:00:00Z",
+        aviso: "Se alcanzó el tope de decisiones con consulta en vivo de hoy: el regreso y la tarifa salen de lo guardado o quedan supuestos." },
+      viaje: { id: 31, codigo: "V-2026-0031", estado: "pendiente_aprobacion", estado_texto: "Pendiente de aprobación", presupuesto_usd: "1240.58" },
+    };
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(decidida) });
+    expect(await screen.findByText(/Se alcanzó el tope de decisiones con consulta en vivo/)).toBeInTheDocument();
+  });
+
+  it("lo que se mueve anima solo escala, giro u opacidad y respeta el movimiento reducido", async () => {
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB) });
+    await screen.findByRole("heading", { level: 1, name: "MIA → Moab" });
+    const guardar = screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" });
+    expect(guardar.className).toMatch(/se-mueve/);
+    expect(guardar.className).toMatch(/motion-safe:active:scale-\[0\.97\]/);
+    expect(guardar.className).toMatch(/active:transition-\[[^\]]*scale\]/);
+    expect(guardar.className).toMatch(/active:duration-100/);
+    const flecha = screen.getAllByRole("button", { name: /Ver desglose/ })[0]!.querySelector("[aria-hidden]")!;
+    expect(flecha.className).toMatch(/se-mueve/);
+    expect(flecha.className).toMatch(/transition-\[rotate\]/);
+    expect(flecha.className).toMatch(/motion-reduce:transition-none/);
+  });
 });
+

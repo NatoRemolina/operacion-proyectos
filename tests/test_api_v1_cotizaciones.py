@@ -324,14 +324,117 @@ def test_decidir_por_la_api_crea_el_viaje(piloto, cliente):
     _contrato(piloto.post(ruta, json={"vuelo_id": c["recomendada_id"]}, headers=_csrf(piloto)), 409, "DECISION_LOCKED")
 
 
-def test_hay_tope_de_cotizaciones_por_persona_y_dia(piloto2, monkeypatch):
+def test_hay_tope_de_cotizaciones_por_persona_y_dia(piloto2):
     """Cada cotización nueva puede gastar dos búsquedas pagas: la API corta al llegar al tope del día."""
-    from app.rutas import v1_cotizaciones
     yo = _cuenta("piloto2@demo.local")
     hoy = db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=yo["id"], h=db.ahora()[:10])["n"]
-    monkeypatch.setattr(v1_cotizaciones, "TOPE_DIA", hoy + 1)
-    assert _cotizar(piloto2, {"Idempotency-Key": "tope-1"}).status_code == 201
+    previo = _regla("tope_cotizaciones_persona_dia")
+    assert previo == "20"                                              # editable: viene de la semilla
+    _fijar_regla("tope_cotizaciones_persona_dia", str(hoy + 1))
+    try:
+        assert _cotizar(piloto2, {"Idempotency-Key": "tope-1"}).status_code == 201
+        antes = _solicitudes()
+        cuerpo = _contrato(_cotizar(piloto2), 429, "TOO_MANY_REQUESTS")
+        assert "tope" in cuerpo["error"]["message"] and _solicitudes() == antes
+        assert _cotizar(piloto2, {"Idempotency-Key": "tope-1"}).status_code == 200   # repetir lo ya cotizado no cuenta
+    finally:
+        _fijar_regla("tope_cotizaciones_persona_dia", previo)
+
+
+def _regla(clave: str) -> str | None:
+    fila = db.uno("select valor from reglas where ambito='supuesto' and clave=:c", c=clave)
+    return fila["valor"] if fila else None
+
+
+def _fijar_regla(clave: str, valor: str):
+    db.ejecutar("update reglas set valor=:v where ambito='supuesto' and clave=:c", v=valor, c=clave)
+
+
+# ---------- ronda de arreglos 1 ----------
+def test_el_gestor_cotiza_para_otra_persona_solo_en_sus_proyectos(gestor):
+    """El gestor del proyecto 1 no cotiza ni decide para otra persona en el proyecto 2."""
     antes = _solicitudes()
-    cuerpo = _contrato(_cotizar(piloto2), 429, "TOO_MANY_REQUESTS")
-    assert "tope" in cuerpo["error"]["message"] and _solicitudes() == antes
-    assert _cotizar(piloto2, {"Idempotency-Key": "tope-1"}).status_code == 200   # repetir lo ya cotizado no cuenta
+    cuerpo = _contrato(_cotizar(gestor, viajero_id=1, proyecto_id=2), 403, "FORBIDDEN")
+    assert "proyectos que gestionas" in cuerpo["error"]["message"] and _solicitudes() == antes
+    assert _cotizar(gestor, viajero_id=1, proyecto_id=1).status_code == 201   # en su proyecto, sí
+    assert _cotizar(gestor, proyecto_id=2).status_code == 201                 # para sí mismo, en cualquiera
+    # una cotización ajena a su alcance que ya existía (creada antes de esta regla) tampoco la decide
+    yo = _cuenta("gestor@demo.local")
+    sid = cotizacion.crear(yo, **_datos(proyecto_id=2, viajero_id=1, destino="las vegas"))
+    vuelo = cotizacion.comparacion(sid)["vuelos"][0]["id"]
+    _contrato(gestor.post(f"{V1}/cotizaciones/{sid}/decision", json={"vuelo_id": vuelo}, headers=_csrf(gestor)),
+              403, "FORBIDDEN")
+    assert not db.uno("select id from decisiones where solicitud_id=:s", s=sid)
+    # el formulario dice en qué proyectos puede cotizar para otra persona
+    f = gestor.get(f"{V1}/cotizaciones/formulario").json()
+    assert {p["id"]: p["para_otra_persona"] for p in f["proyectos"]} == {1: True, 2: False} and f["elige_viajero"]
+
+
+def test_un_gestor_sin_proyectos_solo_cotiza_para_si():
+    uid = acceso.crear_usuario("gestor-sin-proyectos@demo.local", "Gestor sin proyectos", "gestor", "clave-gestor-sin-2026")
+    c = TestClient(app)
+    assert c.post(f"{V1}/auth/login", json={"correo": "gestor-sin-proyectos@demo.local", "clave": "clave-gestor-sin-2026"}).status_code == 200
+    f = c.get(f"{V1}/cotizaciones/formulario").json()
+    assert not f["elige_viajero"] and [v["id"] for v in f["viajeros"]] == [_cuenta("gestor-sin-proyectos@demo.local")["viajero_id"]]
+    assert all(not p["para_otra_persona"] for p in f["proyectos"])
+    _contrato(_cotizar(c, viajero_id=1), 403, "FORBIDDEN")
+    assert uid
+
+
+def test_hay_tope_de_decisiones_que_consultan_en_vivo(piloto, monkeypatch):
+    """Cada decisión sobre un vuelo nuevo puede pagar dos búsquedas (regreso y reserva). Pasado el tope del día,
+    se decide con lo guardado y se dice."""
+    from app import config
+    from app.servicios import precios
+    assert _regla("decisiones_en_vivo_dia") == "10"
+    vistos = []
+    original = precios.vuelo_regreso
+    monkeypatch.setattr(config, "SERPAPI_KEY", "clave-de-prueba")
+    monkeypatch.setattr(precios, "vuelo_regreso", lambda vuelo, *a, **k: vistos.append(vuelo.get("token")) or original(vuelo, *a, **k))
+    monkeypatch.setattr(precios, "_consultar", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sin red en las pruebas")))
+    yo = _cuenta("piloto@demo.local")
+
+    def decidir() -> dict:
+        c = _cotizar(piloto, destino={"texto": "las vegas"}).json()
+        r = piloto.post(f"{V1}/cotizaciones/{c['id']}/decision", json={"vuelo_id": c["recomendada_id"]}, headers=_csrf(piloto))
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    debajo = decidir()
+    assert vistos[-1] is not None and debajo["decision"]["aviso"] is None   # bajo el tope, puede consultar en vivo
+    for i in range(10):
+        db.insertar("consultas_buscador", momento=db.ahora(), usuario_id=yo["id"], tipo="regreso", origen="en vivo",
+                    clave=f"regreso_prueba-tope-{i}")
+    try:
+        encima = decidir()
+        assert vistos[-1] is None                                             # sin token: solo lo guardado
+        assert encima["decision"]["aviso"].startswith("Se alcanzó el tope de decisiones con consulta en vivo")
+        ev = db.uno("select detalle from eventos where entidad='solicitud' and entidad_id=:i and paso='tope de consultas al decidir'",
+                    i=encima["id"])
+        assert ev
+    finally:
+        db.ejecutar("delete from consultas_buscador where clave like 'regreso_prueba-tope-%'")
+
+
+def test_un_id_fuera_de_rango_no_rompe(piloto):
+    enorme = 10**20
+    _contrato(piloto.get(f"{V1}/cotizaciones/{enorme}"), 422, "VALIDATION_ERROR")
+    _contrato(piloto.get(f"{V1}/cotizaciones/0"), 422, "VALIDATION_ERROR")
+    _contrato(piloto.post(f"{V1}/cotizaciones/{enorme}/decision", json={"vuelo_id": 1}, headers=_csrf(piloto)), 422, "VALIDATION_ERROR")
+    cuerpo = _contrato(piloto.post(f"{V1}/cotizaciones/1/decision", json={"vuelo_id": enorme}, headers=_csrf(piloto)), 422, "VALIDATION_ERROR")
+    assert "vuelo_id" in cuerpo["error"]["fields"]
+    cuerpo = _contrato(_cotizar(piloto, proyecto_id=enorme), 422, "VALIDATION_ERROR")
+    assert "proyecto_id" in cuerpo["error"]["fields"]
+
+
+def test_si_todos_los_vuelos_quedan_descartados_se_decide_con_motivo(piloto):
+    """MIA → Moab con hora límite 06:00: ningún vuelo cumple. No es un callejón: se elige un descartado explicando por qué."""
+    c = _cotizar(piloto, hora_limite="06:00").json()
+    assert c["vuelos"] == [] and len(c["descartados"]) == 8 and c["recomendada_id"] is None and c["puede_decidir"]
+    ruta = f"{V1}/cotizaciones/{c['id']}/decision"
+    elegido = c["descartados"][0]["id"]
+    cuerpo = _contrato(piloto.post(ruta, json={"vuelo_id": elegido}, headers=_csrf(piloto)), 422, "VALIDATION_ERROR")
+    assert "motivo" in cuerpo["error"]["fields"]
+    r = piloto.post(ruta, json={"vuelo_id": elegido, "motivo": "La grabación puede empezar al día siguiente"}, headers=_csrf(piloto))
+    assert r.status_code == 200 and r.json()["viaje"]["estado"] == "pendiente_aprobacion"
+    assert r.json()["decision"]["siguio_recomendacion"] is False

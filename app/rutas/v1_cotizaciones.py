@@ -6,11 +6,12 @@ sin el gestor (`acceso.es_propio`). Lo que no se ve responde 404.
 """
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Response
 
 from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
 from ..api_v1.esquemas_cotizacion import (
+    ENTERO_MAXIMO,
     Cotizacion,
     FormularioCotizacion,
     LadoPedido,
@@ -53,13 +54,27 @@ def _sugerencia(r: dict) -> dict:
 
 
 # ---------- formulario ----------
+def _proyectos_para_otros(yo: dict) -> set[int] | None:
+    """Dónde puede cotizar para otra persona: administración en todos (None); el gestor, en los que gestiona."""
+    if acceso.es_admin(yo):
+        return None
+    return acceso.proyectos_de(yo) if yo["rol"] == "gestor" else set()
+
+
+def _para_otros_en(yo: dict, proyecto_id: int | None) -> bool:
+    permitidos = _proyectos_para_otros(yo)
+    return permitidos is None or proyecto_id in permitidos
+
+
 @router.get("/cotizaciones/formulario", response_model=FormularioCotizacion, responses=errores_cotizacion(401))
 def formulario(yo: dict = Depends(persona)):
     """Lo que hace falta para llenar una cotización: proyectos, quién puede viajar y las razones de la decisión."""
-    propio, elige = yo.get("viajero_id"), yo["rol"] in PUEDE_ELEGIR_VIAJERO
+    propio, permitidos = yo.get("viajero_id"), _proyectos_para_otros(yo)
+    elige = yo["rol"] in PUEDE_ELEGIR_VIAJERO and (permitidos is None or bool(permitidos))
     viajeros = db.todos("select id, nombre, base from viajeros order by nombre") if elige else \
         db.todos("select id, nombre, base from viajeros where id=:i", i=propio or -1)
-    return {"proyectos": [{"id": p["id"], "nombre": p["nombre"], "ciudad": p["ciudad"], "inicio": p["fecha_inicio"], "fin": p["fecha_fin"]}
+    return {"proyectos": [{"id": p["id"], "nombre": p["nombre"], "ciudad": p["ciudad"], "inicio": p["fecha_inicio"], "fin": p["fecha_fin"],
+                           "para_otra_persona": permitidos is None or p["id"] in permitidos}
                           for p in db.todos("select * from proyectos order by id")],
             "viajeros": [{**v, "soy_yo": v["id"] == propio} for v in viajeros], "viajero_propio_id": propio,
             "elige_viajero": elige, "razones": [{"clave": k, "texto": v} for k, v in config.RAZONES.items()],
@@ -68,7 +83,8 @@ def formulario(yo: dict = Depends(persona)):
 
 # ---------- cotizar ----------
 def _viajero(yo: dict, pedido: int | None) -> tuple[int, bool]:
-    """(viajero, para otra persona). Cada quien cotiza para sí; gestión y administración, también para otra persona."""
+    """(viajero, para otra persona). Cada quien cotiza para sí; administración, también para otra persona, y el gestor
+    en los proyectos que gestiona (lo revisa `crear` con el proyecto)."""
     propio = yo.get("viajero_id")
     if pedido is None or pedido == propio:
         if not propio:
@@ -100,6 +116,8 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
     viajero_id, para_otra = _viajero(yo, datos.viajero_id)
     if not db.uno("select id from proyectos where id=:i", i=datos.proyecto_id):
         raise _invalido("proyecto_id", "Elige un proyecto de la lista.")
+    if para_otra and not _para_otros_en(yo, datos.proyecto_id):
+        raise ErrorApi(403, "FORBIDDEN", "Para cotizar para otra persona elige uno de los proyectos que gestionas.")
     campos = {**_lado("origen", datos.origen), **_lado("destino", datos.destino)}
     envio = None
     if clave:
@@ -150,8 +168,19 @@ def _fila(sid: int) -> dict | None:
     return db.uno("select usuario_id, viajero_id, proyecto_id from solicitudes where id=:i", i=sid)
 
 
+IdCotizacion = Path(ge=1, le=ENTERO_MAXIMO)
+
+
+def _decide(yo: dict, fila: dict | None) -> bool:
+    """Decide quien la creó, quien viaja o administración; para otra persona, solo dentro de su alcance."""
+    if not acceso.es_propio(yo, fila):
+        return False
+    para_otro = fila.get("viajero_id") != yo.get("viajero_id")
+    return not para_otro or _para_otros_en(yo, fila.get("proyecto_id"))
+
+
 @router.get("/cotizaciones/{id}", response_model=Cotizacion, responses=errores_cotizacion(401, 404, 422))
-def detalle(id: int, yo: dict = Depends(persona)):
+def detalle(id: int = IdCotizacion, yo: dict = Depends(persona)):
     if not acceso.puede_ver(yo, _fila(id)):
         raise _no_encontrado()
     return _cotizacion(yo, id)
@@ -159,7 +188,7 @@ def detalle(id: int, yo: dict = Depends(persona)):
 
 # ---------- decidir ----------
 @router.post("/cotizaciones/{id}/decision", response_model=Cotizacion, responses=errores_cotizacion(401, 403, 404, 409, 422))
-def decidir(id: int, datos: NuevaDecision, yo: dict = Depends(escritura)):
+def decidir(datos: NuevaDecision, id: int = IdCotizacion, yo: dict = Depends(escritura)):
     """Guarda la decisión y crea el viaje (o actualiza el que ya tiene la cotización), pendiente de aprobación.
 
     Si el vuelo no es el recomendado, `motivo` es obligatorio. El mismo envío repetido no duplica la decisión.
@@ -168,8 +197,9 @@ def decidir(id: int, datos: NuevaDecision, yo: dict = Depends(escritura)):
     fila = _fila(id)
     if not acceso.puede_ver(yo, fila):
         raise _no_encontrado()
-    if not acceso.es_propio(yo, fila):
-        raise ErrorApi(403, "FORBIDDEN", "Esta cotización la decide quien viaja, quien la creó o administración.")
+    if not _decide(yo, fila):
+        raise ErrorApi(403, "FORBIDDEN", "Esta cotización la decide quien viaja, quien la creó (si es de un proyecto que "
+                                         "gestiona) o administración.")
     try:
         cotizacion.decidir(yo, id, datos.vuelo_id, datos.hotel_id or 0, datos.motivo, datos.razones)
     except LookupError as e:
@@ -257,9 +287,10 @@ def _cotizacion(yo: dict, sid: int) -> dict:
         "mas_barata_id": c["mas_barato"]["id"] if c["mas_barato"] else None,
         "decision": {"id": d["id"], "vuelo_id": d["vuelo_id"], "hotel_id": d["hotel_id"], "motivo": d["motivo"] or None,
                      "razones": db.de_json(d["razones"], []) or [], "total_usd": consultas.dinero(d["total"]),
-                     "siguio_recomendacion": bool(d["siguio_recomendacion"]), "creado": consultas.instante(d["creado"])} if d else None,
+                     "siguio_recomendacion": bool(d["siguio_recomendacion"]), "creado": consultas.instante(d["creado"]),
+                     "aviso": (db.de_json(d["desglose"], {}) or {}).get("aviso_tope")} if d else None,
         "viaje": {**{k: viaje[k] for k in ("id", "codigo", "estado", "estado_texto")},
                   "presupuesto_usd": consultas.dinero(viaje["presupuesto_usd"])} if viaje else None,
-        "puede_decidir": acceso.es_propio(yo, sol) and not bloqueo and bool(c["vuelos"] or c["descartados"]),
+        "puede_decidir": _decide(yo, sol) and not bloqueo and bool(c["vuelos"] or c["descartados"]),
         "bloqueo": bloqueo,
     }

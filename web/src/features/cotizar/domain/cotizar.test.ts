@@ -5,6 +5,7 @@ import {
   borradorDeEjemplo,
   distanciaKm,
   erroresDelServidor,
+  idDeRuta,
   ladoDesdeSugerencia,
   pedidoDesdeBorrador,
   problemaDeDecision,
@@ -95,6 +96,14 @@ describe("borrador de la cotización", () => {
       destino: "No reconozco \"ZZZ\".",
       origen: "x",
     });
+  });
+});
+
+describe("id de la cotización en la dirección", () => {
+  it("solo enteros que caben en la base; lo demás es «no encontrado»", () => {
+    expect(idDeRuta("12")).toBe(12);
+    expect(idDeRuta("2147483647")).toBe(2147483647);
+    for (const malo of ["0", "-1", "1.5", "abc", "2147483648", "99999999999999999999", ""]) expect(idDeRuta(malo)).toBeNull();
   });
 });
 

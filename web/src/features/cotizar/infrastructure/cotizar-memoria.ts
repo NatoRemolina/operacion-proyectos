@@ -188,6 +188,7 @@ export function crearCotizarMemoria(opciones: {
           total_usd: total,
           siguio_recomendacion: siguio,
           creado: new Date().toISOString().slice(0, 19) + "Z",
+          aviso: null,
         },
         viaje,
       };

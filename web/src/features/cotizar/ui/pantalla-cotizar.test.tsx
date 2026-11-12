@@ -86,6 +86,11 @@ describe("Cotizar un viaje", () => {
 
     await usuario.click(within(lista).getByRole("button", { name: "Quitar GJT" }));
     expect(within(lista).getAllByRole("listitem")).toHaveLength(2);
+    // la lista de sugerencias nace del campo: solo opacidad y escala, con origen arriba
+    const emergente = screen.getByRole("listbox", { hidden: true, name: "Sugerencias para destino" }).parentElement!;
+    expect(emergente.className).toMatch(/origin-top/);
+    expect(emergente.className).toMatch(/transition-\[opacity,scale\]/);
+    expect(emergente.className).toMatch(/se-mueve/);
 
     const agregar = screen.getByRole("combobox", { name: "Agregar otro aeropuerto al destino" });
     await usuario.type(agregar, "grand junction");
@@ -174,4 +179,39 @@ describe("Cotizar un viaje", () => {
     await usuario.click(screen.getByRole("button", { name: "Buscar y comparar" }));
     expect(await screen.findByText(/tope de cotizaciones nuevas de hoy/)).toBeInTheDocument();
   });
+
+  it("al salir del campo de origen sin escribir, dice qué falta", async () => {
+    const usuario = userEvent.setup();
+    renderizarConFuente(<PantallaCotizar />, { cotizar: memoria() });
+    await screen.findByRole("button", { name: "Buscar y comparar" });
+    await usuario.click(screen.getByRole("combobox", { name: "Origen" }));
+    await usuario.tab();
+    expect(screen.getByText(/Escribe de dónde sale/)).toBeInTheDocument();
+    expect(screen.queryByText(/Escribe a dónde va/)).not.toBeInTheDocument();   // el destino aún no se tocó
+  });
+
+  it("un gestor solo cotiza para otra persona en los proyectos que gestiona", async () => {
+    const formulario = {
+      ...FORMULARIO_EJEMPLO,
+      elige_viajero: true,
+      viajero_propio_id: 3,
+      viajeros: [
+        { id: 3, nombre: "Gestión", base: null, soy_yo: true },
+        { id: 1, nombre: "Andrés Molina", base: "Miami", soy_yo: false },
+      ],
+      proyectos: FORMULARIO_EJEMPLO.proyectos.map((p) => ({ ...p, para_otra_persona: p.id === 1 })),
+    };
+    const cotizar = vi.fn<CotizarRepository["cotizar"]>();
+    const usuario = userEvent.setup();
+    renderizarConFuente(<PantallaCotizar />, { cotizar: memoria({ formulario: async () => formulario, cotizar }) });
+    await screen.findByRole("button", { name: "Buscar y comparar" });
+    await usuario.click(screen.getByRole("button", { name: "Usar el caso de ejemplo" }));
+    await usuario.selectOptions(screen.getByRole("combobox", { name: "Quién viaja" }), "1");
+    await usuario.selectOptions(screen.getByRole("combobox", { name: "Proyecto" }), "2");
+    expect(screen.getByRole("option", { name: /Apartamentos Alfama.*solo para ti/ })).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Buscar y comparar" }));
+    expect(await screen.findByText("Para cotizar para otra persona elige uno de los proyectos que gestionas.")).toBeInTheDocument();
+    expect(cotizar).not.toHaveBeenCalled();
+  });
 });
+

@@ -373,6 +373,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -436,6 +438,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -1650,6 +1654,18 @@
           "creado": {
             "type": "string",
             "title": "Creado"
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Si se decidió sin consultar en vivo por el tope del día, lo dice."
           }
         },
         "type": "object",
@@ -1661,7 +1677,8 @@
           "razones",
           "total_usd",
           "siguio_recomendacion",
-          "creado"
+          "creado",
+          "aviso"
         ],
         "title": "DecisionCotizacion"
       },
@@ -2668,6 +2685,7 @@
         "properties": {
           "proyecto_id": {
             "type": "integer",
+            "maximum": 2147483647.0,
             "minimum": 1.0,
             "title": "Proyecto Id"
           },
@@ -2675,6 +2693,7 @@
             "anyOf": [
               {
                 "type": "integer",
+                "maximum": 2147483647.0,
                 "minimum": 1.0
               },
               {
@@ -2682,7 +2701,7 @@
               }
             ],
             "title": "Viajero Id",
-            "description": "Quién viaja. Omitido, quien cotiza. Otra persona: solo gestión o administración."
+            "description": "Quién viaja. Omitido, quien cotiza. Otra persona: administración, o el gestor en los proyectos que gestiona."
           },
           "origen": {
             "$ref": "#/components/schemas/LadoPedido"
@@ -2774,6 +2793,7 @@
         "properties": {
           "vuelo_id": {
             "type": "integer",
+            "maximum": 2147483647.0,
             "minimum": 1.0,
             "title": "Vuelo Id"
           },
@@ -2781,6 +2801,7 @@
             "anyOf": [
               {
                 "type": "integer",
+                "maximum": 2147483647.0,
                 "minimum": 1.0
               },
               {
@@ -3210,6 +3231,11 @@
               }
             ],
             "title": "Fin"
+          },
+          "para_otra_persona": {
+            "type": "boolean",
+            "title": "Para Otra Persona",
+            "description": "Se puede cotizar aquí para otra persona: administración en todos; el gestor, en los proyectos que gestiona."
           }
         },
         "type": "object",
@@ -3218,7 +3244,8 @@
           "nombre",
           "ciudad",
           "inicio",
-          "fin"
+          "fin",
+          "para_otra_persona"
         ],
         "title": "ProyectoOpcion"
       },

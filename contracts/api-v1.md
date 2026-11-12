@@ -41,7 +41,7 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF ni correo |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
 | 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso |
-| 429 | `TOO_MANY_REQUESTS` | Tope de cotizaciones nuevas del día por persona (regla `tope_cotizaciones_persona_dia`, 20 si no se define) |
+| 429 | `TOO_MANY_REQUESTS` | Tope de cotizaciones nuevas del día por persona (regla `tope_cotizaciones_persona_dia`, 20 en la semilla) |
 | 500 | `INTERNAL_ERROR` | Fallo interno, ya registrado |
 
 Un gasto que queda **en revisión** no es un error: es una respuesta correcta con `estado: "revision"`.
@@ -227,7 +227,8 @@ interface Cotizacion {
   recomendada_id: number | null; mas_barata_id: number | null;
   decision: { id: number; vuelo_id: number; hotel_id: number | null; motivo: string | null; razones: string[];
               total_usd: Dinero;              // costo total esperado de lo decidido (con riesgo de cambio y millas)
-              siguio_recomendacion: boolean; creado: string } | null;
+              siguio_recomendacion: boolean; creado: string;
+              aviso: string | null } | null; // si se decidió sin consultar en vivo por el tope del día
   viaje: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string;
            presupuesto_usd: Dinero } | null; // lo que aprueba administración: sin riesgo ni millas, con viáticos
   puede_decidir: boolean;                     // la persona puede guardar o cambiar la decisión ahora
@@ -239,7 +240,7 @@ interface Cotizacion {
 Parámetros: `q` (hasta 80 caracteres), `google` (`0` o `1`), `limite` (1–20, por defecto 8). Sugerencias para el campo de origen o destino: lugares con sus aeropuertos cercanos (distancia y horas por carretera), aeropuertos y países. Sin `google` responde al instante con los datos propios; con `google=1` suma el autocompletado de Google con los mismos topes del formulario (por persona y día, y por mes) y, si no consulta, lo dice en `aviso_google`. 200 `{"resultados": LugarSugerido[], "aviso_google": string | null, "carretera": {"factor", "velocidad_kmh"}}`. Menos de 2 letras: `resultados` vacío.
 
 ### `GET /cotizaciones/formulario`
-Lo necesario para llenar una cotización: `proyectos`, `viajeros` que la persona puede elegir (un colaborador, solo a sí mismo; gestión y administración, a cualquiera), `viajero_propio_id`, `elige_viajero`, `razones` de la decisión (`{clave, texto}`) y `precios_en_vivo` (sin clave del buscador solo hay precios para las rutas guardadas).
+Lo necesario para llenar una cotización: `proyectos` (cada uno con `para_otra_persona`: administración puede en todos; el gestor, en los que gestiona), `viajeros` que la persona puede elegir (un colaborador y un gestor sin proyectos, solo a sí mismos; gestión con proyectos y administración, a cualquiera), `viajero_propio_id`, `elige_viajero`, `razones` de la decisión (`{clave, texto}`) y `precios_en_vivo` (sin clave del buscador solo hay precios para las rutas guardadas).
 
 ### `POST /cotizaciones`
 Cuerpo JSON con `X-CSRF-Token` e `Idempotency-Key` opcional:
@@ -253,10 +254,10 @@ Cuerpo JSON con `X-CSRF-Token` e `Idempotency-Key` opcional:
 ```
 
 - Cada lado lleva los aeropuertos marcados (hasta 8, se comparan en una sola búsqueda) con el lugar, o un `texto` con ciudad o código. El aeropuerto principal es el marcado más cercano al lugar; el traslado por carretera se calcula hasta el lugar.
-- `viajero_id` omitido: viaja quien cotiza. Otra persona: solo gestión y administración (si no, 403 `FORBIDDEN`).
+- `viajero_id` omitido: viaja quien cotiza. Otra persona: administración en cualquier proyecto y el gestor solo en los proyectos que gestiona; si no, 403 `FORBIDDEN`.
 - 201 `Cotizacion` con la comparación lista. Un lugar o código que no se reconoce, fechas imposibles, un proyecto que no existe: 422 con el campo en `fields`.
 - Misma `Idempotency-Key` y mismo pedido: 200 con la misma cotización, sin volver a buscar. Con otro pedido: 409 `IDEMPOTENCY_CONFLICT`. Si el primero todavía está buscando: 409 `REQUEST_IN_PROGRESS`. Un pedido rechazado (422) deja la clave libre.
-- Cada cotización nueva puede gastar dos búsquedas pagas: pasado el tope del día por persona, 429 `TOO_MANY_REQUESTS`. Repetir una ya hecha con su clave no cuenta.
+- Cada cotización nueva puede gastar dos búsquedas pagas: pasado el tope del día por persona (regla `tope_cotizaciones_persona_dia`, 20 en la semilla), 429 `TOO_MANY_REQUESTS`. Repetir una ya hecha con su clave no cuenta.
 
 ### `GET /cotizaciones/{id}`
 200 `Cotizacion`. La ven quien la creó, quien viaja, el gestor del proyecto y administración; los demás reciben 404.
@@ -267,7 +268,10 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 - Si el vuelo no es el recomendado, `motivo` (5 caracteres o más) es obligatorio: 422 con `fields.motivo`. Un vuelo que no es de la cotización: 422 con `fields.vuelo_id`. El hotel es opcional.
 - Guarda la decisión con todas las opciones mostradas y crea el viaje (o actualiza el de la cotización) con su presupuesto, `pendiente_aprobacion`. 200 `Cotizacion` con `decision` y `viaje` (`V-2026-0012`).
 - El mismo envío repetido no duplica la decisión.
-- Deciden quien viaja, quien la creó y administración; el gestor que solo la ve recibe 403 `FORBIDDEN`. Con el viaje ya aprobado o cerrado: 409 `DECISION_LOCKED`.
+- Deciden quien viaja, quien la creó y administración; quien la creó para otra persona, solo si el proyecto está en su alcance. El gestor que solo la ve recibe 403 `FORBIDDEN`. Con el viaje ya aprobado o cerrado: 409 `DECISION_LOCKED`.
+- Si no hay vuelos que cumplan (todos descartados), se puede elegir un descartado con `motivo`.
+- Decidir consulta el regreso y las opciones de reserva del vuelo (dos búsquedas; lo guardado no se paga). Pasado el tope del día por persona (regla `decisiones_en_vivo_dia`, 10 en la semilla), se decide con lo guardado y `decision.aviso` lo dice.
+- `id`, `vuelo_id`, `hotel_id`, `proyecto_id` y `viajero_id` son enteros de 1 a 2³¹−1; fuera de ese rango, 422.
 
 ## Fuera de este contrato (siguientes fases)
 

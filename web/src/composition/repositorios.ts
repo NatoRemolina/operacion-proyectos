@@ -43,7 +43,9 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
       }),
       cotizar: crearCotizarMemoria({
         formulario: {
-          proyectos: [{ id: 31, nombre: "Proyecto de demostración", ciudad: "Moab", inicio: "2026-12-08", fin: "2026-12-11" }],
+          proyectos: [
+            { id: 31, nombre: "Proyecto de demostración", ciudad: "Moab", inicio: "2026-12-08", fin: "2026-12-11", para_otra_persona: false },
+          ],
           viajeros: [{ id: CUENTA_DEMO.persona.id, nombre: CUENTA_DEMO.persona.nombre, base: "Miami", soy_yo: true }],
           viajero_propio_id: CUENTA_DEMO.persona.id,
           elige_viajero: false,

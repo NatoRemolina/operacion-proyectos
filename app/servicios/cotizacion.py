@@ -24,6 +24,9 @@ envios_cotizacion = db._tabla(
     UniqueConstraint("usuario_id", "clave", name="ux_envios_cotizacion_persona_clave"),
 )
 VIGENCIA_ENVIO = timedelta(minutes=5)   # más que una búsqueda en vivo; pasado esto, quien la tenía ya no va a terminar
+DECISIONES_EN_VIVO_DIA = 10   # la regla `decisiones_en_vivo_dia` lo cambia
+AVISO_TOPE_DECISION = ("Se alcanzó el tope de decisiones con consulta en vivo de hoy: el regreso y la tarifa salen de lo "
+                       "guardado o quedan supuestos.")
 
 
 class CotizacionInvalida(ValueError):
@@ -283,6 +286,15 @@ def comparacion(sid: int) -> dict | None:
 
 
 # ---------- decidir ----------
+def _tope_decisiones_alcanzado(usuario: dict) -> bool:
+    """Decisiones de hoy de la persona que consultaron el regreso en vivo (o lo intentaron), frente a la regla."""
+    if not config.SERPAPI_KEY:
+        return False
+    hechas = db.uno("""select count(*) n from consultas_buscador where tipo='regreso' and origen in ('en vivo', 'fallida')
+                       and usuario_id=:u and momento>=:h""", u=usuario["id"], h=db.ahora()[:10])["n"]
+    return hechas >= int(costo.supuesto(costo.catalogo(), "decisiones_en_vivo_dia", DECISIONES_EN_VIVO_DIA))
+
+
 def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: str = "", razones=()) -> dict:
     """Guarda la decisión y crea (o actualiza) el viaje de la cotización.
 
@@ -314,9 +326,16 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     # La opción elegida se carga completa: el regreso real y sus opciones de reserva (dos búsquedas; lo ya guardado no se paga)
     sol = c["sol"]
     desde_todos, hacia_todos = codigos(sol, "origen"), codigos(sol, "destino")
-    regreso = precios.vuelo_regreso(vuelo["v"], desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
+    # Pasado el tope del día, sin token ni reserva: precios solo lee lo guardado y no consulta en vivo
+    aviso_tope = AVISO_TOPE_DECISION if _tope_decisiones_alcanzado(usuario) else None
+    if aviso_tope:
+        eventos.registrar("solicitud", sid, "tope de consultas al decidir", aviso_tope, "reglas editables")
+    ida_consulta = {**vuelo["v"], "token": None} if aviso_tope else vuelo["v"]
+    regreso = precios.vuelo_regreso(ida_consulta, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
     if regreso:
-        tarifas, origen_t, _ = precios.opciones_reserva(vuelo["v"], regreso, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
+        regreso_consulta = {**regreso, "booking": None} if aviso_tope else regreso
+        tarifas, origen_t, _ = precios.opciones_reserva(vuelo["v"], regreso_consulta, desde_todos, hacia_todos, sol["ida"],
+                                                        sol["regreso"], sid)
         if tarifas:   # el presupuesto usa la tarifa real; sin ella queda la estimada, que ya dice «(supuesta)»
             db.actualizar("opciones", vuelo["id"], tarifas={"lista": tarifas, "origen": origen_t})
             vuelo = {**vuelo, "origen_tarifas": origen_t, "tarifas_lista": tarifas,
@@ -340,7 +359,7 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
                                 "precio_tarifa": vuelo["ev"]["tarifa"]["precio"], "origen_tarifas": vuelo.get("origen_tarifas"),
                                 "hotel": hotel["h"] if hotel else None,
                                 "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
-                                "aviso": c["aviso"], "baterias": c["baterias"],
+                                "aviso": c["aviso"], "baterias": c["baterias"], "aviso_tope": aviso_tope,
                                 # lo que se evita frente a la opción más barata del buscador, por costo esperado
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
                       total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=usuario["id"],

@@ -12,7 +12,7 @@ import {
   type OpcionVuelo,
   type SegmentoCosto,
 } from "../domain/cotizar";
-import { Marca } from "./piezas";
+import { GIRO, Marca, PRESION } from "./piezas";
 
 const COLOR: Record<SegmentoCosto["tipo"], string> = {
   precio: "bg-marca",
@@ -198,6 +198,13 @@ export function OpcionDeVuelo({
       ) : (
         cuerpo
       )}
+      {vuelo.descartada ? (
+        <p className="text-sm font-semibold text-error">
+          <span aria-hidden="true">✕ </span>
+          <span>Descartado: </span>
+          <span>{vuelo.descartada}</span>
+        </p>
+      ) : null}
       {vuelo.avisos.length ? (
         <ul className="flex flex-col gap-1 text-sm text-aviso">
           {vuelo.avisos.map((a) => (
@@ -214,9 +221,9 @@ export function OpcionDeVuelo({
           aria-expanded={abierto}
           aria-controls={desglose}
           onClick={() => setAbierto((a) => !a)}
-          className="inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura se-mueve motion-safe:active:scale-[0.97]"
+          className={`inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESION}`}
         >
-          <span aria-hidden="true" className={`se-mueve inline-block transition-transform duration-150 ${abierto ? "rotate-90" : ""}`}>
+          <span aria-hidden="true" className={`${GIRO} ${abierto ? "rotate-90" : ""}`}>
             ›
           </span>
           {abierto ? "Ocultar desglose" : "Ver desglose"}

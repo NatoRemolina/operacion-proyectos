@@ -58,6 +58,8 @@ export interface FormularioCotizacion {
     readonly ciudad: string | null;
     readonly inicio: string | null;
     readonly fin: string | null;
+    /** Se puede cotizar aquí para otra persona (administración en todos; el gestor, en los que gestiona). */
+    readonly para_otra_persona: boolean;
   }[];
   readonly viajeros: readonly { readonly id: number; readonly nombre: string; readonly base: string | null; readonly soy_yo: boolean }[];
   readonly viajero_propio_id: number | null;
@@ -190,6 +192,8 @@ export interface Cotizacion {
     readonly total_usd: Dinero;
     readonly siguio_recomendacion: boolean;
     readonly creado: string;
+    /** Si se decidió sin consultar en vivo por el tope del día, lo dice. */
+    readonly aviso: string | null;
   } | null;
   readonly viaje: {
     readonly id: number;
@@ -374,6 +378,15 @@ function problemaDeLado(lado: LadoElegido, cual: "origen" | "destino"): string |
   return null;
 }
 
+export const PROYECTO_FUERA_DE_ALCANCE = "Para cotizar para otra persona elige uno de los proyectos que gestionas.";
+
+/** Para otra persona solo se cotiza en los proyectos del alcance de quien cotiza. */
+export function problemaDeAlcance(b: BorradorCotizacion, f: Pick<FormularioCotizacion, "proyectos" | "viajero_propio_id">): string | null {
+  if (!b.viajeroId || !b.proyectoId || b.viajeroId === String(f.viajero_propio_id ?? "")) return null;
+  const proyecto = f.proyectos.find((p) => String(p.id) === b.proyectoId);
+  return proyecto && !proyecto.para_otra_persona ? PROYECTO_FUERA_DE_ALCANCE : null;
+}
+
 /** Revisión previa en el navegador; el servidor vuelve a validar siempre. */
 export function validarBorrador(b: BorradorCotizacion): ErroresBorrador {
   const errores: ErroresBorrador = {};
@@ -490,6 +503,16 @@ export function borradorDeEjemplo(base: BorradorCotizacion): BorradorCotizacion 
     probCambio: "25",
     carroDia: "65",
   };
+}
+
+// ---------- la dirección /cotizar/[id] ----------
+export const ENTERO_MAXIMO = 2 ** 31 - 1;
+
+/** El id de la dirección si es un entero que puede existir en la base; si no, `null` («no encontrado»). */
+export function idDeRuta(texto: string): number | null {
+  if (!/^\d{1,10}$/.test(texto)) return null;
+  const n = Number(texto);
+  return n >= 1 && n <= ENTERO_MAXIMO ? n : null;
 }
 
 // ---------- reglas de la comparación y la decisión ----------

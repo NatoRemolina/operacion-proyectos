@@ -15,6 +15,7 @@ import {
   borradorDeEjemplo,
   erroresDelServidor,
   pedidoDesdeBorrador,
+  problemaDeAlcance,
   textoBusqueda,
   validarBorrador,
   type BorradorCotizacion,
@@ -24,14 +25,13 @@ import {
   type PedidoCotizacion,
 } from "../domain/cotizar";
 import { CampoLugar } from "./campo-lugar";
-import { EncabezadoPagina, EsqueletoDetalle } from "./piezas";
+import { EncabezadoPagina, EsqueletoDetalle, PRESION } from "./piezas";
 
 const CLAVE_BORRADOR = "cotizar-borrador";
 const ORDEN: readonly CampoCotizacion[] = [
   "proyectoId", "viajeroId", "origen", "destino", "ida", "regreso", "horaLimite",
   "bateriasN", "bateriasWh", "probCambio", "carroDia",
 ];
-const PRESION = "se-mueve motion-safe:active:scale-[0.97]";
 
 function idCampo(campo: CampoCotizacion): string {
   return `cotizar-${campo}`;
@@ -106,7 +106,9 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
   }, [borrador]);
 
   const efectivo = conOmisiones(borrador, datos);
-  const propios = validarBorrador(efectivo);
+  const alcance = problemaDeAlcance(efectivo, datos);
+  const propios: ErroresBorrador = { ...validarBorrador(efectivo), ...(alcance ? { proyectoId: alcance } : {}) };
+  const paraOtra = Boolean(efectivo.viajeroId) && efectivo.viajeroId !== String(datos.viajero_propio_id ?? "");
   const visibles: ErroresBorrador = { ...delServidor };
   for (const campo of ORDEN) {
     if (propios[campo] && (intentado || tocados.has(campo))) visibles[campo] = propios[campo];
@@ -208,6 +210,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
                 {p.nombre}
                 {p.ciudad ? ` · ${p.ciudad}` : ""}
                 {p.inicio && p.fin ? ` · ${formatearRango(p.inicio, p.fin)}` : ""}
+                {paraOtra && !p.para_otra_persona ? " (solo para ti)" : ""}
               </option>
             ))}
           </CampoSelector>
@@ -254,6 +257,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
             onCambio={(v) => cambiar("origen", v)}
             error={visibles.origen ?? null}
             entradaRef={origenRef}
+            onSalir={() => tocar("origen")}
           />
           <CampoLugar
             id={idCampo("destino")}
@@ -263,6 +267,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
             onCambio={(v) => cambiar("destino", v)}
             error={visibles.destino ?? null}
             entradaRef={destinoRef}
+            onSalir={() => tocar("destino")}
           />
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

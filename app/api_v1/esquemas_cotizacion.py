@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .esquemas import Dinero, EstadoViaje, Referencia, RespuestaError
 
+ENTERO_MAXIMO = 2**31 - 1   # los ids son enteros de 32 bits en la base: uno mayor no existe y no debe romper la consulta
+
 # ---------- lugares ----------
 OrigenSugerencia = Literal["local", "google"]
 
@@ -54,6 +56,8 @@ class ProyectoOpcion(BaseModel):
     ciudad: str | None
     inicio: str | None
     fin: str | None
+    para_otra_persona: bool = Field(description="Se puede cotizar aquí para otra persona: administración en todos; "
+                                                "el gestor, en los proyectos que gestiona.")
 
 
 class ViajeroOpcion(BaseModel):
@@ -102,8 +106,9 @@ class LadoPedido(BaseModel):
 class NuevaCotizacion(BaseModel):
     """Un pedido de cotización. Quien cotiza sale de la sesión; nunca del cuerpo."""
     model_config = ConfigDict(extra="forbid")
-    proyecto_id: int = Field(ge=1)
-    viajero_id: int | None = Field(None, ge=1, description="Quién viaja. Omitido, quien cotiza. Otra persona: solo gestión o administración.")
+    proyecto_id: int = Field(ge=1, le=ENTERO_MAXIMO)
+    viajero_id: int | None = Field(None, ge=1, le=ENTERO_MAXIMO, description="Quién viaja. Omitido, quien cotiza. Otra persona: "
+                                   "administración, o el gestor en los proyectos que gestiona.")
     origen: LadoPedido
     destino: LadoPedido
     ida: date
@@ -120,8 +125,8 @@ class NuevaCotizacion(BaseModel):
 
 class NuevaDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    vuelo_id: int = Field(ge=1)
-    hotel_id: int | None = Field(None, ge=1, description="Opcional: puede no haber hoteles para el lugar.")
+    vuelo_id: int = Field(ge=1, le=ENTERO_MAXIMO)
+    hotel_id: int | None = Field(None, ge=1, le=ENTERO_MAXIMO, description="Opcional: puede no haber hoteles para el lugar.")
     motivo: str = Field("", max_length=300, description="Obligatorio (5 caracteres o más) si el vuelo no es el recomendado.")
     razones: list[str] = Field(default_factory=list, max_length=10, description="Claves de `razones` del formulario.")
 
@@ -208,6 +213,7 @@ class DecisionCotizacion(BaseModel):
     total_usd: Dinero = Field(description="Costo total esperado de lo decidido (vuelo con riesgo y millas, hotel y carro).")
     siguio_recomendacion: bool
     creado: str
+    aviso: str | None = Field(description="Si se decidió sin consultar en vivo por el tope del día, lo dice.")
 
 
 class ViajeDeCotizacion(BaseModel):

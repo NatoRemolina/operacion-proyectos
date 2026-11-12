@@ -2,6 +2,16 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { clasesBoton } from "@/shared/ui/boton";
 
+/**
+ * Respuesta al presionar: escala al 97 % en 100 ms. La transición va en `:active` para ganarle a `transition-colors`
+ * del botón compartido (en Tailwind 4 `scale` es una propiedad propia, no `transform`). Con movimiento reducido no escala.
+ */
+export const PRESION =
+  "se-mueve motion-safe:active:scale-[0.97] active:transition-[color,background-color,border-color,scale] active:duration-100 active:ease-out";
+
+/** Flechas que giran al abrir: solo se anima `rotate`; con movimiento reducido cambian sin animación. */
+export const GIRO = "se-mueve inline-block transition-[rotate] duration-150 ease-out motion-reduce:transition-none";
+
 /*
  * Piezas de interfaz que el anexo de diseño pone en `shared/ui` (las crea web-admin en su rama).
  * Mismos nombres y propiedades que allá, con los mismos tokens: al unir se reemplazan por las compartidas.

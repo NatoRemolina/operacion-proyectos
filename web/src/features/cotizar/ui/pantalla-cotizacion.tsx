@@ -21,9 +21,8 @@ import {
   type OpcionVuelo,
 } from "../domain/cotizar";
 import { Horario, Leyenda, OpcionDeVuelo, nombreVuelo, pesoTotal } from "./opcion-vuelo";
-import { EncabezadoPagina, EsqueletoDetalle, EstadoVacio, Marca } from "./piezas";
+import { EncabezadoPagina, EsqueletoDetalle, EstadoVacio, GIRO, Marca, PRESION } from "./piezas";
 
-const PRESION = "se-mueve motion-safe:active:scale-[0.97]";
 
 export function PantallaCotizacion({ id }: { id: number }) {
   const consulta = useCotizacion(id);
@@ -73,7 +72,16 @@ function VistaCotizacion({ c, migas }: { c: Cotizacion; migas: { texto: string; 
             {c.hora_limite ? <Dato nombre="Llegar antes de" valor={`${c.hora_limite} del día de ida`} /> : null}
           </dl>
         }
-        accion={<Marca tono={origen.enVivo ? "exito" : "neutro"}>{origen.texto}</Marca>}
+        accion={
+          <div className="flex flex-wrap items-center gap-3">
+            <Marca tono={origen.enVivo ? "exito" : "neutro"}>{origen.texto}</Marca>
+            {!vacia ? (
+              <Link href="/cotizar" className={clasesBoton("secundario", PRESION)}>
+                Cotizar con otros datos
+              </Link>
+            ) : null}
+          </div>
+        }
       />
 
       {c.equipo.nivel !== "ok" ? (
@@ -119,7 +127,10 @@ function Resumen({ c }: { c: Cotizacion }) {
   if (!recomendada) {
     return (
       <Alerta tono="aviso" titulo="Ningún vuelo cumple" rol="status">
-        <p>Todos los vuelos encontrados se descartaron. Abajo está la razón de cada uno.</p>
+        <p>
+          Todos los vuelos encontrados se descartaron por la hora límite o el equipo. Puedes elegir uno abajo, con su razón a
+          la vista, contando por qué; o <Link href="/cotizar">cotizar con otros datos</Link>.
+        </p>
       </Alerta>
     );
   }
@@ -256,6 +267,12 @@ function DecisionGuardada({
         <Dato nombre="Hotel" valor={hotel?.nombre ?? "Sin hotel en esta decisión"} />
         {d.motivo ? <Dato nombre="Por qué" valor={d.motivo} /> : null}
       </dl>
+      {d.aviso ? (
+        <p className="text-sm font-semibold text-aviso">
+          <span aria-hidden="true">! </span>
+          {d.aviso}
+        </p>
+      ) : null}
       <p className="text-sm">
         {pendiente
           ? "Administración revisa el presupuesto. Cuando lo apruebe, podrás cargar los gastos del viaje."
@@ -293,10 +310,15 @@ function FormularioDecision({
 }) {
   const decidir = useDecidir(c.id);
   const formulario = useFormularioCotizacion();
-  const [vueloId, setVueloId] = useState<number | null>(null);
-  const [hotelId, setHotelId] = useState<number | null>(null);
-  const [motivo, setMotivo] = useState("");
-  const [razones, setRazones] = useState<string[]>([]);
+  const clave = `${CLAVE_DECISION}${c.id}`;
+  const [inicial] = useState(() => leerDecision(clave));
+  const [vueloId, setVueloId] = useState<number | null>(inicial.vueloId);
+  const [hotelId, setHotelId] = useState<number | null>(inicial.hotelId);
+  const [motivo, setMotivo] = useState(inicial.motivo);
+  const [razones, setRazones] = useState<string[]>(inicial.razones);
+  useEffect(() => {
+    guardarDecision(clave, { vueloId, hotelId, motivo, razones });
+  }, [clave, vueloId, hotelId, motivo, razones]);
   const [intentado, setIntentado] = useState(false);
   const [verDescartados, setVerDescartados] = useState(false);
   const nombreGrupo = useId();
@@ -307,6 +329,9 @@ function FormularioDecision({
   const errorMotivo = problema?.campo === "motivo" ? problema.mensaje : delServidor.motivo ?? null;
   const conMotivo = requiereMotivo(c, vueloId);
   const elegido = [...c.vuelos, ...c.descartados].find((v) => v.id === vueloId);
+  // Sin vuelos que cumplan no hay callejón: se elige entre los descartados, con su razón a la vista y el porqué
+  const soloDescartados = c.vuelos.length === 0;
+  const opciones = soloDescartados ? c.descartados : c.vuelos;
 
   function enviar(e: FormEvent) {
     e.preventDefault();
@@ -319,6 +344,7 @@ function FormularioDecision({
     }
     decidir.decidir({ vuelo_id: vueloId, hotel_id: hotelId, motivo: motivo.trim(), razones }, () => {
       setIntentado(false);
+      borrarDecision(clave);
       onDecidida();
     });
   }
@@ -326,9 +352,13 @@ function FormularioDecision({
   return (
     <form noValidate onSubmit={enviar} className="flex flex-col gap-6">
       <fieldset className="flex min-w-0 flex-col gap-3" aria-describedby={errorVuelo ? errorVueloId : undefined}>
-        <legend className="mb-1 text-xl font-bold tracking-tight">Vuelos por costo total esperado</legend>
+        <legend className="mb-1 text-xl font-bold tracking-tight">
+          {soloDescartados ? "Vuelos descartados" : "Vuelos por costo total esperado"}
+        </legend>
         <p className="text-sm text-texto-secundario">
-          Del menor al mayor costo total: precio + equipaje + riesgo de cambio − millas + traslado.
+          {soloDescartados
+            ? "Ninguno cumple. Si eliges uno, explica abajo el motivo."
+            : "Del menor al mayor costo total: precio + equipaje + riesgo de cambio − millas + traslado."}
           {elegible ? " Ninguno viene marcado: la elección es tuya." : ""}
         </p>
         <Leyenda />
@@ -339,7 +369,7 @@ function FormularioDecision({
           </p>
         ) : null}
         <div className="flex flex-col gap-3">
-          {c.vuelos.map((v) => (
+          {opciones.map((v) => (
             <OpcionDeVuelo
               key={v.id}
               vuelo={v}
@@ -353,7 +383,7 @@ function FormularioDecision({
         </div>
       </fieldset>
 
-      {c.descartados.length ? (
+      {c.descartados.length && !soloDescartados ? (
         <section className="flex flex-col gap-2">
           <h2 className="text-lg font-bold tracking-tight">
             <button
@@ -362,7 +392,7 @@ function FormularioDecision({
               onClick={() => setVerDescartados((v) => !v)}
               className={`inline-flex min-h-11 items-center gap-2 text-left ${PRESION}`}
             >
-              <span aria-hidden="true" className={`se-mueve inline-block transition-transform duration-150 ${verDescartados ? "rotate-90" : ""}`}>
+              <span aria-hidden="true" className={`${GIRO} ${verDescartados ? "rotate-90" : ""}`}>
                 ›
               </span>
               <span>{`Vuelos descartados (${c.descartados.length})`}</span>
@@ -444,6 +474,43 @@ function FormularioDecision({
       ) : null}
     </form>
   );
+}
+
+const CLAVE_DECISION = "cotizar-decision-";
+
+interface BorradorDecision {
+  vueloId: number | null;
+  hotelId: number | null;
+  motivo: string;
+  razones: string[];
+}
+
+/** Lo escrito en la decisión se conserva en la pestaña: si la sesión vence, al volver sigue ahí. Se borra al decidir. */
+function leerDecision(clave: string): BorradorDecision {
+  const vacio: BorradorDecision = { vueloId: null, hotelId: null, motivo: "", razones: [] };
+  if (typeof window === "undefined") return vacio;
+  try {
+    const guardado = window.sessionStorage.getItem(clave);
+    return guardado ? { ...vacio, ...(JSON.parse(guardado) as Partial<BorradorDecision>) } : vacio;
+  } catch {
+    return vacio;
+  }
+}
+
+function guardarDecision(clave: string, borrador: BorradorDecision) {
+  try {
+    window.sessionStorage.setItem(clave, JSON.stringify(borrador));
+  } catch {
+    // Sin almacenamiento disponible, lo escrito dura lo que la pantalla.
+  }
+}
+
+function borrarDecision(clave: string) {
+  try {
+    window.sessionStorage.removeItem(clave);
+  } catch {
+    // Nada que borrar.
+  }
 }
 
 function Hoteles({

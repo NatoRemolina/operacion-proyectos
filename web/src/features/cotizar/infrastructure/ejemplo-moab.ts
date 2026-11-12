@@ -636,14 +636,16 @@ export const FORMULARIO_EJEMPLO: FormularioCotizacion = {
       "nombre": "Residencial Summerlin (aéreo)",
       "ciudad": "Las Vegas",
       "inicio": "2026-12-08",
-      "fin": "2026-12-11"
+      "fin": "2026-12-11",
+      "para_otra_persona": false
     },
     {
       "id": 2,
       "nombre": "Apartamentos Alfama (aéreo)",
       "ciudad": "Lisboa",
       "inicio": "2026-12-13",
-      "fin": "2026-12-16"
+      "fin": "2026-12-16",
+      "para_otra_persona": false
     }
   ],
   "viajeros": [
