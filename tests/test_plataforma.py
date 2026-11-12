@@ -1,4 +1,5 @@
 """Comportamientos comunes a toda la plataforma: seguridad de las respuestas, errores legibles y cifras coherentes."""
+from app import db
 from app.main import _indicadores
 from app.servicios import viajes
 
@@ -43,3 +44,17 @@ def test_el_previsto_es_una_sola_cifra(cliente, viaje_aprobado):
     del_proyecto = viajes.lista("v.proyecto_id=1 and v.estado<>'rechazado'")
     total = round(sum(v["presupuesto_usd"] or 0 for v in del_proyecto), 2)
     assert f"{total:,.2f} USD" in cliente.get("/proyectos/1").text
+
+
+def test_los_proyectos_se_crean_y_editan_desde_la_plataforma(cliente, piloto):
+    campos = dict(nombre="Torre Norte (aéreo)", cliente="Constructora de prueba", ciudad="Denver", fecha_inicio="2026-12-15", fecha_fin="2026-12-18", moneda="usd")
+    assert piloto.post("/admin/proyectos", data=campos).status_code == 403
+    assert "aviso=" in cliente.post("/admin/proyectos", data={**campos, "fecha_fin": "2026-12-01"}, follow_redirects=False).headers["location"]
+    assert not db.uno("select id from proyectos where nombre=:n", n=campos["nombre"])          # fechas al revés: no se crea
+    cliente.post("/admin/proyectos", data=campos)
+    p = db.uno("select * from proyectos where nombre=:n", n=campos["nombre"])
+    assert p["moneda"] == "USD" and p["ciudad"] == "Denver"
+    assert campos["nombre"] in cliente.get("/viajes/nuevo").text                               # ya se puede cotizar para él
+    cliente.post(f"/admin/proyectos/{p['id']}", data={**campos, "ciudad": "Boulder"})
+    assert db.uno("select ciudad from proyectos where id=:i", i=p["id"])["ciudad"] == "Boulder"
+    assert db.uno("select count(*) n from eventos where entidad='proyecto' and entidad_id=:i", i=p["id"])["n"] == 2

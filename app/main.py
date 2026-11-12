@@ -727,6 +727,55 @@ async def telegram_webhook(request: Request):
     return {"ok": True, "estado": estado}
 
 
+# ---------- proyectos: se crean y editan desde la plataforma ----------
+def _proyecto_valido(nombre: str, cliente: str, ciudad: str, fecha_inicio: str, fecha_fin: str, moneda: str) -> tuple[dict | None, str]:
+    nombre, moneda = nombre.strip()[:120], moneda.strip().upper()[:3]
+    if len(nombre) < 3:
+        return None, "El proyecto necesita un nombre."
+    try:
+        inicio, fin = date.fromisoformat(fecha_inicio), date.fromisoformat(fecha_fin)
+    except ValueError:
+        return None, "Las fechas del proyecto no son válidas."
+    if fin < inicio:
+        return None, "La fecha final no puede ser anterior a la inicial."
+    if not re.fullmatch(r"[A-Z]{3}", moneda):
+        return None, "La moneda es un código de tres letras, como USD o EUR."
+    return {"nombre": nombre, "cliente": cliente.strip()[:120] or None, "ciudad": ciudad.strip()[:80] or None,
+            "fecha_inicio": inicio.isoformat(), "fecha_fin": fin.isoformat(), "moneda": moneda}, ""
+
+
+@app.get("/admin/proyectos", response_class=HTMLResponse)
+def proyectos_admin(request: Request, aviso: str = ""):
+    return plantillas.TemplateResponse(request, "proyectos_admin.html", _ctx(
+        aviso=aviso[:200],
+        lista=db.todos("""select p.*, (select count(*) from viajes v where v.proyecto_id=p.id) viajes,
+                          (select count(*) from gastos g where g.proyecto_id=p.id) gastos from proyectos p order by p.id""")))
+
+
+@app.post("/admin/proyectos")
+def proyecto_crear(nombre: str = Form(""), cliente: str = Form(""), ciudad: str = Form(""), fecha_inicio: str = Form(""),
+                   fecha_fin: str = Form(""), moneda: str = Form("USD")):
+    datos, error = _proyecto_valido(nombre, cliente, ciudad, fecha_inicio, fecha_fin, moneda)
+    if not datos:
+        return RedirectResponse(f"/admin/proyectos?aviso={quote(error)}", status_code=303)
+    pid = db.insertar("proyectos", **datos)
+    eventos.registrar("proyecto", pid, "proyecto creado", f"{datos['nombre']} · {datos['fecha_inicio']} a {datos['fecha_fin']}", _yo()["nombre"])
+    return RedirectResponse("/admin/proyectos?aviso=Proyecto+creado.", status_code=303)
+
+
+@app.post("/admin/proyectos/{pid}")
+def proyecto_editar(pid: int, nombre: str = Form(""), cliente: str = Form(""), ciudad: str = Form(""), fecha_inicio: str = Form(""),
+                    fecha_fin: str = Form(""), moneda: str = Form("USD")):
+    if not db.uno("select id from proyectos where id=:i", i=pid):
+        return NO_ENCONTRADO
+    datos, error = _proyecto_valido(nombre, cliente, ciudad, fecha_inicio, fecha_fin, moneda)
+    if not datos:
+        return RedirectResponse(f"/admin/proyectos?aviso={quote(error)}", status_code=303)
+    db.actualizar("proyectos", pid, **datos)
+    eventos.registrar("proyecto", pid, "proyecto editado", f"{datos['nombre']} · {datos['fecha_inicio']} a {datos['fecha_fin']}", _yo()["nombre"])
+    return RedirectResponse("/admin/proyectos?aviso=Proyecto+actualizado.", status_code=303)
+
+
 # ---------- tablero por proyecto ----------
 @app.get("/proyectos/{pid}", response_class=HTMLResponse)
 def proyecto(request: Request, pid: int):

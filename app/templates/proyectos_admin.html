@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block titulo %}Proyectos{% endblock %}{% block cuerpo %}
+<h1>Proyectos</h1>
+<p class="sub">Cada cotización, viaje y gasto pertenece a un proyecto. Sus fechas sirven de referencia cuando un gasto llega sin viaje.</p>
+{% if aviso %}<p class="nota">{{ aviso }}</p>{% endif %}
+{% macro campos(p) %}
+  <div><label>Nombre</label><input name="nombre" value="{{ p.nombre if p else '' }}" maxlength="120" required></div>
+  <div><label>Cliente</label><input name="cliente" value="{{ (p.cliente or '') if p else '' }}" maxlength="120"></div>
+  <div><label>Ciudad</label><input name="ciudad" value="{{ (p.ciudad or '') if p else '' }}" maxlength="80"></div>
+  <div><label>Inicio</label><input type="date" name="fecha_inicio" value="{{ p.fecha_inicio if p else '' }}" required></div>
+  <div><label>Fin</label><input type="date" name="fecha_fin" value="{{ p.fecha_fin if p else '' }}" required></div>
+  <div><label>Moneda</label><input name="moneda" value="{{ (p.moneda or 'USD') if p else 'USD' }}" maxlength="3" pattern="[A-Za-z]{3}" required></div>
+{% endmacro %}
+<form method="post" action="/admin/proyectos" class="tarjeta"><h3>Crear proyecto</h3>
+  <div class="campos">{{ campos(none) }}</div><p style="margin:14px 0 0"><button>Crear proyecto</button></p></form>
+
+<h2>Proyectos existentes</h2>
+{% for p in lista %}<details class="tarjeta"><summary><b style="color:var(--tinta);font-size:15px">{{ p.nombre }}</b> · {{ p.ciudad or 'sin ciudad' }} · {{ p.fecha_inicio }} a {{ p.fecha_fin }} · {{ p.moneda }} · {{ p.viajes }} viajes · {{ p.gastos }} gastos</summary>
+  <form method="post" action="/admin/proyectos/{{ p.id }}" style="margin-top:14px"><div class="campos">{{ campos(p) }}</div>
+  <p style="margin:14px 0 0"><button class="sec">Guardar cambios</button> <a href="/proyectos/{{ p.id }}">Ver tablero del proyecto</a></p></form></details>
+{% else %}<div class="tarjeta vacio"><b>Aún no hay proyectos</b>Crea el primero con el formulario de arriba.</div>{% endfor %}
+{% endblock %}

@@ -8,14 +8,14 @@
   <h3>Quién y para qué</h3>
   <div class="campos">
 
-    <div><label>Proyecto</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Proyecto{% if es_admin %} · <a href="/admin/proyectos">crear otro</a>{% endif %}</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }} ({{ p.ciudad or 'sin ciudad' }}, {{ p.fecha_inicio }} a {{ p.fecha_fin }})</option>{% endfor %}</select></div>
     <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }} ({{ v.base }})</option>{% endfor %}</select></div>
     <div><label>O registrar un viajero nuevo</label><input name="viajero_nuevo" maxlength="80" placeholder="Nombre (opcional)"></div>
   </div>
   <h2>Ruta y fechas</h2>
   <div class="campos">
-    <div><label>Origen (ciudad o aeropuerto)</label><input name="origen" value="Miami (MIA)" list="aeropuertos" required></div>
-    <div><label>Destino (ciudad o aeropuerto)</label><input name="destino" value="Las Vegas (LAS)" list="aeropuertos" required></div>
+    <div><label>Origen (ciudad de la lista o código de 3 letras)</label><input name="origen" value="Miami (MIA)" list="aeropuertos" required></div>
+    <div><label>Destino (ciudad de la lista o código de 3 letras)</label><input name="destino" value="Las Vegas (LAS)" list="aeropuertos" required></div>
     <div><label>Ciudad del hotel (vacío = la del destino)</label><input name="ciudad" value=""></div>
     <div><label>Ida</label><input type="date" name="ida" value="2026-12-08" required></div>
     <div><label>Regreso</label><input type="date" name="regreso" value="2026-12-11" required></div>

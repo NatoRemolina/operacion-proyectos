@@ -16,7 +16,7 @@
     {{ enlace('/gastos/cargar', 'Cargar gasto') }}
     {{ enlace('/gastos', 'Gastos', pendientes.gastos if es_admin else 0) }}
     {% if es_admin %}
-    <details class="grupo"><summary>Proyectos</summary><div class="lista">{% for p in proyectos %}<a href="/proyectos/{{ p.id }}">{{ p.nombre }}</a>{% endfor %}</div></details>
+    <details class="grupo"><summary>Proyectos</summary><div class="lista">{% for p in proyectos %}<a href="/proyectos/{{ p.id }}">{{ p.nombre }}</a>{% endfor %}<a href="/admin/proyectos"><b>Crear o editar proyectos</b></a></div></details>
     {{ enlace('/admin/monitoreo', 'Monitoreo') }}
     <details class="grupo"><summary>Administración</summary><div class="lista">
       <a href="/admin/usuarios">Usuarios y roles</a><a href="/reglas">Reglas y supuestos</a><a href="/analitica">Analítica de precios</a><a href="/flujo">Flujo de la información</a></div></details>
