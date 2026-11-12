@@ -89,6 +89,9 @@ VISTAS = {
                     from viajes v left join solicitudes s on s.id=v.solicitud_id left join proyectos p on p.id=v.proyecto_id
                     left join usuarios u on u.id=v.usuario_id""",
     "v_h_evento": "select e.*, u.nombre usuario, u.rol from eventos e left join usuarios u on u.id=e.usuario_id",
+    "v_h_consulta": """select c.*, s.proyecto_id, s.origen ruta_origen, s.destino ruta_destino, u.nombre usuario
+                       from consultas_buscador c left join solicitudes s on s.id=c.solicitud_id
+                       left join usuarios u on u.id=c.usuario_id""",
 }
 
 SUPUESTOS_NUEVOS = [

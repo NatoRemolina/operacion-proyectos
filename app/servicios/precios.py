@@ -3,9 +3,11 @@
 Orden de búsqueda: respuesta guardada para la misma consulta, consulta en vivo si hay
 clave, y como último recurso una respuesta guardada de la misma ruta con otras fechas.
 Cada resultado dice de dónde salió: "en vivo", "guardado" o "guardado (otras fechas)".
+Cada búsqueda, también la leída de lo guardado o la fallida, deja una fila en `consultas_buscador`.
 """
 import json
 import re
+import time
 from datetime import UTC, date, datetime
 
 import httpx
@@ -58,6 +60,17 @@ def _guardar(nombre: str, datos: dict):
         (config.DIR_RESPALDO_ESCRITURA / nombre).write_text(cuerpo)
     except OSError:
         pass  # disco de solo lectura: la tabla ya lo tiene
+
+
+def _anotar(tipo: str, clave: str, origen: str, solicitud_id: int | None, inicio: float,
+            precios: list | None = None, error=None):
+    """Rastro de la consulta para los indicadores. La respuesta completa ya está en `busquedas`: aquí solo se referencia por la clave."""
+    from . import kpis  # el registro vive con los indicadores que lo leen
+    kpis.registrar_consulta(tipo, origen, clave, solicitud_id, int((time.perf_counter() - inicio) * 1000), precios or [],
+                            str(error)[:300] if error else None)
+
+
+SIN_DATOS = "Sin respuesta guardada para esta búsqueda y sin consulta en vivo disponible."
 
 
 def _consultar(parametros: dict, entidad: str, entidad_id: int | None, que: str) -> dict:
@@ -133,8 +146,8 @@ def cargar_respaldos() -> int:
 
 def buscar_vuelos(origen: str, destino: str, ida: str, regreso: str, solicitud_id: int | None = None):
     """Devuelve (lista de vuelos, origen del dato, información de precios de la ruta)."""
-    nombre = f"vuelos_{origen}_{destino}_{ida}_{regreso}.json"
-    datos, origen_dato = _leer(nombre), "guardado"
+    inicio, nombre, fallo = time.perf_counter(), f"vuelos_{origen}_{destino}_{ida}_{regreso}.json", None
+    datos, origen_dato, clave = _leer(nombre), "guardado", nombre
     if datos is None and config.SERPAPI_KEY:
         try:
             datos = _consultar({"engine": "google_flights", "departure_id": origen, "arrival_id": destino,
@@ -142,19 +155,23 @@ def buscar_vuelos(origen: str, destino: str, ida: str, regreso: str, solicitud_i
                                "solicitud", solicitud_id, f"vuelos {origen}-{destino} {ida}")
             _guardar(nombre, datos)
             origen_dato = "en vivo"
-        except Exception:
-            datos = None
+        except Exception as e:
+            datos, fallo = None, e
+            _anotar("vuelos", nombre, "fallida", solicitud_id, inicio, error=e)
     if datos is None:
         otros = sorted(config.DIR_RESPALDO.glob(f"vuelos_{origen}_{destino}_*.json"))
         if otros:
-            datos, origen_dato = json.loads(otros[0].read_text()), "guardado (otras fechas)"
+            datos, origen_dato, clave = json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
     if datos is None:
+        if not fallo:
+            _anotar("vuelos", nombre, "fallida", solicitud_id, inicio, error=SIN_DATOS)
         return [], "sin datos", {}
     if origen_dato != "en vivo":
         eventos.registrar("solicitud", solicitud_id, "lectura de respaldo", f"vuelos {origen}-{destino}", origen_dato)
     if origen_dato in ("en vivo", "guardado"):
         registrar_observaciones(datos, origen, destino, ida, regreso, "formulario" if solicitud_id else "recolector")
     vuelos = [_vuelo(f) for f in datos.get("best_flights", []) + datos.get("other_flights", []) if f.get("price")]
+    _anotar("vuelos", clave, origen_dato, solicitud_id, inicio, [v["precio"] for v in vuelos])
     return vuelos, origen_dato, datos.get("price_insights", {})
 
 
@@ -190,12 +207,12 @@ def tarifas_de_vuelo(origen: str, destino: str, ida: str, regreso: str, vuelo: d
                      solicitud_id: int | None = None, permitir_en_vivo: bool = False):
     """Familias tarifarias de un vuelo (dos consultas en vivo). Devuelve (tarifas, origen del dato)."""
     clave = "".join(n.replace(" ", "") for n in vuelo["numeros"])
-    nombre = f"tarifas_{origen}_{destino}_{ida}_{regreso}_{clave}.json"
-    datos, origen_dato = _leer(nombre), "guardado"
+    inicio, nombre = time.perf_counter(), f"tarifas_{origen}_{destino}_{ida}_{regreso}_{clave}.json"
+    datos, origen_dato, usada = _leer(nombre), "guardado", nombre
     if datos is None:
         otros = sorted(config.DIR_RESPALDO.glob(f"tarifas_{origen}_{destino}_*_{clave}.json"))
         if otros:
-            datos, origen_dato = json.loads(otros[0].read_text()), "guardado (otras fechas)"
+            datos, origen_dato, usada = json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
     if datos is None and permitir_en_vivo and config.SERPAPI_KEY and vuelo.get("token"):
         base = {"engine": "google_flights", "departure_id": origen, "arrival_id": destino,
                 "outbound_date": ida, "return_date": regreso}
@@ -206,18 +223,21 @@ def tarifas_de_vuelo(origen: str, destino: str, ida: str, regreso: str, vuelo: d
                                  "solicitud", solicitud_id, f"tarifas de {clave}")
             datos, origen_dato = {"regreso": vuelta, "reserva": reserva}, "en vivo"
             _guardar(nombre, datos)
-        except Exception:
+        except Exception as e:
             datos = None
+            _anotar("tarifas", nombre, "fallida", solicitud_id, inicio, error=e)
     if datos is None:
+        # Sin tarifas guardadas y sin permiso para consultar no se buscó nada: se supone la tarifa básica y no hay rastro que dejar
         return [], "sin datos"
     tarifas = [t for t in (_tarifa(o) for o in datos["reserva"].get("booking_options", [])) if t]
+    _anotar("tarifas", usada, origen_dato, solicitud_id, inicio, [t["precio"] for t in tarifas])
     return tarifas, origen_dato
 
 
 def buscar_hoteles(ciudad: str, entrada: str, salida: str, solicitud_id: int | None = None):
     """Devuelve (lista de hoteles, origen del dato)."""
-    nombre = f"hoteles_{_slug(ciudad)}_{entrada}_{salida}.json"
-    datos, origen_dato = _leer(nombre), "guardado"
+    inicio, nombre, fallo = time.perf_counter(), f"hoteles_{_slug(ciudad)}_{entrada}_{salida}.json", None
+    datos, origen_dato, clave = _leer(nombre), "guardado", nombre
     if datos is None and config.SERPAPI_KEY:
         try:
             datos = _consultar({"engine": "google_hotels", "q": f"{ciudad} hotels", "check_in_date": entrada,
@@ -225,13 +245,16 @@ def buscar_hoteles(ciudad: str, entrada: str, salida: str, solicitud_id: int | N
                                "solicitud", solicitud_id, f"hoteles {ciudad} {entrada}")
             _guardar(nombre, datos)
             origen_dato = "en vivo"
-        except Exception:
-            datos = None
+        except Exception as e:
+            datos, fallo = None, e
+            _anotar("hoteles", nombre, "fallida", solicitud_id, inicio, error=e)
     if datos is None:
         otros = sorted(config.DIR_RESPALDO.glob(f"hoteles_{_slug(ciudad)}_*.json"))
         if otros:
-            datos, origen_dato = json.loads(otros[0].read_text()), "guardado (otras fechas)"
+            datos, origen_dato, clave = json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
     if datos is None:
+        if not fallo:
+            _anotar("hoteles", nombre, "fallida", solicitud_id, inicio, error=SIN_DATOS)
         return [], "sin datos"
     if origen_dato != "en vivo":
         eventos.registrar("solicitud", solicitud_id, "lectura de respaldo", f"hoteles {ciudad}", origen_dato)
@@ -250,4 +273,5 @@ def buscar_hoteles(ciudad: str, entrada: str, salida: str, solicitud_id: int | N
             "clase": h.get("extracted_hotel_class"),
             "vendedores": [p.get("source") for p in h.get("prices", []) if p.get("source")],
         })
+    _anotar("hoteles", clave, origen_dato, solicitud_id, inicio, [h["total"] for h in hoteles])
     return hoteles, origen_dato
