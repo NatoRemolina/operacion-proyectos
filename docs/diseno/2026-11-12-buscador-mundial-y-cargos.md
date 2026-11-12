@@ -58,7 +58,7 @@ Boceto aprobado: un campo con sugerencias (lugar, región, país y aeropuertos c
 - Que se proponga un aeropuerto sin vuelos comerciales regulares (pistas privadas, helipuertos, bases militares).
 - Que el autocompletado tarde más de lo que tarda en escribirse una letra (objetivo: menos de 300 ms en local).
 - Que una cuenta existente pierda acceso o cambie lo que ve tras la migración.
-- Que los datos de una persona salgan a un servicio externo al sugerir lugares.
+- Que los datos de una persona salgan a un servicio externo al sugerir lugares (el autocompletado de Google recibe solo el texto del campo de lugar).
 
 ## Restricciones
 
@@ -166,9 +166,16 @@ Toda búsqueda queda guardada; la opción elegida, además, se carga completa en
 - **Seguridad:** antes de guardar una respuesta se elimina `booking_request` (URL y `post_data`). La plataforma nunca ejecuta una reserva; se limpia también la respuesta de tarifas ya versionada.
 - **Sin costo de búsquedas,** con lo que ya traen las respuestas: las `extensions` del itinerario corrigen el costo estimado (cambio gratis, cambio con cargo, maleta incluida, reembolso); `often_delayed_by_over_30_min` avisa si el retraso habitual compromete la hora límite; `layovers` avisa de escalas de menos de 60 minutos o nocturnas.
 
-## Proveedor de lugares intercambiable
+## Autocompletado: datos locales más el de Google, activo
 
-El autocompletado del buscador usa datos locales en el MVP. El autocompletado de Google queda como proveedor alternativo, apagado por defecto (`PROVEEDOR_LUGARES=local`), para cuando la empresa contrate un plan que lo cubra (`PROVEEDOR_LUGARES=serpapi`). Con ese proveedor cada respuesta también se guarda y se registra.
+Decisión de la dueña (12 nov): el autocompletado de Google queda **activo**, combinado con los datos locales.
+
+- Mientras se escribe, las sugerencias locales aparecen al instante (pueblos, distancias en km, sin costo).
+- Cuando la persona hace una pausa (400 ms) y lleva al menos 3 letras, se consulta `engine=google_flights_autocomplete` y sus ciudades y aeropuertos se suman a la lista, marcados como «Google». Un aeropuerto que llega por Google y no está en los datos locales se puede elegir igual.
+- **Cada respuesta se guarda** (tabla `busquedas`, clave por texto normalizado) y deja su fila en `consultas_buscador` con el tipo `autocompletado`. El mismo texto nunca se paga dos veces: se sirve de lo guardado.
+- **Topes para cuidar el plan:** regla `tope_autocompletado_mes` (por defecto 60 de las 250 búsquedas del mes) y `tope_autocompletado_persona_dia` (por defecto 15). Alcanzado un tope, o sin clave, el buscador sigue solo con los datos locales y lo dice en el pie de la lista.
+- Se puede apagar con `PROVEEDOR_LUGARES=local`; el valor por defecto es `local+google`.
+- Lo que se envía a Google es solo el texto escrito en el campo de lugar, nunca datos de la persona.
 
 ## Para después de la entrega
 
