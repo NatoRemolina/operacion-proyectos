@@ -1,6 +1,13 @@
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { esperar, exigirSesion, paginar, type SesionMemoria } from "@/shared/infrastructure/memoria";
-import { validarArchivo, type GastoDetalle, type GastosRepository } from "../domain/gastos";
+import {
+  JUSTIFICACION_MINIMO,
+  limpiarJustificacion,
+  validarArchivo,
+  type GastoDetalle,
+  type GastosRepository,
+  type Justificacion,
+} from "../domain/gastos";
 
 export interface ViajePropioMemoria {
   readonly id: number;
@@ -31,6 +38,15 @@ export function crearGastosMemoria(opciones: {
   const archivos = new Map<number, File>();
   const urls = new Map<number, string>();
   let siguienteId = Math.max(1000, ...gastos.map((g) => g.id)) + 1;
+  let siguienteJustificacion = 1;
+  const nuevaJustificacion = (texto: string): Justificacion => ({
+    id: siguienteJustificacion++,
+    tipo: "texto",
+    canal: "web",
+    texto,
+    transcripcion: "no_aplica",
+    creado: new Date().toISOString(),
+  });
 
   const firmaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.lastModified}`;
 
@@ -53,7 +69,7 @@ export function crearGastosMemoria(opciones: {
       return gasto;
     },
 
-    async enviar({ archivo, viajeId, claveIdempotencia }, signal) {
+    async enviar({ archivo, viajeId, claveIdempotencia, justificacion }, signal) {
       await esperar(latenciaMs, signal);
       exigirSesion(sesion);
       const invalido = validarArchivo(archivo);
@@ -102,11 +118,32 @@ export function crearGastosMemoria(opciones: {
         canal: "web",
         documento_id: id,
         lectura: { origen: "demostracion", confianza: esPdf ? 0.41 : 0.97 },
+        justificaciones:
+          limpiarJustificacion(justificacion ?? "").length >= JUSTIFICACION_MINIMO
+            ? [nuevaJustificacion(limpiarJustificacion(justificacion ?? ""))]
+            : [],
       };
       gastos.unshift(gasto);
       archivos.set(id, archivo);
       porClave.set(claveIdempotencia, { firma: firmaDe(archivo), gasto });
       return gasto;
+    },
+
+    async justificar(id, texto, signal) {
+      await esperar(latenciaMs, signal);
+      exigirSesion(sesion);
+      const indice = gastos.findIndex((g) => g.id === id);
+      if (indice < 0) throw new ErrorDeAplicacion("no_encontrado");
+      const limpio = limpiarJustificacion(texto);
+      if (limpio.length < JUSTIFICACION_MINIMO) {
+        throw new ErrorDeAplicacion("validacion", {
+          campos: { texto: "Escribe para qué fue el gasto, aunque sea en pocas palabras." },
+        });
+      }
+      const actual = gastos[indice]!;
+      const nuevo = { ...actual, justificaciones: [...actual.justificaciones, nuevaJustificacion(limpio)] };
+      gastos[indice] = nuevo;
+      return nuevo;
     },
 
     urlOriginal(documentoId) {

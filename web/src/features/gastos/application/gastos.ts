@@ -7,6 +7,7 @@ import { crearContextoRepositorio } from "@/shared/application/contexto-reposito
 import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
 import { ErrorDeAplicacion, comoErrorDeAplicacion } from "@/shared/domain/errores";
 import {
+  problemaDeJustificacion,
   validarArchivo,
   type FiltroGastos,
   type GastoDetalle,
@@ -60,10 +61,14 @@ export function useEnvioRecibo() {
   const [seleccion, setSeleccion] = useState<{ archivo: File; clave: string } | null>(null);
   const [errorPrevio, setErrorPrevio] = useState<ErrorDeAplicacion | null>(null);
 
-  const mutacion = useMutation<GastoDetalle, ErrorDeAplicacion, { archivo: File; clave: string; viajeId: number | null }>({
-    mutationFn: async ({ archivo, clave, viajeId }) => {
+  const mutacion = useMutation<
+    GastoDetalle,
+    ErrorDeAplicacion,
+    { archivo: File; clave: string; viajeId: number | null; justificacion: string }
+  >({
+    mutationFn: async ({ archivo, clave, viajeId, justificacion }) => {
       try {
-        return await repositorio.enviar({ archivo, viajeId, claveIdempotencia: clave });
+        return await repositorio.enviar({ archivo, viajeId, claveIdempotencia: clave, justificacion });
       } catch (error) {
         throw comoErrorDeAplicacion(error);
       }
@@ -93,7 +98,7 @@ export function useEnvioRecibo() {
   );
 
   const enviar = useCallback(
-    (viajeId: number | null) => {
+    (viajeId: number | null, justificacion = "") => {
       if (!seleccion || isPending) return;
       const invalido = validarArchivo(seleccion.archivo);
       if (invalido) {
@@ -101,7 +106,7 @@ export function useEnvioRecibo() {
         return;
       }
       setErrorPrevio(null);
-      mutate({ ...seleccion, viajeId });
+      mutate({ ...seleccion, viajeId, justificacion });
     },
     [seleccion, isPending, mutate],
   );
@@ -121,5 +126,52 @@ export function useEnvioRecibo() {
     enviando: isPending,
     resultado: mutacion.data ?? null,
     error: errorPrevio ?? mutacion.error ?? null,
+  };
+}
+
+/**
+ * Caso de uso «justificar un gasto»: la persona cuenta para qué fue. La regla de longitud se revisa
+ * antes de llamar al servidor, que la vuelve a aplicar.
+ */
+export function useJustificacion(id: number) {
+  const repositorio = useGastosRepository();
+  const personaId = usePersonaId();
+  const queryClient = useQueryClient();
+  const [errorPrevio, setErrorPrevio] = useState<string | null>(null);
+  const mutacion = useMutation<GastoDetalle, ErrorDeAplicacion, string>({
+    mutationFn: async (texto) => {
+      try {
+        return await repositorio.justificar(id, texto);
+      } catch (error) {
+        throw comoErrorDeAplicacion(error);
+      }
+    },
+    onSuccess: (gasto) => {
+      queryClient.setQueryData(claveDePersona(personaId, "gastos", "detalle", gasto.id), gasto);
+    },
+  });
+  const { mutate, reset, isPending } = mutacion;
+
+  const justificar = useCallback(
+    (texto: string, alTerminar?: () => void) => {
+      if (isPending) return;
+      const problema = problemaDeJustificacion(texto);
+      setErrorPrevio(problema);
+      if (problema) return;
+      mutate(texto, { onSuccess: () => alTerminar?.() });
+    },
+    [isPending, mutate],
+  );
+
+  return {
+    justificar,
+    guardando: isPending,
+    guardada: mutacion.isSuccess,
+    errorTexto: errorPrevio,
+    error: mutacion.error ?? null,
+    limpiar: useCallback(() => {
+      reset();
+      setErrorPrevio(null);
+    }, [reset]),
   };
 }

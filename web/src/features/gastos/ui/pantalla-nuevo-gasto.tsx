@@ -77,6 +77,7 @@ export function PantallaNuevoGasto() {
   const envio = useEnvioRecibo();
   const viajes = useViajesParaRecibo();
   const [viajeId, setViajeId] = useState("");
+  const [justificacion, setJustificacion] = useState("");
   const vistaPrevia = useVistaPrevia();
 
   const archivo: ArchivoElegido | null = envio.archivo
@@ -117,6 +118,7 @@ export function PantallaNuevoGasto() {
             envio.reiniciar();
             vistaPrevia.mostrar(null);
             setViajeId("");
+            setJustificacion("");
           }}
         />
       ) : (
@@ -137,7 +139,9 @@ export function PantallaNuevoGasto() {
           cargandoViajes={viajes.isPending}
           viajeId={viajeId}
           onCambiarViaje={setViajeId}
-          onEnviar={() => envio.enviar(viajeId ? Number(viajeId) : null)}
+          justificacion={justificacion}
+          onCambiarJustificacion={setJustificacion}
+          onEnviar={() => envio.enviar(viajeId ? Number(viajeId) : null, justificacion)}
           enviando={envio.enviando}
           error={envio.error ? describirError(envio.error) : null}
         />

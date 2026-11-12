@@ -17,6 +17,19 @@ export interface GastoResumen {
   readonly creado: string;
 }
 
+export type TipoJustificacion = "texto" | "audio";
+export type EstadoTranscripcion = "no_aplica" | "pendiente" | "hecha" | "fallida";
+
+/** Para qué fue el gasto, con las palabras de la persona (escritas o transcritas de una nota de voz). */
+export interface Justificacion {
+  readonly id: number;
+  readonly tipo: TipoJustificacion;
+  readonly canal: string;
+  readonly texto: string | null;
+  readonly transcripcion: EstadoTranscripcion;
+  readonly creado: string;
+}
+
 export interface GastoDetalle extends GastoResumen {
   readonly subtotal: Dinero;
   readonly impuesto: Dinero;
@@ -26,6 +39,7 @@ export interface GastoDetalle extends GastoResumen {
   readonly canal: string;
   readonly documento_id: number | null;
   readonly lectura: { readonly origen: string; readonly confianza: number | null };
+  readonly justificaciones: readonly Justificacion[];
 }
 
 export interface FiltroGastos extends OpcionesListado {
@@ -39,6 +53,8 @@ export interface EnvioRecibo {
   readonly viajeId: number | null;
   /** Una por archivo; se repite si se reintenta el mismo envío. */
   readonly claveIdempotencia: string;
+  /** Opcional: para qué fue el gasto. Vacía no se envía. */
+  readonly justificacion?: string;
 }
 
 export interface GastosRepository {
@@ -48,6 +64,23 @@ export interface GastosRepository {
   enviar(envio: EnvioRecibo, signal?: AbortSignal): Promise<GastoDetalle>;
   /** Dirección del archivo original, o `null` si esta fuente no lo conserva. */
   urlOriginal(documentoId: number): string | null;
+  /** Añade una justificación escrita. Solo puede hacerlo quien hizo el gasto o quien viaja. */
+  justificar(id: number, texto: string, signal?: AbortSignal): Promise<GastoDetalle>;
+}
+
+export const JUSTIFICACION_MINIMO = 3;
+export const JUSTIFICACION_MAXIMO = 2000;
+
+/** Normaliza los espacios; la misma regla que aplica el servidor. */
+export function limpiarJustificacion(texto: string): string {
+  return texto.split(/\s+/).filter(Boolean).join(" ").slice(0, JUSTIFICACION_MAXIMO);
+}
+
+/** `null` si se puede enviar; si no, el texto que explica qué falta. */
+export function problemaDeJustificacion(texto: string): string | null {
+  return limpiarJustificacion(texto).length < JUSTIFICACION_MINIMO
+    ? "Escribe para qué fue el gasto, aunque sea en pocas palabras."
+    : null;
 }
 
 export const TAMANO_MAXIMO_BYTES = 4.5 * 1024 * 1024;

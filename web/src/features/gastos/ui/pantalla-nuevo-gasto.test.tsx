@@ -19,6 +19,7 @@ function repositorioQueResponde(...respuestas: Array<GastoDetalle | ErrorDeAplic
     obtener: async () => gastoDePrueba(),
     enviar,
     urlOriginal: () => null,
+    justificar: () => Promise.resolve(gastoDePrueba()),
   };
   return { repositorio, enviar };
 }
@@ -57,7 +58,7 @@ describe("Cargar un gasto", () => {
     expect(enviar.mock.calls[0]![0]).toMatchObject({ viajeId: null });
   });
 
-  it("si queda en revisión lo dice sin pedir nada a la persona", async () => {
+  it("si queda en revisión lo dice y sugiere contar para qué fue", async () => {
     const usuario = userEvent.setup();
     const { repositorio } = repositorioQueResponde(
       gastoDePrueba({ alertas: ["No se pudo leer la fecha."] }),
@@ -68,7 +69,9 @@ describe("Cargar un gasto", () => {
     await usuario.click(screen.getByRole("button", { name: "Enviar recibo" }));
 
     expect(
-      await screen.findByText("En revisión: administración lo revisa; no tienes que hacer nada."),
+      await screen.findByText(
+        "En revisión: administración lo revisa. Si cuentas en el detalle para qué fue, se resuelve antes.",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText("No se pudo leer la fecha.")).toBeInTheDocument();
     expect(screen.queryByText("Aprobado")).not.toBeInTheDocument();
@@ -154,5 +157,18 @@ describe("Cargar un gasto", () => {
       "href",
       "/entrar?volver=%2Fgastos%2Fnuevo",
     );
+  });
+
+  it("la justificación escrita viaja con el recibo, sin espacios sobrantes en el adaptador", async () => {
+    const usuario = userEvent.setup();
+    const { repositorio, enviar } = repositorioQueResponde(gastoDePrueba());
+    renderizarConFuente(<PantallaNuevoGasto />, { gastos: repositorio, viajes });
+
+    await usuario.upload(screen.getByLabelText("Elegir archivo"), foto());
+    await usuario.type(screen.getByLabelText("¿Para qué fue este gasto?"), "Taxi del hotel al set");
+    await usuario.click(screen.getByRole("button", { name: "Enviar recibo" }));
+
+    await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
+    expect(enviar.mock.calls[0]![0].justificacion).toBe("Taxi del hotel al set");
   });
 });

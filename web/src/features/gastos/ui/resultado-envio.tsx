@@ -33,7 +33,14 @@ export function ResultadoEnvio({
           </p>
         </Alerta>
       ) : resultado === "revision" ? (
-        <Alerta tono="aviso" titulo="En revisión: administración lo revisa; no tienes que hacer nada.">
+        <Alerta
+          tono="aviso"
+          titulo={
+            gasto.justificaciones.length
+              ? "En revisión: administración lo revisa con lo que contaste."
+              : "En revisión: administración lo revisa. Si cuentas en el detalle para qué fue, se resuelve antes."
+          }
+        >
           {gasto.alertas.length > 0 ? (
             <ul className="list-disc pl-5">
               {gasto.alertas.map((alerta) => (

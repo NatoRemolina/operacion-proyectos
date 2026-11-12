@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 const CONTROL =
   "block min-h-11 w-full rounded-lg border border-borde-campo bg-superficie px-3 py-2 text-base text-texto " +
@@ -80,6 +80,31 @@ export function CampoSelector({
       >
         {children}
       </select>
+      <Pie id={id} ayuda={ayuda} error={error} />
+    </div>
+  );
+}
+
+export function CampoAreaTexto({
+  id,
+  etiqueta,
+  ayuda,
+  error,
+  ...area
+}: PropsComunes & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "id">) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="font-semibold">
+        {etiqueta}
+      </label>
+      <textarea
+        id={id}
+        rows={3}
+        className={`${CONTROL} resize-y`}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, ayuda, error)}
+        {...area}
+      />
       <Pie id={id} ayuda={ayuda} error={error} />
     </div>
   );

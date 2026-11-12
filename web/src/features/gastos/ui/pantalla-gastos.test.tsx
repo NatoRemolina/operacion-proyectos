@@ -53,6 +53,7 @@ describe("Mis gastos con fuentes intercambiables (ARCH-01)", () => {
       obtener: async () => gastoDePrueba(),
       enviar: async () => gastoDePrueba(),
       urlOriginal: () => null,
+      justificar: () => Promise.resolve(gastoDePrueba()),
     };
 
     renderizarConFuente(<PantallaGastos />, { gastos: otraFuente });
@@ -71,6 +72,7 @@ describe("Mis gastos con fuentes intercambiables (ARCH-01)", () => {
       obtener: () => Promise.reject(new ErrorDeAplicacion("sesion_vencida")),
       enviar: () => Promise.reject(new ErrorDeAplicacion("sesion_vencida")),
       urlOriginal: () => null,
+      justificar: () => Promise.resolve(gastoDePrueba()),
     };
     renderizarConFuente(<PantallaGastos />, { gastos: vencida });
     expect(await screen.findByRole("alert")).toHaveTextContent("Tu sesión venció");

@@ -101,6 +101,7 @@ function gasto(datos: Partial<GastoDetalle> & Pick<GastoDetalle, "id" | "estado"
     canal: "web",
     documento_id: null,
     lectura: { origen: "demostracion", confianza: null },
+    justificaciones: [],
     ...datos,
   };
 }
@@ -137,6 +138,16 @@ export const GASTOS_DEMO: GastoDetalle[] = [
     impuesto: "39.60",
     creado: "2026-11-10T03:12:00Z",
     lectura: { origen: "demostracion", confianza: 0.96 },
+    justificaciones: [
+      {
+        id: 1,
+        tipo: "audio",
+        canal: "telegram",
+        texto: "Dos noches en el hotel más cercano al set para salir a las cinco con el dron cargado.",
+        transcripcion: "hecha",
+        creado: "2026-11-10T03:20:00Z",
+      },
+    ],
   }),
   gasto({
     id: 102,

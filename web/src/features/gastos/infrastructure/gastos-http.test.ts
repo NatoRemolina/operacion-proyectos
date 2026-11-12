@@ -134,6 +134,42 @@ describe("adaptador HTTP de gastos", () => {
     expect((fetchFalso.mock.calls[0]![1]?.body as FormData).has("viaje_id")).toBe(false);
   });
 
+  it("enviar con justificación la manda limpia; vacía no se manda", async () => {
+    const { fetchFalso, gastos } = preparar(
+      respuestaJson(gastoDePrueba(), 201),
+      respuestaJson(gastoDePrueba(), 201),
+    );
+    const archivo = new File(["x"], "recibo.jpg", { type: "image/jpeg" });
+    await gastos.enviar({ archivo, viajeId: null, claveIdempotencia: "a", justificacion: "  Peaje   hacia el lago " });
+    await gastos.enviar({ archivo, viajeId: null, claveIdempotencia: "b", justificacion: "   " });
+    expect((fetchFalso.mock.calls[0]![1]?.body as FormData).get("justificacion")).toBe("Peaje hacia el lago");
+    expect((fetchFalso.mock.calls[1]![1]?.body as FormData).has("justificacion")).toBe(false);
+  });
+
+  it("justificar: JSON al endpoint del gasto y valida las justificaciones de la respuesta", async () => {
+    const respuesta = gastoDePrueba({
+      justificaciones: [
+        { id: 4, tipo: "texto", canal: "api", texto: "Cena del equipo", transcripcion: "no_aplica", creado: "2026-11-12T10:00:00Z" },
+      ],
+    });
+    const { fetchFalso, gastos } = preparar(respuestaJson(respuesta, 201));
+    const gasto = await gastos.justificar(123, " Cena  del equipo ");
+    expect(gasto.justificaciones[0]?.texto).toBe("Cena del equipo");
+    const [url, init] = fetchFalso.mock.calls[0]!;
+    expect(url).toBe("/api/v1/gastos/123/justificaciones");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ texto: "Cena del equipo" });
+  });
+
+  it("justificar: 403 es «prohibido» y una respuesta sin justificaciones rompe el contrato", async () => {
+    const { gastos } = preparar(
+      errorApi(403, "FORBIDDEN"),
+      respuestaJson({ ...gastoDePrueba(), justificaciones: undefined }, 201),
+    );
+    expect((await errorDe(gastos.justificar(123, "Lo justifico yo"))).tipo).toBe("prohibido");
+    expect((await errorDe(gastos.justificar(123, "Otra vez"))).tipo).toBe("contrato");
+  });
+
   it("la dirección del original apunta a la API", () => {
     const { gastos } = preparar();
     expect(gastos.urlOriginal(55)).toBe("/api/v1/documentos/55/contenido");

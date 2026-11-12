@@ -5,6 +5,7 @@ import { Cargando } from "@/shared/ui/estado";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
 import { useGasto, useUrlOriginal } from "../application/gastos";
 import { DetalleGasto } from "./detalle-gasto";
+import { JustificacionGasto } from "./justificacion-gasto";
 
 export function PantallaDetalleGasto({ id }: { id: number }) {
   const consulta = useGasto(id);
@@ -17,7 +18,10 @@ export function PantallaDetalleGasto({ id }: { id: number }) {
         </Link>
       </p>
       {consulta.data ? (
-        <DetalleGasto gasto={consulta.data} urlOriginal={urlOriginal} />
+        <>
+          <DetalleGasto gasto={consulta.data} urlOriginal={urlOriginal} />
+          <JustificacionGasto gasto={consulta.data} />
+        </>
       ) : consulta.error ? (
         <>
           <h1 className="text-2xl font-extrabold">Detalle del gasto</h1>

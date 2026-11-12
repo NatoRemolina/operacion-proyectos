@@ -35,4 +35,17 @@ describe("adaptador en memoria de gastos", () => {
     const gastos = crearGastosMemoria({ sesion: crearSesionMemoria() });
     await expect(gastos.listar({})).rejects.toMatchObject({ tipo: "sesion_vencida" });
   });
+
+  it("guarda la justificación al enviar y al justificar después; rechaza una demasiado corta", async () => {
+    const gastos = crearGastosMemoria({ viajesPropios });
+    const archivo = new File(["a"], "a.jpg", { type: "image/jpeg" });
+    const gasto = await gastos.enviar({ archivo, viajeId: null, claveIdempotencia: "j", justificacion: " Taxi  al set " });
+    expect(gasto.justificaciones.map((j) => j.texto)).toEqual(["Taxi al set"]);
+
+    const despues = await gastos.justificar(gasto.id, "Era de madrugada y no había otro transporte");
+    expect(despues.justificaciones).toHaveLength(2);
+    expect((await gastos.obtener(gasto.id)).justificaciones).toHaveLength(2);
+    await expect(gastos.justificar(gasto.id, "ok")).rejects.toMatchObject({ tipo: "validacion" });
+    await expect(gastos.justificar(999, "No existe este gasto")).rejects.toMatchObject({ tipo: "no_encontrado" });
+  });
 });

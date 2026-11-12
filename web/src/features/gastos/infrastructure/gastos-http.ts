@@ -5,7 +5,13 @@ import {
   paginaSchema,
   type ClienteHttp,
 } from "@/shared/infrastructure/cliente-http";
-import type { GastoDetalle, GastoResumen, GastosRepository } from "../domain/gastos";
+import {
+  limpiarJustificacion,
+  type GastoDetalle,
+  type GastoResumen,
+  type GastosRepository,
+  type Justificacion,
+} from "../domain/gastos";
 
 export const gastoResumenSchema = z.object({
   id: z.number().int().positive(),
@@ -21,6 +27,15 @@ export const gastoResumenSchema = z.object({
   creado: z.string(),
 }) satisfies z.ZodType<GastoResumen>;
 
+export const justificacionSchema = z.object({
+  id: z.number().int().positive(),
+  tipo: z.enum(["texto", "audio"]),
+  canal: z.string(),
+  texto: z.string().nullable(),
+  transcripcion: z.enum(["no_aplica", "pendiente", "hecha", "fallida"]),
+  creado: z.string(),
+}) satisfies z.ZodType<Justificacion>;
+
 export const gastoDetalleSchema = gastoResumenSchema.extend({
   subtotal: dineroSchema,
   impuesto: dineroSchema,
@@ -30,6 +45,7 @@ export const gastoDetalleSchema = gastoResumenSchema.extend({
   canal: z.string(),
   documento_id: z.number().int().nullable(),
   lectura: z.object({ origen: z.string(), confianza: z.number().nullable() }),
+  justificaciones: z.array(justificacionSchema),
 }) satisfies z.ZodType<GastoDetalle>;
 
 const listaSchema = paginaSchema(gastoResumenSchema);
@@ -48,14 +64,23 @@ export function crearGastosHttp(cliente: ClienteHttp): GastosRepository {
     obtener(id, signal) {
       return cliente.get(`/gastos/${encodeURIComponent(id)}`, gastoDetalleSchema, { signal });
     },
-    enviar({ archivo, viajeId, claveIdempotencia }, signal) {
+    enviar({ archivo, viajeId, claveIdempotencia, justificacion }, signal) {
       const formulario = new FormData();
       formulario.append("archivo", archivo, archivo.name);
       if (viajeId !== null) formulario.append("viaje_id", String(viajeId));
+      const motivo = limpiarJustificacion(justificacion ?? "");
+      if (motivo) formulario.append("justificacion", motivo);
       return cliente.postFormulario("/gastos", formulario, gastoDetalleSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
         signal,
       });
+    },
+    justificar(id, texto) {
+      return cliente.postJson(
+        `/gastos/${encodeURIComponent(id)}/justificaciones`,
+        { texto: limpiarJustificacion(texto) },
+        gastoDetalleSchema,
+      );
     },
     urlOriginal(documentoId) {
       return cliente.url(`/documentos/${encodeURIComponent(documentoId)}/contenido`);

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Boton, clasesBoton } from "@/shared/ui/boton";
-import { CampoSelector } from "@/shared/ui/campo";
+import { JUSTIFICACION_MAXIMO } from "../domain/gastos";
+import { CampoAreaTexto, CampoSelector } from "@/shared/ui/campo";
 import { Alerta, InsigniaEstado } from "@/shared/ui/estado";
 import { formatearTamano } from "@/shared/ui/formato";
 
@@ -161,6 +162,8 @@ export function FormularioRecibo({
   cargandoViajes,
   viajeId,
   onCambiarViaje,
+  justificacion,
+  onCambiarJustificacion,
   onEnviar,
   enviando,
   error,
@@ -171,6 +174,8 @@ export function FormularioRecibo({
   cargandoViajes: boolean;
   viajeId: string;
   onCambiarViaje: (valor: string) => void;
+  justificacion: string;
+  onCambiarJustificacion: (valor: string) => void;
   onEnviar: () => void;
   enviando: boolean;
   error: ErrorEnvio | null;
@@ -245,6 +250,22 @@ export function FormularioRecibo({
             </figcaption>
           </figure>
         ) : null}
+      </section>
+
+      <section aria-labelledby="titulo-para-que" className={TARJETA}>
+        <h2 id="titulo-para-que" className="sr-only">
+          Para qué fue el gasto
+        </h2>
+        <CampoAreaTexto
+          id="justificacion"
+          etiqueta="¿Para qué fue este gasto?"
+          ayuda="Opcional, pero ayuda a quien revisa. También puedes contarlo después desde el detalle del gasto o con una nota de voz por Telegram."
+          placeholder="Por ejemplo: taxi del hotel al set con el equipo del dron"
+          maxLength={JUSTIFICACION_MAXIMO}
+          value={justificacion}
+          onChange={(e) => onCambiarJustificacion(e.target.value)}
+          disabled={enviando}
+        />
       </section>
 
       {error ? (

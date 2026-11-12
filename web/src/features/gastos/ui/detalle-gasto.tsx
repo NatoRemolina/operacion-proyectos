@@ -38,7 +38,14 @@ export function DetalleGasto({
       </div>
 
       {gasto.estado === "revision" ? (
-        <Alerta tono="aviso" titulo="En revisión: administración lo revisa; no tienes que hacer nada." />
+        <Alerta
+          tono="aviso"
+          titulo={
+            gasto.justificaciones.length
+              ? "En revisión: administración lo revisa con lo que contaste."
+              : "En revisión: administración lo revisa. Si cuentas abajo para qué fue, se resuelve antes."
+          }
+        />
       ) : null}
 
       {gasto.alertas.length > 0 ? (
