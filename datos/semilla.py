@@ -56,8 +56,9 @@ def sembrar():
         for ambito, entidad, tarifa, clave, valor, nota, fuente, confianza in REGLAS:
             db.insertar("reglas", ambito=ambito, entidad=entidad, tarifa=tarifa, clave=clave, valor=valor,
                         nota=nota, fuente=fuente, confianza=confianza, verificado=HOY)
-    from app.servicios import precios
+    from app.servicios import geografia, precios
     precios.cargar_respaldos()
+    geografia.cargar()   # aeropuertos, lugares y países del mundo; sin cambios no recarga, pero deja su registro
     asegurar_supuestos()
     from app.servicios import asistente, kpis  # metas de los indicadores y tope del asistente, visibles en Reglas desde el inicio
     kpis.asegurar_metas()

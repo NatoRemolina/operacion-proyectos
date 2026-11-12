@@ -12,6 +12,8 @@ os.environ.update({
     "ENTORNO": "local", "DATABASE_URL": f"sqlite:///{_tmp / 'pruebas.db'}",
     "SERPAPI_KEY": "", "MODELO_API_URL": "", "MODELO_API_KEY": "", "MODELO_NOMBRE": "",
     "SUPABASE_URL": "", "SUPABASE_SERVICE_KEY": "", "APP_CLAVE": "", "SECRETO_ARN": "",
+    # La semilla carga un subconjunto pequeño de los datos geográficos, no el mundo entero
+    "GEOGRAFIA_DIR": str(Path(__file__).parent / "datos" / "geografia_mini"),
 })
 
 import pytest  # noqa: E402
