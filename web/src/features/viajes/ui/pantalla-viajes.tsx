@@ -111,6 +111,7 @@ export function PantallaViajes({ estado }: { estado?: EstadoViaje }) {
   return (
     <div className="flex flex-col gap-6">
       <EncabezadoPagina
+        migas={[{ texto: "Operaciones" }, { texto: permiso === "colaborador" ? "Mis viajes" : "Viajes" }]}
         titulo={permiso === "colaborador" ? "Mis viajes" : "Viajes"}
         descripcion={
           esAdmin

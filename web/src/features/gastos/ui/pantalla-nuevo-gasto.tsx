@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useViajesParaRecibo } from "@/features/viajes/application/viajes";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { clasesBoton } from "@/shared/ui/boton";
+import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
 import { formatearRango } from "@/shared/ui/formato";
 import { useEnvioRecibo } from "../application/gastos";
 import { FormularioRecibo, type ArchivoElegido, type ErrorEnvio } from "./formulario-recibo";
@@ -107,12 +108,12 @@ export function PantallaNuevoGasto({ viajeInicial }: { viajeInicial?: number } =
 
   return (
     <section aria-labelledby="titulo-nuevo" className="flex max-w-xl flex-col gap-4">
-      <div>
-        <h1 id="titulo-nuevo" className="text-3xl font-bold">
-          Cargar un gasto
-        </h1>
-        <p className="mt-1 text-texto-secundario">Guarda el soporte ahora. Confirma los datos después.</p>
-      </div>
+      <EncabezadoPagina
+        idTitulo="titulo-nuevo"
+        migas={[{ texto: "Gastos", href: "/gastos" }, { texto: "Cargar un gasto" }]}
+        titulo="Cargar un gasto"
+        descripcion="Guarda el soporte ahora. Confirma los datos después."
+      />
 
       {/* Región viva única: anuncia elección, progreso y resultado sin mover el foco. */}
       <p role="status" aria-live="polite" className={envio.enviando ? "font-semibold text-marca" : "sr-only"}>

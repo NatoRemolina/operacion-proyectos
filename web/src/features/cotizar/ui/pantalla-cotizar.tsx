@@ -64,6 +64,7 @@ export function PantallaCotizar() {
     <section aria-labelledby="titulo-cotizar" className="flex flex-col gap-6">
       <EncabezadoPagina
         idTitulo="titulo-cotizar"
+        migas={[{ texto: "Operaciones" }, { texto: "Cotizar viaje" }]}
         titulo="Cotizar un viaje"
         descripcion="Escribe los lugares como en un buscador de vuelos: un país, una ciudad, un pueblo o el código de un aeropuerto. Se comparan los aeropuertos cercanos por el costo total esperado, no solo por el precio."
       />

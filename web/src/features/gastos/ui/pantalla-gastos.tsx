@@ -34,6 +34,7 @@ export function PantallaGastos({ estado: estadoInicial, viajeId: viajeInicial }:
   return (
     <div className="flex flex-col gap-6">
       <EncabezadoPagina
+        migas={[{ texto: "Operaciones" }, { texto: permiso === "colaborador" ? "Mis gastos" : "Gastos" }]}
         titulo={permiso === "colaborador" ? "Mis gastos" : "Gastos"}
         descripcion={
           esAdmin
