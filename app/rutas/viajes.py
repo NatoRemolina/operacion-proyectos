@@ -5,7 +5,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from .. import db
-from ..servicios import acceso, almacen, viajes
+from ..servicios import acceso, almacen, monitoreo_vuelos, viajes
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -48,21 +48,56 @@ def viaje_evidencia(vid: int, doc: int):
     return Response(contenido, media_type=d["mime"], headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
 
 
+CAMPOS_VUELO = ("id", "viaje_id", "codigo", "titular", "sentido", "orden", "aerolinea", "numero", "fecha", "desde", "hasta",
+                "sale_programada", "llega_programada", "llega_estimada", "estado", "estado_texto", "retraso", "retraso_salida",
+                "retraso_llegada", "terminal", "puerta", "consultas", "actualizado", "hace_min", "llegar_antes", "en_destino",
+                "no_llega", "omitida", "ultima_consulta", "aviso")
+
+
+@router.get("/admin/viajes/vuelos", tags=["api"])
+def viajes_vuelos(fecha: str = ""):
+    """Tramos para el tablero (los de ese día; sin fecha, los de hoy y los de ayer o mañana que están en su ventana).
+    Lo pide el tablero cada 15 s: cada tramo se consulta solo dentro de su ventana, fuera de la caché y de los topes."""
+    ahora, reglas = monitoreo_vuelos.momento_actual(), monitoreo_vuelos.reglas()
+    salida = []
+    for t in monitoreo_vuelos.tablero(monitoreo_vuelos.fecha_valida(fecha), ahora, reglas):
+        nuevo = monitoreo_vuelos.consultar(t["id"], ahora, reglas_=reglas)
+        t = monitoreo_vuelos.completar({**t, **{k: v for k, v in nuevo.items() if k in t}}, ahora)
+        salida.append({c: t.get(c) for c in CAMPOS_VUELO})
+    return salida
+
+
+@router.post("/admin/vuelos/{tramo_id}/actualizar")
+def vuelo_actualizar(tramo_id: int, fecha: str = Form("")):
+    """«Actualizar ahora»: salta la caché, nunca la ventana ni los topes."""
+    t = db.uno("select fecha, numero from tramos_vuelo where id=:i", i=tramo_id)
+    if not t:
+        return NO_ENCONTRADO
+    r = monitoreo_vuelos.consultar(tramo_id, forzar=True)
+    mensaje = f"{t['numero']}: estado actualizado." if r["consultado"] else f"{t['numero']}: no se consultó ({r['motivo']})."
+    dia = monitoreo_vuelos.fecha_valida(fecha)
+    return RedirectResponse(f"/admin/viajes?{'fecha=' + dia + '&' if dia else ''}aviso={quote(mensaje)}#vuelos", status_code=303)
+
+
 @router.get("/admin/viajes", response_class=HTMLResponse)
-def viajes_admin(request: Request, aviso: str = ""):
+def viajes_admin(request: Request, aviso: str = "", fecha: str = ""):
     todos_ = viajes.lista()
     for v in todos_:   # lo propio no se aprueba aquí: lo hace otra persona de administración
         v["propio"] = viajes.es_propio_de(v, _yo())
+        v["precio_por_confirmar"] = viajes.precio_por_confirmar(v["id"]) if v["estado"] == "pendiente_aprobacion" else None
+    fecha = monitoreo_vuelos.fecha_valida(fecha)
     return plantillas.TemplateResponse(request, "viajes_admin.html", _ctx(
-        hay_otro_admin=viajes.hay_otro_admin(_yo()),
+        hay_otro_admin=viajes.hay_otro_admin(_yo()), fecha=fecha, hoy=monitoreo_vuelos.hoy(),
+        vuelos=monitoreo_vuelos.tablero(fecha),
         aviso=aviso[:300], pendientes=[v for v in todos_ if v["estado"] == "pendiente_aprobacion"],
         abiertos=[v for v in todos_ if v["estado"] == "aprobado"],
         otros=[v for v in todos_ if v["estado"] in ("rechazado", "cerrado")]))
 
 
 @router.post("/admin/viajes/{vid}")
-def viaje_estado(vid: int, accion: str = Form(...), motivo: str = Form(""), volver: str = Form("")):
-    _, mensaje = viajes.cambiar_estado(vid, accion, motivo, _yo())
+def viaje_estado(vid: int, accion: str = Form(...), motivo: str = Form(""), volver: str = Form(""),
+                 confirmar_precio: str = Form("")):
+    _, mensaje = viajes.cambiar_estado(vid, accion, motivo, _yo(), confirmar_precio == "1")
     destino = f"/viaje/{vid}" if volver == "detalle" else "/admin/viajes"
     return RedirectResponse(f"{destino}?aviso={quote(mensaje)}", status_code=303)
 

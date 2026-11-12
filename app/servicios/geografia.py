@@ -34,6 +34,7 @@ lugares = db._tabla(
     "lugares",  # ciudades y pueblos de más de 1.000 habitantes; `id` es el de GeoNames
     Column("nombre", Text), Column("buscable", Text), Column("pais", Text), Column("region", Text),
     Column("lat", Float), Column("lon", Float), Column("poblacion", Integer),
+    Column("zona", Text),  # zona horaria IANA de GeoNames (por ejemplo America/Denver)
     # Sin índice por población a propósito: con él, ordenar las coincidencias obliga a recorrer toda la tabla por saltos
     Index("ix_lugares_buscable", "buscable"),
 )
@@ -115,7 +116,7 @@ def _lugares(directorio_: Path) -> list[dict]:
     regiones = {r["codigo"]: r["nombre"] for r in _leer(directorio_ / "regiones.csv")}
     return [{"id": int(r["id"]), "nombre": r["nombre"], "buscable": r["buscable"], "pais": r["pais"],
              "region": regiones.get(r["region"], ""), "lat": float(r["lat"]), "lon": float(r["lon"]),
-             "poblacion": int(r["poblacion"] or 0)} for r in _leer(directorio_ / "lugares.csv.gz")]
+             "poblacion": int(r["poblacion"] or 0), "zona": r.get("zona") or None} for r in _leer(directorio_ / "lugares.csv.gz")]
 
 
 def _paises(directorio_: Path) -> list[dict]:
@@ -224,6 +225,19 @@ def cercanos(lat: float, lon: float, radio_km: float | None = None, maximo: int 
             candidatos.append({"iata": a["iata"], "nombre": a["nombre"], "municipio": a["municipio"], "km": round(km, 1),
                                "grande": a["grande"]})
     return sorted(candidatos, key=lambda a: a["km"])[:maximo]
+
+
+def zona_horaria(lat: float, lon: float) -> str | None:
+    """Zona horaria IANA del lugar de GeoNames más cercano a unas coordenadas: la de la ciudad o el pueblo donde está
+    el aeropuerto, así que respeta las fronteras horarias dentro de un país (Pensacola en hora central, El Paso en hora
+    de montaña). None si no hay lugares con zona a unos cientos de kilómetros."""
+    for margen in (0.5, 2.0, 6.0):
+        filas = db.todos("""select lat, lon, zona from lugares where zona is not null and zona<>''
+                            and lat between :a and :b and lon between :c and :d""",
+                         a=lat - margen, b=lat + margen, c=lon - 2 * margen, d=lon + 2 * margen)
+        if filas:
+            return min(filas, key=lambda f: distancia_km(lat, lon, f["lat"], f["lon"]))["zona"]
+    return None
 
 
 def carretera() -> dict:

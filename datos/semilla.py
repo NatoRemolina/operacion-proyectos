@@ -117,6 +117,15 @@ SUPUESTOS_NUEVOS = [
     ("traslado_usd_km", "0.35", "Traslado por carretera sin carro de alquiler (taxi o transfer), ida y vuelta (USD por km)."),
     ("combustible_usd_km", "0.12", "Con carro de alquiler el traslado solo suma combustible y peajes, ida y vuelta (USD por km)."),
     ("costo_cambio_usd", "75", "Cargo por cambiar la fecha cuando el buscador dice «Ticket changes for a fee» (USD)."),
+    ("tolerancia_precio_aprobacion", "0.05", "Si al aprobar el precio reconfirmado del vuelo sube más que esto (0.05 = 5 %), administración lo confirma antes de aprobar."),
+    # Monitoreo del vuelo el día del viaje
+    ("monitoreo_horas_antes", "3", "El estado del vuelo se consulta desde estas horas antes de la salida programada hasta la llegada."),
+    ("monitoreo_cache_min", "60", "Minutos que se reutiliza una consulta del estado del vuelo antes de pagar otra («Actualizar ahora» la salta)."),
+    ("monitoreo_tope_tramo", "6", "Consultas del estado del vuelo como máximo por tramo."),
+    ("monitoreo_tope_viaje", "12", "Consultas del estado del vuelo como máximo por viaje en cada sentido (ida o regreso, todos sus tramos)."),
+    ("monitoreo_tope_dia", "30", "Consultas en vivo del estado del vuelo como máximo por día, para toda la plataforma."),
+    ("monitoreo_retraso_aviso_min", "15", "Retraso que se avisa al viajero (o que crece estos minutos más desde el último aviso)."),
+    ("cupo_minimo_monitoreo", "25", "Si al plan del buscador le quedan menos búsquedas que esto, el monitoreo del vuelo se suspende."),
     ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
 ]
 
