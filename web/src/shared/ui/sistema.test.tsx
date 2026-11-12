@@ -156,6 +156,19 @@ describe("DialogoConfirmacion", () => {
     expect(abrir).toHaveFocus();
   });
 
+  it("un clic en el velo no saca el foco del diálogo, y lo de detrás queda inerte", async () => {
+    const usuario = userEvent.setup();
+    const { container } = render(<ConDialogo onConfirmar={() => {}} />);
+    await usuario.click(screen.getByRole("button", { name: "Rechazar" }));
+    const dialogo = screen.getByRole("dialog");
+    expect(container).toHaveAttribute("inert");
+    await usuario.click(dialogo.parentElement!);
+    expect(dialogo).toContainElement(document.activeElement as HTMLElement);
+    await usuario.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(container).not.toHaveAttribute("inert");
+  });
+
   it("el foco no se escapa del diálogo con Tab", async () => {
     const usuario = userEvent.setup();
     render(<ConDialogo onConfirmar={() => {}} />);

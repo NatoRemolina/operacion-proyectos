@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useLayoutEffect, useRef, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Boton } from "./boton";
 
 const ENFOCABLES = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -8,6 +9,7 @@ const ENFOCABLES = 'button:not([disabled]), [href], input:not([disabled]), selec
 /**
  * Confirmación de una acción con efecto difícil de deshacer (rechazar, cerrar). Explica el
  * efecto, retiene el foco dentro, Escape cancela y al cerrar el foco vuelve a donde estaba.
+ * Se monta sobre el body y deja inerte el resto de la página mientras está abierto.
  */
 export function DialogoConfirmacion({
   abierto,
@@ -36,10 +38,16 @@ export function DialogoConfirmacion({
 }) {
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
+  const velo = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     if (!abierto) return;
     const previo = document.activeElement as HTMLElement | null;
+    // Lo de detrás no recibe foco ni clics: todo lo que cuelga del body salvo el propio diálogo.
+    const detras = Array.from(document.body.children).filter(
+      (e) => e !== velo.current && !e.hasAttribute("inert"),
+    );
+    detras.forEach((e) => e.setAttribute("inert", ""));
     // El diálogo nace del botón que lo abrió: su origen de escala es ese botón.
     if (previo && panel.current && previo !== document.body) {
       const desde = previo.getBoundingClientRect();
@@ -50,10 +58,13 @@ export function DialogoConfirmacion({
       panel.current?.querySelector<HTMLElement>("input, textarea, select") ??
       panel.current?.querySelector<HTMLElement>(ENFOCABLES);
     primero?.focus();
-    return () => previo?.focus();
+    return () => {
+      detras.forEach((e) => e.removeAttribute("inert"));
+      previo?.focus();
+    };
   }, [abierto]);
 
-  if (!abierto) return null;
+  if (!abierto || typeof document === "undefined") return null;
 
   function alTeclear(evento: KeyboardEvent<HTMLDivElement>) {
     if (evento.key === "Escape") {
@@ -80,8 +91,15 @@ export function DialogoConfirmacion({
     if (!enviando) onConfirmar();
   }
 
-  return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-velo p-4 transition-opacity duration-200 ease-salida starting:opacity-0 sm:items-center">
+  return createPortal(
+    <div
+      ref={velo}
+      // Un clic en el velo no le quita el foco al diálogo.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) e.preventDefault();
+      }}
+      className="fixed inset-0 z-40 flex items-end justify-center bg-velo p-4 transition-opacity duration-200 ease-salida starting:opacity-0 sm:items-center"
+    >
       <div
         ref={panel}
         role="dialog"
@@ -109,6 +127,7 @@ export function DialogoConfirmacion({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
