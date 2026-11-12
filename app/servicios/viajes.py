@@ -164,7 +164,7 @@ def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict) -> tupl
     db.actualizar("viajes", viaje_id, estado=hacia, motivo=motivo or None,
                   aprobado_por=quien["id"] if aprobado else None, aprobado_en=db.ahora() if aprobado else None)
     eventos.registrar("viaje", viaje_id, paso, f"{v['codigo']}" + (f" · {motivo}" if motivo else ""), quien["nombre"])
-    from . import telegram   # el titular se entera por su chat, si lo tiene vinculado
+    from . import telegram  # el titular se entera por su chat, si lo tiene vinculado
     telegram.avisar(v["usuario_id"], f"Viaje {v['codigo']} ({v['origen']} → {v['destino']}, {v['ida']}): {paso}."
                     + (f"\nMotivo: {motivo}" if motivo else "")
                     + (f"\nPresupuesto: {v['presupuesto_usd']:.2f} USD. Ya puedes enviar tus recibos por aquí." if aprobado else ""))

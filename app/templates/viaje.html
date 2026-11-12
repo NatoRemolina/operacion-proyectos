@@ -1,5 +1,6 @@
-{% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
-<div class="fila"><div><h1>Viaje #{{ sol.id }} · {{ sol.origen }} → {{ sol.destino }}</h1>
+{% extends "base.html" %}{% import "_macros.html" as m %}{% import "_viajes.html" as mv %}{% block titulo %}Cotización #{{ sol.id }}{% endblock %}{% block cuerpo %}
+{{ mv.recorrido(el_viaje, decision is not none and decision) }}
+<div class="fila"><div><h1>Cotización #{{ sol.id }} · {{ sol.origen }} → {{ sol.destino }}</h1>
 <p class="sub">{{ sol.viajero }} · {{ sol.proyecto }} · {{ sol.ida }} a {{ sol.regreso }} ({{ noches }} noches) · probabilidad de cambio {{ '%.0f'|format(sol.prob_cambio * 100) }}%<br>Consulta registrada por <b>{{ sol.solicitado_por or '—' }}</b> el {{ sol.creado }} UTC</p></div>
 {% if decision %}<a class="boton der" href="/viajes/{{ sol.id }}/ficha">Ver ficha de decisión</a>{% endif %}</div>
 

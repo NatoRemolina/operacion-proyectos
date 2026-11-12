@@ -72,7 +72,7 @@ DIR_RESPALDO = RAIZ / "datos" / "respaldo"
 DIR_EJEMPLOS = RAIZ / "datos" / "ejemplos"
 DIR_ARCHIVOS = RAIZ / "datos" / "archivos"
 # Fuera de local el disco del contenedor es de solo lectura salvo /tmp
-DIR_RESPALDO_ESCRITURA = DIR_RESPALDO if not (os.getenv("SECRETO_ARN") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")) else Path("/tmp/respaldo")
+DIR_RESPALDO_ESCRITURA = DIR_RESPALDO if not (os.getenv("SECRETO_ARN") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")) else Path("/tmp/respaldo")  # noqa: S108  único directorio escribible en la función
 
 # Umbral de confianza para aprobar un gasto sin revisión humana
 UMBRAL_CONFIANZA = 0.85

@@ -10,10 +10,9 @@ herramientas las mismas funciones de la aplicación. Sin clave del modelo de len
 la llamada falla, responde el nodo determinista, que arma la explicación desde el desglose.
 """
 import json
-from typing import TypedDict
-
 import time
 from functools import lru_cache
+from typing import TypedDict
 
 import httpx
 

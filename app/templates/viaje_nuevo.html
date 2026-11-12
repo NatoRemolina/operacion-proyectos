@@ -1,5 +1,6 @@
-{% extends "base.html" %}{% block cuerpo %}
-<h1>Planear un viaje de grabación</h1>
+{% extends "base.html" %}{% import "_viajes.html" as mv %}{% block titulo %}Cotizar viaje{% endblock %}{% block cuerpo %}
+{{ mv.recorrido(none, false) }}
+<h1>Cotizar un viaje de grabación</h1>
 <p class="sub">Escribe una ciudad o el código del aeropuerto. Los valores iniciales son el caso de ejemplo, que tiene precios guardados; cualquier otra ruta se consulta en vivo{% if modo().precios != 'en vivo' %} <b>(ahora no hay clave del buscador: solo funciona el caso guardado)</b>{% endif %}.</p>
 {% if error %}<p class="nota mal">{{ error }}</p>{% endif %}
 <datalist id="aeropuertos">{% for n, c in aeropuertos %}<option value="{{ n }} ({{ c }})">{% endfor %}</datalist>

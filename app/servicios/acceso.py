@@ -8,7 +8,7 @@
 import hashlib
 import secrets
 from contextvars import ContextVar
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import Argon2Error, InvalidHashError
@@ -36,7 +36,7 @@ def _fmt(d: datetime) -> str:
 
 
 def _ahora() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def huella(token: str) -> str:

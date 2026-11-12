@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 150
+target-version = "py312"
+extend-exclude = ["infra", "datos/respaldo", "datos/ejemplos"]
+
+[tool.ruff.lint]
+# Errores reales, importaciones ordenadas, nombres sin usar y trampas frecuentes; el estilo lo fija el formato del proyecto
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = [
+  "E501",                  # el largo de línea no se impone: hay tablas de datos y consultas que se leen mejor enteras
+  "E701", "E702", "E731", "E741",  # sentencias compactas, lambdas cortas y «l» para una línea: estilo del proyecto
+  "S101",                  # assert: es la forma de las pruebas
+  "S608",                  # SQL con fragmentos fijos del código y valores siempre por parámetro (ver app/db.py)
+  "B008",                  # Form(...) como valor por defecto es la forma de declarar campos en el marco web
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]            # contraseñas de demostración
+"datos/semilla.py" = ["S105", "S106"]   # cuentas de demostración, solo en local
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

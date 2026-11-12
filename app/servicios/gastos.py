@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from .. import config, db
-from . import almacen, eventos, extraccion, llm, validacion, viajes
+from . import almacen, eventos, extraccion, llm, validacion
 
 
 class SoporteRechazado(ValueError):

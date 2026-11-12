@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
+{% extends "base.html" %}{% import "_macros.html" as m %}{% block titulo %}Gastos{% endblock %}{% block cuerpo %}
 <div class="fila"><div><h1>Gastos</h1><p class="sub">{% if ind %}{{ ind.auto }} de {{ ind.gastos }} entraron sin intervención ({{ ind.pct_auto }}%). {{ ind.revision }} esperan revisión.{% else %}Tus soportes y su estado. La revisión la hace administración.{% endif %}</p></div>
 <a class="boton der" href="/gastos/cargar">Cargar soportes</a></div>
 {% if aviso %}<p class="nota aviso">{{ aviso }}</p>{% endif %}

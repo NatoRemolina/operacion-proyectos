@@ -1,45 +1,76 @@
-{% extends "base.html" %}{% block cuerpo %}
-<h1>Del viaje planeado al gasto conciliado</h1>
-<p class="sub">Dos herramientas pequeñas sobre los mismos datos: decidir un viaje de grabación por su costo real, y recoger los gastos de cada proyecto sin perseguir soportes.</p>
-
-{% if ind %}<div class="rejilla">
-  <div class="tarjeta"><div class="eti">Viajes decididos</div><div class="num">{{ ind.decisiones }}</div><div class="eti">Previsto: {{ ind.previsto|dinero }}</div></div>
-  <div class="tarjeta"><div class="eti">Gastos recibidos</div><div class="num">{{ ind.gastos }}</div><div class="eti">Real aprobado: {{ ind.real|dinero }}</div></div>
-  <div class="tarjeta"><div class="eti">Procesados sin intervención</div><div class="num">{{ ind.auto }} <small>de {{ ind.gastos }} ({{ ind.pct_auto }}%)</small></div><div class="barra"><i style="width:{{ ind.pct_auto }}%"></i></div></div>
-  <div class="tarjeta"><div class="eti">Esperan revisión</div><div class="num">{{ ind.revision }}</div><div class="eti"><a href="/gastos?estado=revision">Abrir bandeja</a></div></div>
+{% extends "base.html" %}{% import "_viajes.html" as mv %}{% import "_macros.html" as m %}{% block cuerpo %}
+{% if es_admin %}
+<h1>Hola, {{ yo.nombre.split(' ')[0] }}</h1>
+<p class="sub">Esto es lo que espera una decisión tuya y cómo va la operación.</p>
+<div class="dos">
+  <div class="tarjeta"><h3>Pendiente de ti</h3>
+    <div class="pendiente"><span class="n" style="color:{{ 'var(--aviso)' if pendientes.viajes else 'var(--ok)' }}">{{ pendientes.viajes }}</span>
+      <div style="flex:1"><b>Presupuestos de viaje por aprobar</b><div class="eti">Sin aprobación, los gastos de ese viaje no se aprueban solos.</div></div>
+      <a class="boton {{ '' if pendientes.viajes else 'sec' }}" href="/admin/viajes">{{ 'Revisar' if pendientes.viajes else 'Ver viajes' }}</a></div>
+    <div class="pendiente"><span class="n" style="color:{{ 'var(--aviso)' if pendientes.gastos else 'var(--ok)' }}">{{ pendientes.gastos }}</span>
+      <div style="flex:1"><b>Gastos en revisión</b><div class="eti">Solo llegan aquí los que las reglas no pudieron aprobar.</div></div>
+      <a class="boton {{ '' if pendientes.gastos else 'sec' }}" href="/gastos?estado=revision">{{ 'Abrir bandeja' if pendientes.gastos else 'Ver gastos' }}</a></div>
+  </div>
+  <div class="tarjeta"><h3>Viajes aprobados: presupuesto frente a gasto</h3>
+    {% for v in en_curso %}<div class="pendiente"><div style="flex:1"><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a> · {{ v.titular or '—' }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }}{% if v.en_curso %} <span class="chip ok">en curso</span>{% endif %}
+      {{ mv.ejecucion(v) }}</div></div>
+    {% else %}<div class="vacio"><b>Ningún viaje aprobado todavía</b>Un viaje nace cuando alguien cotiza y guarda su decisión.</div>{% endfor %}
+    {% if en_curso %}<p style="margin:10px 0 0"><a href="/admin/viajes">Ver todos los viajes</a></p>{% endif %}</div>
 </div>
-
+<div class="rejilla">
+  <div class="tarjeta"><div class="eti">Viajes</div><div class="num">{{ ind.viajes }}</div><div class="eti">Presupuesto aprobado: {{ ind.previsto|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">Gastos recibidos</div><div class="num">{{ ind.gastos }}</div><div class="eti">Real aprobado: {{ ind.real|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">Aprobados sin intervención</div><div class="num">{{ ind.auto }} <small>de {{ ind.gastos }} ({{ ind.pct_auto }}%)</small></div><div class="barra"><i style="width:{{ ind.pct_auto }}%"></i></div></div>
+  <div class="tarjeta"><div class="eti">Ejecución del presupuesto</div><div class="num">{{ ind.ejecucion if ind.ejecucion is not none else '—' }}{% if ind.ejecucion is not none %} <small>%</small>{% endif %}</div><div class="eti"><a href="/admin/monitoreo">Abrir monitoreo</a></div></div>
+</div>
+{% else %}
+<h1>Hola, {{ yo.nombre.split(' ')[0] }}</h1>
+<p class="sub">Tu código es <b>{{ mi_codigo }}</b>. Aquí ves tu viaje, lo que sigue y tus últimos gastos.</p>
+{% if activo %}
+{{ mv.recorrido(activo, true) }}
+<div class="tarjeta"><div class="fila"><div><h3>Tu viaje {{ 'en curso' if activo.en_curso else 'próximo' if activo.estado == 'aprobado' else '' }}</h3>
+  <p style="margin:0"><a href="/viaje/{{ activo.id }}"><b>{{ activo.codigo }}</b></a> · {{ activo.origen }} → {{ activo.destino }} · {{ activo.ida }} a {{ activo.regreso }} · {{ activo.proyecto or 'sin proyecto' }}</p></div>
+  <span class="der">{{ mv.chip(activo) }}</span></div>
+  <div style="margin:12px 0">{{ mv.ejecucion(activo) }}</div>
+  {% if activo.estado == 'aprobado' %}<p style="margin:0"><a class="boton" href="/gastos/cargar">Cargar un gasto</a> <a class="boton sec" href="/viaje/{{ activo.id }}">Ver el viaje</a></p>
+  <p class="eti" style="margin:10px 0 0">Los gastos que cargues van solos a este viaje.{% if telegram_activo and not yo.telegram_chat_id %} También puedes enviarlos por Telegram: <a href="/mi-cuenta">vincula tu chat</a>.{% endif %}</p>
+  {% else %}<p class="nota aviso" style="margin:0">El presupuesto de este viaje espera la aprobación de administración. Puedes cargar gastos, pero quedarán en revisión hasta entonces.</p>{% endif %}
+</div>
+{% else %}
+{{ mv.recorrido(none, false) }}
+<div class="tarjeta vacio"><b>Todavía no tienes un viaje asignado</b>Cotiza las opciones, guarda tu decisión y administración aprueba el presupuesto.
+  <p style="margin:14px 0 0"><a class="boton" href="/viajes/nuevo">Cotizar un viaje</a></p></div>
 {% endif %}
 <div class="dos">
-  <div class="tarjeta"><h3>1 · Planear un viaje de grabación</h3>
-    <p>Una solicitud con el piloto, su equipo y la fecha. La herramienta trae vuelos y hoteles reales, descarta lo que no sirve y ordena por <b>costo total esperado</b>: precio, equipaje, riesgo de cambio de fecha y millas.</p>
-    <a class="boton" href="/viajes/nuevo">Planear viaje</a></div>
-  <div class="tarjeta"><h3>2 · Recoger los gastos del proyecto</h3>
-    <p>Fotos, PDF y correos entran por un solo lugar. Los datos se leen solos; lo claro se aprueba sin intervención y solo las excepciones llegan a una persona.</p>
-    <a class="boton" href="/gastos/cargar">Cargar soportes</a> <a class="boton sec" href="/gastos">Ver gastos</a></div>
+  <div class="tarjeta tabla"><h3>{{ 'Viajes de mis proyectos y míos' if yo.rol == 'gestor' else 'Mis viajes' }}</h3><table>
+    {% for v in mis_viajes %}<tr><td><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a><br><span class="eti">{{ v.origen }} → {{ v.destino }} · {{ v.ida }}{% if yo.rol == 'gestor' %} · {{ v.titular or '—' }}{% endif %}</span></td><td>{{ mv.chip(v) }}</td></tr>
+    {% else %}<tr><td class="vacio">Sin viajes todavía.</td></tr>{% endfor %}</table>
+    <p style="margin:10px 0 0"><a href="/mi-cuenta">Ver todo mi historial</a></p></div>
+  <div class="tarjeta tabla"><h3>Mis últimos gastos</h3><table>
+    {% for g in mis_gastos %}<tr><td><a href="/gastos/{{ g.id }}">{{ g.comercio or 'Sin leer' }}</a><br><span class="eti">{{ g.fecha or 'sin fecha' }}</span></td><td class="d">{{ g.total|dinero(g.moneda or '') }}</td><td>{{ m.estado(g.estado) }}</td></tr>
+    {% else %}<tr><td class="vacio">Aún no has cargado soportes.</td></tr>{% endfor %}</table></div>
 </div>
+{% endif %}
 
-<h2>Qué cambia en el proceso</h2>
-<div class="dos">
-  <div class="tarjeta"><h3>Viajes</h3><table class="antes">
-    <tr><th>Hoy</th><th>Con la herramienta</th></tr>
-    <tr><td>A. Recibir la necesidad</td><td>A. Llenar una solicitud</td></tr>
+{% if solicitudes %}<h2>{{ 'Cotizaciones recientes' if es_admin else 'Mis cotizaciones' }}</h2><div class="tarjeta tabla"><table>
+<tr><th>#</th><th>Consultada (UTC)</th>{% if es_admin %}<th>Por</th>{% endif %}<th>Proyecto</th><th>Viajero</th><th>Ruta</th><th>Fechas estimadas</th><th>Resultado</th></tr>
+{% for s in solicitudes %}<tr><td><a href="/viajes/{{ s.id }}">{{ s.id }}</a></td><td class="mono">{{ s.creado }}</td>{% if es_admin %}<td>{{ s.solicitado_por or '—' }}</td>{% endif %}<td>{{ s.proyecto }}</td><td>{{ s.viajero }}</td><td>{{ s.origen }} → {{ s.destino }}</td><td>{{ s.ida }} a {{ s.regreso }}</td>
+<td>{% if s.viaje_id %}<a href="/viaje/{{ s.viaje_id }}">{{ codigo_viaje({'id': s.viaje_id, 'creado': s.viaje_creado}) }}</a>{% else %}<a href="/viajes/{{ s.id }}">Falta decidir</a>{% endif %}</td></tr>{% endfor %}
+</table></div>{% endif %}
+
+{% if es_admin %}<details class="tarjeta"><summary>Cómo cambia el proceso con la plataforma</summary>
+<div class="dos" style="margin-top:12px">
+  <div><h3>Viajes</h3><table class="antes">
+    <tr><th>Antes</th><th>Ahora</th></tr>
+    <tr><td>A. Recibir la necesidad</td><td>A. La persona cotiza desde su cuenta</td></tr>
     <tr><td class="tachado">B. Buscar en varias páginas y copiar precios</td><td>Desaparece</td></tr>
     <tr><td class="tachado">C. Comparar a ojo y revisar condiciones</td><td>Desaparece</td></tr>
-    <tr><td>D. Proponer y aprobar por mensajes</td><td>D. Aprobar la ficha de decisión</td></tr></table></div>
-  <div class="tarjeta"><h3>Gastos</h3><table class="antes">
-    <tr><th>Hoy</th><th>Con la herramienta</th></tr>
-    <tr><td>A. El viajero guarda el recibo</td><td>A. Lo envía desde el celular o por correo</td></tr>
-    <tr><td class="tachado">B. Finanzas pide los soportes que faltan</td><td>El tablero muestra cuáles faltan</td></tr>
+    <tr><td>D. Proponer y aprobar por mensajes</td><td>D. Aprobar el presupuesto del viaje en la bandeja</td></tr></table></div>
+  <div><h3>Gastos</h3><table class="antes">
+    <tr><th>Antes</th><th>Ahora</th></tr>
+    <tr><td>A. El viajero guarda el recibo</td><td>A. Lo envía desde el celular o el chat y queda en su viaje</td></tr>
+    <tr><td class="tachado">B. Finanzas pide los soportes que faltan</td><td>El tablero del viaje muestra cuáles faltan</td></tr>
     <tr><td class="tachado">C. Digitar cada gasto en una hoja</td><td>Desaparece</td></tr>
     <tr><td>D. Revisar y asignar al proyecto</td><td>D. Revisar solo las excepciones</td></tr></table></div>
-</div>
-
-{% if solicitudes %}<h2>{{ "Consultas de viaje registradas" if es_admin else "Mis viajes" }}</h2><div class="tarjeta tabla"><table>
-<tr><th>#</th><th>Registrada por</th><th>Cuándo (UTC)</th><th>Proyecto</th><th>Viajero</th><th>Ruta</th><th>Fechas</th><th>Estado</th></tr>
-{% for s in solicitudes %}<tr><td><a href="/viajes/{{ s.id }}">{{ s.id }}</a></td><td>{{ s.solicitado_por or '—' }}</td><td class="mono">{{ s.creado }}</td><td>{{ s.proyecto }}</td><td>{{ s.viajero }}</td><td>{{ s.origen }} → {{ s.destino }}</td><td>{{ s.ida }} a {{ s.regreso }}</td><td><span class="chip {{ 'ok' if s.estado == 'decidido' else 'azul' }}">{{ s.estado }}</span></td></tr>{% endfor %}
-</table></div>{% endif %}
-{% if not es_admin %}<h2>Mis gastos</h2><div class="tarjeta tabla"><table><tr><th>#</th><th>Fecha</th><th>Comercio</th><th class="d">Total</th><th>Estado</th></tr>
-{% for g in mis_gastos %}<tr><td><a href="/gastos/{{ g.id }}">{{ g.id }}</a></td><td>{{ g.fecha or '—' }}</td><td>{{ g.comercio or '—' }}</td><td class="d">{{ g.total|dinero(g.moneda or '') }}</td><td><span class="chip {{ 'ok' if g.estado in ('aprobado','aprobado_auto') else 'aviso' if g.estado == 'revision' else '' }}">{{ {'aprobado_auto':'Aprobado','aprobado':'Aprobado','revision':'En revisión','rechazado':'Rechazado'}.get(g.estado, g.estado) }}</span></td></tr>
-{% else %}<tr><td colspan="5">Aún no has cargado soportes. <a href="/gastos/cargar">Cargar el primero</a>.</td></tr>{% endfor %}</table></div>{% endif %}
+</div></details>{% endif %}
 {% endblock %}

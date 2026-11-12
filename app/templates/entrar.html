@@ -1,9 +1,9 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ingresar</title><link rel="stylesheet" href="/static/estilo.css"></head>
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ingresar</title><link rel="stylesheet" href="{{ estilo }}"></head>
 <body><main style="max-width:400px;margin-top:10vh"><div class="tarjeta"><h1>Operación de proyectos</h1><p class="sub">Viajes de grabación y gastos por proyecto.</p>
 {% if error %}<p class="nota mal">{{ error }}</p>{% endif %}
 <form method="post"><div style="display:grid;gap:12px">
   <div><label for="correo">Correo</label><input id="correo" type="email" name="correo" autocomplete="username" autofocus required></div>
   <div><label for="clave">Contraseña</label><input id="clave" type="password" name="clave" autocomplete="current-password" required></div>
   <button>Ingresar</button></div></form>
-{% if demo %}<p class="nota" style="margin-top:16px"><b>Modo local de demostración.</b><br>Administrador: <span class="mono">admin@demo.local</span> / <span class="mono">demo-admin-2026</span><br>Usuario: <span class="mono">piloto@demo.local</span> / <span class="mono">demo-piloto-2026</span></p>{% endif %}
+{% if demo %}<p class="nota" style="margin-top:16px"><b>Modo local de demostración.</b><br>Administrador: <span class="mono">admin@demo.local</span> / <span class="mono">demo-admin-2026</span><br>Piloto: <span class="mono">piloto@demo.local</span> / <span class="mono">demo-piloto-2026</span><br>Gestor de proyecto: <span class="mono">gestor@demo.local</span> / <span class="mono">demo-gestor-2026</span></p>{% endif %}
 </div></main></body></html>

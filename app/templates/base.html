@@ -1,27 +1,45 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block titulo %}Operación de proyectos{% endblock %}</title>
-<link rel="stylesheet" href="/static/estilo.css"></head>
+<title>{% block titulo %}Inicio{% endblock %} · Operación de proyectos</title>
+<link rel="stylesheet" href="{{ estilo }}"></head>
 <body>
+<a class="salto" href="#contenido">Saltar al contenido</a>
+{% set ruta = request.url.path %}
+{% macro enlace(href, texto, n=0, prefijo='') %}<a href="{{ href }}"{% if ruta == href or (prefijo and ruta.startswith(prefijo)) %} class="act" aria-current="page"{% endif %}>{{ texto }}{% if n %} <span class="cuenta" title="{{ n }} pendientes">{{ n }}</span>{% endif %}</a>{% endmacro %}
 <header><div class="in">
   <a class="logo" href="/">Operación de proyectos</a>
-  <a href="/viajes/nuevo">Planear viaje</a>
-  <a href="/gastos">Gastos</a>
-  {% if yo %}<a href="/mi-cuenta">Mi cuenta</a>{% endif %}
-  {% if es_admin %}<a href="/admin/viajes">Viajes</a>{% endif %}
-  {% if es_admin %}{% for p in proyectos %}<a href="/proyectos/{{ p.id }}">{{ p.ciudad }}</a>{% endfor %}
-  <a href="/analitica">Analítica</a>
-  <a href="/admin/monitoreo">Monitoreo</a>
-  <a href="/flujo">Flujo de la información</a>
-  <a href="/reglas">Reglas</a>
-  <a href="/admin/usuarios">Usuarios</a>{% endif %}
-  <span class="modo">{% set md = modo() %}
-    <span class="chip {{ 'ok' if md.precios == 'en vivo' else 'aviso' }}">Precios: {{ md.precios }}</span>
-    <span class="chip {{ 'ok' if md.extraccion == 'en vivo' else 'aviso' }}">Lectura: {{ md.extraccion }}</span>
-    <span class="chip azul">Datos: {{ md.datos }}</span>
-    {% if yo %}<span class="chip">{{ yo.nombre }} · {{ mi_codigo }} · {{ rol_texto }}</span>
-    <form method="post" action="/salir" style="display:inline"><button class="peq sec" style="padding:2px 9px;font-size:12px">Salir</button></form>{% endif %}
-  </span>
+  {% if yo %}<input type="checkbox" id="abrir" aria-label="Abrir o cerrar el menú"><label class="hamb" for="abrir" aria-hidden="true">Menú</label>
+  <nav aria-label="Principal">
+    {{ enlace('/', 'Inicio') }}
+    {{ enlace('/viajes/nuevo', 'Cotizar viaje') }}
+    {% if es_admin %}{{ enlace('/admin/viajes', 'Viajes', pendientes.viajes, '/viaje/') }}{% else %}{{ enlace('/mi-cuenta', 'Mis viajes', 0, '/viaje/') }}{% endif %}
+    {{ enlace('/gastos/cargar', 'Cargar gasto') }}
+    {{ enlace('/gastos', 'Gastos', pendientes.gastos if es_admin else 0) }}
+    {% if es_admin %}
+    <details class="grupo"><summary>Proyectos</summary><div class="lista">{% for p in proyectos %}<a href="/proyectos/{{ p.id }}">{{ p.nombre }}</a>{% endfor %}</div></details>
+    {{ enlace('/admin/monitoreo', 'Monitoreo') }}
+    <details class="grupo"><summary>Administración</summary><div class="lista">
+      <a href="/admin/usuarios">Usuarios y roles</a><a href="/reglas">Reglas y supuestos</a><a href="/analitica">Analítica de precios</a><a href="/flujo">Flujo de la información</a></div></details>
+    {% endif %}
+    <span class="quien"><a class="persona" href="/mi-cuenta" title="Mi cuenta">{{ yo.nombre }} · {{ mi_codigo }} · {{ rol_texto }}</a>
+      <form method="post" action="/salir"><button>Salir</button></form></span>
+  </nav>{% endif %}
 </div></header>
-<main>{% block cuerpo %}{% endblock %}</main>
+<main id="contenido">{% block cuerpo %}{% endblock %}</main>
+<footer>{% set md = modo() %}Estado de los servicios:
+  <span class="chip {{ 'ok' if md.precios == 'en vivo' else 'aviso' }}">Precios: {{ md.precios }}</span>
+  <span class="chip {{ 'ok' if md.extraccion == 'en vivo' else 'aviso' }}">Lectura: {{ md.extraccion }}</span>
+  <span class="chip azul">Datos: {{ md.datos }}</span>
+  <span class="chip {{ 'ok' if telegram_activo else '' }}">Telegram: {{ 'activo' if telegram_activo else 'apagado' }}</span>
+</footer>
+<script>
+// Las acciones que tardan muestran que ya se recibieron, y las que no tienen vuelta atrás piden confirmar.
+document.addEventListener('submit', (e) => {
+  const boton = e.submitter, pregunta = boton && boton.dataset.confirmar;
+  if (pregunta && !confirm(pregunta)) { e.preventDefault(); return; }
+  if (!e.defaultPrevented && e.target.id !== 'carga') setTimeout(() => e.target.classList.add('enviando'), 0);
+});
+document.addEventListener('click', (e) => document.querySelectorAll('details.grupo[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; }));
+window.addEventListener('pageshow', () => document.querySelectorAll('form.enviando').forEach(f => f.classList.remove('enviando')));
+</script>
 </body></html>

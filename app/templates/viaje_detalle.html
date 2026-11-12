@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% import "_viajes.html" as mv %}{% import "_macros.html" as m %}{% block titulo %}{{ v.codigo }}{% endblock %}{% block cuerpo %}
+{{ mv.recorrido(v, true) }}
 <div class="fila"><div><h1>Viaje {{ v.codigo }} · {{ v.origen }} → {{ v.destino }}</h1>
 <p class="sub">{{ v.ida }} a {{ v.regreso }} · {{ v.proyecto or 'sin proyecto' }} · titular <b>{{ v.titular or '—' }}</b> · <a href="/viajes/{{ v.solicitud_id }}/ficha">ficha de decisión</a></p></div>
 <span class="der">{{ mv.chip(v) }}</span></div>
@@ -16,7 +17,7 @@
   <input type="hidden" name="volver" value="detalle">
   <div class="fila"><input name="motivo" placeholder="Motivo (obligatorio para rechazar)" style="flex:1;min-width:220px">
   {% if v.estado == 'pendiente_aprobacion' %}<button name="accion" value="aprobar">Aprobar presupuesto</button> <button class="mal" name="accion" value="rechazar">Rechazar</button>
-  {% elif v.estado == 'aprobado' %}<button class="sec" name="accion" value="cerrar">Cerrar viaje</button> <button class="sec" name="accion" value="reabrir">Reabrir para cambiar la decisión</button>
+  {% elif v.estado == 'aprobado' %}<button class="sec" name="accion" value="cerrar" data-confirmar="Al cerrar el viaje, los gastos que lleguen después irán a revisión. ¿Cerrarlo?">Cerrar viaje</button> <button class="sec" name="accion" value="reabrir">Reabrir para cambiar la decisión</button>
   {% else %}<button class="sec" name="accion" value="reabrir">Reabrir</button>{% endif %}</div>
   <p class="eti">Con el presupuesto aprobado, los gastos claros de este viaje se aprueban solos; sin aprobar, todos esperan revisión.</p></form>{% endif %}
 

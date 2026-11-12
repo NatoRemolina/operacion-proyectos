@@ -4,7 +4,7 @@ El chat nunca decide permisos: solo identifica a la persona. Qué viaje, qué pr
 aplican lo resuelve la plataforma, igual que en la web.
 """
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -72,7 +72,7 @@ def descargar(file_id: str) -> bytes:
 
 # ---------- vínculo entre el chat y la cuenta ----------
 def _ahora() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def nuevo_vinculo(usuario_id: int) -> dict:

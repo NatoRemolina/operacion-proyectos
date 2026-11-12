@@ -34,6 +34,12 @@
 <td>{% if s.viaje_id %}<a href="/viaje/{{ s.viaje_id }}">{{ codigo_viaje({'id': s.viaje_id, 'creado': s.viaje_creado}) }}</a> · {{ estados[s.estado_viaje] }}{% else %}Sin decisión{% endif %}</td></tr>
 {% else %}<tr><td colspan="8">Sin cotizaciones.</td></tr>{% endfor %}</table></div>
 
+<h2>Seguridad</h2>
+<form method="post" action="/mi-cuenta/clave" class="tarjeta"><h3>Cambiar mi contraseña</h3>
+  <div class="campos"><div><label for="actual">Contraseña actual</label><input id="actual" type="password" name="actual" autocomplete="current-password" required></div>
+  <div><label for="nueva">Nueva (10 o más caracteres)</label><input id="nueva" type="password" name="nueva" autocomplete="new-password" minlength="10" required></div></div>
+  <p style="margin:12px 0 0"><button class="sec">Cambiar contraseña</button> <span class="eti">Al cambiarla se cierran tus otras sesiones.</span></p></form>
+
 {% if sin_viaje %}<h2>Gastos sin viaje</h2>
 <div class="tarjeta tabla"><table><tr><th>#</th><th>Comercio</th><th>Fecha</th><th class="d">Total</th><th>Estado</th></tr>
 {% for g in sin_viaje %}<tr><td><a href="/gastos/{{ g.id }}">{{ g.id }}</a></td><td>{{ g.comercio or '—' }}</td><td>{{ g.fecha or '—' }}</td><td class="d">{{ g.total|dinero(g.moneda or '') }}</td><td>{{ m.estado(g.estado) }}</td></tr>{% endfor %}</table></div>{% endif %}

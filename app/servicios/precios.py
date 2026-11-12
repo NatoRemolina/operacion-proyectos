@@ -6,7 +6,7 @@ Cada resultado dice de dónde salió: "en vivo", "guardado" o "guardado (otras f
 """
 import json
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import httpx
 
@@ -23,7 +23,7 @@ def cupo() -> dict | None:
     """Búsquedas que quedan en el plan del buscador. Consultarlo no gasta cupo; se recuerda diez minutos."""
     if not config.SERPAPI_KEY:
         return None
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
     if _cupo["momento"] and (ahora - _cupo["momento"]).total_seconds() < 600:
         return _cupo["dato"]
     try:
@@ -115,7 +115,7 @@ def registrar_observaciones(datos: dict, origen: str, destino: str, ida: str, re
     db.insertar_varios("observaciones", filas)
     db.insertar_varios("historial_ruta", [
         {"busqueda": clave, "origen": origen, "destino": destino,
-         "fecha": datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d"), "precio": float(precio)}
+         "fecha": datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d"), "precio": float(precio)}
         for ts, precio in info.get("price_history", [])])
     return len(filas)
 

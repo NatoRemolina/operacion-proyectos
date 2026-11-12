@@ -14,25 +14,54 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from datos.semilla import sembrar
+from datos.semilla import VISTAS, sembrar
 
 from . import aeropuertos, config, db
-from .servicios import (acceso, agente, almacen, analitica, costo, eventos, extraccion, inteligencia, metricas, modelo,
-                        precios, telegram, validacion, viajes)
+from .servicios import acceso, agente, almacen, analitica, costo, eventos, metricas, modelo, precios, telegram, validacion, viajes
 from .servicios import gastos as soportes
-from datos.semilla import VISTAS
 
 AQUI = Path(__file__).parent
 app = FastAPI(title="Operación de proyectos")
 app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
 plantillas = Jinja2Templates(directory=AQUI / "templates")
-plantillas.env.globals.update(modo=config.modo, categorias=config.CATEGORIAS)
+# La hoja de estilos lleva la huella de su contenido en la dirección: al cambiarla, ningún navegador usa la copia vieja
+ESTILO = "/static/estilo.css?v=" + hashlib.sha256((AQUI / "static" / "estilo.css").read_bytes()).hexdigest()[:10]
+plantillas.env.globals.update(modo=config.modo, categorias=config.CATEGORIAS, codigo_viaje=viajes.codigo_viaje, estilo=ESTILO)
 plantillas.env.filters["dinero"] = lambda v, m="USD": "—" if v is None else f"{v:,.2f} {m}"
 plantillas.env.filters["json"] = db.de_json
 
 # En local la base se prepara sola; en un despliegue la migración es un paso aparte (python -m datos.semilla)
 if config.LOCAL:
     sembrar()
+
+
+def _pagina_error(codigo: int, titulo: str, texto: str) -> HTMLResponse:
+    return HTMLResponse(f"""<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{titulo} · Operación de proyectos</title><link rel="stylesheet" href="{ESTILO}"></head>
+<body><main class="pagina-error"><div class="tarjeta"><h1>{titulo}</h1><p class="sub">{texto}</p>
+<p><a class="boton" href="/">Volver al inicio</a></p></div></main></body></html>""", status_code=codigo)
+
+
+NO_ENCONTRADO = _pagina_error(404, "No encontramos esa página", "Puede que el enlace esté incompleto o que no tengas acceso a ese viaje o gasto.")
+SOLO_ADMIN = _pagina_error(403, "Esta sección es de administración", "Tu cuenta no tiene permiso para entrar aquí. Si lo necesitas, pídelo a un administrador.")
+
+# Política de contenido: solo recursos propios, más la biblioteca de gráficas. Los soportes traen la suya, más estricta.
+CABECERAS_SEGURAS = {
+    "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN", "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=(self)",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+                               "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'self'; "
+                               "form-action 'self'; base-uri 'self'",
+}
+
+
+def _asegurar(respuesta: Response) -> Response:
+    for nombre, valor in CABECERAS_SEGURAS.items():
+        if nombre not in respuesta.headers:
+            respuesta.headers[nombre] = valor
+    if not config.LOCAL:
+        respuesta.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return respuesta
 
 
 # ---------- acceso ----------
@@ -43,7 +72,7 @@ async def control_de_acceso(request: Request, call_next):
     necesario = acceso.nivel(ruta)
     request.state.peticion = secrets.token_hex(6)
     if request.method not in ("GET", "HEAD", "OPTIONS") and not acceso.mismo_origen(request.headers):
-        return Response("Petición rechazada: no viene de esta página.", status_code=403)
+        return _asegurar(_pagina_error(403, "Petición rechazada", "El formulario no se envió desde esta plataforma. Vuelve a la página y repite la acción."))
     usuario = None if necesario == "publica" and ruta != "/entrar" else acceso.usuario_de(request.cookies.get(acceso.COOKIE))
     acceso.fijar(usuario)
     request.state.usuario = usuario
@@ -51,13 +80,13 @@ async def control_de_acceso(request: Request, call_next):
         if not usuario:
             return Response(status_code=401) if ruta.startswith("/api") else RedirectResponse("/entrar", status_code=303)
         if necesario == "admin" and not acceso.es_admin(usuario):
-            return Response("Esta sección es solo para administradores.", status_code=403)
+            return _asegurar(JSONResponse({"error": "Solo administración"}, status_code=403) if ruta.startswith("/api") else SOLO_ADMIN)
     try:
         respuesta = await call_next(request)
     except Exception as e:  # nada se pierde en silencio: queda registrado y quien lo vio recibe un identificador
         return _error_registrado(request, e)
     respuesta.headers["X-Peticion"] = request.state.peticion
-    return respuesta
+    return _asegurar(respuesta)
 
 
 def _error_registrado(request: Request, e: Exception) -> Response:
@@ -68,8 +97,8 @@ def _error_registrado(request: Request, e: Exception) -> Response:
         u = request.state.usuario
         db.insertar("errores", momento=db.ahora(), peticion=pid, usuario_id=u["id"] if u else None, ruta=request.url.path,
                     tipo=type(e).__name__, mensaje=str(e)[:500], traza=traza)
-    except Exception:
-        pass  # si la base es la que falla, el registro queda al menos en los logs
+    except Exception:  # noqa: S110  si la base es la que falla, el registro ya quedó en los logs (línea anterior)
+        pass
     if request.url.path.startswith("/api"):
         return JSONResponse({"error": "Error interno", "peticion": pid}, status_code=500, headers={"X-Peticion": pid})
     return HTMLResponse(f"""<!doctype html><meta charset="utf-8"><title>Error</title>
@@ -129,42 +158,59 @@ def _viajes_para_cargar() -> list[dict]:
     return [v for v in viajes.de_persona(_yo(), ("aprobado", "pendiente_aprobacion"))]
 
 
-NO_ENCONTRADO = Response("No encontrado.", status_code=404)
+def _pendientes() -> dict:
+    """Lo que espera una decisión de administración; se muestra como contador en el menú."""
+    if not acceso.es_admin(_yo()):
+        return {"viajes": 0, "gastos": 0}
+    return db.uno("""select (select count(*) from viajes where estado='pendiente_aprobacion') viajes,
+                            (select count(*) from gastos where estado='revision') gastos""")
 
 
 def _ctx(**extra):
     return {"yo": _yo(), "es_admin": acceso.es_admin(_yo()), "rol_texto": acceso.NOMBRE_ROL.get(_yo().get("rol"), ""),
+            "pendientes": _pendientes(),
             "mi_codigo": viajes.codigo_persona(_yo()["id"]) if _yo() else "", "telegram_activo": telegram.activo(),
             "proyectos": db.todos_cache("select * from proyectos order by id"),
             "viajeros": db.todos_cache("select * from viajeros order by id"), **extra}
 
 
 def _indicadores() -> dict:
+    """Cifras del inicio. El previsto es siempre el presupuesto de los viajes; el real, los gastos aprobados."""
     g = db.uno("""select count(*) n,
                   sum(case when estado='aprobado_auto' then 1 else 0 end) auto,
                   sum(case when estado='revision' then 1 else 0 end) revision,
                   sum(case when estado in ('aprobado','aprobado_auto') then total_usd else 0 end) real_usd
                   from gastos""")
-    d = db.uno("select count(*) n, coalesce(sum(total),0) previsto from decisiones")
+    v = db.uno("""select count(*) n, coalesce(sum(case when estado in ('aprobado','cerrado') then presupuesto_usd else 0 end),0) previsto,
+                  (select coalesce(sum(g.total_usd),0) from gastos g join viajes x on x.id=g.viaje_id
+                   where x.estado in ('aprobado','cerrado') and g.estado in ('aprobado','aprobado_auto')) gastado
+                  from viajes where estado<>'rechazado'""")
     ext = db.uno("select count(*) n from eventos where paso='consulta externa'")
     n = g["n"] or 0
     return {"gastos": n, "auto": g["auto"] or 0, "revision": g["revision"] or 0,
             "pct_auto": round(100 * (g["auto"] or 0) / n) if n else 0,
-            "real": g["real_usd"] or 0, "decisiones": d["n"], "previsto": d["previsto"], "externas": ext["n"]}
+            "real": g["real_usd"] or 0, "viajes": v["n"], "previsto": v["previsto"],
+            "ejecucion": round(100 * (v["gastado"] or 0) / v["previsto"]) if v["previsto"] else None, "externas": ext["n"]}
 
 
 # ---------- inicio ----------
 @app.get("/", response_class=HTMLResponse)
 def inicio(request: Request):
-    donde, p = acceso.alcance(_yo(), "s")
-    donde_g, pg = acceso.alcance(_yo(), "g")
+    yo, admin = _yo(), acceso.es_admin(_yo())
+    donde, p = acceso.alcance(yo, "s")
+    donde_g, pg = acceso.alcance(yo, "g")
+    donde_v, pv = acceso.alcance(yo, "v")
     return plantillas.TemplateResponse(request, "inicio.html", _ctx(
-        ind=_indicadores() if acceso.es_admin(_yo()) else None,
-        solicitudes=db.todos(f"""select s.*, p.nombre proyecto, v.nombre viajero from solicitudes s
-                                left join proyectos p on p.id=s.proyecto_id left join viajeros v on v.id=s.viajero_id
-                                where {donde} order by s.id desc limit 15""", **p),
-        mis_gastos=db.todos(f"""select g.id, g.comercio, g.fecha, g.total, g.moneda, g.estado from gastos g
-                                where {donde_g} order by g.id desc limit 8""", **pg)))
+        ind=_indicadores() if admin else None,
+        en_curso=viajes.lista("v.estado='aprobado'")[:6] if admin else [],
+        activo=None if admin else viajes.resolver_para_gasto(yo)[0],
+        mis_viajes=[] if admin else viajes.lista(donde_v, **pv)[:6],
+        solicitudes=db.todos(f"""select s.*, p.nombre proyecto, vj.nombre viajero, v.id viaje_id, v.creado viaje_creado
+                                from solicitudes s left join proyectos p on p.id=s.proyecto_id
+                                left join viajeros vj on vj.id=s.viajero_id left join viajes v on v.solicitud_id=s.id
+                                where {donde} order by s.id desc limit 10""", **p),
+        mis_gastos=[] if admin else db.todos(f"""select g.id, g.comercio, g.fecha, g.total, g.moneda, g.estado from gastos g
+                                                where {donde_g} order by g.id desc limit 6""", **pg)))
 
 
 # ---------- reto 1: viajes ----------
@@ -261,7 +307,7 @@ def _comparacion(sid: int) -> dict | None:
               "dia_semana": f_ida.weekday(), "anticipacion": (f_ida - date.fromisoformat(sol["creado"][:10])).days,
               "noches": costo.noches(sol["ida"], sol["regreso"]), "tipico_min": ref.get("tipico_min"), "tipico_max": ref.get("tipico_max")}
              for v in vuelos]
-    for v, esperado in zip(vuelos, modelo.precios_esperados(filas)):
+    for v, esperado in zip(vuelos, modelo.precios_esperados(filas), strict=False):
         v["esperado"] = esperado
         v["frente_esperado"] = round((v["v"]["precio"] - esperado) / esperado * 100) if esperado else None
     validos = sorted([v for v in vuelos if not v["ev"]["descartada"]], key=lambda v: v["ev"]["total"])
@@ -518,7 +564,7 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
                   motivo_excepcion: str = Form(""), viaje_id: int = Form(-1)):
     # Revisar es tarea de administración: nadie aprueba su propio gasto
     if not acceso.es_admin(_yo()):
-        return Response("Solo un administrador puede revisar gastos.", status_code=403)
+        return SOLO_ADMIN
     previo = db.uno("select id, viaje_id, usuario_id from gastos where id=:i", i=gid)
     if not previo:
         return NO_ENCONTRADO
@@ -590,6 +636,21 @@ def mi_cuenta_telegram(request: Request, accion: str = Form("vincular")):
     if not telegram.activo():
         return RedirectResponse("/mi-cuenta?aviso=El+canal+de+Telegram+no+est%C3%A1+configurado.", status_code=303)
     return _mi_cuenta(request, vinculo=telegram.nuevo_vinculo(_yo()["id"]))
+
+
+@app.post("/mi-cuenta/clave")
+def mi_cuenta_clave(request: Request, actual: str = Form(""), nueva: str = Form("")):
+    """Exige la contraseña actual. Al cambiarla se cierran las demás sesiones y esta se renueva."""
+    yo = _yo()
+    hash_actual = db.uno("select clave_hash from usuarios where id=:i", i=yo["id"])["clave_hash"]
+    if not acceso._coincide(hash_actual, actual):
+        return RedirectResponse("/mi-cuenta?aviso=La+contrase%C3%B1a+actual+no+coincide.", status_code=303)
+    if len(nueva) < 10 or nueva == actual:
+        return RedirectResponse("/mi-cuenta?aviso=La+nueva+contrase%C3%B1a+debe+tener+al+menos+10+caracteres+y+ser+distinta.", status_code=303)
+    db.actualizar("usuarios", yo["id"], clave_hash=acceso.hash_clave(nueva))
+    acceso.cerrar_todas(yo["id"])
+    eventos.registrar("usuario", yo["id"], "contraseña cambiada por la persona", "", yo["nombre"])
+    return acceso.abrir_sesion(RedirectResponse("/mi-cuenta?aviso=Contrase%C3%B1a+cambiada.+Se+cerraron+tus+otras+sesiones.", status_code=303), yo["id"])
 
 
 def _viaje_visible(vid: int) -> dict | None:
@@ -674,18 +735,22 @@ def proyecto(request: Request, pid: int):
         return RedirectResponse("/", status_code=303)
     real = {r["categoria"]: r["t"] for r in db.todos(
         "select categoria, sum(total_usd) t from gastos where proyecto_id=:i and estado in ('aprobado','aprobado_auto') group by categoria", i=pid)}
+    # El previsto es el presupuesto de los viajes del proyecto: la misma cifra que aprueba administración
+    del_proyecto = viajes.lista("v.proyecto_id=:i and v.estado<>'rechazado'", i=pid)
     previsto: dict[str, float] = {}
-    decisiones = db.todos("select * from decisiones where proyecto_id=:i order by id", i=pid)
-    ultimas = {d["solicitud_id"]: d for d in decisiones}.values()  # una decisión vigente por solicitud
-    for d in ultimas:
-        for l in db.de_json(d["desglose"], {}).get("lineas", []):
-            if l["origen"] != "supuesto" or l["grupo"] != "vuelo":  # el riesgo y las millas no son desembolsos
-                previsto[l["grupo"]] = previsto.get(l["grupo"], 0) + l["valor"]
-    filas = [{"clave": c, "nombre": n, "previsto": round(previsto.get(c, 0), 2), "real": round(real.get(c) or 0, 2)}
-             for c, n in config.CATEGORIAS.items() if previsto.get(c) or real.get(c)]
+    for v in del_proyecto:
+        for l in db.de_json(v["presupuesto_detalle"], []) or []:
+            previsto[l["grupo"]] = previsto.get(l["grupo"], 0) + l["valor"]
+    compras = ("vuelo", "hotel", "alquiler_carro")   # se compran por separado; lo demás se cubre con los viáticos
+    filas = [{"clave": c, "nombre": config.CATEGORIAS[c], "previsto": round(previsto.get(c, 0), 2), "real": round(real.get(c) or 0, 2)}
+             for c in compras if previsto.get(c) or real.get(c)]
+    en_destino = round(sum(t or 0 for c, t in real.items() if c not in compras), 2)
+    if previsto.get("viaticos") or en_destino:
+        filas.append({"clave": "viaticos", "nombre": "Viáticos y gastos en destino", "previsto": round(previsto.get("viaticos", 0), 2),
+                      "real": en_destino})
     faltantes = [f["nombre"] for f in filas if f["previsto"] and not f["real"]]
     return plantillas.TemplateResponse(request, "proyecto.html", _ctx(
-        p=p, filas=filas, faltantes=faltantes, decisiones=list(ultimas),
+        p=p, filas=filas, faltantes=faltantes, decisiones=del_proyecto, viajes_proyecto=del_proyecto,
         tot_previsto=round(sum(f["previsto"] for f in filas), 2), tot_real=round(sum(f["real"] for f in filas), 2),
         pendientes=db.uno("select count(*) n from gastos where proyecto_id=:i and estado='revision'", i=pid)["n"],
         gastos=db.todos("""select g.*, v.nombre viajero from gastos g left join viajeros v on v.id=g.viajero_id
@@ -698,7 +763,7 @@ def proyecto_exportar(pid: int):
     columnas = ["id", "fecha", "comercio", "categoria", "total", "moneda", "total_usd", "estado", "metodo_pago", "origen_dato"]
     def celda(v):  # texto que empieza como fórmula se neutraliza para las hojas de cálculo
         t = str(v if v is not None else "").replace('"', "'")
-        return '"' + ("'" + t if t[:1] in "=+-@" and not isinstance(v, (int, float)) else t) + '"'
+        return '"' + ("'" + t if t[:1] in "=+-@" and not isinstance(v, int | float) else t) + '"'
     lineas = [",".join(columnas)] + [",".join(celda(f[c]) for c in columnas) for f in filas]
     return Response("\n".join(lineas), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="gastos_proyecto_{pid}.csv"'})

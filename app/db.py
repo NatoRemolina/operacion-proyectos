@@ -5,11 +5,10 @@ texto ISO y los campos compuestos como texto JSON.
 """
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import (BigInteger, CheckConstraint, Column, Float, ForeignKey, Integer, MetaData, Table, Text,
-                        create_engine, event, inspect, text)
+from sqlalchemy import BigInteger, CheckConstraint, Column, Float, ForeignKey, Integer, MetaData, Table, Text, create_engine, event, inspect, text
 
 from . import config
 
@@ -209,7 +208,7 @@ TABLAS = {t.name: t for t in meta.sorted_tables}
 
 
 def ahora() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def crear_tablas():
@@ -256,7 +255,7 @@ def ejecutar(sql: str, **p):
 
 
 def _plano(valores: dict) -> dict:
-    return {k: json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v for k, v in valores.items()}
+    return {k: json.dumps(v, ensure_ascii=False) if isinstance(v, dict | list) else v for k, v in valores.items()}
 
 
 def insertar(tabla: str, **valores) -> int:

@@ -1,4 +1,5 @@
 -r requirements.txt
-# Entrenamiento del modelo de precios y pruebas
+# Entrenamiento del modelo de precios, pruebas y revisión estática
 pandas==2.2.*
 pytest==8.3.*
+ruff==0.8.*

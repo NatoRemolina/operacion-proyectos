@@ -1,34 +1,37 @@
-{% extends "base.html" %}{% block cuerpo %}
-<h1>Cargar soportes</h1><p class="sub">Cada gasto pertenece a un viaje con presupuesto aprobado; si no lo tiene, se guarda y va a revisión. Varios canales, un solo destino. Esta misma página funciona desde el celular para tomar la foto del recibo.</p>
-<div class="dos">
+{% extends "base.html" %}{% block titulo %}Cargar gasto{% endblock %}{% block cuerpo %}
+<h1>Cargar gasto</h1><p class="sub">Cada gasto pertenece a un viaje con presupuesto aprobado; si no lo tiene, se guarda y va a revisión.</p>
+{% if not es_admin %}
+{% if elegido %}<p class="nota {{ 'ok' if elegido.estado == 'aprobado' else 'aviso' }}">Tus gastos van al viaje <a href="/viaje/{{ elegido.id }}"><b>{{ elegido.codigo }}</b></a> ({{ elegido.origen }} → {{ elegido.destino }}, {{ elegido.ida }} a {{ elegido.regreso }}){{ '.' if elegido.estado == 'aprobado' else ', que aún espera aprobación: quedarán en revisión hasta entonces.' }}</p>
+{% else %}<p class="nota aviso">No tienes un viaje único asignado hoy. Puedes cargar el gasto: se guarda y administración lo revisa.{% if mis_viajes %} O elige abajo a qué viaje pertenece.{% endif %}</p>{% endif %}
+{% endif %}
+<div class="{{ 'dos' if es_admin else '' }}">
 <form method="post" action="/gastos/cargar" enctype="multipart/form-data" class="tarjeta" id="carga">
-  <h3>Subir archivos o tomar foto</h3>
-  <p><input type="file" name="archivos" multiple accept="image/*,application/pdf,.eml" required></p>
-  <p class="eti">Fotos, PDF o correos (.eml). Las fotos se reducen antes de enviarse; máximo 4,5 MB por archivo y 6 archivos por envío.</p>
-  <div class="campos"><div><label>Viaje</label><select name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div>
-  <div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
-  <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
-  <div><label>Canal</label><select name="canal"><option value="web">Carga web</option><option value="celular">Foto desde celular</option></select></div></div>
-  <p><button>Procesar</button></p>
-  <ul id="avance" class="eti" style="padding-left:18px"></ul>
+  <h3>{{ 'Subir archivos o tomar foto' if es_admin else 'Toma la foto del recibo o elige el archivo' }}</h3>
+  <p><label for="archivos" class="eti" style="font-weight:400">Fotos, PDF o correos (.eml). Las fotos se reducen antes de enviarse; máximo 4,5 MB por archivo y 6 por envío.</label>
+  <input id="archivos" type="file" name="archivos" multiple accept="image/*,application/pdf,.eml" required></p>
+  <div class="campos"><div><label for="viaje_1">Viaje</label><select id="viaje_1" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div>
+  {% if es_admin %}<div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Canal</label><select name="canal"><option value="web">Carga web</option><option value="celular">Foto desde celular</option></select></div>
+  {% else %}<input type="hidden" name="proyecto_id" value="0"><input type="hidden" name="viajero_id" value="{{ yo.viajero_id or 0 }}"><input type="hidden" name="canal" value="web">{% endif %}</div>
+  <p style="margin-top:14px"><button>{{ 'Procesar' if es_admin else 'Enviar gasto' }}</button></p>
+  <ul id="avance" class="eti" style="padding-left:18px" aria-live="polite"></ul>
 </form>
-<div>
+{% if es_admin %}<div>
 <form method="post" action="/gastos/ejemplos" class="tarjeta">
   <h3>Soportes de ejemplo</h3><p class="eti">Recibos y facturas ficticios en USD y EUR, uno de ellos ilegible a propósito.</p>
   {% for e in ejemplos %}<label><input type="checkbox" name="nombres" value="{{ e }}" checked> {{ e }}</label>{% endfor %}
-  <div class="campos" style="margin-top:10px"><div><label>Viaje</label><select name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div>
-  <div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
-  <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
+  <div class="campos" style="margin-top:10px"><div><label for="viaje_2">Viaje</label><select id="viaje_2" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div><div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
   <input type="hidden" name="canal" value="web"><p><button>Procesar seleccionados</button></p>
 </form>
 <form method="post" action="/gastos/ejemplos" class="tarjeta">
   <h3>Buzón de correo (simulado)</h3><p class="eti">Lee los correos de la carpeta de ejemplos como si llegaran a un buzón de gastos.</p>
   {% for e in correos %}<label><input type="checkbox" name="nombres" value="{{ e }}" checked> {{ e }}</label>{% endfor %}
-  <div class="campos" style="margin-top:10px"><div><label>Viaje</label><select name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div>
-  <div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
-  <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
+  <div class="campos" style="margin-top:10px"><div><label for="viaje_3">Viaje</label><select id="viaje_3" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div><div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
   <input type="hidden" name="canal" value="correo"><p><button>Leer buzón</button></p>
-</form></div>
+</form></div>{% endif %}
 </div>
 <script>
 // Cada archivo viaja en su propia petición y las fotos se reducen en el navegador:
@@ -46,6 +49,8 @@ async function reducir(archivo) {
     return blob && blob.size < archivo.size ? new File([blob], archivo.name.replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'}) : archivo;
   } catch (e) { return archivo; }  // formato que el navegador no decodifica: se envía tal cual
 }
+const campoCanal = document.querySelector('#carga input[type=hidden][name=canal]');
+if (campoCanal && matchMedia('(pointer: coarse)').matches) campoCanal.value = 'celular';
 document.getElementById('carga').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = ev.target, lista = document.getElementById('avance'), boton = f.querySelector('button');

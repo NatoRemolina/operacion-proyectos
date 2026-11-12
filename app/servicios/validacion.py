@@ -81,7 +81,7 @@ def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict,
 def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: dict | None = None) -> dict:
     """Devuelve {estado, alertas, motivos, total_usd}. `g` son los campos extraídos; `viaje`, el viaje al que pertenece."""
     cat = costo.catalogo()
-    alertas, bloquea, motivos = _Alertas(), False, []
+    alertas, bloquea = _Alertas(), False
 
     for campo, nombre in (("comercio", "comercio"), ("fecha", "fecha"), ("total", "total"), ("moneda", "moneda")):
         if g.get(campo) in (None, ""):

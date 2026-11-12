@@ -1,8 +1,9 @@
 """Quién puede qué: ingreso, roles, propiedad de los datos, origen de los formularios y revocación."""
+from starlette.testclient import TestClient
+
 from app import db
 from app.main import app
 from app.servicios import acceso
-from starlette.testclient import TestClient
 
 FORM = dict(proyecto_id=1, viajero_id=2, origen="MIA", destino="LAS", ida="2026-12-08", regreso="2026-12-11")
 
@@ -51,7 +52,7 @@ def test_usuario_solo_ve_lo_suyo_y_no_aprueba(cliente, piloto, ejemplos):
     assert piloto.get(f"/gastos/{propio}").status_code == 200
     assert piloto.post(f"/gastos/{propio}", data={"accion": "aprobar", "total": "24", "moneda": "USD"}).status_code == 403
     assert db.uno("select estado from gastos where id=:i", i=propio)["estado"] == "revision"
-    assert "Mis gastos" in piloto.get("/").text
+    assert "Mis últimos gastos" in piloto.get("/").text
 
 
 def test_formulario_desde_otro_sitio_se_rechaza(cliente):

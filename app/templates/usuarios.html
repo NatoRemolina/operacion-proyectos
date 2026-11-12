@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block cuerpo %}
+{% extends "base.html" %}{% block titulo %}Usuarios y roles{% endblock %}{% block cuerpo %}
 <h1>Usuarios</h1><p class="sub">El administrador crea las cuentas; cada una recibe su ID al nacer. Cambiar el rol, desactivar o restablecer la contraseña cierra las sesiones abiertas de esa persona.</p>
 {% if aviso %}<p class="nota">{{ aviso }}</p>{% endif %}
 <div class="tarjeta tabla"><table><tr><th>ID</th><th>Nombre</th><th>Correo</th><th>Viajero</th><th>Rol</th><th>Estado</th><th>Última actividad (UTC)</th><th>Contraseña</th></tr>

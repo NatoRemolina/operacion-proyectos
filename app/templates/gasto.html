@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
+{% extends "base.html" %}{% import "_macros.html" as m %}{% block titulo %}Gasto #{{ g.id }}{% endblock %}{% block cuerpo %}
 <div class="fila"><div><h1>Gasto #{{ g.id }}</h1><p class="sub">{{ g.archivo }} · canal {{ g.canal }} · lectura {{ g.origen_dato }} con confianza {{ '%.0f'|format((g.confianza or 0) * 100) }}%</p></div><span class="der">{{ m.estado(g.estado) }}</span></div>
 {% if el_viaje %}<p class="eti">Viaje <a href="/viaje/{{ el_viaje.id }}"><b>{{ el_viaje.codigo }}</b></a> · {{ el_viaje.origen }} → {{ el_viaje.destino }} · {{ el_viaje.ida }} a {{ el_viaje.regreso }} · {{ el_viaje.estado_texto }} · titular {{ el_viaje.titular or '—' }}</p>{% endif %}
 {% for a in alertas %}<p class="nota aviso">{{ a }}</p>{% endfor %}

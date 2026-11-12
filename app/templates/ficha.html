@@ -1,5 +1,6 @@
-{% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
-<div class="fila"><div><h1>Ficha de decisión · viaje #{{ sol.id }}</h1><p class="sub">{{ sol.proyecto }} · {{ sol.viajero }} · guardada {{ decision.creado }} UTC</p></div>
+{% extends "base.html" %}{% import "_macros.html" as m %}{% import "_viajes.html" as mv %}{% block titulo %}Ficha de decisión{% endblock %}{% block cuerpo %}
+{{ mv.recorrido(el_viaje, true) }}
+<div class="fila"><div><h1>Ficha de decisión · cotización #{{ sol.id }}</h1><p class="sub">{{ sol.proyecto }} · {{ sol.viajero }} · guardada {{ decision.creado }} UTC</p></div>
 <span class="der noimp"><button class="sec" onclick="window.print()">Imprimir o guardar PDF</button> <a class="boton sec" href="/proyectos/{{ sol.proyecto_id }}">Ver proyecto</a></span></div>
 {% if el_viaje %}<p class="nota {{ 'ok' if el_viaje.estado == 'aprobado' else 'aviso' if el_viaje.estado == 'pendiente_aprobacion' else 'mal' }}">
   Viaje <a href="/viaje/{{ el_viaje.id }}"><b>{{ el_viaje.codigo }}</b></a> asignado a <b>{{ el_viaje.titular or '—' }}</b> · presupuesto {{ el_viaje.presupuesto_usd|dinero }} · <b>{{ el_viaje.estado_texto }}</b>.
@@ -9,8 +10,8 @@
     <p><b>{{ d.vuelo.aerolinea }} {{ d.vuelo.numeros|join(' + ') }}</b> · {{ decision.tarifa }}<br>{{ d.vuelo.sale }} → {{ d.vuelo.llega }} · {{ 'directo' if d.vuelo.escalas == 0 else d.vuelo.escalas ~ ' escala(s)' }} {{ m.origen(d.origen_vuelo) }}</p>
     {% if d.hotel %}<p><b>{{ d.hotel.nombre }}</b> · {{ noches }} noches {{ m.origen(d.origen_hotel) }}</p>{% else %}<p class="eti">Sin hotel en esta decisión.</p>{% endif %}
     <p class="eti">Consulta de: {{ sol.solicitado_por or '—' }}<br>Motivo: {{ decision.motivo or '—' }}<br>Aprueba: {{ decision.aprobado_por or '—' }}</p></div>
-  <div class="tarjeta"><h3>Total previsto</h3><div class="num">{{ decision.total|dinero }}</div>
-    <p class="eti">Incluye el riesgo de cambio y descuenta el valor de las millas; el desembolso real se compara en el tablero del proyecto.</p></div>
+  <div class="tarjeta"><h3>Costo total esperado</h3><div class="num">{{ decision.total|dinero }}</div>
+    <p class="eti">Sirve para comparar opciones: incluye el riesgo de cambio y descuenta el valor de las millas. El <b>presupuesto</b> que aprueba administración{% if el_viaje %} ({{ el_viaje.presupuesto_usd|dinero }}){% endif %} es otra cifra: solo lo que se espera pagar, más viáticos.</p></div>
 </div>
 <div class="tarjeta"><h3>Desglose</h3>{{ m.desglose(d.lineas, decision.total) }}</div>
 <div class="tarjeta"><h3>Por qué</h3><ul>

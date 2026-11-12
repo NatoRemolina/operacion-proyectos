@@ -41,8 +41,8 @@ def _registrar(uso: str, entidad_id, cuerpo: dict | None, ms: int, estado_http: 
                     tokens_entrada=medida.get("promptTokenCount"),
                     tokens_salida=(medida.get("candidatesTokenCount") or 0) + (medida.get("thoughtsTokenCount") or 0),
                     latencia_ms=ms, estado_http=estado_http, motivo_parada=candidato.get("finishReason"), error=error[:300])
-    except Exception:
-        pass  # el registro nunca debe tumbar la operación
+    except Exception:  # noqa: S110  el registro de uso nunca debe tumbar la lectura de un recibo
+        pass
 
 
 # Canales que deben responder en segundos (un chat) piden un solo intento con espera corta

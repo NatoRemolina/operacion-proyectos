@@ -1,3 +1,10 @@
 {% macro chip(v) %}<span class="chip {{ 'ok' if v.estado == 'aprobado' else 'aviso' if v.estado == 'pendiente_aprobacion' else 'mal' if v.estado == 'rechazado' else '' }}">{{ v.estado_texto }}{% if v.en_curso %} · en curso{% endif %}</span>{% endmacro %}
 {% macro ejecucion(v) %}{% set p = v.pct or 0 %}<div class="barra" title="{{ p }} % del presupuesto"><i style="width:{{ [p, 100]|min }}%;{{ 'background:var(--mal)' if p > 100 }}"></i></div>
 <span class="eti">{{ '%.2f'|format(v.gastado or 0) }} de {{ '%.2f'|format(v.presupuesto_usd or 0) }} USD{% if v.en_revision %} · {{ '%.2f'|format(v.en_revision) }} en revisión{% endif %}</span>{% endmacro %}
+{# Dónde va un viaje dentro del recorrido completo. `v` es el viaje (o nada si aún es solo una cotización) y `decidido` si ya hay decisión. #}
+{% macro recorrido(v, decidido=false) %}{% set e = v.estado if v else '' %}
+{% set paso = 5 if e == 'cerrado' else 4 if e == 'aprobado' else 3 if e in ('pendiente_aprobacion', 'rechazado') else 2 if decidido else 1 %}
+<ol class="recorrido" aria-label="Recorrido del viaje">
+  {% for n, titulo, detalle in [(1, 'Cotización', 'Comparar opciones'), (2, 'Decisión', 'Elegir y decir por qué'), (3, 'Aprobación', 'Administración aprueba el presupuesto'), (4, 'Gastos', 'Recibos ligados al viaje'), (5, 'Cierre', 'Previsto frente a real')] %}
+  <li class="{{ 'mal' if n == 3 and e == 'rechazado' else 'ahora' if n == paso and e != 'cerrado' else 'hecho' if n < paso or e == 'cerrado' else '' }}"{% if n == paso %} aria-current="step"{% endif %}>{{ titulo }}<small>{{ 'Presupuesto rechazado' if n == 3 and e == 'rechazado' else detalle }}</small></li>{% endfor %}
+</ol>{% endmacro %}

@@ -1,5 +1,5 @@
 """Indicadores del tablero de analítica. Todo sale de datos registrados; nada es simulado."""
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import date, timedelta
 
 from .. import db
