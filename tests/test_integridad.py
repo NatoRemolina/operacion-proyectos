@@ -575,3 +575,46 @@ def test_la_tabla_de_envios_existe_con_sus_restricciones():
     assert {n for n, c in columnas.items() if c["notnull"]} >= {"usuario_id", "clave", "huella", "estado"}
     unicos = [i for i in db.todos("pragma index_list(envios_soporte)") if i["unique"]]
     assert any({c["name"] for c in db.todos(f"pragma index_info('{i['name']}')")} == {"usuario_id", "clave"} for i in unicos)
+
+
+# ---------- comprobación de la base (solo lectura) ----------
+PG_LOCAL = "postgresql://operacion:operacion-local@127.0.0.1:5433/operacion"
+
+
+def _pg_local_responde() -> bool:
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", 5433), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def _comprobar(capsys, url: str | None) -> tuple[int, str]:
+    from datos import comprobar_supabase
+    codigo = comprobar_supabase.main({"DATABASE_URL": url} if url else {})
+    return codigo, capsys.readouterr().out
+
+
+def test_comprobar_no_conecta_sin_lo_necesario(capsys):
+    assert _comprobar(capsys, None)[0] == 2
+    assert _comprobar(capsys, "sqlite:///x.db")[0] == 2
+    codigo, salida = _comprobar(capsys, "postgresql://u:clave-secreta@db.ejemplo.invalid:5432/x?sslmode=disable")
+    assert codigo == 2 and "SSL" in salida and "clave-secreta" not in salida
+
+
+def test_comprobar_no_imprime_la_conexion_si_falla(capsys):
+    codigo, salida = _comprobar(capsys, "postgresql://u:clave-secreta@127.0.0.1:1/x")
+    assert codigo == 1 and "clave-secreta" not in salida and "127.0.0.1" not in salida
+    assert '"conexion": "no verificada"' in salida
+
+
+@pytest.mark.skipif(not _pg_local_responde(), reason="PostgreSQL local (127.0.0.1:5433) no responde")
+def test_comprobar_contra_el_postgres_local(capsys):
+    import json
+    codigo, salida = _comprobar(capsys, PG_LOCAL)
+    informe = json.loads(salida)
+    assert informe["conexion"] == "correcta" and informe["escritura_temporal"] == "correcta" and informe["rollback_verificado"]
+    assert {"tablas_sin_seguridad_por_filas", "permisos_publicos", "tablas", "columnas"} <= set(informe)
+    assert "operacion-local" not in salida
+    assert codigo in (0, 1)
