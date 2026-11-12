@@ -33,7 +33,8 @@ export function ZonaPrivada({
   const sinSesion = sesion.isSuccess && sesion.data === null && salir.isIdle;
 
   useEffect(() => {
-    if (sinSesion) router.replace(`/entrar?volver=${encodeURIComponent(ruta)}`);
+    // La consulta (filtros, viaje elegido) se lee del navegador: así no hace falta useSearchParams en el layout.
+    if (sinSesion) router.replace(`/entrar?volver=${encodeURIComponent(ruta + window.location.search)}`);
   }, [sinSesion, ruta, router]);
 
   if (sesion.isPending) {

@@ -60,6 +60,10 @@ export function DecisionViaje({ viaje }: { viaje: ViajeResumen }) {
           else {
             setRechazando(false);
             setError(e);
+            // La tarjeta puede desaparecer al ponerse al día la lista: el aviso queda igual.
+            if (e.tipo === "estado_invalido") {
+              avisar({ tono: "aviso", texto: `${viaje.codigo} ya había cambiado de estado: la lista se puso al día.` });
+            }
           }
         },
       },

@@ -81,4 +81,21 @@ describe("Viajes", () => {
     expect(within(lista).queryByText("V-2026-0009")).not.toBeInTheDocument();
     expect(within(lista).getByText("V-2026-0012")).toBeInTheDocument();
   });
+
+  it("si otra persona ya decidió el viaje, lo explica y la lista se pone al día", async () => {
+    const usuario = userEvent.setup();
+    const compartidos = [PENDIENTE, APROBADO];
+    renderizarConFuente(<PantallaViajes />, {
+      viajes: crearViajesMemoria({ viajes: compartidos }),
+      administracion: crearAdministracionMemoria({ resumen: resumenDePrueba(), viajes: compartidos }),
+      permiso: "admin",
+    });
+    const porAprobar = await screen.findByRole("region", { name: "Por aprobar" });
+    await within(porAprobar).findByRole("link", { name: "V-2026-0012" });
+    // Mientras tanto, otra persona de administración lo aprobó
+    compartidos[0] = { ...PENDIENTE, estado: "aprobado", estado_texto: "Aprobado" };
+    await usuario.click(within(porAprobar).getByRole("button", { name: "Aprobar presupuesto" }));
+    expect(await screen.findByText("No hay viajes esperando aprobación.")).toBeInTheDocument();
+  });
 });
+

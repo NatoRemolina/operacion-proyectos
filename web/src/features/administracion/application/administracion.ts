@@ -50,6 +50,13 @@ export function useCambiarEstadoViaje() {
       void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "viajes") });
       void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion") });
     },
+    onError: (error) => {
+      // Si el viaje ya cambió (otra persona lo decidió) lo que se ve está viejo: se vuelve a pedir.
+      if (error.tipo === "estado_invalido") {
+        void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "viajes") });
+        void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion") });
+      }
+    },
   });
 }
 
