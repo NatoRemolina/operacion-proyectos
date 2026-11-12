@@ -33,13 +33,15 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 403 | `ORIGIN_NOT_ALLOWED` | Escritura desde un origen no permitido |
 | 403 | `FORBIDDEN` | Operación reservada a otro rol |
 | 404 | `NOT_FOUND` | No existe o no es visible para la persona |
-| 409 | `IDEMPOTENCY_CONFLICT` | Misma `Idempotency-Key` con un archivo distinto o con otro `viaje_id` |
+| 409 | `IDEMPOTENCY_CONFLICT` | Misma `Idempotency-Key` con un archivo distinto o con otro `viaje_id`; al cotizar, con otro pedido |
 | 409 | `EDIT_CONFLICT` | La revisión trae una `version` que ya no es la del gasto, o el recibo todavía se está leyendo |
-| 409 | `REQUEST_IN_PROGRESS` | El primer envío con esa clave todavía no creó su gasto: reintentar con la misma clave |
+| 409 | `REQUEST_IN_PROGRESS` | El primer envío con esa clave todavía no creó su gasto (o su cotización): reintentar con la misma clave |
+| 409 | `DECISION_LOCKED` | El viaje de la cotización ya está aprobado o cerrado: la decisión no cambia sin que administración lo reabra |
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF ni correo |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
 | 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso |
+| 429 | `TOO_MANY_REQUESTS` | Tope de cotizaciones nuevas del día por persona (regla `tope_cotizaciones_persona_dia`, 20 si no se define) |
 | 500 | `INTERNAL_ERROR` | Fallo interno, ya registrado |
 
 Un gasto que queda **en revisión** no es un error: es una respuesta correcta con `estado: "revision"`.
@@ -155,6 +157,116 @@ Cuerpo JSON `{"texto": string}` (3 a 2.000 caracteres) y `X-CSRF-Token`. Añade 
 ### `GET /documentos/{id}/contenido`
 El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `application/pdf`; un correo se entrega como `text/plain`), `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto al que pertenece no es visible.
 
+## Cotizar y decidir
+
+Es el mismo cálculo de las pantallas (`app/servicios/cotizacion.py`): una búsqueda para todos los aeropuertos marcados, el costo total esperado de cada vuelo y la decisión que crea el viaje. Las respuestas del buscador se guardan y una consulta idéntica no se vuelve a pagar.
+
+```ts
+interface Lugar { nombre: string; region: string; pais: string; lat: number; lon: number }
+
+interface LugarSugerido {
+  tipo: "lugar" | "aeropuerto" | "pais";
+  id: string; nombre: string; region: string; pais: string;
+  lat: number | null; lon: number | null;
+  tambien: string | null;                     // otro nombre con que coincidió
+  aviso: string | null;                       // por qué no trae aeropuertos
+  origen: "local" | "google";                 // la interfaz marca los de Google
+  aeropuertos: { iata: string; nombre: string | null; municipio: string | null;
+                 km: number | null; horas: number | null; grande: boolean }[];
+}
+
+interface LineaCosto {
+  concepto: string; valor_usd: Dinero;
+  origen: "buscador" | "regla" | "supuesto";  // de dónde sale el valor
+  tipo: "precio" | "equipaje" | "riesgo_cambio" | "millas" | "traslado" | "otro";
+}
+
+interface OpcionVuelo {
+  id: number; aerolinea: string; numeros: string[];
+  desde: string | null; hasta: string | null; // aeropuertos reales del vuelo
+  sale: string; llega: string;                // hora local, "2026-12-08 07:35"
+  escalas: number; duracion_min: number | null;
+  precio_usd: Dinero;                         // precio del buscador
+  tarifa: { nombre: string; permite_cambio: boolean; reales: boolean };
+  costo_total_usd: Dinero;                    // precio + equipaje + riesgo de cambio − millas + traslado
+  desglose: { precio_usd: Dinero; equipaje_usd: Dinero; riesgo_cambio_usd: Dinero; millas_usd: Dinero; traslado_usd: Dinero };
+  lineas: LineaCosto[];
+  avisos: string[];
+  descartada: string | null;                  // la razón, si no sirve
+  recomendada: boolean; mas_barata: boolean;
+  origen_dato: string | null;                 // "en vivo" | "guardado" | "guardado (otras fechas)"
+  esperado_usd: Dinero; frente_esperado_pct: number | null;   // modelo de precios, si hay uno utilizable
+}
+
+interface OpcionHotel {
+  id: number; nombre: string; noche_usd: Dinero; total_usd: Dinero;
+  calificacion: number | null; clase: number | null; programa: string | null;
+  origen_dato: string | null; recomendada: boolean;
+}
+
+interface Cotizacion {
+  id: number;
+  estado: "buscando" | "comparando" | "decidido";
+  creado: string; solicitado_por: string | null;
+  proyecto: { id: number; nombre: string } | null;
+  viajero: { id: number; nombre: string } | null;
+  origen: { codigo: string; aeropuertos: string[]; lugar: Lugar | null };
+  destino: { codigo: string; aeropuertos: string[]; lugar: Lugar | null };
+  ciudad_hotel: string | null; ida: string; regreso: string; noches: number;
+  hora_limite: string | null;                 // "18:00" del día de ida
+  baterias_n: number; baterias_wh: number; maleta: boolean; prob_cambio_pct: number;
+  carro_usd: Dinero;
+  equipo: { nivel: "ok" | "aviso" | "bloqueo"; texto: string };
+  origen_dato: string | null;                 // de dónde salieron los vuelos; "fallida" si no hubo
+  aviso: string | null;                       // «lo más barato no es lo mejor», cuando aplica
+  fallos: string[];
+  recomendacion: string;                      // explicación determinista de la recomendada
+  vuelos: OpcionVuelo[];                      // los que sirven, del menor al mayor costo total esperado
+  descartados: OpcionVuelo[];
+  hoteles: OpcionHotel[];                     // del menor al mayor total
+  recomendada_id: number | null; mas_barata_id: number | null;
+  decision: { id: number; vuelo_id: number; hotel_id: number | null; motivo: string | null; razones: string[];
+              total_usd: Dinero; siguio_recomendacion: boolean; creado: string } | null;
+  viaje: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string } | null;
+  puede_decidir: boolean;                     // la persona puede guardar o cambiar la decisión ahora
+  bloqueo: string | null;                     // por qué ya no, si es el caso
+}
+```
+
+### `GET /lugares`
+Parámetros: `q` (hasta 80 caracteres), `google` (`0` o `1`), `limite` (1–20, por defecto 8). Sugerencias para el campo de origen o destino: lugares con sus aeropuertos cercanos (distancia y horas por carretera), aeropuertos y países. Sin `google` responde al instante con los datos propios; con `google=1` suma el autocompletado de Google con los mismos topes del formulario (por persona y día, y por mes) y, si no consulta, lo dice en `aviso_google`. 200 `{"resultados": LugarSugerido[], "aviso_google": string | null, "carretera": {"factor", "velocidad_kmh"}}`. Menos de 2 letras: `resultados` vacío.
+
+### `GET /cotizaciones/formulario`
+Lo necesario para llenar una cotización: `proyectos`, `viajeros` que la persona puede elegir (un colaborador, solo a sí mismo; gestión y administración, a cualquiera), `viajero_propio_id`, `elige_viajero`, `razones` de la decisión (`{clave, texto}`) y `precios_en_vivo` (sin clave del buscador solo hay precios para las rutas guardadas).
+
+### `POST /cotizaciones`
+Cuerpo JSON con `X-CSRF-Token` e `Idempotency-Key` opcional:
+
+```json
+{"proyecto_id": 1, "viajero_id": null,
+ "origen": {"texto": "Miami (MIA)"},
+ "destino": {"aeropuertos": ["CNY", "GJT", "SLC"], "lugar": {"nombre": "Moab", "region": "Utah", "pais": "Estados Unidos", "lat": 38.57332, "lon": -109.54984}},
+ "ida": "2026-12-08", "regreso": "2026-12-11", "hora_limite": "18:00", "ciudad_hotel": "",
+ "baterias_n": 4, "baterias_wh": 77, "maleta": true, "prob_cambio_pct": 25, "carro_dia_usd": "65.00"}
+```
+
+- Cada lado lleva los aeropuertos marcados (hasta 8, se comparan en una sola búsqueda) con el lugar, o un `texto` con ciudad o código. El aeropuerto principal es el marcado más cercano al lugar; el traslado por carretera se calcula hasta el lugar.
+- `viajero_id` omitido: viaja quien cotiza. Otra persona: solo gestión y administración (si no, 403 `FORBIDDEN`).
+- 201 `Cotizacion` con la comparación lista. Un lugar o código que no se reconoce, fechas imposibles, un proyecto que no existe: 422 con el campo en `fields`.
+- Misma `Idempotency-Key` y mismo pedido: 200 con la misma cotización, sin volver a buscar. Con otro pedido: 409 `IDEMPOTENCY_CONFLICT`. Si el primero todavía está buscando: 409 `REQUEST_IN_PROGRESS`. Un pedido rechazado (422) deja la clave libre.
+- Cada cotización nueva puede gastar dos búsquedas pagas: pasado el tope del día por persona, 429 `TOO_MANY_REQUESTS`. Repetir una ya hecha con su clave no cuenta.
+
+### `GET /cotizaciones/{id}`
+200 `Cotizacion`. La ven quien la creó, quien viaja, el gestor del proyecto y administración; los demás reciben 404.
+
+### `POST /cotizaciones/{id}/decision`
+Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo_total"]}` y `X-CSRF-Token`.
+
+- Si el vuelo no es el recomendado, `motivo` (5 caracteres o más) es obligatorio: 422 con `fields.motivo`. Un vuelo que no es de la cotización: 422 con `fields.vuelo_id`. El hotel es opcional.
+- Guarda la decisión con todas las opciones mostradas y crea el viaje (o actualiza el de la cotización) con su presupuesto, `pendiente_aprobacion`. 200 `Cotizacion` con `decision` y `viaje` (`V-2026-0012`).
+- El mismo envío repetido no duplica la decisión.
+- Deciden quien viaja, quien la creó y administración; el gestor que solo la ve recibe 403 `FORBIDDEN`. Con el viaje ya aprobado o cerrado: 409 `DECISION_LOCKED`.
+
 ## Fuera de este contrato (siguientes fases)
 
-Cotizar y decidir, transiciones del viaje, reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Ver la sección 9 del plan fullstack.
+Transiciones del viaje, reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Ver la sección 9 del plan fullstack.

@@ -4,11 +4,26 @@ Lo usan las pantallas (`app/rutas/cotizaciones.py`) y la API v1 (`app/rutas/v1_c
 comprueba antes el permiso sobre la cotización: `acceso.puede_ver` para leerla y `acceso.es_propio` para decidirla.
 Los errores de datos salen como excepciones con el texto para la persona; cada canal los presenta a su manera.
 """
+import hashlib
+import json
 import re
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
+
+from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
 from . import acceso, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
+
+# Un pedido de cotización con `Idempotency-Key` por la API: la misma clave de la misma persona da la misma cotización
+envios_cotizacion = db._tabla(
+    "envios_cotizacion",  # una fila por (persona, clave); solo la usa el servidor
+    Column("usuario_id", Integer, ForeignKey("usuarios.id", name="fk_envios_cotizacion_usuario_id"), nullable=False),
+    Column("clave", Text, nullable=False), Column("huella", Text, nullable=False), Column("estado", Text, nullable=False),
+    db._ref("envios_cotizacion", "solicitud_id", "solicitudes"), Column("expira", Text), Column("creado", Text),
+    UniqueConstraint("usuario_id", "clave", name="ux_envios_cotizacion_persona_clave"),
+)
+VIGENCIA_ENVIO = timedelta(minutes=5)   # más que una búsqueda en vivo; pasado esto, quien la tenía ya no va a terminar
 
 
 class CotizacionInvalida(ValueError):
@@ -25,6 +40,14 @@ class DecisionInvalida(CotizacionInvalida):
 
 class DecisionBloqueada(ValueError):
     """El viaje ya tiene el presupuesto aprobado o está cerrado: la decisión no cambia sin reabrirlo."""
+
+
+class ConflictoEnvio(ValueError):
+    """La clave ya se usó con otro pedido."""
+
+
+class EnvioEnCurso(ValueError):
+    """El primer pedido con esa clave todavía está buscando."""
 
 
 # ---------- origen y destino ----------
@@ -160,6 +183,50 @@ def registrar_ahorro(sid: int, c: dict | None = None):
 def completar_ahorros():
     for s in db.todos("select id from solicitudes where ahorro_potencial is null"):
         registrar_ahorro(s["id"])
+
+
+# ---------- pedidos repetidos (Idempotency-Key) ----------
+def huella_pedido(pedido: dict) -> str:
+    return hashlib.sha256(json.dumps(pedido, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _vence() -> str:
+    return (datetime.now(UTC) + VIGENCIA_ENVIO).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def reclamar_envio(usuario_id: int, clave: str, huella: str) -> tuple[dict, int | None]:
+    """Devuelve (envío, cotización). Con cotización, el pedido ya se atendió y no se vuelve a buscar.
+
+    ConflictoEnvio si la clave se usó con otro pedido; EnvioEnCurso si el primero todavía está buscando.
+    Un envío que quedó a medias más allá de su vigencia se retoma.
+    """
+    with db.transaccion() as c:
+        try:
+            with c.begin_nested():   # la clave puede existir ya: el error se atrapa y la transacción sigue
+                nuevo = db.insertar("envios_cotizacion", usuario_id=usuario_id, clave=clave, huella=huella,
+                                    estado="procesando", expira=_vence(), creado=db.ahora())
+            return {"id": nuevo}, None
+        except IntegrityError:
+            pass
+        fila = db.uno("select * from envios_cotizacion where usuario_id=:u and clave=:c" + ("" if config.ES_SQLITE else " for update"),
+                      u=usuario_id, c=clave)
+        if fila["huella"] != huella:
+            raise ConflictoEnvio("Esa clave ya se usó con otra cotización.")
+        if fila["solicitud_id"]:
+            return fila, fila["solicitud_id"]
+        if (fila["expira"] or "") > db.ahora():
+            raise EnvioEnCurso("Esa cotización todavía se está buscando. Reintenta en un momento con la misma clave.")
+        db.actualizar("envios_cotizacion", fila["id"], expira=_vence())
+        return fila, None
+
+
+def completar_envio(envio: dict, sid: int):
+    db.actualizar("envios_cotizacion", envio["id"], estado="completado", solicitud_id=sid)
+
+
+def soltar_envio(envio: dict):
+    """El pedido no creó nada (datos que no sirven o un fallo): la clave queda libre para reintentar."""
+    db.ejecutar("delete from envios_cotizacion where id=:i and solicitud_id is null", i=envio["id"])
 
 
 # ---------- comparar ----------
