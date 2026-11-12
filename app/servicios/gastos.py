@@ -3,6 +3,7 @@
 Recibe a la persona como parámetro: no depende de que haya una sesión de navegador.
 """
 import hashlib
+import math
 import re
 from pathlib import Path
 
@@ -173,7 +174,9 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
             r["alertas"].insert(0, x["error"])
             r["motivos"].insert(0, "lectura_fallida")
             r["estado"] = "revision"
-        original = {c: x.get(c) for c in extraccion.CAMPOS} | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
+        # La lectura original tal cual, salvo NaN e infinito, que no son JSON válido: quedan vacíos
+        original = {c: None if isinstance(x.get(c), float) and not math.isfinite(x[c]) else x.get(c) for c in extraccion.CAMPOS} \
+            | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
         db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c not in ("ciudad", *IMPORTES)},
                       **_importes_guardables(x),
                       confianza=x["confianza"],

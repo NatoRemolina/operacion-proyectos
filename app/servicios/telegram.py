@@ -251,12 +251,14 @@ def _mensaje(m: dict, registro: dict):
     # La entrega es la clave del envío: reprocesar una que quedó en error devuelve el mismo gasto, no crea otro.
     # La huella es solo el archivo: al reprocesar, el viaje que corresponde hoy podría ser otro
     entrega = registro.get("_entrega")
-    gid = gastos.registrar(contenido, nombre, "telegram", u, viaje, viajero_id=u["viajero_id"], rapido=True,
-                           clave_idempotencia=f"telegram:{entrega}" if entrega is not None else None, contexto={})
+    gid, repetido = gastos.registrar_envio(contenido, nombre, "telegram", u, viaje, viajero_id=u["viajero_id"], rapido=True,
+                                           clave_idempotencia=f"telegram:{entrega}" if entrega is not None else None,
+                                           contexto={})
     registro["gasto_id"] = gid
     motivo = " ".join(re.sub(r"\bV-\d{4}-\d{4}\b", " ", texto, flags=re.IGNORECASE).split())
-    justificado = False
-    if len(motivo) >= justificaciones.MINIMO:   # el pie de la foto ya dice para qué fue
+    # Al reprocesar la misma entrega, el pie ya quedó como justificación la primera vez
+    justificado = repetido and bool(db.uno("select id from justificaciones where gasto_id=:g limit 1", g=gid))
+    if not repetido and len(motivo) >= justificaciones.MINIMO:   # el pie de la foto ya dice para qué fue
         try:
             justificaciones.registrar(gid, u, "telegram", motivo)
             justificado = True

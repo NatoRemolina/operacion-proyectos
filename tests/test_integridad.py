@@ -848,4 +848,41 @@ def test_un_importe_no_valido_no_llega_a_la_base(ejemplos, monkeypatch, viaje_ap
     g = db.uno("select total, subtotal, estado, motivos, extraido from gastos where id=:i", i=gid)
     assert g["total"] is None and g["subtotal"] is None and g["estado"] == "revision"
     assert "importe_invalido" in db.de_json(g["motivos"])
-    assert "NaN" in g["extraido"]   # la lectura original se conserva tal cual
+    import json
+
+    def no_finito(c):
+        raise AssertionError(f"`extraido` guarda {c}, que no es JSON válido")
+    original = json.loads(g["extraido"], parse_constant=no_finito)
+    assert original["total"] is None and original["subtotal"] is None and original["comercio"] == "Sonda NaN"
+
+
+def test_telegram_reprocesar_con_pie_de_foto_no_duplica_la_justificacion(anonimo, monkeypatch, nuevo_viaje, ejemplos):
+    from app import config
+    from app.servicios import telegram
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+    monkeypatch.setattr(config, "TELEGRAM_WEBHOOK_SECRETO", "secreto-de-pruebas")
+    monkeypatch.setattr(telegram, "_llamar", lambda metodo, **d: {})
+    monkeypatch.setattr(telegram, "descargar", lambda file_id: _foto(ejemplos, "telegram con pie"))
+    resumen, fallos = telegram._resumen_gasto, []
+
+    def falla_una_vez(*a, **k):   # cae después de registrar el gasto y de guardar la justificación del pie
+        if not fallos:
+            fallos.append(1)
+            raise RuntimeError("caída después de justificar")
+        return resumen(*a, **k)
+
+    monkeypatch.setattr(telegram, "_resumen_gasto", falla_una_vez)
+    v = nuevo_viaje()
+    db.actualizar("usuarios", v["usuario_id"], telegram_chat_id=880666)
+    entrega = {"update_id": 880666, "message": {"chat": {"id": 880666, "type": "private"}, "caption": "Taxi del aeropuerto al hotel",
+                                                "photo": [{"file_id": "f", "file_size": 1000}]}}
+    ultimo = db.uno("select coalesce(max(id),0) i from gastos")["i"]
+    try:
+        for _ in range(2):
+            anonimo.post("/telegram/webhook", json=entrega, headers={"X-Telegram-Bot-Api-Secret-Token": "secreto-de-pruebas"})
+        nuevos = db.todos("select id from gastos where id>:i and usuario_id=:u", i=ultimo, u=v["usuario_id"])
+        assert fallos and len(nuevos) == 1
+        assert db.uno("select count(*) n from justificaciones where gasto_id=:g", g=nuevos[0]["id"])["n"] == 1
+    finally:
+        db.actualizar("usuarios", v["usuario_id"], telegram_chat_id=None)
+        db.ejecutar("update gastos set creado=:c where id>:i and usuario_id=:u", c=_hace(24 * 60), i=ultimo, u=v["usuario_id"])
