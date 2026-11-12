@@ -5,7 +5,7 @@ Toda consulta parte de la persona de la sesión: los listados se limitan con `ac
 Contrato: `contracts/api-v1.md`.
 """
 import re
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .. import db
 from . import acceso, almacen, justificaciones, viajes
@@ -19,10 +19,14 @@ _INSTANTE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 
 # ---------- formato de salida ----------
 def dinero(valor) -> str | None:
-    """Los importes están en coma flotante en la base; salen como cadena con dos cifras ("54.00")."""
+    """Los importes están en coma flotante en la base; salen como cadena con dos cifras ("54.00"). NaN o infinito salen null."""
     if valor is None:
         return None
-    return str(Decimal(str(valor)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    try:
+        numero = Decimal(str(valor))
+    except InvalidOperation:
+        return None
+    return str(numero.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if numero.is_finite() else None
 
 
 def instante(valor: str | None) -> str | None:

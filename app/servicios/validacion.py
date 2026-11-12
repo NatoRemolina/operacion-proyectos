@@ -1,20 +1,23 @@
 """Reglas que deciden si un gasto entra solo o va a revisión humana."""
 import re
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from .. import config, db
-from . import costo
+from . import costo, dinero
 
 AGENCIAS = ("booking", "expedia", "hotels.com", "travelnow", "agoda", "priceline", "kayak", "trip.com")
 
 
-MOTIVOS = {"campo_faltante": "Campo faltante", "total_no_cuadra": "El total no cuadra", "ilegible": "Lectura poco confiable",
+MOTIVOS = {"importe_invalido": "Importe no válido", "fecha_invalida": "Fecha no válida", "fecha_futura": "Fecha posterior a hoy",
+           "campo_faltante": "Campo faltante", "total_no_cuadra": "El total no cuadra", "ilegible": "Lectura poco confiable",
            "sin_proyecto": "Sin proyecto", "fuera_de_fechas": "Fecha fuera del proyecto", "sin_tasa": "Moneda sin tasa de cambio",
            "duplicado": "Posible duplicado", "duplicado_aproximado": "Parecido a otro gasto", "atipico": "Importe atípico",
            "sin_puntos": "Fidelización perdida", "compra_anticipada": "Compra anticipada", "lectura_fallida": "Lectura fallida",
            "sin_viaje": "Sin viaje asignado", "viaje_no_aprobado": "Viaje sin presupuesto aprobado", "viaje_cerrado": "Viaje cerrado",
            "fuera_del_viaje": "Fecha fuera del viaje", "presupuesto_superado": "Presupuesto del viaje superado"}
 SE_COMPRAN_ANTES = ("vuelo", "hotel", "alquiler_carro")
+FECHA_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class _Alertas(list):
@@ -34,15 +37,25 @@ def _normal(texto: str) -> str:
 
 
 def a_usd(total, moneda, cat: dict):
+    """El total en dólares, calculado con Decimal y redondeado a centavos. None si no hay importe válido o tasa usable."""
     if total is None or not moneda:
         return None
-    if moneda == "USD":
-        return round(total, 2)
-    tasa = cat.get(("supuesto", "", "", f"tasa_{moneda}_USD"))
     try:
-        return round(total * float(tasa["valor"]), 2) if tasa else None
-    except (TypeError, ValueError):
+        importe = dinero.decimal(total, positivo=True)
+        if moneda == "USD":
+            return float(importe)
+        tasa = cat.get(("supuesto", "", "", f"tasa_{moneda}_USD"))
+        factor = Decimal(str(tasa["valor"]).strip()) if tasa else None
+        if factor is None or not factor.is_finite() or factor <= 0:
+            return None
+        return float(dinero.decimal(importe * factor, positivo=True))
+    except (InvalidOperation, TypeError, ValueError):
         return None   # una tasa mal escrita equivale a no tenerla: el gasto va a revisión, no se cae la carga
+
+
+def _hoy_en_algun_lugar() -> date:
+    """La fecha más adelantada del planeta (UTC+14): un recibo de hoy en Asia no se toma por futuro."""
+    return (datetime.now(UTC) + timedelta(hours=14)).date()
 
 
 def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict, alertas: "_Alertas") -> bool:
@@ -73,8 +86,9 @@ def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict,
             bloquea = True
     if total_usd is not None and viaje.get("presupuesto_usd"):
         tolerancia = costo.supuesto(cat, "tolerancia_presupuesto", 0.10)
-        acumulado = viajes.gastado(viaje["id"], gasto_id) + total_usd
-        if acumulado > viaje["presupuesto_usd"] * (1 + tolerancia):
+        acumulado = dinero.decimal(viajes.gastado(viaje["id"], gasto_id)) + dinero.decimal(total_usd)
+        tope = Decimal(str(viaje["presupuesto_usd"])) * (1 + Decimal(str(tolerancia)))
+        if acumulado > tope:
             alertas.agregar("presupuesto_superado", f"Con este gasto el viaje {codigo} llega a {acumulado:.2f} USD, "
                                                     f"sobre un presupuesto de {viaje['presupuesto_usd']:.2f} USD.")
             bloquea = True
@@ -85,6 +99,31 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
     """Devuelve {estado, alertas, motivos, total_usd}. `g` son los campos extraídos; `viaje`, el viaje al que pertenece."""
     cat = costo.catalogo()
     alertas, bloquea = _Alertas(), False
+    g = dict(g)   # se normaliza una copia: la lectura original se guarda intacta
+
+    for campo in ("total", "subtotal", "impuesto", "propina"):
+        if g.get(campo) is None:
+            continue
+        try:
+            valor = dinero.decimal(g[campo], positivo=campo == "total")
+            if valor < 0:
+                raise ValueError("componente negativo")
+            g[campo] = float(valor)
+        except ValueError:
+            alertas.agregar("importe_invalido", f"El valor de {campo} no es un importe válido"
+                                                + (" (debe ser mayor que cero)." if campo == "total" else "."))
+            g[campo], bloquea = None, True
+    if g.get("fecha"):
+        try:
+            dia = date.fromisoformat(g["fecha"]) if FECHA_ISO.fullmatch(str(g["fecha"])) else None
+        except ValueError:
+            dia = None
+        if not dia:
+            alertas.agregar("fecha_invalida", f"La fecha «{str(g['fecha'])[:20]}» no es una fecha válida. Hay que confirmarla.")
+            g["fecha"], bloquea = None, True
+        elif dia > _hoy_en_algun_lugar():
+            # Solo avisa por ahora: los recibos y viajes de demostración son de diciembre de 2026
+            alertas.agregar("fecha_futura", f"El recibo tiene fecha {g['fecha']}, posterior a hoy.")
 
     for campo, nombre in (("comercio", "comercio"), ("fecha", "fecha"), ("total", "total"), ("moneda", "moneda")):
         if g.get(campo) in (None, ""):
@@ -93,8 +132,8 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
 
     partes = [g.get(c) for c in ("subtotal", "impuesto", "propina")]
     if g.get("total") is not None and g.get("subtotal") is not None:
-        suma = sum(p or 0 for p in partes)
-        if abs(suma - g["total"]) > 0.02:
+        suma = sum(dinero.decimal(p or 0) for p in partes)
+        if abs(suma - dinero.decimal(g["total"])) > Decimal("0.02"):
             alertas.agregar("total_no_cuadra", f"El total ({g['total']:.2f}) no coincide con subtotal + impuesto + propina ({suma:.2f}).")
             bloquea = True
 
@@ -122,9 +161,12 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
         bloquea = True
 
     if g.get("comercio") and g.get("fecha") and g.get("total") is not None:
+        # Mismo importe en otra moneda no es el mismo gasto; dos gastos sin moneda leída sí se comparan entre sí
+        misma_moneda = "moneda=:m" if g.get("moneda") else "moneda is null"
         repetido = db.uno(
-            "select id from gastos where lower(comercio)=lower(:c) and fecha=:f and total=:t and id<>:i and estado<>'rechazado'",
-            c=g["comercio"], f=g["fecha"], t=g["total"], i=gasto_id or 0)
+            f"""select id from gastos where lower(comercio)=lower(:c) and fecha=:f and total=:t and {misma_moneda}
+                and id<>:i and estado<>'rechazado'""",
+            c=g["comercio"], f=g["fecha"], t=g["total"], m=g.get("moneda"), i=gasto_id or 0)
         if repetido:
             alertas.agregar("duplicado", f"Posible duplicado del gasto #{repetido['id']}.")
             bloquea = True
@@ -132,9 +174,10 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
             # Duplicado aproximado: mismo comercio, fecha a un día de distancia e importe a menos del 1 %
             dia = date.fromisoformat(g["fecha"]) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", g["fecha"]) else None
             if dia:
-                cerca = db.todos("""select id, comercio, total from gastos where fecha between :a and :b and id<>:i
-                                    and estado<>'rechazado' and total is not null""",
-                                 a=(dia - timedelta(days=1)).isoformat(), b=(dia + timedelta(days=1)).isoformat(), i=gasto_id or 0)
+                cerca = db.todos(f"""select id, comercio, total from gastos where fecha between :a and :b and id<>:i
+                                     and estado<>'rechazado' and total is not null and {misma_moneda}""",
+                                 a=(dia - timedelta(days=1)).isoformat(), b=(dia + timedelta(days=1)).isoformat(),
+                                 m=g.get("moneda"), i=gasto_id or 0)
                 parecido = next((c for c in cerca if _normal(c["comercio"]) == _normal(g["comercio"])
                                  and abs(c["total"] - g["total"]) <= 0.01 * max(abs(g["total"]), 1)), None)
                 if parecido:
