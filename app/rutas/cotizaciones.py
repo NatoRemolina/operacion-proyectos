@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import aeropuertos, config, db
-from ..servicios import acceso, agente, costo, eventos, modelo, precios, viajes
+from ..servicios import acceso, agente, costo, eventos, geografia, modelo, precios, viajes
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -24,20 +24,74 @@ MENU = [{"texto": "Cotizar viaje", "href": "/viajes/nuevo", "orden": 20}]
 # ---------- reto 1: viajes ----------
 @router.get("/viajes/nuevo", response_class=HTMLResponse)
 def viaje_nuevo(request: Request, error: str = ""):
-    return plantillas.TemplateResponse(request, "viaje_nuevo.html", _ctx(
-        aeropuertos=aeropuertos.AEROPUERTOS, error=error))
+    return plantillas.TemplateResponse(request, "viaje_nuevo.html", _ctx(error=error))
+
+
+def _lugar(texto: str) -> dict | None:
+    """El lugar elegido en el buscador, solo con los campos esperados y coordenadas válidas; si no, ninguno."""
+    datos = db.de_json(texto, None)
+    if not isinstance(datos, dict) or not str(datos.get("nombre") or "").strip():
+        return None
+    try:
+        lat, lon = float(datos["lat"]), float(datos["lon"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return {"nombre": str(datos["nombre"]).strip()[:80], "region": str(datos.get("region") or "").strip()[:80],
+            "pais": str(datos.get("pais") or "").strip()[:80], "lat": lat, "lon": lon}
+
+
+def _lado(texto: str, codigos: str, lugar_json: str) -> dict | None:
+    """Origen o destino de la cotización. Con aeropuertos marcados en el buscador: el lugar, la lista ordenada y el
+    principal (el marcado más cercano al lugar, o el primero). Sin ellos, como antes: un aeropuerto por nombre o código.
+    None si algo no se reconoce; `malo` dice qué."""
+    if not codigos.strip():
+        r = aeropuertos.resolver(texto)
+        return {"codigo": r[0], "ciudad": r[1], "lista": None, "lugar": None} if r else {"malo": texto}
+    marcados = list(dict.fromkeys(c.strip().upper() for c in codigos.split(",") if c.strip()))[:8]
+    conocidos = geografia.aeropuertos_conocidos(marcados)
+    malo = next((c for c in marcados if c not in conocidos), None)
+    if malo or not marcados:
+        return {"malo": malo or codigos}
+    lugar = _lugar(lugar_json)
+    principal = marcados[0]
+    if lugar:
+        con_distancia = [c for c in marcados if conocidos[c].get("lat") is not None]
+        if con_distancia:
+            principal = min(con_distancia, key=lambda c: geografia.distancia_km(lugar["lat"], lugar["lon"],
+                                                                                 conocidos[c]["lat"], conocidos[c]["lon"]))
+    return {"codigo": principal, "ciudad": lugar["nombre"] if lugar else (conocidos[principal].get("municipio") or principal),
+            "lista": ",".join(sorted(marcados)), "lugar": lugar}
+
+
+def _texto_lado(lado: dict) -> str:
+    """Para la bitácora: «Moab, Utah, Estados Unidos (CNY, GJT, SLC)» o el código cuando no hubo lugar."""
+    if not lado["lista"]:
+        return lado["codigo"]
+    lugar = lado["lugar"] or {}
+    nombre = ", ".join(x for x in (lugar.get("nombre"), lugar.get("region"), lugar.get("pais")) if x) or "sin lugar"
+    return f"{nombre} ({lado['lista'].replace(',', ', ')})"
 
 
 @router.post("/viajes")
-def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen: str = Form(...),
-                destino: str = Form(...), ciudad: str = Form(""), ida: str = Form(...), regreso: str = Form(...),
+def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen: str = Form(""),
+                destino: str = Form(""), ciudad: str = Form(""), ida: str = Form(...), regreso: str = Form(...),
                 llegar_antes: str = Form(""), baterias_n: int = Form(0), baterias_wh: float = Form(0),
                 maleta: str = Form(""), prob_cambio: float = Form(0), carro_dia: float = Form(0),
-                solicitado_por: str = Form(""), viajero_nuevo: str = Form(""), para_otra_persona: str = Form("")):
-    desde, hacia = aeropuertos.resolver(origen), aeropuertos.resolver(destino)
-    if not desde or not hacia:
-        malo = origen if not desde else destino
+                solicitado_por: str = Form(""), viajero_nuevo: str = Form(""), para_otra_persona: str = Form(""),
+                origen_aeropuertos: str = Form(""), destino_aeropuertos: str = Form(""),
+                origen_lugar: str = Form(""), destino_lugar: str = Form(""),
+                origen_agregar: str = Form(""), destino_agregar: str = Form("")):
+    a_medias = (origen_agregar or destino_agregar).strip()
+    if a_medias:   # quedó texto en «Agregar otro aeropuerto»: no se gasta una búsqueda con una lista que la persona no terminó
+        return RedirectResponse(f"/viajes/nuevo?error=Qued%C3%B3+a+medio+agregar+el+aeropuerto+%22{quote(a_medias[:40])}%22."
+                                "+El%C3%ADgelo+de+la+lista+o+borra+ese+texto+antes+de+buscar.", status_code=303)
+    sale, llega = _lado(origen, origen_aeropuertos, origen_lugar), _lado(destino, destino_aeropuertos, destino_lugar)
+    if "malo" in sale or "malo" in llega:
+        malo = sale.get("malo") if "malo" in sale else llega["malo"]
         return RedirectResponse(f"/viajes/nuevo?error=No+reconozco+%22{quote(malo[:40])}%22.+Elige+una+ciudad+de+la+lista+o+escribe+el+c%C3%B3digo+de+tres+letras+del+aeropuerto.", status_code=303)
+    desde, hacia = (sale["codigo"], sale["ciudad"]), (llega["codigo"], llega["ciudad"])
     try:
         f_ida, f_regreso = date.fromisoformat(ida), date.fromisoformat(regreso)
     except ValueError:
@@ -67,12 +121,16 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen:
                       destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
                       llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,
                       maleta=1 if maleta else 0, prob_cambio=prob_cambio / 100, carro_dia=carro_dia,
-                      estado="buscando", creado=db.ahora(), solicitado_por=solicitado_por, usuario_id=_yo()["id"])
-    eventos.registrar("solicitud", sid, "solicitud recibida", f"{origen}-{destino} {ida} a {regreso}", f"formulario · {solicitado_por}")
+                      estado="buscando", creado=db.ahora(), solicitado_por=solicitado_por, usuario_id=_yo()["id"],
+                      origen_lugar=sale["lugar"], destino_lugar=llega["lugar"],
+                      origen_aeropuertos=sale["lista"], destino_aeropuertos=llega["lista"])
+    eventos.registrar("solicitud", sid, "solicitud recibida", f"{origen}-{destino} {ida} a {regreso} · "
+                      f"origen: {_texto_lado(sale)} · destino: {_texto_lado(llega)}", f"formulario · {solicitado_por}")
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
-    vuelos, origen_v, _ = precios.buscar_vuelos(sol["origen"], sol["destino"], ida, regreso, sid)
+    desde_todos, hacia_todos = _codigos(sol, "origen"), _codigos(sol, "destino")
+    vuelos, origen_v, _ = precios.buscar_vuelos(desde_todos, hacia_todos, ida, regreso, sid)   # una consulta, todos los marcados
     for v in vuelos:
-        tarifas, origen_t = precios.tarifas_de_vuelo(sol["origen"], sol["destino"], ida, regreso, v, sid)
+        tarifas, origen_t = precios.tarifas_de_vuelo(desde_todos, hacia_todos, ida, regreso, v, sid)
         db.insertar("opciones", solicitud_id=sid, tipo="vuelo", titulo=" + ".join(v["numeros"]), precio=v["precio"],
                     moneda="USD", datos=v, tarifas={"lista": tarifas, "origen": origen_t}, origen_dato=origen_v, capturado=db.ahora())
     hoteles, origen_h = precios.buscar_hoteles(sol["ciudad"], ida, regreso, sid)
@@ -83,6 +141,11 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen:
     eventos.registrar("solicitud", sid, "opciones guardadas", f"{len(vuelos)} vuelos y {min(len(hoteles), 12)} hoteles", "aplicación")
     _registrar_ahorro(sid)
     return RedirectResponse(f"/viajes/{sid}", status_code=303)
+
+
+def _codigos(sol: dict, lado: str) -> list[str]:
+    """Los aeropuertos marcados de un lado de la cotización; las cotizaciones de antes tienen solo uno."""
+    return precios.codigos(sol.get(f"{lado}_aeropuertos") or sol[lado])
 
 
 def _registrar_ahorro(sid: int, c: dict | None = None):
@@ -116,10 +179,12 @@ def _comparacion(sid: int) -> dict | None:
             hoteles.append({"id": o["id"], "h": datos, "origen_dato": o["origen_dato"],
                             "programa": costo.programa_hotel(datos["nombre"], cat)})
     # Precio esperado según el modelo (solo si hay un modelo utilizable)
+    _, _, n_origen, n_destino = precios.ruta(_codigos(sol, "origen"), _codigos(sol, "destino"))
     ref = db.uno("select tipico_min, tipico_max from observaciones where busqueda=:b limit 1",
-                 b=f"{sol['origen']}_{sol['destino']}_{sol['ida']}_{sol['regreso']}") or {}
+                 b=f"{n_origen}_{n_destino}_{sol['ida']}_{sol['regreso']}") or {}
     f_ida = date.fromisoformat(sol["ida"])
-    filas = [{"ruta": f"{sol['origen']}-{sol['destino']}", "aerolinea": v["v"]["aerolinea"], "escalas": v["v"]["escalas"],
+    # La ruta del modelo es la del vuelo real: con varios aeropuertos, cada opción llega a uno distinto
+    filas = [{"ruta": f"{v['v'].get('desde') or sol['origen']}-{v['v'].get('hasta') or sol['destino']}", "aerolinea": v["v"]["aerolinea"], "escalas": v["v"]["escalas"],
               "duracion_min": v["v"]["duracion_min"], "hora_salida": int(v["v"]["sale"][11:13]) + int(v["v"]["sale"][14:16]) / 60,
               "dia_semana": f_ida.weekday(), "anticipacion": (f_ida - date.fromisoformat(sol["creado"][:10])).days,
               "noches": costo.noches(sol["ida"], sol["regreso"]), "tipico_min": ref.get("tipico_min"), "tipico_max": ref.get("tipico_max")}
@@ -178,7 +243,7 @@ def viaje_tarifas(sid: int, oid: int):
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
     o = db.uno("select * from opciones where id=:i and solicitud_id=:s", i=oid, s=sid)
     if sol and o:
-        tarifas, origen = precios.tarifas_de_vuelo(sol["origen"], sol["destino"], sol["ida"], sol["regreso"],
+        tarifas, origen = precios.tarifas_de_vuelo(_codigos(sol, "origen"), _codigos(sol, "destino"), sol["ida"], sol["regreso"],
                                                    db.de_json(o["datos"], {}), sid, permitir_en_vivo=True)
         if tarifas:
             db.actualizar("opciones", oid, tarifas={"lista": tarifas, "origen": origen})
@@ -210,7 +275,8 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
     if not siguio and len(motivo.strip()) < 5:
         # Cuando la persona se aparta de la recomendación, el porqué es el dato más valioso
         return RedirectResponse(f"/viajes/{sid}?aviso=Elegiste+una+opci%C3%B3n+distinta+a+la+recomendada%3A+cu%C3%A9ntanos+por+qu%C3%A9.", status_code=303)
-    lineas = [{**l, "grupo": "vuelo"} for l in vuelo["ev"]["lineas"]]
+    # Las líneas del vuelo van al grupo «vuelo»; las de traslado conservan el suyo (traslados o combustible)
+    lineas = [{**l, "grupo": l.get("grupo") or "vuelo"} for l in vuelo["ev"]["lineas"]]
     if hotel:
         lineas.append({"concepto": f"Hotel: {hotel['h']['nombre']} ({c['noches']} noches)", "valor": hotel["h"]["total"],
                        "origen": "buscador", "grupo": "hotel"})
@@ -247,6 +313,13 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
          "creado": db.ahora()} for i, h in enumerate(c["hoteles"])])
     db.actualizar("solicitudes", sid, estado="decidido")
     eventos.registrar("solicitud", sid, "decisión guardada", f"Total previsto {total:.2f} USD (ficha #{did})", aprobado_por or "usuario")
+    for l in lineas:
+        if l.get("calculo"):   # cada traslado que entra al presupuesto deja su cuenta en la bitácora
+            k = l["calculo"]
+            eventos.registrar("solicitud", sid, "traslado calculado",
+                              f"{l['concepto']}: {k['km_linea_recta']} km en línea recta x {k['factor']} = {k['km_carretera']} km "
+                              f"a {k['usd_km']} USD/km ida y vuelta = {l['valor']:.2f} USD; {k['horas']} h a {k['velocidad_kmh']:g} km/h",
+                              "reglas editables (supuesto)")
     # La decisión asigna el viaje a la persona: nace con su código y queda a la espera de que administración apruebe el presupuesto
     viajes.crear_desde_decision(did)
     return RedirectResponse(f"/viajes/{sid}/ficha", status_code=303)

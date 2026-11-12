@@ -83,7 +83,9 @@ def en_curso(v: dict, hoy: date | None = None) -> bool:
 def presupuesto_de(decision: dict, solicitud: dict) -> tuple[float, list[dict]]:
     """Dinero que se espera pagar en el viaje: lo que se compra (vuelo, equipaje, hotel, carro) más los viáticos.
 
-    Las líneas de valor esperado de la comparación (riesgo de cambio, millas) no son desembolsos y no entran.
+    Las líneas de valor esperado de la comparación (riesgo de cambio, millas) no son desembolsos y no entran. El
+    traslado por carretera sí es dinero que se pagará: entra con su grupo, `traslados` (taxi o transfer) o
+    `combustible` (con carro de alquiler), aunque su valor sea un supuesto.
     """
     lineas = [{"concepto": l["concepto"], "valor": round(l["valor"], 2), "grupo": l.get("grupo", "otros")}
               for l in (db.de_json(decision.get("desglose"), {}) or {}).get("lineas", [])

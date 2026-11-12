@@ -56,8 +56,9 @@ def sembrar():
         for ambito, entidad, tarifa, clave, valor, nota, fuente, confianza in REGLAS:
             db.insertar("reglas", ambito=ambito, entidad=entidad, tarifa=tarifa, clave=clave, valor=valor,
                         nota=nota, fuente=fuente, confianza=confianza, verificado=HOY)
-    from app.servicios import precios
+    from app.servicios import geografia, precios
     precios.cargar_respaldos()
+    geografia.cargar()   # aeropuertos, lugares y países del mundo; sin cambios no recarga, pero deja su registro
     asegurar_supuestos()
     from app.servicios import asistente, kpis  # metas de los indicadores y tope del asistente, visibles en Reglas desde el inicio
     kpis.asegurar_metas()
@@ -106,6 +107,17 @@ SUPUESTOS_NUEVOS = [
     ("modelo_usd_por_millon_salida", "3", "Precio de referencia del modelo de lenguaje por millón de tokens de salida (USD). Ajustar al precio vigente."),
     ("viaticos_dia_usd", "75", "Viáticos por día de viaje que se suman al presupuesto (comidas, transporte local, combustible), en USD."),
     ("tolerancia_presupuesto", "0.10", "Margen sobre el presupuesto del viaje antes de mandar un gasto a revisión (0.10 = 10 %)."),
+    # Buscador de origen y destino
+    ("radio_aeropuertos_km", "400", "Radio para proponer aeropuertos cercanos a un lugar (km en línea recta)."),
+    ("maximo_aeropuertos", "4", "Aeropuertos cercanos que se proponen como máximo para un lugar."),
+    ("factor_carretera", "1.3", "Distancia por carretera = distancia en línea recta x este factor."),
+    ("velocidad_carretera_kmh", "70", "Velocidad media por carretera para estimar el tiempo de traslado (km/h)."),
+    ("tope_autocompletado_mes", "60", "Consultas de autocompletado a Google al mes, de las búsquedas del plan. Alcanzado, solo datos locales."),
+    ("traslado_minimo_km", "30", "Bajo esta distancia en línea recta entre el aeropuerto y el lugar no se suma traslado (km)."),
+    ("traslado_usd_km", "0.35", "Traslado por carretera sin carro de alquiler (taxi o transfer), ida y vuelta (USD por km)."),
+    ("combustible_usd_km", "0.12", "Con carro de alquiler el traslado solo suma combustible y peajes, ida y vuelta (USD por km)."),
+    ("costo_cambio_usd", "75", "Cargo por cambiar la fecha cuando el buscador dice «Ticket changes for a fee» (USD)."),
+    ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
 ]
 
 

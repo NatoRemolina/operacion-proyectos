@@ -1,13 +1,14 @@
 """Costo total esperado de una opción de viaje.
 
     costo = precio + equipaje + (probabilidad de cambio x costo de cambiar)
-            - valor de lo acumulado
+            - valor de lo acumulado + traslado por carretera entre el aeropuerto y el lugar
 
 Cada línea del desglose dice de dónde salió el número: "buscador", "regla" o "supuesto".
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .. import db
+from . import geografia
 
 
 def catalogo() -> dict:
@@ -54,19 +55,63 @@ def _es_basica(nombre: str) -> bool:
 
 
 def tarifa_supuesta(vuelo: dict, cat: dict) -> dict:
-    """Cuando el buscador no dio las tarifas, se asume la básica de la aerolínea según el catálogo."""
+    """Cuando el buscador no dio las tarifas, se asume la básica de la aerolínea según el catálogo, corregida con las
+    condiciones que el buscador ya trae en el itinerario (`extensions`): cambio gratis o con cargo, maleta incluida, reembolso."""
     a = vuelo["aerolinea"]
     mano = _regla(cat, "aerolinea", a, "basica", "equipaje_mano")
     costo_mano = _regla(cat, "aerolinea", a, "basica", "costo_equipaje_mano")
     maleta = _regla(cat, "aerolinea", a, "basica", "costo_maleta")
     incluye = (mano["valor"] == "si") if mano else True
+    texto = " ".join(vuelo.get("notas") or []).lower()
+    cambio_gratis = "free change" in texto
+    cambio_con_cargo = "changes for a fee" in texto or "change for a fee" in texto
+    maleta_incluida = "checked bag included" in texto or "checked bags included" in texto
     return {
         "nombre": "Tarifa más baja (supuesta)", "precio": float(vuelo["precio"]), "vende": a,
         "mano": 0 if incluye else _numero(costo_mano, supuesto(cat, "costo_equipaje_mano", 70)),
-        "maleta": _numero(maleta, supuesto(cat, "costo_maleta", 80)),
-        "permite_cambio": False, "reembolsable": False, "notas": vuelo.get("notas", []), "equipaje": [],
+        "maleta": 0 if maleta_incluida else _numero(maleta, supuesto(cat, "costo_maleta", 80)),
+        "maleta_origen": "buscador" if maleta_incluida else None,
+        "permite_cambio": (cambio_gratis or cambio_con_cargo) and "no ticket changes" not in texto,
+        "cargo_cambio": supuesto(cat, "costo_cambio_usd", 75) if cambio_con_cargo and not cambio_gratis else 0,
+        "reembolsable": "full refund" in texto, "notas": vuelo.get("notas", []), "equipaje": [],
         "supuesta": True, "regla_mano": bool(mano),
     }
+
+
+def _horas_texto(horas: float) -> str:
+    return "menos de 1 h" if horas < 1 else f"unas {round(horas)} h"
+
+
+def traslado(aeropuerto: dict | None, lugar: dict | None, con_carro: bool, cat: dict, hacia_aeropuerto: bool = False) -> dict | None:
+    """Traslado por carretera entre un aeropuerto y el lugar, ida y vuelta. None si falta el lugar o las coordenadas, o si
+    el aeropuerto está a menos del mínimo (se trata como el traslado de cualquier ciudad, sin línea extra).
+
+    Sin carro es taxi o transfer (grupo `traslados`); con carro de alquiler el carro ya cubre el viaje y solo se suman
+    combustible y peajes (grupo `combustible`). Así nada se cuenta dos veces."""
+    if not aeropuerto or not lugar or aeropuerto.get("lat") is None or lugar.get("lat") is None:
+        return None
+    recta = geografia.distancia_km(lugar["lat"], lugar["lon"], aeropuerto["lat"], aeropuerto["lon"])
+    if recta < supuesto(cat, "traslado_minimo_km", 30):
+        return None
+    factor, velocidad = supuesto(cat, "factor_carretera", 1.3), supuesto(cat, "velocidad_carretera_kmh", 70) or 70
+    usd_km = supuesto(cat, "combustible_usd_km", 0.12) if con_carro else supuesto(cat, "traslado_usd_km", 0.35)
+    km = recta * factor
+    horas = round(km / velocidad, 1)
+    que = "Combustible y peajes" if con_carro else "Traslado por carretera"
+    return {"iata": aeropuerto.get("iata"), "km_carretera": round(km), "horas": horas, "valor": round(km * usd_km * 2, 2),
+            "concepto": f"{que} {'hasta' if hacia_aeropuerto else 'desde'} {aeropuerto.get('iata')} ({round(km)} km, {_horas_texto(horas)})",
+            "grupo": "combustible" if con_carro else "traslados",
+            # De dónde sale la línea: reglas y valores usados, para poder rehacer la cuenta
+            "calculo": {"km_linea_recta": round(recta, 1), "factor": factor, "km_carretera": round(km, 1), "velocidad_kmh": velocidad,
+                        "horas": horas, "usd_km": usd_km, "ida_y_vuelta": True, "lugar": lugar.get("nombre"),
+                        "reglas": ["traslado_minimo_km", "factor_carretera", "velocidad_carretera_kmh",
+                                   "combustible_usd_km" if con_carro else "traslado_usd_km"]}}
+
+
+def _lugar(valor) -> dict | None:
+    """El lugar de la solicitud llega como texto JSON desde la base o ya como diccionario."""
+    lugar = db.de_json(valor, None) if isinstance(valor, str) else valor
+    return lugar if isinstance(lugar, dict) else None
 
 
 def evaluar(vuelo: dict, tarifa: dict, sol: dict, membresias: list[dict], cat: dict) -> dict:
@@ -97,15 +142,18 @@ def evaluar(vuelo: dict, tarifa: dict, sol: dict, membresias: list[dict], cat: d
         elif tarifa["maleta"] is None:
             avisos.append("Costo de la maleta no informado.")
         else:
-            lineas.append({"concepto": "Maleta facturada", "valor": tarifa["maleta"], "origen": origen_tarifa if not tarifa.get("supuesta") else "regla"})
+            lineas.append({"concepto": "Maleta facturada" + (" (incluida según el buscador)" if tarifa.get("maleta_origen") else ""),
+                           "valor": tarifa["maleta"],
+                           "origen": tarifa.get("maleta_origen") or (origen_tarifa if not tarifa.get("supuesta") else "regla")})
 
     # Riesgo de cambio de fecha
     prob = sol["prob_cambio"] or 0
     if prob:
         if tarifa["permite_cambio"]:
-            dif = supuesto(cat, "diferencia_tarifa_cambio", 60)
-            lineas.append({"concepto": f"Riesgo de cambio ({prob:.0%} x diferencia de tarifa estimada {dif:.0f})",
-                           "valor": round(prob * dif, 2), "origen": "supuesto"})
+            dif, cargo = supuesto(cat, "diferencia_tarifa_cambio", 60), tarifa.get("cargo_cambio") or 0
+            detalle = f"diferencia de tarifa estimada {dif:.0f}" + (f" + cargo por cambio {cargo:.0f}, según el buscador" if cargo else "")
+            lineas.append({"concepto": f"Riesgo de cambio ({prob:.0%} x {detalle})",
+                           "valor": round(prob * (dif + cargo), 2), "origen": "supuesto"})
         else:
             lineas.append({"concepto": f"Riesgo de cambio ({prob:.0%} x perder el tiquete)",
                            "valor": round(prob * tarifa["precio"], 2), "origen": "supuesto"})
@@ -123,13 +171,32 @@ def evaluar(vuelo: dict, tarifa: dict, sol: dict, membresias: list[dict], cat: d
     elif basica:
         avisos.append("La tarifa básica de esta aerolínea no acumula millas.")
 
-    # Hora límite de llegada
+    # Traslado por carretera: del lugar de origen al aeropuerto real de salida y del de llegada al lugar de destino
+    sale = traslado(geografia.aeropuerto(vuelo.get("desde")), _lugar(sol.get("origen_lugar")), False, cat, hacia_aeropuerto=True)
+    llega = traslado(geografia.aeropuerto(vuelo.get("hasta")), _lugar(sol.get("destino_lugar")), (sol.get("carro_dia") or 0) > 0, cat)
+    for t in (sale, llega):
+        if t:
+            lineas.append({"concepto": t["concepto"], "valor": t["valor"], "origen": "supuesto", "grupo": t["grupo"], "calculo": t["calculo"]})
+
+    # Hora límite de llegada: con fecha y hora, porque el traslado puede cruzar la medianoche
     if sol.get("llegar_antes"):
         try:
-            if datetime.fromisoformat(vuelo["llega"].replace(" ", "T")) > datetime.fromisoformat(sol["llegar_antes"]):
+            aterriza, limite = datetime.fromisoformat(vuelo["llega"].replace(" ", "T")), datetime.fromisoformat(sol["llegar_antes"])
+            en_destino = aterriza + timedelta(hours=llega["horas"] if llega else 0)
+            if aterriza > limite:
                 descartada = f"Llega a las {vuelo['llega'][11:]}, después de la hora límite."
-        except ValueError:
+            elif en_destino > limite:
+                descartada = f"Con el traslado llega a las {en_destino:%H:%M}, después de la hora límite."
+            elif vuelo.get("a_menudo_retrasado") and en_destino + timedelta(minutes=30) > limite:
+                avisos.append("Este vuelo suele retrasarse más de 30 minutos y con ese retraso llegaría después de la hora límite.")
+        except (TypeError, ValueError):
             pass
+
+    for e in vuelo.get("escalas_detalle") or []:
+        if e.get("minutos") is not None and e["minutos"] < 60:
+            avisos.append(f"Escala corta en {e.get('aeropuerto') or 'la conexión'} ({e['minutos']} min): riesgo de perder la conexión o el equipaje.")
+        if e.get("nocturna"):
+            avisos.append(f"Escala nocturna en {e.get('aeropuerto') or 'la conexión'}.")
 
     return {"tarifa": tarifa, "lineas": lineas, "total": round(sum(l["valor"] for l in lineas), 2),
             "avisos": avisos, "descartada": descartada}

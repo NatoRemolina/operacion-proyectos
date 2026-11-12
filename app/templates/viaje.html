@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% import "_macros.html" as m %}{% import "_viajes.html" as mv %}{% block titulo %}Cotización #{{ sol.id }}{% endblock %}{% block cuerpo %}
 {{ mv.recorrido(el_viaje, decision is not none and decision) }}
-<div class="fila"><div><h1>Cotización #{{ sol.id }} · {{ sol.origen }} → {{ sol.destino }}</h1>
+<div class="fila"><div><h1>Cotización #{{ sol.id }} · {{ (sol.origen_aeropuertos or sol.origen)|replace(',', ' · ') }} → {{ (sol.destino_aeropuertos or sol.destino)|replace(',', ' · ') }}</h1>
+{% set lugar_o, lugar_d = sol.origen_lugar|json, sol.destino_lugar|json %}{% if lugar_o or lugar_d %}<p class="eti">{% if lugar_o %}Sale de {{ lugar_o.nombre }}{% if lugar_o.region %}, {{ lugar_o.region }}{% endif %}{% if lugar_o.pais %}, {{ lugar_o.pais }}{% endif %}. {% endif %}{% if lugar_d %}Va a {{ lugar_d.nombre }}{% if lugar_d.region %}, {{ lugar_d.region }}{% endif %}{% if lugar_d.pais %}, {{ lugar_d.pais }}{% endif %}.{% endif %} Se comparan todos los aeropuertos marcados en una sola búsqueda.</p>{% endif %}
 <p class="sub">{{ sol.viajero }} · {{ sol.proyecto }} · {{ sol.ida }} a {{ sol.regreso }} ({{ noches }} noches) · probabilidad de cambio {{ '%.0f'|format(sol.prob_cambio * 100) }}%<br>Consulta registrada por <b>{{ sol.solicitado_por or '—' }}</b> el {{ sol.creado }} UTC</p></div>
 {% if decision %}<a class="boton der" href="/viajes/{{ sol.id }}/ficha">Ver ficha de decisión</a>{% endif %}</div>
 
@@ -25,7 +26,7 @@
 {% for o in vuelos %}<tr id="v{{ o.id }}">
   <td><input type="radio" name="vuelo_id" value="{{ o.id }}" required></td>
   <td><b>{{ o.v.aerolinea }}</b> {{ o.v.numeros|join(' + ') }}<br><span class="eti">{{ 'Directo' if o.v.escalas == 0 else o.v.escalas ~ ' escala(s)' }}</span>{% if loop.first %} <span class="chip ok">Recomendado</span>{% endif %}</td>
-  <td>{{ o.v.sale[11:] }} → {{ o.v.llega[11:] }}</td>
+  <td>{% if sol.origen_aeropuertos or sol.destino_aeropuertos %}<b>{{ o.v.desde }}</b> {% endif %}{{ o.v.sale[11:] }} → {% if sol.origen_aeropuertos or sol.destino_aeropuertos %}<b>{{ o.v.hasta }}</b> {% endif %}{{ o.v.llega[11:] }}</td>
   <td>{{ o.ev.tarifa.nombre }}{% for a in o.ev.avisos %}<br><span class="eti">⚠ {{ a }}</span>{% endfor %}
     <details><summary>Ver desglose{% if o.ev.todas|length > 1 %} y {{ o.ev.todas|length }} tarifas{% endif %}</summary>
       {{ m.desglose(o.ev.lineas, o.ev.total) }}
@@ -38,7 +39,7 @@
   <td>{{ m.origen(o.origen_dato) }}<br>{% if o.ev.tarifas_reales %}<span class="chip ok">tarifas reales</span>{% else %}<span class="chip aviso">tarifa supuesta</span>
     {% if modo().precios == 'en vivo' %}<br><button class="sec peq" formaction="/viajes/{{ sol.id }}/tarifas/{{ o.id }}" formnovalidate>Traer tarifas (2 consultas)</button>{% endif %}{% endif %}</td>
 </tr>{% endfor %}
-{% for o in descartados %}<tr><td></td><td class="tachado">{{ o.v.aerolinea }} {{ o.v.numeros|join(' + ') }}</td><td>{{ o.v.sale[11:] }} → {{ o.v.llega[11:] }}</td><td colspan="5"><span class="chip mal">Descartado</span> {{ o.ev.descartada }}</td></tr>{% endfor %}
+{% for o in descartados %}<tr><td></td><td class="tachado">{{ o.v.aerolinea }} {{ o.v.numeros|join(' + ') }}</td><td>{{ o.v.sale[11:] }} → {% if sol.destino_aeropuertos %}<b>{{ o.v.hasta }}</b> {% endif %}{{ o.v.llega[11:] }}</td><td colspan="5"><span class="chip mal">Descartado</span> {{ o.ev.descartada }}</td></tr>{% endfor %}
 </table></div>
 
 <h2>Hoteles</h2>

@@ -76,6 +76,10 @@ solicitudes = _tabla(
     # Se calculan al registrar la consulta y alimentan la analítica
     Column("precio_min_buscador", Float), Column("costo_mas_barato", Float),
     Column("costo_mejor", Float), Column("ahorro_potencial", Float),
+    # Buscador mundial: el lugar elegido (JSON con nombre, región, país y coordenadas) y los aeropuertos marcados
+    # (códigos ordenados, separados por coma). `origen` y `destino` siguen guardando un solo código
+    Column("origen_lugar", Text), Column("destino_lugar", Text),
+    Column("origen_aeropuertos", Text), Column("destino_aeropuertos", Text),
 )
 opciones = _tabla(
     "opciones",

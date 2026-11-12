@@ -1,7 +1,7 @@
 # Tareas habituales. `make` sin argumentos las lista.
 PY := .venv/bin/python
 
-.PHONY: ayuda instalar ejecutar probar revisar comprobar migrar entorno entorno-web entorno-abajo
+.PHONY: ayuda instalar ejecutar probar revisar comprobar migrar geografia entorno entorno-web entorno-abajo
 ayuda:            ## Lista las tareas
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
 
@@ -21,6 +21,9 @@ comprobar: revisar probar  ## Lo mismo que corre la integración continua
 
 migrar:           ## Crea o actualiza las tablas de la base configurada en .env
 	$(PY) -m datos.semilla
+
+geografia:        ## Descarga OurAirports y GeoNames y rehace datos/geografia/ (la semilla los carga al arrancar)
+	$(PY) -m datos.geografia
 
 entorno:          ## Levanta PostgreSQL local y la plataforma en Docker (http://127.0.0.1:8000); no usa .env
 	docker compose up -d --build db app
