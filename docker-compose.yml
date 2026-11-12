@@ -1,0 +1,73 @@
+# Entorno local completo. No lee .env (que apunta a la nube): toda variable está escrita aquí,
+# así que nada de lo que corre en este entorno puede escribir en la base real.
+#
+#   docker compose up -d db app                  base y plataforma actual (http://127.0.0.1:8000)
+#   docker compose --profile web up -d           además la web nueva y el gateway (http://127.0.0.1:8088)
+#   docker compose down                          detener (los datos se conservan en los volúmenes)
+#   docker compose down -v                       detener y borrar los datos de demostración
+#
+# Supabase sigue siendo la base real de la plataforma publicada. Este PostgreSQL es solo para
+# desarrollar y probar con el mismo motor, sin tocarla.
+
+name: operacion-proyectos
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: operacion
+      POSTGRES_USER: operacion
+      POSTGRES_PASSWORD: operacion-local   # solo para este contenedor local; no es una credencial real
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: [datos-pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U operacion -d operacion"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      ENTORNO: local                      # cookie «sesion» sin Secure, que funciona sobre http
+      DATABASE_URL: postgresql://operacion:operacion-local@db:5432/operacion
+      CUENTAS_DEMO: "1"                   # crea las cuentas de demostración en esta base local
+      ORIGENES_WEB: http://localhost:8088,http://127.0.0.1:8088
+      # Servicios externos apagados: se trabaja con los datos guardados del repositorio
+      SERPAPI_KEY: ""
+      MODELO_API_URL: ""
+      MODELO_API_KEY: ""
+      MODELO_NOMBRE: ""
+      SUPABASE_URL: ""
+      SUPABASE_SERVICE_KEY: ""
+      SECRETO_ARN: ""
+      TELEGRAM_BOT_TOKEN: ""
+      PINECONE_API_KEY: ""
+    ports: ["127.0.0.1:8000:8080"]
+    volumes: [soportes:/srv/datos/archivos]   # los recibos cargados sobreviven a un reinicio
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/salud')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  web:
+    profiles: [web]
+    build: ./web
+    depends_on:
+      app: {condition: service_healthy}
+    environment:
+      NEXT_PUBLIC_API_BASE: /api/v1
+
+  gateway:
+    profiles: [web]
+    image: caddy:2-alpine
+    depends_on: [app, web]
+    ports: ["127.0.0.1:8088:80"]
+    volumes: [./gateway/Caddyfile:/etc/caddy/Caddyfile:ro]
+
+volumes:
+  datos-pg:
+  soportes:

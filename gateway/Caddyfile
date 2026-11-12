@@ -1,0 +1,20 @@
+# Gateway local: un solo origen público. /api/v1 va a la API; todo lo demás, a la web nueva.
+# Equivale a lo que en la nube hará un API Gateway administrado (ver docs/adr/0001).
+:80 {
+	request_body {
+		max_size 6MB   # recibos de hasta 4,5 MB más el envoltorio del formulario
+	}
+
+	handle /api/v1/* {
+		reverse_proxy app:8080
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
