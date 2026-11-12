@@ -20,6 +20,8 @@
   <input type="hidden" name="volver" value="detalle">
   <div class="fila"><input name="motivo" placeholder="Motivo (obligatorio para rechazar)" style="flex:1;min-width:220px">
   {% if v.estado == 'pendiente_aprobacion' and propio %}<span class="eti">Es tu viaje: {{ 'lo aprueba otra persona de administración.' if hay_otro_admin else 'Hace falta otra persona de administración para aprobarlo.' }}</span>
+  {% elif v.estado == 'pendiente_aprobacion' and precio_por_confirmar %}<span class="eti">El precio del vuelo cambió: {{ precio_por_confirmar }}.</span>
+  <input type="hidden" name="confirmar_precio" value="1"><button name="accion" value="aprobar">Confirmar precio y aprobar</button> <button class="mal" name="accion" value="rechazar">Rechazar</button>
   {% elif v.estado == 'pendiente_aprobacion' %}<button name="accion" value="aprobar">Aprobar presupuesto</button> <button class="mal" name="accion" value="rechazar">Rechazar</button>
   {% elif v.estado == 'aprobado' %}<button class="sec" name="accion" value="cerrar" data-confirmar="Al cerrar el viaje, los gastos que lleguen después irán a revisión. ¿Cerrarlo?">Cerrar viaje</button> <button class="sec" name="accion" value="reabrir">Reabrir para cambiar la decisión</button>
   {% else %}<button class="sec" name="accion" value="reabrir">Reabrir</button>{% endif %}</div>

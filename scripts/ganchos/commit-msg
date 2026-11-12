@@ -1,0 +1,18 @@
+#!/bin/sh
+# Un solo autor por commit y, si existe, sin las palabras de .git/info/palabras-vetadas (lista local).
+# Se instala con `make ganchos`.
+set -u
+mensaje=$1
+comun=$(git rev-parse --git-common-dir)
+if grep -iqE '^[[:space:]]*co-authored-by:' "$mensaje"; then
+  echo "commit-msg: los commits llevan un solo autor; quita la línea Co-authored-by"
+  exit 1
+fi
+if [ -s "$comun/info/palabras-vetadas" ]; then
+  patron=$(grep -v '^#' "$comun/info/palabras-vetadas" | grep -v '^$' | paste -sd'|' -)
+  if [ -n "$patron" ] && grep -v '^#' "$mensaje" | grep -iqE "$patron"; then
+    echo "commit-msg: el mensaje tiene palabras de la lista local de vetadas"
+    exit 1
+  fi
+fi
+exit 0

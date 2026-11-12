@@ -32,6 +32,7 @@ def viaje_detalle(request: Request, vid: int, aviso: str = ""):
     return plantillas.TemplateResponse(request, "viaje_detalle.html", _ctx(
         v=v, aviso=aviso[:300], detalle=db.de_json(v["presupuesto_detalle"], []), propio=viajes.es_propio_de(v, _yo()),
         hay_otro_admin=acceso.es_admin(_yo()) and viajes.hay_otro_admin(_yo()),
+        precio_por_confirmar=viajes.precio_por_confirmar(v["id"]) if v["estado"] == "pendiente_aprobacion" else None,
         gastos=db.todos("""select g.*, d.canal, d.nombre archivo from gastos g left join documentos d on d.id=g.documento_id
                            where g.viaje_id=:i order by g.id desc""", i=vid),
         evidencias=db.todos("select * from documentos where viaje_id=:i and tipo in ('audio','nota') order by id desc", i=vid),

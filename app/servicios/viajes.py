@@ -192,6 +192,9 @@ def _reconfirmar_precio(v: dict, quien: dict, confirmado: bool) -> tuple[bool, s
     if confirmado and pendiente:
         eventos.registrar("viaje", v["id"], "precio nuevo confirmado", pendiente, quien["nombre"])
         return True, _ajustar_presupuesto(v, pendiente, quien)
+    if pendiente:   # ya se consultó y espera confirmación: «Aprobar» otra vez no paga otra búsqueda
+        return False, (f"El precio del vuelo de {v['codigo']} cambió: {pendiente}. "
+                       "Confirma el precio nuevo para aprobar.")
     d = db.uno("select * from decisiones where id=:i", i=v.get("decision_id") or 0)
     if not d:
         return True, ""

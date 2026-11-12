@@ -28,10 +28,13 @@ erDiagram
   DECISIONES ||--o{ VIAJES : "fija el presupuesto"
   USUARIOS ||--o{ VIAJES : "es titular"
   PROYECTOS ||--o{ VIAJES : agrupa
+  VIAJES ||--o{ TRAMOS_VUELO : "tramos del vuelo elegido"
   VIAJES ||--o{ GASTOS : acumula
   VIAJES ||--o{ DOCUMENTOS : "evidencias"
   DOCUMENTOS ||--o{ GASTOS : origina
   USUARIOS ||--o{ GASTOS : reporta
+  USUARIOS ||--o{ ENVIOS_SOPORTE : "clave de envío"
+  GASTOS ||--o| ENVIOS_SOPORTE : "gasto que originó"
   PROYECTOS ||--o{ GASTOS : imputa
   SOLICITUDES }o..o{ AEROPUERTOS_MUNDO : "aeropuertos marcados (códigos IATA en texto)"
   LUGARES }o..o{ AEROPUERTOS_MUNDO : "cercanos, por distancia"
@@ -74,6 +77,7 @@ erDiagram
     float lat
     float lon
     int poblacion
+    text zona "zona horaria IANA de GeoNames, por ejemplo America/Denver"
   }
   PAISES {
     int id PK
@@ -131,6 +135,40 @@ erDiagram
     float total_usd
     text estado
     text motivos "códigos de alerta"
+    int version "NOT NULL, sube con cada cambio del gasto; la revisión compara la que vio quien revisa"
+    text motivo_rechazo "por qué se rechazó, aparte de las alertas"
+  }
+  TRAMOS_VUELO {
+    int id PK
+    int viaje_id FK
+    text sentido "ida o regreso"
+    int orden "orden del tramo dentro del sentido"
+    text numero "IB 5634"
+    text desde "aeropuerto de salida"
+    text hasta "aeropuerto de llegada"
+    text sale_programada "hora local del aeropuerto"
+    text llega_programada
+    text estado "programado, a tiempo, retrasado, cancelado, aterrizado, desviado, sin datos"
+    int retraso_salida "minutos"
+    int retraso_llegada
+    text terminal "de salida; conserva la última conocida"
+    text puerta
+    text llega_estimada
+    text actualizado "última consulta (UTC)"
+    int consultas "cuenta para los topes"
+    text ultimo_aviso "JSON: texto, momento, si se envió"
+    text omitida "último motivo para no consultar"
+    text ultima_consulta "con datos o sin datos"
+  }
+  ENVIOS_SOPORTE {
+    int id PK
+    int usuario_id FK "con clave, único"
+    text clave "Idempotency-Key"
+    text huella "archivo y lo pedido: viaje, proyecto, viajero"
+    text estado "procesando, completado o fallido"
+    int gasto_id FK
+    text propietario "quién tiene la concesión"
+    text expira "vence a los 5 minutos"
   }
   JUSTIFICACIONES {
     int id PK
@@ -150,6 +188,8 @@ erDiagram
     text huella "sha256 del contenido"
   }
 ```
+
+`tramos_vuelo` se llena al decidir (los tramos de ida y de regreso de la opción elegida) y guarda el último estado conocido del vuelo para el monitoreo; `envios_soporte` solo la usa el servidor. Ambas tienen seguridad por filas y sin permisos para los roles públicos, como el resto.
 
 Tablas de registro, sin claves foráneas a propósito (un hecho se conserva aunque cambie lo demás): `eventos`, `errores`, `llamadas_modelo`, `telegram_mensajes`, `busquedas`, `observaciones`, `historial_ruta`, `consultas_buscador` y `cargas_datos`.
 
@@ -187,8 +227,21 @@ Se calculan a partir de la clave primaria, así que no pueden repetirse ni queda
 | Un código de aeropuerto marcado debe existir en los datos locales o en `aeropuertos_google` | — | `geografia.aeropuertos_conocidos` |
 | El autocompletado de Google respeta `tope_autocompletado_mes` y `tope_autocompletado_persona_dia` | — | `geografia._tope_alcanzado` |
 | Cada carga de datos de referencia deja su registro | Tabla `cargas_datos` | `geografia` (carga desde `datos/geografia/`) |
+| Los importes son decimales válidos: ni vacíos, ni NaN o infinito, ni cero o negativos (el total) | — | `dinero.py`, `validacion.revisar`: `importe_invalido`; `gastos._importes_guardables` no deja que uno inválido llegue a la base |
+| La fecha del recibo es AAAA-MM-DD real; una posterior a hoy avisa pero no bloquea | — | `validacion.revisar`: `fecha_invalida`, `fecha_futura` (aviso) |
+| El duplicado compara también la moneda | — | `validacion.revisar` |
+| Registrar, asignar viaje y aprobar un gasto se hacen con el viaje bloqueado | `select … for update` en PostgreSQL; `BEGIN IMMEDIATE` en SQLite | `db.transaccion`, `db.bloquear_viaje` |
+| Reenviar un recibo con la misma clave no crea otro gasto | Único `(usuario_id, clave)` en `envios_soporte` | `envios.registrar_envio`; la API acepta `Idempotency-Key` (409 si la clave ya se usó con otro archivo o viaje) |
+| Un gasto guardado con una versión anterior no pisa un cambio ajeno | `gastos.version` | `revision.py`: `EDIT_CONFLICT` en la API, aviso en la web |
+| Rechazar un gasto exige un motivo de 5 caracteres o más y se le avisa a la persona | `gastos.motivo_rechazo` | `revision.py`, `POST /api/v1/gastos/{id}/revision` |
+| Un gasto atascado en «procesando» pasa a revisión | — | `envios.recuperar_si_atascado` (5 min) |
+| Los tramos del vuelo se registran al decidir, sin duplicarse si se decide de nuevo | `tramos_vuelo.viaje_id` | `monitoreo_vuelos.registrar_tramos` |
+| El estado del vuelo se consulta solo en su ventana y bajo topes por tramo, por sentido del viaje y por día | — | `monitoreo_vuelos.consultar` (reglas `monitoreo_*`) |
+| Cada hora del vuelo se interpreta en la zona de su aeropuerto | `lugares.zona` (GeoNames) | `geografia.zona_horaria`, `monitoreo_vuelos.zona` |
+| Un aviso al viajero no se repite por la misma información | `tramos_vuelo.ultimo_aviso` | `monitoreo_vuelos.aviso`, `_avisar` |
+| Al aprobar se reconfirma el precio; si sube más que `tolerancia_precio_aprobacion` administración lo confirma | — | `viajes.cambiar_estado`, `precios.reconfirmar` |
 | Un chat de Telegram, una cuenta | Índice único en `usuarios.telegram_chat_id` | `telegram.vincular` |
-| Una entrega de Telegram se procesa una vez | `telegram_mensajes.update_id` único | `telegram.procesar` |
+| Una entrega de Telegram se procesa una vez; si falló, se puede reprocesar sin duplicar el gasto | `telegram_mensajes.update_id` único | `telegram.procesar` |
 | Nada apunta a algo que no existe | Claves foráneas en todo el núcleo | `datos/migracion.py` las crea y limpia referencias huérfanas |
 
 ## Quién ve qué
@@ -205,7 +258,9 @@ Todas las cuentas viajan: cotizan, reciben viajes a su nombre y reportan gastos.
 
 ## Migración
 
-`python -m datos.semilla` crea lo que falte y ejecuta `datos/migracion.py`, que se puede repetir sin efecto: renombra el permiso antiguo (`piloto` pasa a `colaborador` con el cargo «Pilotaje de dron»), siembra los cinco cargos iniciales en una tabla vacía, crea el perfil de viajero de las cuentas que no lo tienen, crea los viajes de las decisiones que ya existían, enlaza los gastos cuyo viaje es inequívoco, vacía referencias huérfanas, añade claves foráneas, restricciones e índices, activa la seguridad por filas y retira los permisos de los roles públicos.
+`python -m datos.semilla` crea lo que falte y ejecuta `datos/migracion.py`, que se puede repetir sin efecto: renombra el permiso antiguo (`piloto` pasa a `colaborador` con el cargo «Pilotaje de dron»), siembra los cinco cargos iniciales en una tabla vacía, crea el perfil de viajero de las cuentas que no lo tienen, crea los viajes de las decisiones que ya existían, enlaza los gastos cuyo viaje es inequívoco, vacía referencias huérfanas, añade claves foráneas, restricciones e índices, alinea las columnas obligatorias del modelo (`gastos.version`) con la base, activa la seguridad por filas y retira los permisos de los roles públicos. `python -m datos.comprobar_supabase` revisa, solo en lectura, que la base tenga las tablas y columnas que espera esta versión y qué pueden hacer los roles públicos.
+
+La trazabilidad del flujo de gastos (quién puede cambiar qué, qué queda registrado y las brechas conocidas) está en [`trazabilidad.md`](trazabilidad.md).
 
 ## Telegram
 

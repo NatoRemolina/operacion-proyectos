@@ -1,0 +1,54 @@
+#!/bin/sh
+# Revisa lo que se va a versionar: ruff en los .py, secretos en las líneas añadidas y, si existen, las
+# palabras y rutas de .git/info/palabras-vetadas y .git/info/rutas-vetadas (listas locales, una por línea).
+# Se instala con `make ganchos`. Para saltarlo en un caso justificado: git commit --no-verify.
+set -u
+comun=$(git rev-parse --git-common-dir)
+fallo=0
+
+# 1) ruff sobre los .py del commit
+py=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py')
+if [ -n "$py" ]; then
+  ruff=""
+  for c in "$(git rev-parse --show-toplevel)/.venv/bin/ruff" "$(cd "$comun/.." && pwd)/.venv/bin/ruff"; do
+    if [ -x "$c" ]; then ruff=$c; break; fi
+  done
+  if [ -z "$ruff" ] && command -v ruff >/dev/null 2>&1; then ruff=ruff; fi
+  if [ -n "$ruff" ]; then
+    if ! echo "$py" | xargs "$ruff" check --quiet; then echo "pre-commit: ruff encontró errores"; fallo=1; fi
+  else
+    echo "pre-commit: aviso, no se encontró ruff; se omite la revisión estática"
+  fi
+fi
+
+# 2) secretos en las líneas añadidas (la contraseña de la base local de docker-compose es de prueba y se permite)
+anadidas=$(git diff --cached -U0 --no-color | grep -E '^\+' | grep -vE '^\+\+\+ ')
+secretos='sb_secret_[A-Za-z0-9_-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.|sk-[A-Za-z0-9_-]{20,}|"post_[d]ata"|postgres(ql)?(\+psycopg)?://[^:/[:space:]]+:[^@[:space:][]+@'
+encontrados=$(echo "$anadidas" | grep -nE "$secretos" | grep -v 'operacion-local@')
+if [ -n "$encontrados" ]; then
+  echo "pre-commit: posible secreto en las líneas añadidas:"
+  echo "$encontrados" | cut -c1-120
+  fallo=1
+fi
+
+# 3) palabras y rutas vetadas por la lista local de esta copia
+if [ -s "$comun/info/palabras-vetadas" ]; then
+  patron=$(grep -v '^#' "$comun/info/palabras-vetadas" | grep -v '^$' | paste -sd'|' -)
+  if [ -n "$patron" ] && echo "$anadidas" | grep -iqE "$patron"; then
+    echo "pre-commit: hay palabras de la lista local de vetadas en las líneas añadidas:"
+    echo "$anadidas" | grep -inE "$patron" | cut -c1-120
+    fallo=1
+  fi
+fi
+if [ -s "$comun/info/rutas-vetadas" ]; then
+  archivos=$(git diff --cached --name-only --diff-filter=ACMR)
+  while IFS= read -r ruta; do
+    case "$ruta" in ''|'#'*) continue ;; esac
+    if echo "$archivos" | grep -qE "(^|/)$ruta"; then
+      echo "pre-commit: la ruta «$ruta» está en la lista local de rutas que no se versionan"
+      fallo=1
+    fi
+  done < "$comun/info/rutas-vetadas"
+fi
+
+exit $fallo

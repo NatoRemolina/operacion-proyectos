@@ -67,14 +67,14 @@ Los indicadores principales (reutilización, acuerdo con la recomendación, capt
 
 ## Lo que se conserva de cada consulta al buscador
 
-Cada consulta al buscador de precios (vuelos, hoteles o tarifas de un vuelo) deja una fila en `consultas_buscador`, escrita desde `app/servicios/precios.py` sin cambiar lo que esas funciones devuelven.
+Cada consulta al buscador de precios (vuelos, hoteles, regreso, reserva, reconfirmación del precio, estado del vuelo o autocompletado) deja una fila en `consultas_buscador`, escrita desde `app/servicios/precios.py` sin cambiar lo que esas funciones devuelven.
 
 | Columna | Qué guarda |
 |---|---|
 | `momento` | Cuándo se hizo (UTC) |
 | `solicitud_id` | Cotización que la pidió; vacío si la pidió el recolector |
 | `usuario_id` | Cuenta que estaba usando la plataforma |
-| `tipo` | `vuelos`, `hoteles`, `tarifas` o `autocompletado` |
+| `tipo` | `vuelos`, `hoteles`, `regreso`, `tarifas`, `reconfirmacion`, `estado_vuelo` o `autocompletado` |
 | `origen` | `en vivo`, `guardado`, `guardado (otras fechas)` o `fallida` |
 | `clave` | Nombre de la búsqueda, el mismo de `busquedas.clave` y del archivo en `datos/respaldo/`. Si se usaron otras fechas, el archivo que de verdad se usó |
 | `duracion_ms` | Lo que tardó, incluida la lectura de lo guardado |
@@ -88,7 +88,7 @@ Casos a tener en cuenta al leer las cifras:
 
 - Una consulta en vivo que falla deja una fila `fallida`; si después se recupera con una respuesta de otras fechas, deja otra fila con ese origen. Son dos intentos distintos.
 - Si no hay respuesta guardada para unas tarifas y no se permitió consultar en vivo, no se buscó nada (se supone la tarifa básica): no queda fila.
-- Una consulta de tarifas en vivo hace dos llamadas al buscador (regreso y reserva) y deja una sola fila; el cupo descuenta dos.
+- Cargar la opción elegida hace dos consultas al buscador, el regreso real (`regreso`) y las opciones de reserva (`tarifas`), y cada una deja su fila; «Traer tarifas» hace las mismas dos y también deja dos filas. El cupo descuenta una por fila en vivo.
 - Las consultas anteriores a esta tabla solo están en la bitácora (`eventos`, pasos «consulta externa» y «lectura de respaldo»). Desde ahora Monitoreo cuenta las consultas en vivo, reutilizadas y fallidas desde esta tabla, con los mismos filtros de proyecto y fechas.
 
 ### Consultas de autocompletado
@@ -97,7 +97,32 @@ Las consultas al autocompletado de Google (`tipo = 'autocompletado'`) se muestra
 
 ### Consultas del estado del vuelo
 
-Se documenta al integrar el monitoreo del vuelo.
+El monitoreo del vuelo el día del viaje (`app/servicios/monitoreo_vuelos.py`) deja una fila con `tipo = 'estado_vuelo'` por cada consulta del estado de un tramo, y `precios.estado_vuelo` la escribe. La clave es `estado_vuelo_<número>_<fecha>.json` (con la hora en la clave si fue en vivo). Origen de la fila:
+
+- `en vivo`: consultó al buscador (`engine=google`, `q = "Flight IB5634"`); gasta una búsqueda del plan. La respuesta queda solo en la tabla `busquedas`, no se escribe en `datos/respaldo/`.
+- `guardado`: sin clave del buscador (o con la consulta fallida) se leyó la respuesta guardada de ese vuelo y fecha; no gasta cupo. Hoy solo existe la de ejemplo, IB 5634 del 13 de diciembre de 2026.
+- `fallida`: no había respuesta guardada ni clave, o la consulta falló.
+- Una respuesta sin el bloque del vuelo para esa fecha deja la fila con `resultados` en 0 y el motivo en `error`.
+
+A diferencia del autocompletado, estas filas **sí entran** en la tasa de reutilización, en la de consultas fallidas y en la latencia del buscador, y aparecen en «por tipo». La reconfirmación del precio al aprobar (`reconfirmacion`, siempre en vivo) y el regreso real al decidir (`regreso`) se tratan igual.
+
+Qué se cuenta y contra qué tope, todos reglas editables en «Reglas y supuestos»:
+
+| Regla | Valor | Qué cuenta |
+|---|---|---|
+| `monitoreo_horas_antes` | 3 | Solo se consulta desde 3 horas antes de la salida programada hasta la llegada (programada o estimada, la más tardía). Cada hora se interpreta en la zona horaria de su aeropuerto (`lugares.zona`, de GeoNames) |
+| `monitoreo_cache_min` | 60 | Una consulta se reutiliza 60 minutos; «Actualizar ahora» la salta, pero como mucho una vez por minuto por tramo |
+| `monitoreo_tope_tramo` | 6 | Consultas por tramo (`tramos_vuelo.consultas`): cuenta todas las hechas, también las leídas de lo guardado o sin bloque |
+| `monitoreo_tope_viaje` | 12 | Suma de `tramos_vuelo.consultas` del viaje **por sentido**: agotar la ida no deja sin monitoreo el regreso |
+| `monitoreo_tope_dia` | 30 | Filas `estado_vuelo` con origen `en vivo` del día (UTC) del momento de consulta, para toda la plataforma; las guardadas no cuentan |
+| `cupo_minimo_monitoreo` | 25 | Si el plan del buscador tiene menos búsquedas restantes que esto, el monitoreo se suspende (solo se sabe con la clave configurada) |
+
+Casos a tener en cuenta:
+
+- Cuando no se consulta (fuera de ventana, tope, caché, cupo bajo) no hay fila en `consultas_buscador`: el motivo queda en el tramo (`tramos_vuelo.omitida`) y en la bitácora del viaje, una vez por motivo, porque el tablero pregunta cada 15 segundos.
+- El tope del tramo y el del viaje se cuentan en `tramos_vuelo.consultas`, que se incrementa antes de llamar al buscador con una escritura condicional: dos pestañas o un doble clic pagan una sola consulta.
+- Con `MONITOREO_AHORA` (solo en local) el «ahora» del tope diario es el simulado, pero `consultas_buscador.momento` guarda la hora real del reloj: las consultas de la demostración no cuentan para el tope del día simulado.
+- El proveedor no da los minutos de retraso: se calculan como hora real menos programada.
 
 ## Ficha por persona
 

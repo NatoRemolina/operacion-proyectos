@@ -290,6 +290,23 @@ def test_aprobar_con_precio_mayor_que_la_tolerancia_pide_confirmar(cliente, monk
     assert ajuste and "410.00 → 451.00" in ajuste[0]["detalle"]
 
 
+def test_con_cambio_pendiente_aprobar_sin_confirmar_no_vuelve_a_consultar(cliente, monkeypatch, tmp_path):
+    from app.servicios import viajes
+    b, sid, v = _decidido(cliente, monkeypatch, tmp_path, "2027-09-28", "2027-10-01", reconfirmacion=_reserva(451))
+    _aprobar(cliente, v["id"])                                  # la primera vez consulta y deja el cambio pendiente
+    antes = len(b.llamadas)
+    for _ in range(3):                                          # «Aprobar» otra vez, sin confirmar: no paga más búsquedas
+        destino = _aprobar(cliente, v["id"])
+    assert len(b.llamadas) == antes
+    assert viajes.de_solicitud(sid)["estado"] == "pendiente_aprobacion"
+    assert "451" in parse_qs(urlparse(destino).query)["aviso"][0]
+    # el detalle del viaje ofrece confirmar, igual que el tablero
+    detalle = cliente.get(f"/viaje/{v['id']}").text
+    assert 'name="confirmar_precio"' in detalle and "Confirmar precio y aprobar" in detalle
+    _aprobar(cliente, v["id"], confirmar_precio="1")
+    assert len(b.llamadas) == antes and viajes.de_solicitud(sid)["estado"] == "aprobado"
+
+
 def test_aprobar_dentro_de_la_tolerancia_no_pide_confirmar(cliente, monkeypatch, tmp_path):
     from app.servicios import viajes
     _, sid, v = _decidido(cliente, monkeypatch, tmp_path, "2027-09-21", "2027-09-24", reconfirmacion=_reserva(410.5))
