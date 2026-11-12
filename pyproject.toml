@@ -20,4 +20,5 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]   # las pruebas importan `app` y `datos` desde la raíz, se lance pytest como se lance
 filterwarnings = ["ignore::DeprecationWarning"]
