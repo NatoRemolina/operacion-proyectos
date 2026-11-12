@@ -42,6 +42,7 @@ ASESOR_API_URL = _txt("ASESOR_API_URL").rstrip("/")   # esquema y servidor, sin 
 ASESOR_API_KEY = _txt("ASESOR_API_KEY")                # viaja en la cabecera x-api-key
 ASESOR_AGENTE_ID = _txt("ASESOR_AGENTE_ID")
 ASESOR_ENTORNO_ID = _txt("ASESOR_ENTORNO_ID")
+ASESOR_AGENTE_VERSION = _txt("ASESOR_AGENTE_VERSION")   # opcional: fija la versión del agente; vacía = la última
 try:
     ASESOR_CABECERAS = json.loads(_txt("ASESOR_CABECERAS") or "{}")
 except json.JSONDecodeError:

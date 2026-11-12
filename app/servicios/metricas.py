@@ -4,7 +4,7 @@ Todas aceptan los mismos filtros (proyecto, desde, hasta y, donde aplica, person
 analíticas `v_h_*`, que son también la superficie para herramientas externas de inteligencia de negocio.
 """
 from collections import Counter
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from datetime import date, datetime
 from statistics import mean, median
@@ -305,13 +305,21 @@ def uso_modelo(f: dict) -> dict:
     filas = db.todos(f"select * from v_h_lectura where {donde}", **par)
     cat = costo.catalogo()
     p_ent, p_sal = costo.supuesto(cat, "modelo_usd_por_millon_entrada", 0.5), costo.supuesto(cat, "modelo_usd_por_millon_salida", 3.0)
+
+    def costo_de(x: dict) -> float:
+        """El costo que informó el servicio (asesor) si lo hay; si no, tokens por el precio de referencia."""
+        if x.get("costo_usd") not in (None, ""):
+            with suppress(ValueError):
+                return float(x["costo_usd"])
+        return (x["tokens_entrada"] or 0) / 1e6 * p_ent + (x["tokens_salida"] or 0) / 1e6 * p_sal
+
     por_uso = {}
     for u in sorted({x["uso"] for x in filas}):
         g = [x for x in filas if x["uso"] == u]
         bien = [x for x in g if x["estado_http"] == 200 and not x["error"]]
         ent, sal = sum(x["tokens_entrada"] or 0 for x in g), sum(x["tokens_salida"] or 0 for x in g)
         por_uso[u] = {"llamadas": len(g), "fallidas": len(g) - len(bien), "tokens_entrada": ent, "tokens_salida": sal,
-                      "costo_usd": round(ent / 1e6 * p_ent + sal / 1e6 * p_sal, 4),
+                      "costo_usd": round(sum(costo_de(x) for x in g), 4),
                       "latencia_mediana_ms": round(median(x["latencia_ms"] or 0 for x in g)) if g else None}
     recibos = por_uso.get("recibo", {})
     return {"por_uso": por_uso, "llamadas": len(filas),

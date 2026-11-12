@@ -127,6 +127,9 @@ SUPUESTOS_NUEVOS = [
     ("monitoreo_retraso_aviso_min", "15", "Retraso que se avisa al viajero (o que crece estos minutos más desde el último aviso)."),
     ("cupo_minimo_monitoreo", "25", "Si al plan del buscador le quedan menos búsquedas que esto, el monitoreo del vuelo se suspende."),
     ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
+    # Asistente de administración
+    ("asesor_usd_dia", "2", "Gasto máximo por día (hora de Bogotá) en sesiones del asesor del asistente, a precio de lista del servicio (USD). "
+                            "Alcanzado, el asistente responde sin el asesor y lo dice."),
 ]
 
 

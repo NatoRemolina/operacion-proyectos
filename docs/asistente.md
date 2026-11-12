@@ -131,11 +131,16 @@ plataforma ── abre sesión (agente + entorno + pregunta) ──> servicio de
            <── evento: respuesta final ────────────────────
 ```
 
-- **Una sesión por pregunta.** La plataforma consulta los eventos de la sesión cada medio segundo a segundo y medio, responde cada herramienta con sus consultas de solo lectura y toma como respuesta lo que el agente dice después de su última herramienta.
+- **Una sesión por pregunta.** La plataforma consulta los eventos de la sesión cada medio segundo a segundo y medio, responde cada herramienta con sus consultas de solo lectura y toma como respuesta lo que el agente dice después de su última herramienta. Cada sondeo sigue desde la última página de eventos leída (el cursor del servicio), no desde la primera.
+- **La fecha** que recibe el agente es la de la empresa (zona `America/Bogota`), no la de UTC: a las 22:00 de Bogotá sigue siendo el mismo día.
 - **Herramientas (12).** Las seis de arriba; `justificaciones_de_gasto(id)`, con los textos y las notas de voz ya transcritas por el modelo que lee recibos y audios; y cinco de cotización (`opciones_de_cotizacion`, `desglose_de_opcion`, `reglas_de_aerolinea`, `historial_de_ruta`, `sensibilidad`), las mismas funciones del agente de viajes con la cotización como parámetro: «#12» o el código del viaje que nació de ella. Una herramienta fuera de la lista no ejecuta nada.
-- **Límites.** 75 s por pregunta en total, 12 herramientas por pregunta, resultados de hasta 20.000 caracteres (se recortan filas, nunca los totales), y las herramientas propias del servicio que pidan permiso se niegan siempre. Al abandonar una sesión se envía una interrupción; no se archiva ni se borra nada.
+- **Herramientas del servicio: nunca.** Si el agente usa cualquier herramienta que no sea de las que responde la plataforma (consola, archivos, web, servidores MCP), con permiso automático o pidiéndolo, la sesión se interrumpe, la respuesta no se acepta y responde la vía siguiente con el motivo «el agente usó una herramienta del servicio (nombre)».
+- **Límites.** 75 s por pregunta en total, 12 herramientas por pregunta, resultados de hasta 20.000 caracteres (se recortan filas, nunca los totales).
+- **Costo y tope del día.** Cada sesión, termine bien o con error, deja una fila en `llamadas_modelo` con `uso='asesor'`: tokens de entrada (incluida la caché) y de salida, duración, resultado y `costo_usd`, el costo a precio de lista que informa el servicio (centavos de USD en una cadena, convertidos con `Decimal`: «4» = 0,04 USD), leído al cerrar la sesión o, si no se puede, del último evento `session.usage`. Monitoreo lo muestra en la pestaña «Modelo de lenguaje», fila `asesor`, con ese costo y no con el precio de referencia. El supuesto `asesor_usd_dia` (2 USD por defecto, editable en «Reglas y supuestos») es el tope de gasto por día de la empresa (hora de Bogotá): alcanzado, no se abre ninguna sesión y responde la vía siguiente, con la nota «El asesor no se consultó: se alcanzó el tope de gasto del día…».
+- **Cierre de cada sesión.** Al terminar, bien o con error (después de interrumpirla si quedó en marcha), la sesión se borra del servicio: sus eventos, su contenedor y sus registros. Si el servicio rechaza el borrado porque la sesión aún no se detuvo, se reintenta una vez; si sigue sin poderse, queda allí (ver «Límites conocidos»). `python -m datos.asesor --probar` es la excepción: conserva la sesión para abrirla en la consola del servicio.
+- **Si la creación de la sesión vence** (la petición salió y no llegó respuesta), la sesión pudo crearse igual: cada sesión lleva en sus metadatos una marca aleatoria de su pregunta, y la plataforma la busca entre las últimas 20 del servicio, la interrumpe, la borra y registra su costo.
 - **Orden de respaldo.** Si el asesor no responde, responde el modelo de lenguaje con herramientas; si el asesor agotó el plazo o tardó más de 20 s en fallar, se pasa directamente al modo determinista para no sumar esperas. El motivo queda en el evento `asesor sin respuesta` y en una nota al inicio de la respuesta.
-- **Rastro.** `asistente_consultas.modo` = `asesor`, y el evento `pregunta respondida` lleva el identificador de la sesión y los tokens.
+- **Rastro.** `asistente_consultas.modo` = `asesor`, el evento `pregunta respondida` lleva el identificador de la sesión, los tokens y el costo, y `llamadas_modelo` guarda una fila por sesión.
 
 Configuración en `.env` (vacía = apagado):
 
@@ -144,6 +149,7 @@ Configuración en `.env` (vacía = apagado):
 | `ASESOR_API_URL` | Dirección base del servicio, sin `/v1` |
 | `ASESOR_API_KEY` | Clave del servicio (cabecera `x-api-key`) |
 | `ASESOR_AGENTE_ID`, `ASESOR_ENTORNO_ID` | Agente y entorno creados en la consola del servicio |
+| `ASESOR_AGENTE_VERSION` | Opcional: versión fija del agente (un número). Si está, cada sesión pide esa versión; vacía, la última. Así un cambio en la consola no llega a las respuestas hasta que se verifica y se sube este número |
 | `ASESOR_CABECERAS` | Cabeceras que exige el servicio (versión de la API y función en prueba), en JSON |
 
 Mantenimiento por consola:
@@ -151,12 +157,12 @@ Mantenimiento por consola:
 ```
 python -m datos.asesor --esquemas            # herramientas en JSON, tal como van en la consola
 python -m datos.asesor --sistema             # mensaje de sistema
-python -m datos.asesor --verificar           # compara el agente guardado con el código (solo lectura)
+python -m datos.asesor --verificar           # compara el agente y el entorno guardados con el código (solo lectura)
 python -m datos.asesor --sincronizar         # sube al agente el mensaje de sistema y las herramientas del código
-python -m datos.asesor --probar "pregunta"   # sesión real paso a paso, sin escribir en la base
+python -m datos.asesor --probar "pregunta"   # sesión real paso a paso; solo registra su costo y conserva la sesión
 ```
 
-El agente se configura sin herramientas propias del servicio (consola, archivos, web) y en un entorno con red limitada sin destinos permitidos: todo lo que sabe de la plataforma le llega por las herramientas.
+El agente se configura sin herramientas propias del servicio (consola, archivos, web) y en un entorno con red limitada sin destinos permitidos: todo lo que sabe de la plataforma le llega por las herramientas. `--verificar` cuenta como problema que el agente tenga herramientas o servidores MCP del servicio, que el entorno no limite la red o que permita algún destino (sitios, gestores de paquetes o servidores MCP), y que la versión fijada en `ASESOR_AGENTE_VERSION` no sea la última del agente. Después de `--sincronizar`, el número de la versión nueva se pasa a `ASESOR_AGENTE_VERSION`.
 
 **Qué sale hacia el servicio:** la pregunta, la fecha del día y los resultados de las herramientas que pida, que incluyen códigos y nombres de personas, comercios, importes y los textos de notas y justificaciones. Es la misma clase de datos que hoy procesa el modelo que lee los recibos.
 
@@ -173,8 +179,11 @@ El agente se configura sin herramientas propias del servicio (consola, archivos,
 - En Pinecone lo recién subido tarda alrededor de un minuto en ser buscable; justo después de un gasto nuevo, la búsqueda por significado puede no verlo todavía (las cifras sí, porque salen de la base).
 - La indexación recalcula todas las fichas en cada vuelta para comparar huellas: con el volumen actual tarda milisegundos; con decenas de miles de registros convendría marcar cambios por fecha de actualización.
 - El modo determinista entiende códigos, nombres de personas, números de gasto y nombres de indicadores; no interpreta fechas relativas («la semana pasada») ni comparaciones. Eso lo hace el modo con modelo.
-- Los audios no se transcriben: su ficha solo dice que existe y su pie de texto.
+- Los audios cargados como evidencia de un viaje (`documentos`) no se transcriben: su ficha solo dice que existe y su pie de texto. Las notas de voz de las justificaciones sí llegan transcritas (`docs/justificaciones.md`) y se indexan y se consultan con su transcripción.
 - La ficha de una persona (`/admin/kpis/persona/{id}`) se enlaza solo si esa pantalla está publicada; si no, el código de la persona se muestra sin enlace.
-- Con el asesor una respuesta tarda más (sesión, idas y vueltas por cada herramienta y el razonamiento del modelo); el botón queda desactivado mientras espera. Su costo se ve por sesión en la consola del servicio y no en Monitoreo, que solo suma las llamadas del modelo que lee recibos.
+- Con el asesor una respuesta tarda más (sesión, idas y vueltas por cada herramienta y el razonamiento del modelo), hasta el tope de 75 s; no hay una medición publicada del tiempo típico. El botón queda desactivado mientras espera.
+- El tope de gasto del día cuenta lo que el servicio informa al cerrar cada sesión. Una pregunta puede pasarse del tope (se comprueba antes de abrir la sesión, no durante), y una sesión cuyo costo el servicio no informe queda registrada sin costo y no suma.
+- Una sesión que no se pudo borrar (seguía en marcha tras dos intentos, o se perdió la conexión) queda en el servicio con la pregunta y los resultados de las herramientas. Este repositorio no conoce un plazo de borrado automático en el servicio: se asume que queda hasta borrarla desde su consola. El identificador está en el evento `asesor sin respuesta` o `pregunta respondida`.
+- Si la creación de la sesión vence, la búsqueda de la sesión huérfana es de mejor esfuerzo: mira las últimas 20 sesiones de la cuenta y puede no encontrarla si el servicio aún no la lista. En ese caso trabaja hasta terminar su turno y queda en el servicio, sin costo registrado en la plataforma.
 - El asesor es solo para administración. Abrirlo a otros roles exige acotar cada herramienta a lo que esa persona puede ver (`asesor.herramientas_para` es el punto de entrada).
 - El adaptador de Pinecone se probó con un transporte simulado que reproduce la forma de las peticiones de la documentación oficial; falta la verificación en vivo con una clave real.

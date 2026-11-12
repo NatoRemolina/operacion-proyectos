@@ -112,6 +112,20 @@ Para cuidar el plan del buscador (250 búsquedas al mes), el estado del vuelo so
 
 **Sin clave del buscador:** decidir carga lo guardado si existe y, si no, deja el evento «regreso sin datos» y registra solo los tramos de ida; aprobar funciona con el aviso «precio no reconfirmado»; el estado del vuelo usa la respuesta de ejemplo del IB 5634 y cualquier otro vuelo queda «sin datos».
 
+## Modelo de precio esperado y API de lectura
+
+Cada búsqueda de vuelos queda como datos tabulares (`observaciones`), que alimentan un modelo de precio esperado:
+
+```bash
+.venv/bin/python -m datos.recolectar --simular   # muestra qué buscaría, sin gastar consultas
+.venv/bin/python -m datos.recolectar --max 40    # una consulta del buscador por búsqueda nueva
+.venv/bin/python -m datos.entrenar               # entrena y publica sus métricas en datos/modelo/ficha.json
+```
+
+El modelo predice el precio de un vuelo por ruta, aerolínea, escalas, duración, horario y anticipación, se valida dejando búsquedas completas fuera del entrenamiento y se compara con la mediana de la ruta. **Solo se muestra en las comparaciones si tiene al menos 200 filas y supera a esa línea base**; su estado se ve en Analítica. Los pesos de la decisión (riesgo de cambio, valor de la milla) no son aprendidos: son reglas y supuestos explícitos.
+
+Además de la API v1, hay rutas JSON de **solo lectura y solo para administración** bajo `/api` (`/api/analitica`, `/api/solicitudes`, `/api/solicitudes/{id}`, `/api/gastos`, `/api/observaciones`, `/api/eventos`), documentadas en `/docs`.
+
 ## Integridad de los gastos
 
 - Los importes se validan con `Decimal` (`app/servicios/dinero.py`): un total vacío, cero, negativo o no numérico va a revisión (`importe_invalido`), igual que una fecha que no es real (`fecha_invalida`). Una fecha posterior a hoy avisa (`fecha_futura`) pero no bloquea. El duplicado compara también la moneda.
@@ -214,8 +228,10 @@ Copiar `.env.example` a `.env`. Cada bloque activa una parte; sin ninguno la pla
 | Variable | Efecto |
 |---|---|
 | `SERPAPI_KEY` | Precios en vivo para cualquier ruta y fechas, autocompletado de lugares y estado del vuelo |
-| `MODELO_API_URL`, `MODELO_API_KEY`, `MODELO_NOMBRE` | Lectura en vivo de recibos y notas de voz, agente y asistente con modelo de lenguaje |
-| `ASESOR_API_URL`, `ASESOR_API_KEY`, `ASESOR_AGENTE_ID`, `ASESOR_ENTORNO_ID`, `ASESOR_CABECERAS` | Asesor del asistente: un agente alojado cuyas herramientas responde la plataforma (ver `docs/asistente.md`) |
+| `MODELO_API_URL`, `MODELO_API_KEY`, `MODELO_NOMBRE` | Lectura en vivo de recibos y agente de la cotización con modelo de lenguaje; con el formato `gemini`, además la transcripción de notas de voz y el asistente con modelo |
+| `MODELO_FORMATO` | Formato de la API del modelo: `gemini` (`generateContent`) o `mensajes`; vacío se deduce de la dirección. El cliente único (`app/servicios/llm.py`) solo habla `gemini`: con `mensajes` los recibos y el agente usan su propia llamada, las notas de voz quedan pendientes de transcribir y el asistente responde sin modelo (modo determinista o asesor) |
+| `ASESOR_API_URL`, `ASESOR_API_KEY`, `ASESOR_AGENTE_ID`, `ASESOR_ENTORNO_ID`, `ASESOR_CABECERAS` | Asesor del asistente: un agente alojado cuyas herramientas responde la plataforma, con tope de gasto diario (`asesor_usd_dia`) y su costo en Monitoreo (ver `docs/asistente.md`) |
+| `ASESOR_AGENTE_VERSION` | Opcional: versión fija del agente del asesor; vacía, cada sesión usa la última |
 | `DATABASE_URL` | PostgreSQL (Supabase) en lugar de SQLite |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Archivos originales en almacenamiento privado |
 | `ADMIN_INICIAL_CORREO`, `ADMIN_INICIAL_CLAVE` | Primera cuenta de administración en una base compartida |
@@ -247,7 +263,7 @@ Copiar `.env.example` a `.env`. Cada bloque activa una parte; sin ninguno la pla
 - Los precios son una foto del momento de la consulta; cada opción muestra su origen.
 - La distancia y el tiempo por carretera son una estimación (línea recta × factor ÷ velocidad), sin mapas ni rutas reales, y no hay tren, bus ni ferri.
 - La cotización con el buscador mundial está en las pantallas actuales; la web Next.js todavía no la ofrece.
-- Con el asesor, una respuesta del asistente tarda alrededor de 15 s; si el asesor falla, responde el asistente sin él.
+- Con el asesor, una respuesta del asistente tarda más que sin él (hasta un tope de 75 s; no hay una medición del tiempo típico); si el asesor falla o llega a su tope de gasto del día, responde el asistente sin él y lo dice.
 - Varias reglas de aerolíneas vienen de fuentes secundarias o están sin verificar; la página *Reglas* lo indica.
 - El canal de Telegram se probó con un bot simulado.
 - Extraer precios de buscadores puede ir contra sus términos de uso; para producción corresponde una API con licencia.

@@ -88,7 +88,7 @@
 <div class="tarjeta tabla"><h3>Por uso</h3><table><tr><th>Uso</th><th class="d">Llamadas</th><th class="d">Fallidas</th><th class="d">Tokens de entrada</th><th class="d">Tokens de salida</th><th class="d">Latencia mediana (ms)</th><th class="d">Costo (USD)</th></tr>
 {% for u, x in d.por_uso.items() %}<tr><td>{{ u }}</td><td class="d">{{ x.llamadas }}</td><td class="d">{{ x.fallidas }}</td><td class="d">{{ x.tokens_entrada }}</td><td class="d">{{ x.tokens_salida }}</td><td class="d">{{ x.latencia_mediana_ms }}</td><td class="d">{{ x.costo_usd }}</td></tr>
 {% else %}<tr><td colspan="7">Sin llamadas en el periodo.</td></tr>{% endfor %}</table>
-<p class="eti">El costo es una estimación: tokens registrados por el precio de referencia, que se edita en la página Reglas.</p></div>
+<p class="eti">El costo es una estimación: tokens registrados por el precio de referencia, que se edita en la página Reglas. Las sesiones del asesor (uso «asesor») llevan el costo que informa su servicio, y su gasto del día tiene tope (supuesto asesor_usd_dia).</p></div>
 <div class="tarjeta tabla"><h3>Últimos errores del modelo</h3><table>{% for m, u, e in d.errores %}<tr><td>{{ m }}</td><td>{{ u }}</td><td>{{ e }}</td></tr>{% else %}<tr><td>Sin errores.</td></tr>{% endfor %}</table></div>
 <p>{{ bajar("v_h_lectura", "llamadas") }}</p>
 

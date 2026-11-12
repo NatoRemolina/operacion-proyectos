@@ -60,7 +60,7 @@ class Rastro:
     def __init__(self):
         self.fuentes: dict[tuple, dict] = {}
         self.pasos: list[str] = []
-        self.sesion: dict = {}   # solo con el asesor: identificador de la sesión, tokens y tipos de evento
+        self.sesion: dict = {}   # solo con el asesor: identificador de la sesión, tokens, costo y tipos de evento
 
     def _poner(self, tipo: str, id_: int, codigo: str, enlace: str | None):
         self.fuentes.setdefault((tipo, id_), {"tipo": tipo, "id": id_, "codigo": codigo, "enlace": enlace})
@@ -486,6 +486,7 @@ def responder(pregunta: str, usuario: dict) -> dict:
                 r = Rastro()   # las fuentes que se muestran son las de la vía que respondió
         # Si el asesor agotó el plazo o tardó en fallar, no se suma la espera del modelo de lenguaje
         salto = fallo is not None and (getattr(fallo, "agotado", False) or getattr(fallo, "segundos", 0) > asesor.SEGUNDA_VIA_S)
+        tope = getattr(fallo, "tope", False)   # el asesor no se llamó: la respuesta lo dice, la dé quien la dé
         if not texto and llm.activo() and not salto:
             try:
                 texto, modo = _con_modelo(pregunta, r), "modelo"
@@ -493,9 +494,12 @@ def responder(pregunta: str, usuario: dict) -> dict:
                 nota = f"(El modelo de lenguaje no respondió: {e} Se usó la respuesta determinista.)\n\n"
             if not texto:
                 modo = "determinista"
+            elif tope:
+                texto = f"(El asesor no se consultó: {asesor.motivo(fallo)}.)\n\n{texto}"
         if not texto:
             if fallo is not None and not nota:
-                nota = f"(El asesor no respondió: {asesor.motivo(fallo)}. Se usó la respuesta determinista.)\n\n"
+                nota = (f"(El asesor {'no se consultó' if tope else 'no respondió'}: {asesor.motivo(fallo)}. "
+                        "Se usó la respuesta determinista.)\n\n")
             texto, modo = nota + _determinista(pregunta, r), "determinista"
     fuentes = list(r.fuentes.values())
     if modo in ("modelo", "asesor"):   # se muestran las que la respuesta cita; si no cita ninguna, todas las consultadas
@@ -506,7 +510,7 @@ def responder(pregunta: str, usuario: dict) -> dict:
     cid = db.insertar("asistente_consultas", usuario_id=usuario["id"], pregunta=pregunta, herramientas=r.pasos,
                       fuentes=[{k: f[k] for k in ("tipo", "id", "codigo")} for f in fuentes], modo=modo, duracion_ms=t(), momento=db.ahora())
     sesion = (f" · sesión {r.sesion['id']} · tokens {r.sesion.get('entrada', 0)}/{r.sesion.get('salida', 0)}"
-              + (f" · {r.sesion['centavos_usd'] / 100:.2f} USD" if "centavos_usd" in r.sesion else "")
+              + (f" · {r.sesion['costo_usd']:.2f} USD" if r.sesion.get("costo_usd") is not None else "")
               if modo == "asesor" and r.sesion.get("id") else "")
     eventos.registrar("asistente", cid, "pregunta respondida",
                       f"modo {modo} · {len(r.pasos)} herramientas · {len(fuentes)} fuentes{sesion}", modo, t())

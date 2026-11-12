@@ -213,6 +213,7 @@ llamadas_modelo = _tabla(
     Column("momento", Text), Column("uso", Text), Column("entidad_id", Integer), Column("modelo", Text),
     Column("tokens_entrada", Integer), Column("tokens_salida", Integer), Column("latencia_ms", Integer),
     Column("estado_http", Integer), Column("motivo_parada", Text), Column("error", Text),
+    Column("costo_usd", Text),   # costo informado por el servicio (asesor), como cadena decimal exacta; vacío = se estima por tokens
 )
 
 # Vista viva del registro: una tabla declarada en el módulo de su servicio con `_tabla(...)` aparece aquí al importarse

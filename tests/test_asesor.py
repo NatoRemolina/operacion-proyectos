@@ -5,6 +5,8 @@ eventos guionados a medida que la plataforma responde las herramientas.
 """
 import itertools
 import json
+from datetime import UTC, datetime
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -47,17 +49,24 @@ def fin() -> dict:
 
 
 class Servicio:
-    """Doble del servicio de agentes. Cada tramo de eventos se destapa al crear la sesión o al recibir resultados."""
+    """Doble del servicio de agentes. Cada tramo de eventos se destapa al crear la sesión o al recibir resultados.
 
-    def __init__(self, *tramos, crear: int = 200):
-        self.tramos, self.crear = list(tramos), crear
+    Con `pagina` la lista de eventos se entrega por páginas de ese tamaño, con un cursor «pN» como el del servicio.
+    `uso` es lo que devuelve la consulta de la sesión al cerrarla (tokens y costo a precio de lista).
+    """
+
+    def __init__(self, *tramos, crear: int = 200, pagina: int = 0, uso: dict | None = None):
+        self.tramos, self.crear, self.pagina, self.uso = list(tramos), crear, pagina, uso or {}
         self.eventos: list[dict] = []
         self.enviados: list[dict] = []     # cuerpos JSON que mandó la plataforma
         self.cabeceras: list[dict] = []
+        self.peticiones: list[tuple[str, str]] = []
+        self.paginas: list[str | None] = []   # cursor con el que se pidió cada página de eventos
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.cabeceras.append(dict(request.headers))
         ruta = request.url.path
+        self.peticiones.append((request.method, ruta))
         if request.method == "POST":
             self.enviados.append(json.loads(request.content or b"{}"))
         if request.method == "POST" and ruta == "/v1/sessions":
@@ -66,13 +75,25 @@ class Servicio:
             self._destapar()
             return httpx.Response(200, json={"id": "sesn_prueba", "status": "running"})
         if request.method == "GET" and ruta == "/v1/sessions/sesn_prueba/events":
-            return httpx.Response(200, json={"data": self.eventos, "next_page": None})
+            return httpx.Response(200, json=self._pagina(request.url.params.get("page")))
         if request.method == "POST" and ruta == "/v1/sessions/sesn_prueba/events":
             tipos = {e.get("type") for e in self.enviados[-1].get("events", [])}
             if tipos & {"user.custom_tool_result", "user.tool_confirmation"}:
                 self._destapar()
             return httpx.Response(200, json={"data": []})
+        if request.method == "GET" and ruta == "/v1/sessions/sesn_prueba":
+            return httpx.Response(200, json={"id": "sesn_prueba", "status": "idle", "usage": self.uso})
+        if request.method == "DELETE" and ruta == "/v1/sessions/sesn_prueba":
+            return httpx.Response(200, json={"id": "sesn_prueba", "type": "session_deleted"})
         return httpx.Response(404, json={"error": {"type": "not_found_error"}})
+
+    def _pagina(self, cursor: str | None) -> dict:
+        self.paginas.append(cursor)
+        if not self.pagina:
+            return {"data": self.eventos, "next_page": None}
+        k = int(cursor[1:]) if cursor else 0
+        desde, hasta = k * self.pagina, (k + 1) * self.pagina
+        return {"data": self.eventos[desde:hasta], "next_page": f"p{k + 1}" if len(self.eventos) > hasta else None}
 
     def _destapar(self):
         if self.tramos:
@@ -84,15 +105,42 @@ class Servicio:
     def tipos_enviados(self) -> list[str]:
         return [e.get("type") for c in self.enviados for e in c.get("events", [])]
 
+    def borradas(self) -> list[str]:
+        return [ruta for metodo, ruta in self.peticiones if metodo == "DELETE"]
+
+
+class ServicioQueTarda(Servicio):
+    """Las herramientas pedidas aparecen en la lista de eventos tres sondeos después del aviso que las pide."""
+
+    def __init__(self, *tramos):
+        super().__init__(*tramos)
+        self.tardias: list[list] = []
+
+    def _destapar(self):
+        if self.tramos:
+            for e in self.tramos.pop(0):
+                if e.get("type") == "agent.custom_tool_use":
+                    self.tardias.append([3, e])
+                else:
+                    self.eventos.append(e)
+
+    def _pagina(self, cursor):
+        for t in self.tardias:
+            t[0] -= 1
+        self.eventos += [e for n, e in self.tardias if n <= 0]
+        self.tardias = [t for t in self.tardias if t[0] > 0]
+        return super()._pagina(cursor)
+
 
 @pytest.fixture()
 def con_asesor(monkeypatch):
     """Asesor configurado contra el doble. Devuelve una función que instala el guion."""
     for nombre, valor in {"ASESOR_API_URL": "https://agentes.prueba", "ASESOR_API_KEY": CLAVE,
-                          "ASESOR_AGENTE_ID": "agent_prueba", "ASESOR_ENTORNO_ID": "env_prueba",
+                          "ASESOR_AGENTE_ID": "agent_prueba", "ASESOR_ENTORNO_ID": "env_prueba", "ASESOR_AGENTE_VERSION": "",
                           "ASESOR_CABECERAS": {"x-version": "v1", "x-funcion": "agentes"}}.items():
         monkeypatch.setattr(config, nombre, valor)
     monkeypatch.setattr(asesor, "_dormir", lambda s: None)
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: Decimal("1000"))   # el tope de gasto tiene sus propias pruebas
     monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
 
     def instalar(servicio) -> Servicio:
@@ -189,13 +237,152 @@ def test_una_herramienta_que_no_existe_no_hace_nada(con_asesor, piloto_con_gasto
     assert db.uno("select estado, total from gastos where id=:i", i=gid) == antes
 
 
-def test_las_herramientas_del_servicio_que_piden_permiso_se_niegan(con_asesor):
-    bash = {"id": f"sevt_{next(_ids)}", "type": "agent.tool_use", "name": "bash", "input": {"command": "ls"}, "evaluated_permission": "ask"}
-    s = con_asesor(Servicio([corriendo(), bash, pide(bash)], [mensaje("Sin acceso a la consola."), fin()]))
-    r = asistente.responder("Lista los archivos", _admin())
-    assert r["modo"] == "asesor"
-    negadas = [e for c in s.enviados for e in c.get("events", []) if e.get("type") == "user.tool_confirmation"]
-    assert negadas == [{"type": "user.tool_confirmation", "tool_use_id": bash["id"], "result": "deny"}]
+@pytest.mark.parametrize("tipo, nombre, permiso", [("agent.tool_use", "web_fetch", "allow"), ("agent.tool_use", "bash", "ask"),
+                                                   ("agent.mcp_tool_use", "leer_pagina", "allow")])
+def test_una_herramienta_del_servicio_corta_la_sesion_y_responde_la_via_siguiente(con_asesor, tipo, nombre, permiso):
+    """Con permiso o sin él, el servicio no ejecuta nada por su cuenta: la sesión se corta y la respuesta no se acepta."""
+    ajena = {"id": f"sevt_{next(_ids)}", "type": tipo, "name": nombre, "input": {"url": "https://externo.prueba"},
+             "evaluated_permission": permiso}
+    s = con_asesor(Servicio([corriendo(), ajena, mensaje("Leí la página externa."), fin()]))
+    r = asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
+    assert r["modo"] == "determinista" and "herramienta del servicio" in r["texto"] and nombre in r["texto"]
+    assert "Leí la página externa" not in r["texto"]
+    assert "user.interrupt" in s.tipos_enviados() and "user.tool_confirmation" not in s.tipos_enviados()
+    detalle = db.uno("select detalle from eventos where paso='asesor sin respuesta' order by id desc limit 1")["detalle"]
+    assert "herramienta del servicio" in detalle
+
+
+def test_la_version_del_agente_se_fija_si_esta_configurada(con_asesor, monkeypatch):
+    s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
+    asistente.responder("¿Hay gastos en revisión?", _admin())
+    assert s.enviados[0]["agent"] == "agent_prueba"    # sin versión: la última del agente
+    monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "7")
+    s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
+    asistente.responder("¿Hay gastos en revisión?", _admin())
+    assert s.enviados[0]["agent"] == {"type": "agent", "id": "agent_prueba", "version": 7}
+    monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "siete")
+    s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
+    r = asistente.responder("¿Hay gastos en revisión?", _admin())
+    assert r["modo"] == "determinista" and "versión del agente" in r["texto"] and s.peticiones == []
+
+
+# ---------- costo, tope y cierre de cada sesión ----------
+def test_cada_sesion_queda_en_llamadas_modelo_con_su_costo_decimal(con_asesor, cliente):
+    consumo = {"id": f"sevt_{next(_ids)}", "type": "span.model_request_end", "model_usage": {"input_tokens": 100, "output_tokens": 20}}
+    # el servicio informa el costo en centavos como cadena; con Decimal nada se redondea ni se pierde
+    s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), consumo, fin()],
+                            uso={"list_cost": {"amount": "12.5", "currency": "USD"}}))
+    antes = asesor.gasto_hoy()
+    r = asistente.responder("¿Hay gastos en revisión?", _admin())
+    assert r["modo"] == "asesor" and ("GET", "/v1/sessions/sesn_prueba") in s.peticiones
+    fila = db.uno("select * from llamadas_modelo where uso='asesor' order by id desc limit 1")
+    assert (fila["tokens_entrada"], fila["tokens_salida"], fila["estado_http"], fila["error"]) == (100, 20, 200, "")
+    assert fila["costo_usd"] == "0.125" and asesor.gasto_hoy() - antes == Decimal("0.125")
+    assert asesor.costo_usd({"amount": "4", "currency": "USD"}) == Decimal("0.04")
+    assert asesor.costo_usd({"amount": "0.04", "currency": "USD"}) == Decimal("0.0004")
+    assert asesor.costo_usd({"amount": "-1", "currency": "USD"}) is None and asesor.costo_usd({"amount": "4", "currency": "EUR"}) is None
+    # Monitoreo lo muestra donde ya muestra el uso del modelo, con el costo informado y no con el precio de referencia
+    uso = metricas.uso_modelo({})["por_uso"]["asesor"]
+    assert uso["llamadas"] >= 1 and uso["costo_usd"] >= 0.125
+    pagina = cliente.get("/admin/monitoreo?pestana=modelo")
+    assert pagina.status_code == 200 and "<td>asesor</td>" in pagina.text
+
+
+def test_una_sesion_fallida_tambien_queda_registrada(con_asesor):
+    ajena = {"id": f"sevt_{next(_ids)}", "type": "agent.tool_use", "name": "web_fetch", "input": {}, "evaluated_permission": "allow"}
+    con_asesor(Servicio([corriendo(), ajena], uso={"list_cost": {"amount": "3", "currency": "USD"}}))
+    asistente.responder("¿Hay gastos en revisión?", _admin())
+    fila = db.uno("select * from llamadas_modelo where uso='asesor' order by id desc limit 1")
+    assert fila["estado_http"] == 0 and "herramienta del servicio" in fila["error"] and fila["costo_usd"] == "0.03"
+
+
+def test_con_el_tope_de_gasto_del_dia_alcanzado_no_se_llama_al_servicio(con_asesor, monkeypatch):
+    s = con_asesor(Servicio([corriendo(), mensaje("No debería responder."), fin()]))
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: asesor.gasto_hoy())   # lo gastado hoy ya llega al tope
+    r = asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
+    assert s.peticiones == []
+    assert r["modo"] == "determinista" and "tope de gasto del día" in r["texto"] and "asesor_usd_dia" in r["texto"]
+    # si responde el modelo de lenguaje, la respuesta también lo dice
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r: "Respuesta del modelo de lenguaje.")
+    r = asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
+    assert r["modo"] == "modelo" and "tope de gasto del día" in r["texto"] and r["texto"].endswith("Respuesta del modelo de lenguaje.")
+    assert s.peticiones == []
+
+
+def test_el_tope_de_gasto_es_un_supuesto_editable():
+    from datos import semilla
+    assert ("asesor_usd_dia", "2") in [(c, v) for c, v, _nota in semilla.SUPUESTOS_NUEVOS]
+    regla = db.uno("select id, valor from reglas where ambito='supuesto' and clave='asesor_usd_dia'")
+    if not regla:
+        assert asesor.tope_usd_dia() == Decimal("2")
+        return
+    try:
+        db.actualizar("reglas", regla["id"], valor="0.75")
+        assert asesor.tope_usd_dia() == Decimal("0.75")
+        db.actualizar("reglas", regla["id"], valor="mucho")
+        assert asesor.tope_usd_dia() == Decimal("2")   # mal escrito: el valor por defecto
+    finally:
+        db.actualizar("reglas", regla["id"], valor=regla["valor"])
+
+
+def test_cada_sesion_se_borra_al_terminar_bien_o_mal(con_asesor):
+    s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
+    assert asistente.responder("¿Hay gastos en revisión?", _admin())["modo"] == "asesor"
+    assert s.borradas() == ["/v1/sessions/sesn_prueba"]
+    ajena = {"id": f"sevt_{next(_ids)}", "type": "agent.tool_use", "name": "web_fetch", "input": {}, "evaluated_permission": "allow"}
+    s = con_asesor(Servicio([corriendo(), ajena]))
+    assert asistente.responder("¿Hay gastos en revisión?", _admin())["modo"] == "determinista"
+    assert "user.interrupt" in s.tipos_enviados() and s.borradas() == ["/v1/sessions/sesn_prueba"]
+    # la prueba en vivo por consola conserva la sesión para abrirla en la consola del servicio
+    s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
+    assert asesor.preguntar("¿Hay gastos en revisión?", asistente.Rastro(), _admin(), conservar=True)
+    assert s.borradas() == []
+
+
+# ---------- sondeo de eventos ----------
+def test_el_sondeo_sigue_desde_la_ultima_pagina_leida(con_asesor, piloto_con_gastos):
+    pedida = herramienta("persona", {"codigo_o_nombre": piloto_con_gastos["codigo"]})
+    s = con_asesor(Servicio([corriendo(), mensaje("Busco."), mensaje("Sigo."), pedida, pide(pedida)],
+                            [mensaje("Es una persona del equipo."), fin()], pagina=2))
+    r = asistente.responder(f"¿Quién es {piloto_con_gastos['codigo']}?", _admin())
+    assert r["modo"] == "asesor" and r["texto"] == "Es una persona del equipo."
+    assert s.paginas.count(None) == 1   # la primera página se pide una sola vez; después, desde el último cursor
+    assert s.paginas == [None, "p1", "p2", "p2", "p3"]
+
+
+def test_una_accion_que_tarda_en_aparecer_no_agota_los_intentos_de_la_siguiente(con_asesor, piloto_con_gastos):
+    a = herramienta("persona", {"codigo_o_nombre": piloto_con_gastos["codigo"]})
+    b = herramienta("viajes_de", {"persona": piloto_con_gastos["codigo"]})
+    con_asesor(ServicioQueTarda([corriendo(), a, pide(a)], [b, pide(b)], [mensaje("Tiene viajes."), fin()]))
+    r = asistente.responder(f"¿Qué viajes tiene {piloto_con_gastos['codigo']}?", _admin())
+    assert r["modo"] == "asesor" and r["herramientas"] == ["persona", "viajes_de"]
+
+
+def test_si_la_creacion_vence_se_ubica_la_sesion_y_se_corta(con_asesor):
+    s, marca = Servicio(), {}
+
+    def servicio(request):
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            marca.update(json.loads(request.content)["metadata"])
+            raise httpx.ReadTimeout("sin respuesta", request=request)
+        if request.method == "GET" and request.url.path == "/v1/sessions":
+            return httpx.Response(200, json={"data": [{"id": "sesn_otra", "metadata": {"marca": "de-otra-pregunta"}},
+                                                      {"id": "sesn_prueba", "metadata": dict(marca)}], "next_page": None})
+        return s(request)
+    con_asesor(servicio)
+    r = asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
+    assert r["modo"] == "determinista" and "no respondió a tiempo" in r["texto"]
+    assert marca.get("marca") and "user.interrupt" in s.tipos_enviados()
+    assert s.borradas() == ["/v1/sessions/sesn_prueba"] and not any("sesn_otra" in ruta for _m, ruta in s.peticiones)
+
+
+def test_la_fecha_del_agente_es_la_de_la_empresa(con_asesor, monkeypatch):
+    monkeypatch.setattr(asesor, "_ahora_utc", lambda: datetime(2026, 11, 13, 3, 0, tzinfo=UTC))   # 12 de noviembre, 22:00 en Bogotá
+    s = con_asesor(Servicio([corriendo(), mensaje("Hoy es 12 de noviembre."), fin()]))
+    asistente.responder("¿Qué día es hoy?", _admin())
+    assert s.enviados[0]["initial_events"][0]["content"][0]["text"].startswith("Fecha de hoy: 2026-11-12.")
+    assert asesor.inicio_del_dia() == "2026-11-12 05:00:00"   # el día de la empresa empieza a las 5:00 UTC
 
 
 def test_respeta_el_tope_de_herramientas_por_pregunta(con_asesor, piloto_con_gastos):
@@ -347,6 +534,39 @@ def test_verificar_detecta_lo_que_separa_al_agente_del_codigo():
                 "tools": [{"type": "agent_toolset_20260401"}, *asesor.ESQUEMAS[1:], {"type": "custom", "name": "borrar_gasto"}]}
     problemas = " ".join(guion.diferencias(distinto))
     assert "mensaje de sistema" in problemas and "persona" in problemas and "borrar_gasto" in problemas and "del servicio" in problemas
+
+
+def test_verificar_cuenta_como_problema_un_entorno_con_red_abierta():
+    from datos import asesor as guion
+    assert guion.problemas_entorno({"config": {"type": "cloud", "networking": {"type": "limited"}}}) == []
+    assert guion.problemas_entorno({"config": {"type": "cloud", "networking": {
+        "type": "limited", "allowed_hosts": [], "allow_package_managers": False, "allow_mcp_servers": False}}}) == []
+    assert "no limita la red" in " ".join(guion.problemas_entorno({"config": {"type": "cloud", "networking": {"type": "unrestricted"}}}))
+    assert "no limita la red" in " ".join(guion.problemas_entorno({"config": {"type": "self_hosted"}}))
+    destinos = " ".join(guion.problemas_entorno({"config": {"type": "cloud", "networking": {
+        "type": "limited", "allowed_hosts": ["api.externa.prueba"], "allow_package_managers": True, "allow_mcp_servers": True}}}))
+    assert "api.externa.prueba" in destinos and "paquetes" in destinos and "MCP" in destinos
+
+
+def test_verificar_revisa_el_entorno_y_la_version_fijada(con_asesor, monkeypatch, capsys):
+    from datos import asesor as guion
+    entorno = {"id": "env_prueba", "config": {"type": "cloud", "networking": {"type": "unrestricted"}}}
+
+    def servicio(request):
+        if request.url.path == "/v1/agents/agent_prueba":
+            return httpx.Response(200, json={"id": "agent_prueba", "version": 3, "system": asesor.SISTEMA, "tools": asesor.ESQUEMAS})
+        if request.url.path == "/v1/environments/env_prueba":
+            return httpx.Response(200, json=entorno)
+        return httpx.Response(404, json={})
+    con_asesor(servicio)
+    assert guion.main(["--verificar"]) == 1 and "no limita la red" in capsys.readouterr().out
+    entorno["config"]["networking"] = {"type": "limited", "allowed_hosts": []}
+    assert guion.main(["--verificar"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "2")
+    assert guion.main(["--verificar"]) == 1 and "versión fijada" in capsys.readouterr().out
+    monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "3")
+    assert guion.main(["--verificar"]) == 0
 
 
 def test_sincronizar_sube_el_sistema_y_las_herramientas(con_asesor, capsys):

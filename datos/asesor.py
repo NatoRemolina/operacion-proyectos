@@ -2,11 +2,13 @@
 
 Uso:  python -m datos.asesor --esquemas            imprime las herramientas en JSON, tal como van en la consola
       python -m datos.asesor --sistema             imprime el mensaje de sistema
-      python -m datos.asesor --verificar           compara el agente de la consola con el código (solo lectura)
+      python -m datos.asesor --verificar           compara el agente y el entorno de la consola con el código (solo lectura)
       python -m datos.asesor --sincronizar         sube al agente el mensaje de sistema y las herramientas del código
-      python -m datos.asesor --probar "pregunta"   abre una sesión real y muestra cada paso (no escribe en la base)
+      python -m datos.asesor --probar "pregunta"   abre una sesión real y muestra cada paso (solo registra su costo;
+                                                   la sesión se conserva para abrirla en la consola del servicio)
 
-Necesita ASESOR_API_URL, ASESOR_API_KEY, ASESOR_AGENTE_ID, ASESOR_ENTORNO_ID y ASESOR_CABECERAS en .env.
+Necesita ASESOR_API_URL, ASESOR_API_KEY, ASESOR_AGENTE_ID, ASESOR_ENTORNO_ID y ASESOR_CABECERAS en .env;
+ASESOR_AGENTE_VERSION es opcional.
 """
 import argparse
 import json
@@ -54,6 +56,22 @@ def diferencias(agente: dict) -> list[str]:
     return salida
 
 
+def problemas_entorno(entorno: dict) -> list[str]:
+    """El entorno debe limitar la red y no permitir ningún destino: todo lo que el agente sabe le llega por las herramientas."""
+    cfg = entorno.get("config") or {}
+    red = cfg.get("networking") or {}
+    if cfg.get("type") == "self_hosted" or red.get("type") != "limited":
+        return [f"El entorno no limita la red (tipo {cfg.get('type') or '—'}, red {red.get('type') or '—'}): debe ser «limited» sin destinos."]
+    salida = []
+    if red.get("allowed_hosts"):
+        salida.append(f"El entorno permite destinos de red: {', '.join(map(str, red['allowed_hosts']))}. Deben quitarse.")
+    if red.get("allow_package_managers"):
+        salida.append("El entorno permite los gestores de paquetes: debe desactivarse.")
+    if red.get("allow_mcp_servers"):
+        salida.append("El entorno permite los servidores MCP: debe desactivarse.")
+    return salida
+
+
 def _leer(cli, ruta: str) -> dict:
     return asesor._peticion(cli, "GET", ruta, time.monotonic() + 30)
 
@@ -63,16 +81,22 @@ def verificar() -> int:
         agente = _leer(cli, f"/v1/agents/{config.ASESOR_AGENTE_ID}")
         entorno = _leer(cli, f"/v1/environments/{config.ASESOR_ENTORNO_ID}")
     modelo = agente.get("model")
-    print(f"Agente {agente.get('id')} · versión {agente.get('version')} · modelo {json.dumps(modelo, ensure_ascii=False)}")
+    fijada = config.ASESOR_AGENTE_VERSION
+    print(f"Agente {agente.get('id')} · versión {agente.get('version')} · modelo {json.dumps(modelo, ensure_ascii=False)}"
+          + (f" · las sesiones usan la versión fijada {fijada}" if fijada else " · las sesiones usan la última versión"))
     red = ((entorno.get("config") or {}).get("networking") or {})
     print(f"Entorno {entorno.get('id')} · red {json.dumps(red, ensure_ascii=False)}")
-    problemas = diferencias(agente)
+    problemas = diferencias(agente) + problemas_entorno(entorno)
+    if fijada and str(agente.get("version")) != fijada:
+        problemas.append(f"La versión fijada ({fijada}, ASESOR_AGENTE_VERSION) no es la última del agente ({agente.get('version')}): "
+                         "lo comparado aquí no es lo que usan las sesiones.")
     for p in problemas:
         print(f"  ✗ {p}")
     if problemas:
-        print("Para dejar el agente igual al código: python -m datos.asesor --sincronizar")
+        print("Para dejar el agente igual al código: python -m datos.asesor --sincronizar (y ajustar ASESOR_AGENTE_VERSION). "
+              "La red del entorno se cambia en la consola del servicio.")
         return 1
-    print("  ✓ El agente coincide con el código: mensaje de sistema y 12 herramientas.")
+    print("  ✓ El agente coincide con el código (mensaje de sistema y 12 herramientas) y el entorno no tiene salida a la red.")
     return 0
 
 
@@ -83,6 +107,9 @@ def sincronizar() -> int:
         nuevo = asesor._peticion(cli, "POST", f"/v1/agents/{config.ASESOR_AGENTE_ID}", time.monotonic() + 30, cuerpo,
                                    reintentar_red=False)
     print(f"Agente actualizado: versión {actual.get('version')} → {nuevo.get('version')}.")
+    if config.ASESOR_AGENTE_VERSION:
+        print(f"Las sesiones siguen en la versión fijada {config.ASESOR_AGENTE_VERSION}: para usar la nueva, "
+              f"ASESOR_AGENTE_VERSION={nuevo.get('version')}.")
     problemas = diferencias(nuevo)
     for p in problemas:
         print(f"  ✗ {p}")
@@ -97,14 +124,14 @@ def probar(pregunta: str) -> int:
     r = asistente.Rastro()
     inicio = time.monotonic()
     try:
-        texto = asesor.preguntar(pregunta, r, admin)
+        texto = asesor.preguntar(pregunta, r, admin, conservar=True)
     except asesor.ErrorAsesor as e:
         print(f"El asesor no respondió: {e} (tras {e.segundos:.1f} s)")
         texto = None
-    print(f"Sesión: {r.sesion.get('id', '—')} (se puede abrir en la consola del servicio)")
+    print(f"Sesión: {r.sesion.get('id', '—')} (se conserva para abrirla en la consola del servicio; bórrala allí al terminar)")
     print(f"Eventos: {' → '.join(r.sesion.get('tipos', [])) or '—'}")
     print(f"Herramientas: {', '.join(r.pasos) or 'ninguna'}")
-    costo = f" · {r.sesion['centavos_usd'] / 100:.2f} USD a precio de lista" if "centavos_usd" in r.sesion else ""
+    costo = f" · {r.sesion['costo_usd']:.4f} USD a precio de lista" if r.sesion.get("costo_usd") is not None else ""
     print(f"Tokens: {r.sesion.get('entrada', 0)} de entrada · {r.sesion.get('salida', 0)} de salida · "
           f"{time.monotonic() - inicio:.1f} s{costo}")
     print(f"Fuentes: {', '.join(f['codigo'] for f in r.fuentes.values()) or 'ninguna'}")
