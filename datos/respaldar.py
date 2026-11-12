@@ -61,9 +61,16 @@ def identidad(url: str) -> str:
 def _conectar(url: str, base: str | None = None, solo_lectura: bool = False):
     p = _partes(url, base)
     local = p["host"] in ("127.0.0.1", "localhost")
-    return psycopg.connect(host=p["host"], port=p["puerto"], user=p["usuario"], password=p["clave"], dbname=p["base"],
-                           sslmode="prefer" if local else "require", connect_timeout=20, autocommit=True,
-                           options="-c default_transaction_read_only=on" if solo_lectura else None)
+    c = psycopg.connect(host=p["host"], port=p["puerto"], user=p["usuario"], password=p["clave"], dbname=p["base"],
+                        sslmode="prefer" if local else "require", connect_timeout=20, autocommit=True)
+    if solo_lectura:
+        # El agrupador de Supabase ignora las opciones de arranque: la sesión se pone en solo lectura con una orden
+        # explícita y se comprueba; si no queda así, no se sigue.
+        c.execute("set session characteristics as transaction read only")
+        if c.execute("show transaction_read_only").fetchone()[0] != "on":
+            c.close()
+            sys.exit("No se pudo poner la sesión en solo lectura: no se sigue")
+    return c
 
 
 def conteos(url: str, base: str | None = None) -> dict:
