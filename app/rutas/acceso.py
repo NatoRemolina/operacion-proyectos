@@ -1,4 +1,5 @@
 """Ingreso, inicio según el rol y la cuenta de cada persona."""
+import os
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
@@ -24,21 +25,29 @@ def salud():
 
 
 @router.get("/entrar", response_class=HTMLResponse)
-def entrar(request: Request, error: str = ""):
+def entrar(request: Request, error: str = "", siguiente: str = ""):
     if request.state.usuario:
-        return RedirectResponse("/", status_code=303)
-    return plantillas.TemplateResponse(request, "entrar.html", {"error": error[:120], "demo": config.ES_SQLITE and config.LOCAL})
+        return RedirectResponse(_destino_seguro(siguiente), status_code=303)
+    return plantillas.TemplateResponse(request, "entrar.html", {"error": error[:120], "siguiente": _destino_seguro(siguiente),
+                                                                "demo": config.LOCAL and (config.ES_SQLITE or os.getenv("CUENTAS_DEMO") == "1")})
+
+
+def _destino_seguro(siguiente: str) -> str:
+    """Solo rutas de esta misma plataforma: nada de «//otro-sitio» ni direcciones completas."""
+    s = (siguiente or "").strip()
+    return s if s.startswith("/") and not s.startswith("//") and not s.startswith("/entrar") and "\\" not in s else "/"
 
 
 @router.post("/entrar")
-def entrar_enviar(correo: str = Form(""), clave: str = Form("")):
+def entrar_enviar(correo: str = Form(""), clave: str = Form(""), siguiente: str = Form("")):
     usuario, mensaje = acceso.autenticar(correo, clave)
+    destino = _destino_seguro(siguiente)
     if not usuario:
         eventos.registrar("acceso", None, "ingreso fallido", correo.strip().lower()[:80], "formulario")
-        return RedirectResponse(f"/entrar?error={quote(mensaje)}", status_code=303)
+        return RedirectResponse(f"/entrar?error={quote(mensaje)}" + (f"&siguiente={quote(destino)}" if destino != "/" else ""), status_code=303)
     acceso.fijar(usuario)
     eventos.registrar("acceso", usuario["id"], "ingreso", usuario["correo"], "formulario")
-    return acceso.abrir_sesion(RedirectResponse("/", status_code=303), usuario["id"])
+    return acceso.abrir_sesion(RedirectResponse(destino, status_code=303), usuario["id"])
 
 
 @router.post("/salir")

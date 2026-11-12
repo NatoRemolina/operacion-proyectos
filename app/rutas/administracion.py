@@ -55,7 +55,7 @@ def usuario_crear(correo: str = Form(...), nombre: str = Form(""), rol: str = Fo
 
 @router.post("/admin/usuarios/{uid}")
 def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clave: str = Form(""),
-                    proyectos_ids: list[int] = Form([])):
+                    proyectos_ids: list[int] = Form([]), activo: str = Form("")):
     u = db.uno("select * from usuarios where id=:i", i=uid)
     if not u:
         return NO_ENCONTRADO
@@ -68,12 +68,16 @@ def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clav
             acceso.cerrar_todas(uid)
             eventos.registrar("usuario", uid, "rol cambiado", f"{u['correo']}: {u['rol']} → {rol}", _yo()["nombre"])
     elif accion == "estado":
-        if u["activo"] and (uid == _yo()["id"] or (u["rol"] == "admin" and not _admins_activos(uid))):
+        quiere = (0 if u["activo"] else 1) if activo not in ("0", "1") else int(activo)   # el formulario dice el estado deseado
+        if quiere == u["activo"]:
+            aviso = f"Sin cambios: la cuenta de {u['nombre']} ya estaba {'activa' if quiere else 'desactivada'}."
+        elif not quiere and (uid == _yo()["id"] or (u["rol"] == "admin" and not _admins_activos(uid))):
             aviso = "No puedes desactivar tu propia cuenta ni al último administrador."
         else:
-            db.actualizar("usuarios", uid, activo=0 if u["activo"] else 1, fallos=0, bloqueado_hasta=None)
+            db.actualizar("usuarios", uid, activo=quiere, fallos=0, bloqueado_hasta=None)
             acceso.cerrar_todas(uid)
-            eventos.registrar("usuario", uid, "cuenta desactivada" if u["activo"] else "cuenta reactivada", u["correo"], _yo()["nombre"])
+            eventos.registrar("usuario", uid, "cuenta reactivada" if quiere else "cuenta desactivada", u["correo"], _yo()["nombre"])
+            aviso = f"Cuenta de {u['nombre']} {'reactivada' if quiere else 'desactivada'}; sus sesiones abiertas se cerraron."
     elif accion == "proyectos":
         validos = {p["id"] for p in db.todos("select id from proyectos")}
         db.ejecutar("delete from proyecto_miembros where usuario_id=:u", u=uid)
@@ -92,14 +96,32 @@ def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clav
 
 # ---------- catálogo de reglas ----------
 @router.get("/reglas", response_class=HTMLResponse)
-def reglas(request: Request):
-    return plantillas.TemplateResponse(request, "reglas.html", _ctx(
+def reglas(request: Request, aviso: str = ""):
+    return plantillas.TemplateResponse(request, "reglas.html", _ctx(aviso=aviso[:200],
         reglas=db.todos("select * from reglas order by ambito, entidad, clave"),
         membresias=db.todos("select m.*, v.nombre viajero from membresias m left join viajeros v on v.id=m.viajero_id order by m.id")))
 
 
 @router.post("/reglas/{rid}")
 def regla_guardar(rid: int, valor: str = Form(...)):
-    db.actualizar("reglas", rid, valor=valor.strip(), verificado=db.ahora()[:10])
-    eventos.registrar("regla", rid, "regla editada", f"nuevo valor: {valor.strip()[:80]}", _yo().get("nombre", "usuario"))
-    return RedirectResponse("/reglas", status_code=303)
+    actual = db.uno("select * from reglas where id=:i", i=rid)
+    if not actual:
+        return NO_ENCONTRADO
+    valor = valor.strip()
+    if _es_numero(actual["valor"]):
+        # Una regla numérica sigue siendo numérica: «1,08» se guarda como 1.08 y «80 USD» se rechaza
+        normal = valor.replace(",", ".")
+        if not _es_numero(normal) or float(normal) < 0:
+            return RedirectResponse(f"/reglas?aviso={quote(f'«{valor[:30]}» no es un número válido para {actual['clave']}. No se guardó.')}#r{rid}", status_code=303)
+        valor = normal
+    db.actualizar("reglas", rid, valor=valor, verificado=db.ahora()[:10])
+    eventos.registrar("regla", rid, "regla editada", f"{actual['clave']}: {actual['valor']} → {valor[:80]}", _yo().get("nombre", "usuario"))
+    return RedirectResponse(f"/reglas?aviso={quote('Regla guardada: ' + actual['clave'] + '.')}#r{rid}", status_code=303)
+
+
+def _es_numero(texto) -> bool:
+    try:
+        float(str(texto))
+        return True
+    except ValueError:
+        return False

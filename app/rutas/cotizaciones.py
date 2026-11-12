@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import aeropuertos, config, db
-from ..servicios import agente, costo, eventos, modelo, precios, viajes
+from ..servicios import acceso, agente, costo, eventos, modelo, precios, viajes
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -51,6 +51,11 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(...), orige
     prob_cambio, baterias_n = min(max(prob_cambio, 0), 100), max(baterias_n, 0)
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
     solicitado_por, viajero_nuevo = _yo()["nombre"], viajero_nuevo.strip()[:80]  # quien consulta sale de la sesión
+    if _yo().get("rol") == "piloto" and _yo().get("viajero_id"):
+        # Un piloto cotiza su propio viaje: el titular no puede salir de un campo que se olvidó cambiar
+        viajero_id, viajero_nuevo = _yo()["viajero_id"], ""
+    elif not acceso.es_admin(_yo()):
+        viajero_nuevo = ""   # registrar viajeros es tarea de administración
     if viajero_nuevo:
         existente = db.uno("select id from viajeros where lower(nombre)=lower(:n)", n=viajero_nuevo)
         viajero_id = existente["id"] if existente else db.insertar("viajeros", nombre=viajero_nuevo, base=desde[1], rol="Viajero")
@@ -157,7 +162,8 @@ def viaje_agente(request: Request, sid: int, pregunta: str = Form("")):
         r = agente.recomendar(c, pregunta.strip()[:400])
     eventos.registrar("solicitud", sid, "recomendación del agente", (pregunta.strip()[:120] or "recomendación general")
                       + " · herramientas: " + (", ".join(r["pasos"]) or "ninguna"), r["modo"], t())
-    return plantillas.TemplateResponse(request, "viaje.html", _ctx(**c, agente=r, pregunta=pregunta, razones=config.RAZONES))
+    return plantillas.TemplateResponse(request, "viaje.html", _ctx(**c, agente=r, pregunta=pregunta, razones=config.RAZONES,
+                                                                   el_viaje=viajes.de_solicitud(sid), editable=_solicitud_propia(sid, True)))
 
 
 @router.post("/viajes/{sid}/tarifas/{oid}")
@@ -182,6 +188,9 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
     c = _comparacion(sid) if _solicitud_propia(sid, para_modificar=True) else None
     if not c:
         return NO_ENCONTRADO
+    previa = c["decision"]
+    if previa and previa["vuelo_id"] == vuelo_id and (previa["hotel_id"] or 0) == hotel_id and (previa["motivo"] or "") == motivo.strip()[:300]:
+        return RedirectResponse(f"/viajes/{sid}/ficha", status_code=303)   # mismo envío repetido: no se duplica la decisión
     bloqueo = viajes.bloquea_decision(sid)
     if bloqueo:
         return RedirectResponse(f"/viajes/{sid}?aviso={quote(bloqueo)}", status_code=303)

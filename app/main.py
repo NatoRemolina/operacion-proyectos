@@ -6,6 +6,7 @@ Las pantallas viven en `app/rutas/`, una por área; lo que comparten, en `app/we
 import importlib
 import pkgutil
 import secrets
+from urllib.parse import quote
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -50,14 +51,25 @@ async def control_de_acceso(request: Request, call_next):
             return _asegurar(respuesta_error(request, 403, "ORIGIN_NOT_ALLOWED", "La petición no viene de un origen permitido."))
     elif escribe and not acceso.mismo_origen(request.headers):
         return _asegurar(_pagina_error(403, "Petición rechazada", "El formulario no se envió desde esta plataforma. Vuelve a la página y repite la acción."))
-    usuario = None if necesario == "publica" and ruta != "/entrar" else acceso.usuario_de(request.cookies.get(acceso.COOKIE))
+    # Un tablero que se actualiza solo no cuenta como actividad: una pestaña olvidada no mantiene viva la sesión
+    usuario = None if necesario == "publica" and ruta != "/entrar" else \
+        acceso.usuario_de(request.cookies.get(acceso.COOKIE), tocar=ruta != "/api/viajes")
     acceso.fijar(usuario)
     request.state.usuario = usuario
     if necesario == "api" and not usuario:
         return _asegurar(respuesta_error(request, 401, "UNAUTHENTICATED", MENSAJE_HTTP[401]))
     if necesario not in ("publica", "api"):
         if not usuario:
-            return Response(status_code=401) if ruta.startswith("/api") else RedirectResponse("/entrar", status_code=303)
+            if ruta.startswith("/api"):
+                return Response(status_code=401)
+            if request.headers.get("x-envio") == "pagina":   # la carga de recibos espera JSON, no una página de ingreso
+                return _asegurar(JSONResponse({"gastos": [], "errores": ["Tu sesión se cerró. Ingresa de nuevo y vuelve a enviar este recibo."],
+                                               "sesion": "vencida"}, status_code=401))
+            if escribe:
+                return _asegurar(_pagina_error(401, "Tu sesión se cerró", "Lo que enviaste no se guardó. Ingresa de nuevo en otra pestaña "
+                                               "y vuelve a enviar el formulario desde esta página para no perder lo escrito."))
+            destino = ruta + (f"?{request.url.query}" if request.url.query else "")
+            return RedirectResponse("/entrar" + (f"?siguiente={quote(destino)}" if ruta != "/" else ""), status_code=303)
         if necesario == "admin" and not acceso.es_admin(usuario):
             return _asegurar(JSONResponse({"error": "Solo administración"}, status_code=403) if ruta.startswith("/api") else SOLO_ADMIN)
     try:

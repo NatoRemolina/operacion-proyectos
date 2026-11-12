@@ -25,7 +25,7 @@ NOMBRE_ROL = {"piloto": "piloto", "gestor": "gestor de proyecto", "admin": "admi
 # Rutas que no piden sesión, y prefijos reservados al administrador
 PUBLICAS = ("/static", "/entrar", "/salud", "/telegram/webhook")
 API_V1, API_V1_PUBLICAS = "/api/v1", ("/api/v1/auth/login",)
-SOLO_ADMIN = ("/admin", "/analitica", "/flujo", "/reglas", "/proyectos", "/api", "/docs", "/openapi.json", "/gastos/ejemplos")
+SOLO_ADMIN = ("/admin", "/analitica", "/flujo", "/reglas", "/api", "/docs", "/openapi.json", "/gastos/ejemplos")
 
 _hasher = PasswordHasher()
 _HASH_FICTICIO = _hasher.hash("valor-que-nadie-usa")
@@ -136,7 +136,7 @@ def cerrar_todas(usuario_id: int):
     db.ejecutar("delete from sesiones where usuario_id=:u", u=usuario_id)
 
 
-def usuario_de(token: str | None) -> dict | None:
+def usuario_de(token: str | None, tocar: bool = True) -> dict | None:
     """Usuario dueño de una sesión vigente, o None. Cuenta desactivada o sesión vencida no entran."""
     if not token:
         return None
@@ -146,7 +146,7 @@ def usuario_de(token: str | None) -> dict | None:
                   from sesiones s join usuarios u on u.id=s.usuario_id
                   where s.huella=:h and s.expira>:a and s.ultima>:i and u.activo=1""",
                h=huella(token), a=_fmt(ahora), i=_fmt(ahora - INACTIVIDAD))
-    if u and u["ultima"] < _fmt(ahora - timedelta(minutes=2)):  # no escribir en cada petición
+    if tocar and u and u["ultima"] < _fmt(ahora - timedelta(minutes=2)):  # no escribir en cada petición
         db.actualizar("sesiones", u["sesion_id"], ultima=_fmt(ahora))
     return u
 

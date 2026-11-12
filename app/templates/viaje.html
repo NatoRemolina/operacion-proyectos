@@ -54,11 +54,14 @@
   <td>{{ m.origen(o.origen_dato) }}</td></tr>{% endfor %}
 </table></div>
 
-<div class="tarjeta noimp"><h3>Guardar la decisión</h3>
-  <p class="eti">Carro de alquiler estimado: {{ carro|dinero }} (supuesto editable en la solicitud). La ficha queda guardada contra el proyecto y su total pasa a ser el presupuesto previsto.</p>
+{% if not editable %}<p class="nota">Solo lectura: esta cotización la decide quien viaja, quien la creó o administración.</p>
+{% elif el_viaje and el_viaje.estado in ('aprobado', 'cerrado') %}<p class="nota">El presupuesto del viaje <a href="/viaje/{{ el_viaje.id }}">{{ el_viaje.codigo }}</a> ya está {{ el_viaje.estado_texto|lower }}. Para cambiar la decisión, administración debe reabrirlo.</p>
+{% elif not vuelos %}<p class="nota aviso">No hay vuelos válidos para guardar una decisión. <a href="/viajes/nuevo">Cotizar con otra ruta o fechas</a>.</p>
+{% else %}<div class="tarjeta noimp"><h3>Guardar la decisión</h3>
+  <p class="eti">Carro de alquiler estimado: {{ carro|dinero }} (supuesto editable en la solicitud). Al guardar nace el viaje con su presupuesto (vuelo, equipaje, hotel, carro y viáticos por día), que pasa a aprobación de administración. El riesgo de cambio y las millas solo sirven para comparar.</p>
   <p class="eti" style="margin-bottom:6px">Ninguna opción viene marcada: la elección es tuya. Marca las razones; si eliges algo distinto a lo recomendado, el porqué es obligatorio.</p>
   <p class="fila">{% for clave, nombre in razones.items() %}<label style="font-weight:500;color:var(--tinta)"><input type="checkbox" name="razones" value="{{ clave }}"> {{ nombre }}</label>{% endfor %}</p>
   <div class="campos"><div><label>Por qué esta opción</label><input name="motivo" placeholder="Obligatorio si no es la recomendada"></div><div><label>Decide</label><input value="{{ yo.nombre }}" disabled></div></div>
-  <p><button>Guardar ficha de decisión</button></p></div>
+  <p><button>Guardar decisión y enviar a aprobación</button></p></div>{% endif %}
 </form>
 {% endblock %}

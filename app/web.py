@@ -118,6 +118,7 @@ def _pendientes() -> dict:
 def _ctx(**extra):
     return {"yo": _yo(), "es_admin": acceso.es_admin(_yo()), "rol_texto": acceso.NOMBRE_ROL.get(_yo().get("rol"), ""),
             "por_atender": _pendientes(), "menu": menu_para(_yo()) if _yo() else [],
+            "mis_proyectos": acceso.proyectos_de(_yo()) if _yo().get("rol") == "gestor" else set(),
             "mi_codigo": viajes.codigo_persona(_yo()["id"]) if _yo() else "", "telegram_activo": telegram.activo(),
             "proyectos": db.todos_cache("select * from proyectos order by id"),
             "viajeros": db.todos_cache("select * from viajeros order by id"), **extra}

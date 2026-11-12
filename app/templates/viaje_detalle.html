@@ -4,7 +4,10 @@
 <p class="sub">{{ v.ida }} a {{ v.regreso }} · {{ v.proyecto or 'sin proyecto' }} · titular <b>{{ v.titular or '—' }}</b> · <a href="/viajes/{{ v.solicitud_id }}/ficha">ficha de decisión</a></p></div>
 <span class="der">{{ mv.chip(v) }}</span></div>
 {% if aviso %}<p class="nota">{{ aviso }}</p>{% endif %}
-{% if v.motivo %}<p class="nota aviso">Motivo registrado: {{ v.motivo }}</p>{% endif %}
+{% if v.estado == 'rechazado' %}<div class="nota mal" role="status"><b>Administración no aprobó este presupuesto.</b>{% if v.motivo %} Motivo: {{ v.motivo }}.{% endif %}
+  {% if not es_admin %}<p style="margin:8px 0 0">Puedes volver a la cotización, elegir otra opción y guardarla: el viaje vuelve a aprobación.</p>
+  <p style="margin:8px 0 0"><a class="boton" href="/viajes/{{ v.solicitud_id }}">Cambiar la decisión</a></p>{% endif %}</div>
+{% elif v.motivo %}<p class="nota aviso">Nota de administración: {{ v.motivo }}</p>{% endif %}
 
 <div class="rejilla">
   <div class="tarjeta"><div class="eti">Presupuesto</div><div class="num">{{ v.presupuesto_usd|dinero }}</div><div class="eti">lo que se espera pagar</div></div>

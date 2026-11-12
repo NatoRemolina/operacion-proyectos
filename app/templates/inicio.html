@@ -36,11 +36,19 @@
   <p class="eti" style="margin:10px 0 0">Los gastos que cargues van solos a este viaje.{% if telegram_activo and not yo.telegram_chat_id %} También puedes enviarlos por Telegram: <a href="/mi-cuenta">vincula tu chat</a>.{% endif %}</p>
   {% else %}<p class="nota aviso" style="margin:0">El presupuesto de este viaje espera la aprobación de administración. Puedes cargar gastos, pero quedarán en revisión hasta entonces.</p>{% endif %}
 </div>
+{% elif mis_viajes and mis_viajes[0].estado == 'rechazado' %}{% set r = mis_viajes[0] %}
+{{ mv.recorrido(r, true) }}
+<div class="tarjeta"><h3>Tu viaje {{ r.codigo }} no fue aprobado</h3>
+  <p style="margin:0">{{ r.origen }} → {{ r.destino }} · {{ r.ida }} a {{ r.regreso }}{% if r.motivo %} · Motivo: {{ r.motivo }}{% endif %}</p>
+  <p style="margin:12px 0 0"><a class="boton" href="/viajes/{{ r.solicitud_id }}">Cambiar la decisión</a> <a class="boton sec" href="/viaje/{{ r.id }}">Ver el viaje</a></p></div>
 {% else %}
 {{ mv.recorrido(none, false) }}
 <div class="tarjeta vacio"><b>Todavía no tienes un viaje asignado</b>Cotiza las opciones, guarda tu decisión y administración aprueba el presupuesto.
   <p style="margin:14px 0 0"><a class="boton" href="/viajes/nuevo">Cotizar un viaje</a></p></div>
 {% endif %}
+{% if yo.rol == 'gestor' %}<div class="tarjeta"><h3>Mis proyectos</h3>
+  {% for p in proyectos if p.id in mis_proyectos %}<p style="margin:6px 0"><a href="/proyectos/{{ p.id }}"><b>{{ p.nombre }}</b></a> · {{ p.ciudad or 'sin ciudad' }} · {{ p.fecha_inicio }} a {{ p.fecha_fin }}</p>
+  {% else %}<p class="eti">Aún no tienes proyectos asignados. Administración los asigna en «Usuarios y roles».</p>{% endfor %}</div>{% endif %}
 <div class="dos">
   <div class="tarjeta tabla"><h3>{{ 'Viajes de mis proyectos y míos' if yo.rol == 'gestor' else 'Mis viajes' }}</h3><table>
     {% for v in mis_viajes %}<tr><td><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a><br><span class="eti">{{ v.origen }} → {{ v.destino }} · {{ v.ida }}{% if yo.rol == 'gestor' %} · {{ v.titular or '—' }}{% endif %}</span></td><td>{{ mv.chip(v) }}</td></tr>

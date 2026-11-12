@@ -64,13 +64,24 @@ document.getElementById('carga').addEventListener('submit', async (ev) => {
     datos.append('archivos', await reducir(original));
     try {
       const r = await fetch('/gastos/cargar', {method: 'POST', body: datos, headers: {'X-Envio': 'pagina'}});
+      const esJson = (r.headers.get('content-type') || '').includes('application/json');
+      if (r.redirected || r.status === 401 || !esJson) {
+        fallos++; li.textContent = `${original.name}: tu sesión se cerró. Ingresa de nuevo en otra pestaña y vuelve a enviarlo.`; li.style.color = 'var(--mal)';
+        continue;
+      }
       const j = await r.json();
-      if (j.errores && j.errores.length) { fallos++; li.textContent = j.errores.join(' '); li.style.color = 'var(--mal)'; }
-      else li.textContent = `${original.name}: procesado`;
+      if (r.status >= 500) { fallos++; li.textContent = `${original.name}: algo falló de nuestro lado. Inténtalo de nuevo en un momento.`; li.style.color = 'var(--mal)'; }
+      else if (j.errores && j.errores.length) { fallos++; li.textContent = j.errores.join(' '); li.style.color = 'var(--mal)'; }
+      else li.textContent = `${original.name}: recibido y guardado`;
     } catch (e) { fallos++; li.textContent = `${original.name}: no se pudo enviar. Revisa la conexión.`; li.style.color = 'var(--mal)'; }
   }
   boton.disabled = false;
   if (!fallos) location.href = '/gastos';
+  else if (fallos < archivos.length) {
+    const li = document.createElement('li');
+    li.innerHTML = 'Los que dicen «recibido y guardado» ya quedaron registrados: no los envíes otra vez. <a href="/gastos">Ver mis gastos</a>';
+    lista.appendChild(li);
+  }
 });
 </script>
 {% endblock %}

@@ -26,7 +26,9 @@ const f2 = n => (n || 0).toFixed(2);
 async function refrescar() {
   if (document.hidden) return;
   try {
-    const r = await fetch('/api/viajes?estado=aprobado'); if (!r.ok) return;
+    const r = await fetch('/api/viajes?estado=aprobado');
+    if (r.status === 401) return location.reload();   // la sesión venció: la recarga lleva a la pantalla de ingreso
+    if (!r.ok) return;
     const viajes = await r.json();
     if (viajes.length !== document.querySelectorAll('#tablero tr[data-viaje]').length) return location.reload();
     for (const v of viajes) {

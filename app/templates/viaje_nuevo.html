@@ -9,8 +9,9 @@
   <div class="campos">
 
     <div><label>Proyecto{% if es_admin %} · <a href="/admin/proyectos">crear otro</a>{% endif %}</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }} ({{ p.ciudad or 'sin ciudad' }}, {{ p.fecha_inicio }} a {{ p.fecha_fin }})</option>{% endfor %}</select></div>
-    <div><label>Viajero</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }} ({{ v.base }})</option>{% endfor %}</select></div>
-    <div><label>O registrar un viajero nuevo</label><input name="viajero_nuevo" maxlength="80" placeholder="Nombre (opcional)"></div>
+    {% if yo.rol == 'piloto' and yo.viajero_id %}<div><label>¿Quién viaja?</label><input type="hidden" name="viajero_id" value="{{ yo.viajero_id }}"><p style="margin:8px 0 0"><b>{{ yo.nombre }}</b> (tú)</p></div>
+    {% else %}<div><label for="viajero_id">¿Quién viaja?</label><select id="viajero_id" name="viajero_id" required>{% if not yo.viajero_id %}<option value="" disabled selected>Elige quién viaja</option>{% endif %}{% for v in viajeros %}<option value="{{ v.id }}" {{ 'selected' if v.id == yo.viajero_id }}>{{ v.nombre }} ({{ v.base }})</option>{% endfor %}</select></div>
+    {% if es_admin %}<div><label for="viajero_nuevo">O registrar un viajero nuevo</label><input id="viajero_nuevo" name="viajero_nuevo" maxlength="80" placeholder="Nombre (opcional)"></div>{% endif %}{% endif %}
   </div>
   <h2>Ruta y fechas</h2>
   <div class="campos">

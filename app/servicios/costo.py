@@ -19,6 +19,14 @@ def _regla(cat: dict, ambito: str, entidad: str, tarifa: str, clave: str):
     return cat.get((ambito, entidad, tarifa, clave)) or cat.get((ambito, entidad, "", clave))
 
 
+def _numero(regla: dict | None, defecto: float) -> float:
+    """Valor numérico de una regla; si falta o está mal escrito, el supuesto general. Nunca rompe una comparación."""
+    try:
+        return float(regla["valor"]) if regla else defecto
+    except (TypeError, ValueError):
+        return defecto
+
+
 def supuesto(cat: dict, clave: str, defecto: float) -> float:
     r = cat.get(("supuesto", "", "", clave))
     try:
@@ -54,8 +62,8 @@ def tarifa_supuesta(vuelo: dict, cat: dict) -> dict:
     incluye = (mano["valor"] == "si") if mano else True
     return {
         "nombre": "Tarifa más baja (supuesta)", "precio": float(vuelo["precio"]), "vende": a,
-        "mano": 0 if incluye else float(costo_mano["valor"]) if costo_mano else supuesto(cat, "costo_equipaje_mano", 70),
-        "maleta": float(maleta["valor"]) if maleta else supuesto(cat, "costo_maleta", 80),
+        "mano": 0 if incluye else _numero(costo_mano, supuesto(cat, "costo_equipaje_mano", 70)),
+        "maleta": _numero(maleta, supuesto(cat, "costo_maleta", 80)),
         "permite_cambio": False, "reembolsable": False, "notas": vuelo.get("notas", []), "equipaje": [],
         "supuesta": True, "regla_mano": bool(mano),
     }

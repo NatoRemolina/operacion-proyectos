@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import eventos, viajes
+from ..servicios import acceso, eventos, viajes
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -68,11 +68,16 @@ def proyecto_editar(pid: int, nombre: str = Form(""), cliente: str = Form(""), c
 
 
 # ---------- tablero por proyecto ----------
+def _proyecto_visible(pid: int) -> bool:
+    """Administración ve todos; el gestor, los que gestiona; nadie más (responde como si no existiera)."""
+    return acceso.es_admin(_yo()) or pid in acceso.proyectos_de(_yo())
+
+
 @router.get("/proyectos/{pid}", response_class=HTMLResponse)
 def proyecto(request: Request, pid: int):
-    p = db.uno("select * from proyectos where id=:i", i=pid)
+    p = db.uno("select * from proyectos where id=:i", i=pid) if _proyecto_visible(pid) else None
     if not p:
-        return RedirectResponse("/", status_code=303)
+        return NO_ENCONTRADO
     real = {r["categoria"]: r["t"] for r in db.todos(
         "select categoria, sum(total_usd) t from gastos where proyecto_id=:i and estado in ('aprobado','aprobado_auto') group by categoria", i=pid)}
     # El previsto es el presupuesto de los viajes del proyecto: la misma cifra que aprueba administración
@@ -99,6 +104,8 @@ def proyecto(request: Request, pid: int):
 
 @router.get("/proyectos/{pid}/exportar.csv")
 def proyecto_exportar(pid: int):
+    if not _proyecto_visible(pid):
+        return NO_ENCONTRADO
     filas = db.todos("select id,fecha,comercio,categoria,total,moneda,total_usd,estado,metodo_pago,origen_dato from gastos where proyecto_id=:i order by fecha", i=pid)
     columnas = ["id", "fecha", "comercio", "categoria", "total", "moneda", "total_usd", "estado", "metodo_pago", "origen_dato"]
     def celda(v):  # texto que empieza como fórmula se neutraliza para las hojas de cálculo

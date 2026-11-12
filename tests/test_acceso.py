@@ -30,8 +30,9 @@ def test_ingreso_incorrecto_no_dice_que_fallo_y_bloquea(anonimo):
 
 
 def test_usuario_no_entra_a_administracion(piloto):
-    for ruta in ("/analitica", "/flujo", "/reglas", "/proyectos/1", "/admin/usuarios", "/api/gastos", "/docs"):
+    for ruta in ("/analitica", "/flujo", "/reglas", "/admin/usuarios", "/api/gastos", "/docs"):
         assert piloto.get(ruta).status_code == 403, ruta
+    assert piloto.get("/proyectos/1").status_code == 404   # no es de administración, pero solo lo abre quien lo gestiona
     assert piloto.post("/reglas/1", data={"valor": "999"}).status_code == 403
     assert piloto.post("/gastos/ejemplos", data={"nombres": ["recibo_diner.png"]}).status_code == 403
 

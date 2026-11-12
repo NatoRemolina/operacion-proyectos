@@ -39,7 +39,10 @@ def a_usd(total, moneda, cat: dict):
     if moneda == "USD":
         return round(total, 2)
     tasa = cat.get(("supuesto", "", "", f"tasa_{moneda}_USD"))
-    return round(total * float(tasa["valor"]), 2) if tasa else None
+    try:
+        return round(total * float(tasa["valor"]), 2) if tasa else None
+    except (TypeError, ValueError):
+        return None   # una tasa mal escrita equivale a no tenerla: el gasto va a revisión, no se cae la carga
 
 
 def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict, alertas: "_Alertas") -> bool:
