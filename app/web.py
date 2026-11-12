@@ -15,9 +15,14 @@ from .servicios import acceso, telegram, viajes
 
 AQUI = Path(__file__).parent
 plantillas = Jinja2Templates(directory=AQUI / "templates")
-# La hoja de estilos lleva la huella de su contenido en la dirección: al cambiarla, ningún navegador usa la copia vieja
-ESTILO = "/static/estilo.css?v=" + hashlib.sha256((AQUI / "static" / "estilo.css").read_bytes()).hexdigest()[:10]
-plantillas.env.globals.update(modo=config.modo, categorias=config.CATEGORIAS, codigo_viaje=viajes.codigo_viaje, estilo=ESTILO)
+def _huella(nombre: str) -> str:
+    """Dirección de un estático con la huella de su contenido: al cambiarlo, ningún navegador usa la copia vieja."""
+    return f"/static/{nombre}?v=" + hashlib.sha256((AQUI / "static" / nombre).read_bytes()).hexdigest()[:10]
+
+
+ESTILO = _huella("estilo.css")
+plantillas.env.globals.update(modo=config.modo, categorias=config.CATEGORIAS, codigo_viaje=viajes.codigo_viaje, estilo=ESTILO,
+                              guion_asistente=_huella("asistente_flotante.js"))
 plantillas.env.filters["dinero"] = lambda v, m="USD": "—" if v is None else f"{v:,.2f} {m}"
 plantillas.env.filters["json"] = db.de_json
 

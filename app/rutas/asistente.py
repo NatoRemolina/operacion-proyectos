@@ -2,7 +2,7 @@
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .. import db
 from ..servicios import acceso, asistente, eventos, memoria, viajes
@@ -11,6 +11,14 @@ from ..web import SOLO_ADMIN, _ctx, _yo, plantillas
 router = APIRouter()
 
 MENU = [{"texto": "Asistente", "href": "/admin/asistente", "orden": 66, "rol": "admin"}]
+
+# Cómo se presenta cada vía de respuesta: (texto del chip, clase). La página y el asistente flotante usan lo mismo.
+MODOS = {"asesor": ("Asesor con herramientas", "ok"), "modelo": ("Modelo de lenguaje con herramientas", "ok"),
+         "determinista": ("Sin modelo: consultas directas", "azul"), "tope": ("Tope diario alcanzado", "aviso")}
+
+
+def modo_visible(modo: str) -> tuple[str, str]:
+    return MODOS.get(modo, (modo, "aviso"))
 
 
 def _ejemplos() -> list[str]:
@@ -37,7 +45,7 @@ def _pagina(request: Request, **extra):
     asistente.asegurar_regla()
     yo = _yo()
     return plantillas.TemplateResponse(request, "asistente.html", _ctx(
-        indice=memoria.estado(), ejemplos=_ejemplos(), tope=asistente.tope_diario(), usadas=asistente.usadas_hoy(yo["id"]),
+        modo_visible=modo_visible, indice=memoria.estado(), ejemplos=_ejemplos(), tope=asistente.tope_diario(), usadas=asistente.usadas_hoy(yo["id"]),
         recientes=db.todos("""select pregunta, modo, duracion_ms, momento from asistente_consultas where usuario_id=:u
                               order by id desc limit 5""", u=yo["id"]), **extra))
 
@@ -56,6 +64,13 @@ def asistente_preguntar(request: Request, pregunta: str = Form("")):
         return SOLO_ADMIN
     respuesta = asistente.responder(pregunta, _yo())
     respuesta["fuentes"] = _con_enlaces(request, respuesta["fuentes"])
+    if request.headers.get("x-envio") == "pagina":  # el asistente flotante pide solo la respuesta, sin la página
+        texto, clase = modo_visible(respuesta["modo"])
+        return JSONResponse({
+            "texto": respuesta["texto"], "modo": respuesta["modo"], "modo_texto": texto, "modo_clase": clase,
+            "fuentes": [{"codigo": f["codigo"], "enlace": f["enlace"]} for f in respuesta["fuentes"]],
+            "herramientas": respuesta["herramientas"], "duracion_ms": respuesta["duracion_ms"],
+            "usadas": asistente.usadas_hoy(_yo()["id"]), "tope": asistente.tope_diario()})
     return _pagina(request, aviso="", pregunta=pregunta[:500], respuesta=respuesta)
 
 

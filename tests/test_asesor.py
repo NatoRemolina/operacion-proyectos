@@ -455,6 +455,20 @@ def test_la_pantalla_marca_las_respuestas_del_asesor(con_asesor, cliente):
     assert r.status_code == 200 and "Asesor con herramientas" in r.text
 
 
+def test_el_asistente_flotante_recibe_la_respuesta_del_asesor(con_asesor, cliente):
+    con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
+    r = cliente.post("/admin/asistente", data={"pregunta": "¿Hay gastos en revisión?"}, headers={"X-Envio": "pagina"})
+    d = r.json()
+    assert r.status_code == 200 and d["modo"] == "asesor" and d["modo_texto"] == "Asesor con herramientas"
+    assert d["texto"] == "Hay gastos en revisión."
+
+
+def test_el_asistente_flotante_sigue_respondiendo_si_el_servicio_falla(con_asesor, cliente):
+    con_asesor(Servicio(crear=500))
+    r = cliente.post("/admin/asistente", data={"pregunta": "¿Cuántos gastos hay en revisión?"}, headers={"X-Envio": "pagina"})
+    assert r.status_code == 200 and r.json()["modo"] == "determinista"
+
+
 # ---------- herramientas propias ----------
 def test_cotizacion_por_numero_o_por_codigo_de_viaje(nuevo_viaje):
     v = nuevo_viaje()

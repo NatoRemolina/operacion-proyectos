@@ -1,0 +1,29 @@
+{# Asistente flotante (solo administración): la misma pregunta que /admin/asistente, sin salir de la página.
+   El comportamiento está en /static/asistente_flotante.js; la conversación vive en la pestaña (sessionStorage). #}
+<div id="asistente-flotante" class="af" data-ruta="/admin/asistente">
+  <button type="button" class="af-boton" id="af-abrir" aria-expanded="false" aria-controls="af-panel"><span class="af-icono" aria-hidden="true">✦</span> Asistente</button>
+  <section class="af-panel" id="af-panel" role="dialog" aria-modal="false" aria-labelledby="af-titulo" hidden>
+    <div class="af-cabeza">
+      <h2 id="af-titulo">Asistente</h2>
+      <a href="/admin/asistente">Abrir completo</a>
+      <button type="button" class="af-cerrar" id="af-cerrar" aria-label="Cerrar el asistente">×</button>
+    </div>
+    <div class="af-log" id="af-log" role="log" aria-live="polite" aria-label="Conversación con el asistente">
+      <div class="af-vacio" id="af-vacio">
+        <p>Pregunta por viajes, gastos, cotizaciones o indicadores. Responde con los datos de la plataforma y cita de dónde salen.</p>
+        <div class="af-ejemplos">
+          {% for e in ["¿Qué gastos están en revisión y por qué?", "¿Quién mencionó el parqueadero?", "¿Cuál es el gasto real aprobado?"] %}
+          <button type="button" class="sec peq" data-pregunta="{{ e }}">{{ e }}</button>{% endfor %}
+        </div>
+      </div>
+    </div>
+    <p class="af-estado" id="af-estado" hidden><span id="af-aviso" role="status"></span> <span id="af-segundos" aria-hidden="true"></span></p>
+    <form class="af-form" id="af-form">
+      <label for="af-pregunta" class="af-oculto">Tu pregunta</label>
+      <textarea id="af-pregunta" name="pregunta" rows="2" maxlength="500" placeholder="Escribe tu pregunta" required></textarea>
+      <button id="af-enviar">Enviar</button>
+    </form>
+    <p class="af-pie eti"><span id="af-cuenta"></span> Cada pregunta se responde por separado.</p>
+  </section>
+</div>
+<script src="{{ guion_asistente }}" defer></script>
