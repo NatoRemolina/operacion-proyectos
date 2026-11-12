@@ -1,0 +1,102 @@
+{% extends "base.html" %}{% block titulo %}KPIs{% endblock %}
+{% block estilos %}<style>
+.kpi{display:flex;flex-direction:column;gap:6px;border-left:5px solid var(--linea)}
+.kpi.verde{border-left-color:var(--ok)}.kpi.ambar{border-left-color:#d99a00}.kpi.rojo{border-left-color:var(--mal)}
+.kpi h3{margin:0;font-size:15px}.kpi .fila{justify-content:space-between;align-items:baseline}
+.semana td.d{font-variant-numeric:tabular-nums}.semana .chip{min-width:52px;text-align:center}
+</style>{% endblock %}
+{% block cuerpo %}
+{% macro chip_estado(e, texto) %}<span class="chip {{ {'verde': 'ok', 'ambar': 'aviso', 'rojo': 'mal'}.get(e, '') }}">{{ texto or e }}</span>{% endmacro %}
+{% macro valor(v, unidad) %}{% if v is none %}—{% elif unidad == 'USD' %}{{ v|dinero }}{% elif unidad == '%' %}{{ v }} %{% elif unidad == 'ms' %}{{ '{:,.0f}'.format(v) }} ms{% else %}{{ '%g'|format(v) }} {{ unidad }}{% endif %}{% endmacro %}
+{% macro meta(k) %}{% set signo = '≥' if k.sentido == 'mayor' else '≤' %}{% set contra = '<' if k.sentido == 'mayor' else '>' %}Meta {{ signo }} {{ valor(k.meta, k.unidad) }} · rojo si {{ contra }} {{ valor(k.alerta, k.unidad) }}{% endmacro %}
+{% macro tabla2(titulo, filas, c1, c2, vacio="Sin datos en el periodo.") %}
+<div class="tarjeta tabla"><h3>{{ titulo }}</h3><table><tr><th>{{ c1 }}</th><th class="d">{{ c2 }}</th></tr>
+{% for a, b in filas %}<tr><td>{{ a }}</td><td class="d">{{ b }}</td></tr>{% else %}<tr><td colspan="2">{{ vacio }}</td></tr>{% endfor %}</table></div>
+{% endmacro %}
+{% macro bajar(que, texto) %}<a class="boton peq sec" href="/admin/kpis/exportar.csv?que={{ que }}{{ '&' ~ consulta if consulta }}">Descargar {{ texto }} (CSV)</a>{% endmacro %}
+
+<h1>Indicadores (KPIs)</h1>
+<p class="sub">Cada indicador tiene una meta, un umbral de alerta y un responsable. Se calcula sobre los hechos registrados con una sola definición (la misma de Monitoreo).
+Las metas son supuestos editables en <a href="/reglas">Reglas y supuestos</a> (ámbito «kpi»). Sin datos no hay color: el indicador dice «sin datos».</p>
+
+<form method="get" class="tarjeta" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+  <label>Proyecto<br><select name="proyecto_id"><option value="0">Todos</option>{% for p in proyectos %}<option value="{{ p.id }}" {{ 'selected' if f.proyecto_id == p.id }}>{{ p.nombre }}</option>{% endfor %}</select></label>
+  <label>Desde<br><input type="date" name="desde" value="{{ f.desde or '' }}"></label>
+  <label>Hasta<br><input type="date" name="hasta" value="{{ f.hasta or '' }}"></label>
+  <button class="peq">Aplicar</button>{% if consulta %}<a href="/admin/kpis">Quitar filtros</a>{% endif %}
+</form>
+
+<p class="fila" style="gap:8px;flex-wrap:wrap">
+  {{ chip_estado('verde', (t.resumen.get('verde', 0)) ~ ' en meta') }} {{ chip_estado('ambar', (t.resumen.get('ambar', 0)) ~ ' en atención') }}
+  {{ chip_estado('rojo', (t.resumen.get('rojo', 0)) ~ ' fuera de meta') }} {{ chip_estado('sin datos', (t.resumen.get('sin datos', 0)) ~ ' sin datos') }}
+</p>
+
+{% for reto, nombre_reto in retos.items() %}
+<h2>Reto {{ reto }}: {{ nombre_reto }}</h2>
+<div class="rejilla">
+{% for k in t.kpis if k.reto == reto %}
+  <div class="tarjeta kpi {{ k.estado|replace(' ', '-') }}">
+    <div class="fila"><h3>{{ k.titulo }}</h3>{{ chip_estado(k.estado, k.estado_texto) }}</div>
+    <div class="num">{{ valor(k.valor, k.unidad) }}</div>
+    <div class="eti">{{ meta(k) }} · {{ k.responsable }}</div>
+    <div class="eti">Sirve para: {{ k.para_que }}</div>
+    <details><summary>Cómo se calcula</summary><p class="eti">{{ k.formula }}. Nombre en la API: <span class="mono">{{ k.nombre }}</span>.</p></details>
+  </div>
+{% endfor %}
+</div>
+{% endfor %}
+
+<h2>Tendencia semanal</h2>
+<div class="tarjeta tabla semana"><p class="eti">Indicadores principales, semana a semana (de lunes a domingo), hasta {{ f.hasta or 'hoy' }}. Cada semana se calcula sobre los hechos de esa semana.</p>
+<table><tr><th>Indicador</th>{% for s in t.tendencia.semanas %}<th class="d">{{ s[5:] }}</th>{% endfor %}</tr>
+{% for fila in t.tendencia.filas %}<tr><td>{{ fila.titulo }}</td>{% for p in fila.puntos %}<td class="d">{% if p.valor is none %}<span class="eti">—</span>{% else %}{{ chip_estado(p.estado, valor(p.valor, fila.unidad)) }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
+</table></div>
+
+<h2>Detalle de la cotización</h2>
+<div class="dos">
+  {{ tabla2("Consultas al buscador por origen", t.cotizacion.consultas_por_origen, "Origen", "Consultas") }}
+  {{ tabla2("Consultas al buscador por tipo", t.cotizacion.consultas_por_tipo, "Tipo", "Consultas") }}
+</div>
+<div class="dos">
+  {{ tabla2("Cotizaciones por persona", t.cotizacion.cotizaciones_por_persona, "Persona", "Cotizaciones") }}
+  {{ tabla2("Cotizaciones por ruta", t.cotizacion.cotizaciones_por_ruta, "Ruta", "Cotizaciones") }}
+</div>
+<div class="dos">
+  {{ tabla2("Quién usa el buscador", t.cotizacion.consultas_por_persona, "Persona", "Consultas") }}
+  <div class="tarjeta tabla"><h3>Fallas recientes del buscador</h3><table><tr><th>Momento</th><th>Tipo</th><th>Error</th></tr>
+  {% for m, tipo, e in t.cotizacion.errores_buscador %}<tr><td>{{ m }}</td><td>{{ tipo }}</td><td>{{ e }}</td></tr>{% else %}<tr><td colspan="3">Ninguna falla en el periodo.</td></tr>{% endfor %}</table>
+  {% if t.cotizacion.cupo %}<p class="eti">Cupo del plan: {{ t.cotizacion.cupo.usadas }} de {{ t.cotizacion.cupo.mensual }} búsquedas usadas este mes ({{ t.cotizacion.cupo.restantes }} restantes).</p>{% else %}<p class="eti">Sin clave del buscador configurada: el cupo no se puede consultar.</p>{% endif %}</div>
+</div>
+
+<h2>Detalle de gastos</h2>
+<div class="tarjeta tabla"><h3>Ejecución del presupuesto por viaje</h3><table><tr><th>Viaje</th><th>Titular</th><th>Ruta</th><th>Ida</th><th>Estado</th><th class="d">Presupuesto</th><th class="d">Aprobado</th><th class="d">En revisión</th><th class="d">Ejecución</th></tr>
+{% for v in t.gastos.por_viaje %}<tr><td><a class="mono" href="/viaje/{{ v.id }}">{{ codigo_viaje(v) }}</a></td><td>{{ v.titular or '—' }}</td><td>{{ v.ruta }}</td><td>{{ v.ida }}</td><td>{{ v.estado }}</td><td class="d">{{ '%.2f'|format(v.presupuesto or 0) }}</td><td class="d">{{ '%.2f'|format(v.gastado or 0) }}</td><td class="d">{{ '%.2f'|format(v.en_revision or 0) }}</td><td class="d">{{ v.pct ~ ' %' if v.pct is not none else '—' }}</td></tr>
+{% else %}<tr><td colspan="9">Sin viajes en el periodo.</td></tr>{% endfor %}</table></div>
+<div class="dos">
+  <div class="tarjeta tabla"><h3>Ejecución por proyecto</h3><table><tr><th>Proyecto</th><th class="d">Presupuesto</th><th class="d">Aprobado</th><th class="d">Ejecución</th></tr>
+  {% for p in t.gastos.por_proyecto %}<tr><td>{{ p.proyecto }}</td><td class="d">{{ p.presupuesto|dinero }}</td><td class="d">{{ p.gastado|dinero }}</td><td class="d">{{ p.pct ~ ' %' if p.pct is not none else '—' }}</td></tr>
+  {% else %}<tr><td colspan="4">Sin viajes con presupuesto aprobado.</td></tr>{% endfor %}</table></div>
+  <div class="tarjeta tabla"><h3>Ejecución por categoría</h3><table><tr><th>Grupo</th><th class="d">Presupuesto</th><th class="d">Aprobado</th><th class="d">Ejecución</th></tr>
+  {% for c in t.gastos.por_categoria %}<tr><td>{{ c.grupo }}</td><td class="d">{{ c.presupuesto|dinero }}</td><td class="d">{{ c.gastado|dinero }}</td><td class="d">{{ c.pct ~ ' %' if c.pct is not none else '—' }}</td></tr>
+  {% else %}<tr><td colspan="4">Sin viajes con presupuesto aprobado.</td></tr>{% endfor %}</table>
+  <p class="eti">El presupuesto se arma por grupo de compra; comida, combustible, peajes y otros salen de los viáticos.</p></div>
+</div>
+<div class="dos">
+  <div class="tarjeta tabla"><h3>Gasto aprobado por moneda</h3><table><tr><th>Moneda</th><th class="d">Gastos</th><th class="d">Total</th><th class="d">En USD</th></tr>
+  {% for m in t.gastos.por_moneda %}<tr><td>{{ m.moneda }}</td><td class="d">{{ m.gastos }}</td><td class="d">{{ m.total|dinero(m.moneda) }}</td><td class="d">{{ m.total_usd|dinero }}</td></tr>
+  {% else %}<tr><td colspan="4">Sin gastos aprobados en el periodo.</td></tr>{% endfor %}</table></div>
+  <div class="tarjeta tabla"><h3>Gastos que más llevan en revisión</h3><table><tr><th>Gasto</th><th>Persona</th><th class="d">USD</th><th class="d">Días</th></tr>
+  {% for g in t.gastos.revision_antiguas %}<tr><td><a href="/gastos/{{ g.id }}">#{{ g.id }}</a> {{ g.comercio or '' }}</td><td>{{ g.persona or '—' }}</td><td class="d">{{ g.total_usd|dinero }}</td><td class="d">{{ g.dias }}</td></tr>
+  {% else %}<tr><td colspan="4">Ningún gasto espera revisión.</td></tr>{% endfor %}</table></div>
+</div>
+
+<h2>Personas</h2>
+<div class="tarjeta tabla"><p class="eti">A cada persona le pertenece lo que la tiene como titular (quien viaja); un gasto sin viaje, a quien lo cargó. Abre la ficha para ver todo lo suyo por su ID.</p>
+<table><tr><th>ID</th><th>Nombre</th><th>Rol</th><th class="d">Cotizaciones</th><th class="d">Viajes</th><th class="d">Presupuesto aprobado</th><th class="d">Gasto aprobado</th><th class="d">Ejecución</th><th class="d">Gastos</th><th class="d">En revisión</th></tr>
+{% for x in t.personas %}<tr><td><a class="mono" href="/admin/kpis/persona/{{ x.id }}">{{ x.codigo }}</a></td><td>{{ x.nombre }}{% if not x.activo %} <span class="chip">inactiva</span>{% endif %}</td><td>{{ x.rol_texto }}</td>
+<td class="d">{{ x.cotizaciones }}</td><td class="d">{{ x.viajes }}</td><td class="d">{{ x.presupuesto|dinero }}</td><td class="d">{{ x.gastado|dinero }}</td><td class="d">{{ x.ejecucion ~ ' %' if x.ejecucion is not none else '—' }}</td><td class="d">{{ x.gastos }}</td><td class="d">{{ x.gastos_revision }}</td></tr>{% endfor %}
+</table></div>
+
+<p class="fila" style="gap:8px;flex-wrap:wrap">{{ bajar("kpis", "indicadores") }} {{ bajar("consultas", "consultas al buscador") }} {{ bajar("personas", "personas") }}
+<a class="boton peq sec" href="/api/kpis{{ '?' ~ consulta if consulta }}">Ver en JSON</a></p>
+{% endblock %}

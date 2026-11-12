@@ -1,0 +1,68 @@
+{% extends "base.html" %}{% import "_macros.html" as m %}{% block titulo %}{{ p.usuario.codigo }}{% endblock %}
+{% block estilos %}<style>
+.kpi{border-left:5px solid var(--linea)}.kpi.verde{border-left-color:var(--ok)}.kpi.ambar{border-left-color:#d99a00}.kpi.rojo{border-left-color:var(--mal)}
+.kpi h3{margin:0 0 4px;font-size:14px}.kpi .num{font-size:22px}
+</style>{% endblock %}
+{% block cuerpo %}
+{% macro chip_estado(e, texto) %}<span class="chip {{ {'verde': 'ok', 'ambar': 'aviso', 'rojo': 'mal'}.get(e, '') }}">{{ texto or e }}</span>{% endmacro %}
+{% macro valor(v, unidad) %}{% if v is none %}—{% elif unidad == 'USD' %}{{ v|dinero }}{% elif unidad == '%' %}{{ v }} %{% else %}{{ '%g'|format(v) }} {{ unidad }}{% endif %}{% endmacro %}
+{% set u = p.usuario %}
+<p class="eti"><a href="/admin/kpis">← KPIs</a></p>
+<h1><span class="mono">{{ u.codigo }}</span> · {{ u.nombre }}</h1>
+<p class="sub">{{ u.rol_texto|capitalize }} · {{ u.correo }}{% if u.viajero %} · viajero {{ u.viajero }}{% if u.base %} (base {{ u.base }}){% endif %}{% endif %}
+{% if u.telegram_usuario %} · Telegram @{{ u.telegram_usuario }}{% endif %}{% if not u.activo %} · <span class="chip">cuenta inactiva</span>{% endif %}</p>
+<p class="nota">Aquí está todo lo que pertenece a {{ u.codigo }}: lo que la tiene como titular (quien viaja) y los gastos o evidencias sin viaje que cargó. Nada de otras personas.</p>
+
+<div class="rejilla">
+  <div class="tarjeta"><div class="eti">Cotizaciones</div><div class="num">{{ p.cotizaciones|length }}</div></div>
+  <div class="tarjeta"><div class="eti">Viajes</div><div class="num">{{ p.viajes|length }}</div></div>
+  <div class="tarjeta"><div class="eti">Presupuesto aprobado</div><div class="num">{{ p.totales.presupuesto|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">Gasto aprobado</div><div class="num">{{ p.totales.gastado|dinero }}</div></div>
+  <div class="tarjeta"><div class="eti">En revisión</div><div class="num">{{ p.totales.en_revision|dinero }}</div></div>
+</div>
+
+<h2>Sus indicadores</h2>
+<div class="rejilla">
+{% for k in p.indicadores %}
+  <div class="tarjeta kpi {{ k.estado|replace(' ', '-') }}"><h3>{{ k.titulo }}</h3>
+    <div class="fila" style="justify-content:space-between;align-items:baseline"><div class="num">{{ valor(k.valor, k.unidad) }}</div>{{ chip_estado(k.estado, k.estado_texto) }}</div>
+    <div class="eti">Meta {{ '≥' if k.sentido == 'mayor' else '≤' }} {{ '%g'|format(k.meta) }} · {{ k.responsable }}</div></div>
+{% endfor %}
+</div>
+
+<h2>Cotizaciones</h2>
+<div class="tarjeta tabla"><table><tr><th>Cotización</th><th>Ruta</th><th>Fechas estimadas</th><th>Proyecto</th><th>Estado</th><th>Viaje</th><th>Creada</th></tr>
+{% for c in p.cotizaciones %}<tr><td><a href="/viajes/{{ c.id }}">#{{ c.id }}</a></td><td>{{ c.origen }} → {{ c.destino }}</td><td>{{ c.ida }} a {{ c.regreso }}</td><td>{{ c.proyecto or '—' }}</td>
+<td>{{ c.estado }}</td><td>{% if c.viaje %}<span class="mono">{{ c.viaje }}</span> <span class="eti">{{ c.viaje_estado }}</span>{% else %}—{% endif %}</td><td>{{ c.creado }}</td></tr>
+{% else %}<tr><td colspan="7">Sin cotizaciones.</td></tr>{% endfor %}</table></div>
+
+<h2>Viajes</h2>
+<div class="tarjeta tabla"><table><tr><th>Viaje</th><th>Ruta</th><th>Fechas</th><th>Estado</th><th class="d">Presupuesto</th><th class="d">Gastado</th><th class="d">En revisión</th><th class="d">Ejecución</th></tr>
+{% for v in p.viajes %}<tr><td><a class="mono" href="/viaje/{{ v.id }}">{{ v.codigo }}</a></td><td>{{ v.origen }} → {{ v.destino }}</td><td>{{ v.ida }} a {{ v.regreso }}</td><td>{{ v.estado_texto }}</td>
+<td class="d">{{ v.presupuesto_usd|dinero }}</td><td class="d">{{ v.gastado|dinero }}</td><td class="d">{{ v.en_revision|dinero }}</td><td class="d">{{ v.pct ~ ' %' if v.pct is not none else '—' }}</td></tr>
+{% else %}<tr><td colspan="8">Sin viajes.</td></tr>{% endfor %}</table></div>
+
+<h2>Gastos</h2>
+<div class="dos">
+  <div class="tarjeta tabla"><h3>Por estado</h3><table><tr><th>Estado</th><th class="d">Gastos</th></tr>
+  {% for e, n in p.gastos_por_estado %}<tr><td>{{ m.estado(e) }}</td><td class="d">{{ n }}</td></tr>{% else %}<tr><td colspan="2">Sin gastos.</td></tr>{% endfor %}</table></div>
+  <div class="tarjeta tabla"><h3>Por canal</h3><table><tr><th>Canal</th><th class="d">Gastos</th></tr>
+  {% for c, n in p.gastos_por_canal %}<tr><td>{{ c }}</td><td class="d">{{ n }}</td></tr>{% else %}<tr><td colspan="2">Sin gastos.</td></tr>{% endfor %}</table></div>
+</div>
+<div class="tarjeta tabla"><table><tr><th>Gasto</th><th>Comercio</th><th>Fecha del recibo</th><th>Categoría</th><th class="d">Total</th><th class="d">USD</th><th>Estado</th><th>Canal</th><th>Viaje</th></tr>
+{% for g in p.gastos %}<tr><td><a href="/gastos/{{ g.id }}">#{{ g.id }}</a></td><td>{{ g.comercio or '—' }}</td><td>{{ g.fecha or '—' }}</td><td>{{ categorias.get(g.categoria, g.categoria or '—') }}</td>
+<td class="d">{{ g.total|dinero(g.moneda or '') }}</td><td class="d">{{ g.total_usd|dinero }}</td><td>{{ m.estado(g.estado) }}</td><td>{{ g.canal or '—' }}</td><td class="mono">{{ g.viaje or 'sin viaje' }}</td></tr>
+{% else %}<tr><td colspan="9">Sin gastos.</td></tr>{% endfor %}</table></div>
+
+<h2>Evidencias</h2>
+<div class="tarjeta tabla"><table><tr><th>Tipo</th><th>Canal</th><th>Archivo o nota</th><th>Viaje</th><th>Recibida</th></tr>
+{% for d in p.evidencias %}<tr><td>{{ d.tipo or 'soporte' }}</td><td>{{ d.canal or '—' }}</td><td>{{ d.nombre or (d.texto or '')[:80] or '—' }}</td><td class="mono">{{ d.viaje or 'sin viaje' }}</td><td>{{ d.creado }}</td></tr>
+{% else %}<tr><td colspan="5">Sin evidencias.</td></tr>{% endfor %}</table></div>
+
+<h2>Línea de tiempo</h2>
+<div class="tarjeta tabla"><table><tr><th>Momento (UTC)</th><th>Sobre</th><th>Qué pasó</th><th>Detalle</th><th>Quién</th></tr>
+{% for e in p.eventos %}<tr><td>{{ e.momento }}</td><td>{{ e.entidad }} #{{ e.entidad_id }}</td><td>{{ e.paso }}</td><td>{{ e.detalle }}</td><td>{{ e.quien or e.fuente or 'sistema' }}</td></tr>
+{% else %}<tr><td colspan="5">Sin hechos registrados.</td></tr>{% endfor %}</table></div>
+
+<p><a class="boton peq sec" href="/api/kpis?persona_id={{ u.id }}">Ver en JSON</a></p>
+{% endblock %}
