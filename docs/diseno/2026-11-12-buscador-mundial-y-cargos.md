@@ -147,6 +147,14 @@ Lo pidió la dueña: apenas el viaje tiene número de vuelo, administración lo 
 - **Avisos al viajero por Telegram**, solo cuando algo cambia y lo afecta: retraso nuevo de 15 minutos o más (o que crece 15 minutos más), cancelación, cambio de terminal o de puerta. Nunca un mensaje por cada consulta. Si el viajero no tiene Telegram vinculado, el aviso queda solo en el tablero.
 - **Fuera de alcance para el viernes:** un proceso que consulte solo, sin nadie mirando. Necesita una tarea programada en la nube y queda anotado para después.
 
+## Trazabilidad: todo dato queda registrado desde que se carga
+
+Pedido de la dueña durante la construcción. Toda información que entra a la plataforma deja registro de quién, cuándo, de dónde y qué:
+
+- Las cargas de datos de referencia (aeropuertos, lugares, países) quedan en una tabla `cargas_datos` con fuente, archivo, URL, huella del archivo, filas, momento y quién la hizo, incluso cuando una carga repetida no cambia nada.
+- Cada cambio de permiso o de cargo, cada lugar elegido al cotizar, cada consulta al buscador (incluido el estado del vuelo), cada traslado calculado (con las reglas y valores usados), cada tramo registrado, cada aviso enviado y cada intento de autoaprobación impedido deja su evento en la bitácora (`eventos`) o en `consultas_buscador`.
+- Cada una de estas trazas tiene una prueba que la verifica.
+
 ## Decisiones tomadas al revisar el diseño
 
 Decididas por quien diseña (no por la dueña), para que se puedan revisar:

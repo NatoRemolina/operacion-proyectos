@@ -24,8 +24,9 @@
 - Cargos iniciales: «Pilotaje de dron», «Edición de video», «Desarrollo de software», «Ingeniería de datos», «Producción».
 - El permiso `piloto` pasa a `colaborador` en base, código, API v1 y web.
 - Datos: OurAirports (dominio público) y GeoNames `cities1000` (CC BY 4.0, citar en README y en el pie del buscador).
+- Trazabilidad: todo dato que entra queda registrado (quién, cuándo, de dónde, qué) en `eventos`, `consultas_buscador` o la tabla nueva `cargas_datos` de la tarea 5; cada tarea lo prueba.
 - Sin push ni despliegue. Voz neutra; sin menciones a asistentes en lo versionado. Antes de cada commit: `git grep -i -E "claude|anthropic"` sin resultados nuevos.
-- Verificación de cada tarea: `.venv/bin/ruff check .` y `.venv/bin/python -m pytest -q`; en `web/`: `npx tsc --noEmit`, `npx eslint --max-warnings=0 .`, `npx vitest run`.
+- Verificación de cada tarea: `.venv/bin/ruff check .` y `.venv/bin/python -m pytest -q`; en `web/`: `npm run typecheck` (genera los tipos de Next antes de `tsc`), `npx eslint --max-warnings=0 .`, `npx vitest run`.
 
 ## Puntos de atención
 
