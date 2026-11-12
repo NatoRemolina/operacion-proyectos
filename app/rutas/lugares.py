@@ -13,4 +13,5 @@ def lugares_buscar(q: str = "", limite: int = 8, google: int = 0):
     """Sugerencias mientras se escribe. Sin `google`, solo datos locales (al instante); con `google=1`, tras una pausa,
     suma las de Google. Las búsquedas no se registran una por una: se registra el lugar elegido al cotizar."""
     resultados, aviso = geografia.buscar_con_aviso(q[:80], min(max(limite, 1), 20), _yo() or None, bool(google))
-    return JSONResponse({"resultados": resultados, "aviso_google": aviso})
+    # Las reglas del tiempo por carretera, para estimar también el de un aeropuerto que la persona agrega a mano
+    return JSONResponse({"resultados": resultados, "aviso_google": aviso, "carretera": geografia.carretera()})

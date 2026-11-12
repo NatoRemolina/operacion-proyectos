@@ -1,9 +1,24 @@
-{% extends "base.html" %}{% import "_viajes.html" as mv %}{% block titulo %}Cotizar viaje{% endblock %}{% block cuerpo %}
+{% extends "base.html" %}{% import "_viajes.html" as mv %}{% block titulo %}Cotizar viaje{% endblock %}
+{% block estilos %}<style>
+.buscador{position:relative}
+@media(min-width:700px){.campos>.buscador{grid-column:span 2}}
+.buscador ul[role=listbox]{position:absolute;z-index:20;left:0;right:0;top:100%;margin:4px 0 0;padding:4px 0;list-style:none;background:#fff;
+  border:1px solid #c9d1da;border-radius:8px;box-shadow:0 8px 24px rgba(13,27,42,.14);max-height:380px;overflow-y:auto}
+.buscador li[role=option]{padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--linea)}
+.buscador li[role=option]:last-of-type{border-bottom:0}
+.buscador li[role=option][aria-selected=true],.buscador li[role=option]:hover{background:var(--marca2)}
+.buscador .lugar-nombre{font-weight:600}.buscador .lugar-donde,.buscador .lugar-aeros{color:var(--suave);font-size:13px}
+.buscador .pie{padding:6px 12px 2px;color:var(--suave);font-size:12px}
+.aeros{margin-top:8px;padding:10px 12px;background:var(--fondo);border:1px solid var(--linea);border-radius:8px}
+.aeros label{font-weight:400;color:var(--tinta);font-size:14px;margin:4px 0;display:flex;gap:8px;align-items:baseline}
+.aeros .agregar{margin-top:8px}
+.fuentes{color:var(--suave);font-size:12px;margin:10px 0 0}
+</style>{% endblock %}
+{% block cuerpo %}
 {{ mv.recorrido(none, false) }}
 <h1>Cotizar un viaje de grabación</h1>
-<p class="sub">Escribe una ciudad o el código del aeropuerto. Los valores iniciales son el caso de ejemplo, que tiene precios guardados; cualquier otra ruta se consulta en vivo{% if modo().precios != 'en vivo' %} <b>(ahora no hay clave del buscador: solo funciona el caso guardado)</b>{% endif %}.</p>
+<p class="sub">Escribe un país, una ciudad, un pueblo o el código de un aeropuerto y elige de la lista: se marcan los aeropuertos cercanos para comparar. Los valores iniciales son el caso de ejemplo, que tiene precios guardados; cualquier otra ruta se consulta en vivo{% if modo().precios != 'en vivo' %} <b>(ahora no hay clave del buscador: solo funciona el caso guardado)</b>{% endif %}.</p>
 {% if error %}<p class="nota mal">{{ error }}</p>{% endif %}
-<datalist id="aeropuertos">{% for n, c in aeropuertos %}<option value="{{ n }} ({{ c }})">{% endfor %}</datalist>
 <form method="post" action="/viajes" class="tarjeta">
   <h3>Quién y para qué</h3>
   <div class="campos">
@@ -21,9 +36,23 @@
   </div>
   <h2>Ruta y fechas</h2>
   <div class="campos">
-    <div><label>Origen (ciudad de la lista o código de 3 letras)</label><input name="origen" value="Miami (MIA)" list="aeropuertos" required></div>
-    <div><label>Destino (ciudad de la lista o código de 3 letras)</label><input name="destino" value="Las Vegas (LAS)" list="aeropuertos" required></div>
-    <div><label>Ciudad del hotel (vacío = la del destino)</label><input name="ciudad" value=""></div>
+    <div class="buscador" data-buscador="origen">
+      <label for="origen">Origen (lugar, país o código de aeropuerto)</label>
+      <input id="origen" name="origen" value="Miami (MIA)" required autocomplete="off" role="combobox" aria-autocomplete="list"
+             aria-expanded="false" aria-controls="origen-lista" aria-describedby="origen-ayuda">
+      <input type="hidden" name="origen_aeropuertos" value=""><input type="hidden" name="origen_lugar" value="">
+      <div id="origen-ayuda" class="eti" aria-live="polite"></div>
+      <div class="aeros" hidden></div>
+    </div>
+    <div class="buscador" data-buscador="destino">
+      <label for="destino">Destino (lugar, país o código de aeropuerto)</label>
+      <input id="destino" name="destino" value="Las Vegas (LAS)" required autocomplete="off" role="combobox" aria-autocomplete="list"
+             aria-expanded="false" aria-controls="destino-lista" aria-describedby="destino-ayuda">
+      <input type="hidden" name="destino_aeropuertos" value=""><input type="hidden" name="destino_lugar" value="">
+      <div id="destino-ayuda" class="eti" aria-live="polite"></div>
+      <div class="aeros" hidden></div>
+    </div>
+    <div><label for="ciudad">Ciudad del hotel (vacío = el lugar de destino)</label><input id="ciudad" name="ciudad" value=""></div>
     <div><label>Ida</label><input type="date" name="ida" value="2026-12-08" required></div>
     <div><label>Regreso</label><input type="date" name="regreso" value="2026-12-11" required></div>
     <div><label>Debe llegar antes de (opcional)</label><input type="datetime-local" name="llegar_antes" value="2026-12-08T18:00"></div>
@@ -39,7 +68,8 @@
     <div><label>Probabilidad de cambio de fecha (%)</label><input type="number" name="prob_cambio" value="25" min="0" max="100"></div>
     <div><label>Carro de alquiler por día (USD, 0 = sin carro)</label><input type="number" name="carro_dia" value="65" min="0"></div>
   </div>
-  <p style="margin-top:18px"><button>Buscar y comparar</button> <span class="eti">Una ruta nueva gasta dos consultas (vuelos y hoteles) y tarda unos segundos.</span></p>
+  <p class="fuentes">Lugares: GeoNames (CC BY 4.0). Aeropuertos: OurAirports.</p>
+  <p style="margin-top:18px"><button>Buscar y comparar</button> <span class="eti">Una ruta nueva gasta dos consultas (vuelos y hoteles), aunque compare varios aeropuertos, y tarda unos segundos.</span></p>
 </form>
 <script>
 // La hora límite se refiere al día de llegada: al cambiar la ida, se mueve con ella y conserva la hora.
@@ -49,4 +79,5 @@ ida.addEventListener('change', () => {
   if (regreso.value <= ida.value) { const d = new Date(ida.value); d.setDate(d.getDate() + 3); regreso.value = d.toISOString().slice(0, 10); }
 });
 </script>
+<script src="/static/buscador_lugares.js"></script>
 {% endblock %}

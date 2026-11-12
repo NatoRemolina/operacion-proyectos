@@ -217,9 +217,14 @@ def cercanos(lat: float, lon: float, radio_km: float | None = None, maximo: int 
     return sorted(candidatos, key=lambda a: a["km"])[:maximo]
 
 
+def carretera() -> dict:
+    """Reglas para estimar el traslado por carretera: distancia = línea recta x factor; tiempo = distancia ÷ velocidad."""
+    return {"factor": _regla("factor_carretera", 1.3), "velocidad_kmh": _regla("velocidad_carretera_kmh", 70) or 70}
+
+
 def _con_horas(aeropuertos: list[dict]) -> list[dict]:
     """Tiempo estimado por carretera: línea recta x factor ÷ velocidad (reglas editables)."""
-    factor, velocidad = _regla("factor_carretera", 1.3), _regla("velocidad_carretera_kmh", 70) or 70
+    factor, velocidad = carretera().values()
     return [{**a, "horas": round(a["km"] * factor / velocidad, 1) if a.get("km") is not None else None} for a in aeropuertos]
 
 
@@ -292,6 +297,18 @@ def _locales(q: str, limite: int) -> list[dict]:
                 candidatos.append((7, 0, _resultado_aeropuerto(a, paises_)))
     candidatos.sort(key=lambda c: (c[0], c[1]))
     return [c[2] for c in candidatos[:limite]]
+
+
+def aeropuertos_conocidos(codigos: list[str]) -> dict:
+    """Los códigos que existen en los datos locales o que trajo el autocompletado de Google, con lo que se sabe de cada uno."""
+    if not codigos:
+        return {}
+    marcas = {f"c{i}": c for i, c in enumerate(codigos)}
+    en = ", ".join(f":{k}" for k in marcas)
+    conocidos = {a["iata"]: a for a in db.todos(f"select iata, nombre, municipio, lat, lon from aeropuertos_mundo where iata in ({en})", **marcas)}  # noqa: S608
+    for a in db.todos(f"select iata, nombre, ciudad from aeropuertos_google where iata in ({en})", **marcas):  # noqa: S608
+        conocidos.setdefault(a["iata"], {"iata": a["iata"], "nombre": a["nombre"], "municipio": a["ciudad"], "lat": None, "lon": None})
+    return conocidos
 
 
 # ---------- autocompletado de Google, combinado con lo local ----------
