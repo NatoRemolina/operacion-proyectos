@@ -299,7 +299,7 @@ def _filas(fechas: list[str]) -> list[dict]:
                                (select max(o.orden) from tramos_vuelo o where o.viaje_id=t.viaje_id and o.sentido='ida') ultimo_ida
                         from tramos_vuelo t join viajes v on v.id=t.viaje_id left join usuarios u on u.id=v.usuario_id
                         left join solicitudes s on s.id=v.solicitud_id
-                        where t.fecha in ({", ".join(":" + k for k in marcas)}) and v.estado in ('aprobado', 'pendiente_aprobacion')
+                        where t.fecha in ({", ".join(":" + k for k in marcas)}) and v.estado = 'aprobado'
                         order by t.sale_programada, t.id""", **marcas)  # noqa: S608  solo marcadores fijos
 
 

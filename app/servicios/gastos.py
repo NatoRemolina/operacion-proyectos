@@ -163,10 +163,12 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
     with db.transaccion() as conexion:
         if op:
             envios.comprobar(op)
+        # Primero el viaje y después el gasto: el mismo orden que la revisión y la asignación de viaje, para que dos
+        # operaciones a la vez en PostgreSQL no se bloqueen entre sí
+        viaje = _vigente(conexion, viaje)
         actual = db.uno("select estado from gastos where id=:i" + ("" if config.ES_SQLITE else " for update"), i=gid)
         if not actual or actual["estado"] != "procesando":
             return   # mientras se leía, alguien lo recuperó o lo decidió: la lectura tardía no lo pisa
-        viaje = _vigente(conexion, viaje)
         proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
         r = validacion.revisar(x, proyecto, gid, viaje)
         if x.get("error"):

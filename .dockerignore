@@ -11,3 +11,5 @@ datos/archivos
 *.pyc
 *.md
 *.pdf
+# Los recibos de ejemplo sí van en la imagen: la demostración en Docker los procesa
+!datos/ejemplos/*.pdf
