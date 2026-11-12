@@ -5,7 +5,7 @@ claves foráneas, restricciones, índices y permisos.
 """
 import re
 
-from sqlalchemy import CheckConstraint
+from sqlalchemy import CheckConstraint, inspect
 
 from app import config, db
 
@@ -125,6 +125,84 @@ def _datos() -> dict:
     return hechos
 
 
+# ---------- columnas obligatorias ----------
+# `crear_tablas` añade a una base existente las columnas nuevas solo con su tipo. Si el modelo las declara NOT NULL,
+# aquí se rellenan con su valor por omisión y se les pone la restricción, para que la base diga lo mismo que el modelo.
+def columnas_desalineadas() -> list[str]:
+    """Columnas que el modelo declara obligatorias y la base todavía admite vacías."""
+    inspector = inspect(db.motor)
+    faltan = []
+    for t in db.meta.sorted_tables:
+        en_base = {c["name"]: c for c in inspector.get_columns(t.name)}
+        faltan += [f"{t.name}.{c.name}" for c in t.columns
+                   if not c.nullable and not c.primary_key and c.name in en_base and en_base[c.name]["nullable"]]
+    return faltan
+
+
+def _por_omision(columna) -> str | None:
+    if columna.server_default is None:
+        return None
+    valor = str(columna.server_default.arg)
+    return valor if re.fullmatch(r"-?\d+(\.\d+)?", valor) else "'" + valor.replace("'", "''") + "'"
+
+
+def _obligatoria_sqlite(tabla: str, columna: str, defecto: str, quitar: bool = False) -> bool:
+    """SQLite no cambia una columna en su lugar: se rehace la tabla, con el procedimiento de `_rehacer_usuarios_sqlite`.
+
+    Rellena los vacíos con `defecto`. `quitar` hace lo contrario y solo sirve a las pruebas, para simular una base anterior.
+    """
+    col = next((c for c in db.todos(f"pragma table_info({tabla})") if c["name"] == columna), None)
+    if not col or bool(col["notnull"]) == (not quitar):
+        return False
+    sql = db.uno("select sql from sqlite_master where type='table' and name=:t", t=tabla)["sql"]
+    definicion = rf'(\b"?{columna}"?\s+{re.escape(col["type"])})(?:\s+DEFAULT\s+[^\s,)]+|\s+NOT NULL)*'
+    nuevo, cambios = re.subn(definicion, (lambda m: m.group(1)) if quitar else (lambda m: f"{m.group(1)} DEFAULT {defecto} NOT NULL"),
+                             sql, count=1)
+    if not cambios:
+        return False
+    nuevo = re.sub(rf'^CREATE TABLE "?{tabla}"?', f"CREATE TABLE {tabla}__nueva", nuevo)
+    columnas = [c["name"] for c in db.todos(f"pragma table_info({tabla})")]
+    origen = ", ".join(f"coalesce({c}, {defecto})" if c == columna and not quitar else c for c in columnas)
+    crudo = db.motor.raw_connection()
+    try:
+        crudo.driver_connection.executescript(f"""
+            PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON;
+            BEGIN;
+            {nuevo};
+            INSERT INTO {tabla}__nueva ({", ".join(columnas)}) SELECT {origen} FROM {tabla};
+            DROP TABLE {tabla};
+            ALTER TABLE {tabla}__nueva RENAME TO {tabla};
+            COMMIT;
+            PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON;""")
+    finally:
+        crudo.close()
+    db.ejecutar("select 1")   # vacía la caché de lecturas
+    return True
+
+
+def _columnas() -> dict:
+    """Pone NOT NULL (y su valor por omisión) donde el modelo lo declara. Una columna con vacíos y sin valor por
+    omisión no se toca: se informa, porque rellenarla sería inventar datos."""
+    hechos = {"columnas_alineadas": [], "columnas_con_vacios": []}
+    columnas = {f"{t.name}.{c.name}": c for t in db.meta.sorted_tables for c in t.columns}
+    for nombre in columnas_desalineadas():
+        tabla, campo = nombre.split(".")
+        defecto = _por_omision(columnas[nombre])
+        if defecto is None and db.uno(f"select count(*) n from {tabla} where {campo} is null")["n"]:
+            hechos["columnas_con_vacios"].append(nombre)
+            continue
+        if config.ES_SQLITE:
+            _obligatoria_sqlite(tabla, campo, defecto or "null")
+        else:
+            with db.transaccion():
+                if defecto is not None:
+                    db.ejecutar(f"alter table {tabla} alter column {campo} set default {defecto}")
+                    db.ejecutar(f"update {tabla} set {campo}={defecto} where {campo} is null")
+                db.ejecutar(f"alter table {tabla} alter column {campo} set not null")
+        hechos["columnas_alineadas"].append(nombre)
+    return hechos
+
+
 def _indices():
     for nombre, tabla, columnas, unico in INDICES:
         db.ejecutar(f"create {'unique ' if unico else ''}index if not exists {nombre} on {tabla} ({columnas})")
@@ -171,7 +249,8 @@ def permisos_de_vistas(vistas):
 
 
 def migrar() -> dict:
-    hechos = {**_roles(), **_datos()}
+    from app.servicios import envios, revision  # noqa: F401  (registran la tabla de envíos y las columnas de la revisión)
+    hechos = {**_roles(), **_datos(), **_columnas()}
     _indices()
     if not config.ES_SQLITE:
         hechos.update(_restricciones_postgres())

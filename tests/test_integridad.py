@@ -539,3 +539,39 @@ def test_dos_revisiones_por_la_api_no_gastan_el_mismo_saldo(cliente, nuevo_viaje
         assert sorted(r.json()["estado"] for r in respuestas) == ["aprobado", "revision"]
     finally:
         _sin_rastro(*ids)
+
+
+# ---------- migración ----------
+def _columna(tabla: str, nombre: str) -> dict:
+    return next(c for c in db.todos(f"pragma table_info({tabla})") if c["name"] == nombre)
+
+
+def test_la_migracion_alinea_version_con_el_modelo_sin_perder_datos():
+    """Una base anterior recibe `version` de `crear_tablas` sin NOT NULL; la migración la deja como dice el modelo."""
+    from app.servicios import revision
+    from datos import migracion
+    assert not revision.db.gastos.c.version.nullable
+    assert migracion._obligatoria_sqlite("gastos", "version", "0", quitar=True)   # simula la base anterior
+    assert _columna("gastos", "version")["notnull"] == 0
+    gid = db.insertar("gastos", comercio="Sonda migración", estado="revision", total=9.5)
+    db.ejecutar("update gastos set version=null where id=:i", i=gid)
+    antes = db.uno("select count(*) n, coalesce(sum(total),0) t from gastos")
+    hechos = migracion.migrar()
+    assert hechos["columnas_alineadas"] == ["gastos.version"]
+    col = _columna("gastos", "version")
+    assert col["notnull"] == 1 and col["dflt_value"] in ("0", "'0'")
+    assert db.uno("select version from gastos where id=:i", i=gid)["version"] == 0
+    assert db.uno("select count(*) n, coalesce(sum(total),0) t from gastos") == antes
+    assert not db.todos("pragma foreign_key_check")
+    indices = {i["name"] for i in db.todos("pragma index_list(gastos)")}
+    assert {"ix_gastos_viaje", "ix_gastos_proyecto", "ix_gastos_usuario"} <= indices
+    assert migracion.migrar()["columnas_alineadas"] == []   # se puede repetir
+    assert migracion.columnas_desalineadas() == []
+    _sin_rastro(gid)
+
+
+def test_la_tabla_de_envios_existe_con_sus_restricciones():
+    columnas = {c["name"]: c for c in db.todos("pragma table_info(envios_soporte)")}
+    assert {n for n, c in columnas.items() if c["notnull"]} >= {"usuario_id", "clave", "huella", "estado"}
+    unicos = [i for i in db.todos("pragma index_list(envios_soporte)") if i["unique"]]
+    assert any({c["name"] for c in db.todos(f"pragma index_info('{i['name']}')")} == {"usuario_id", "clave"} for i in unicos)
