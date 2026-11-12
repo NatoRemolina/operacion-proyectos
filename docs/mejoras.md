@@ -26,19 +26,19 @@ Resultado de cuatro revisiones de la plataforma (recorridos por rol, interfaz y 
 | E09 | «Desactivar» alternaba el estado (un doble envío reactivaba la cuenta); decidir dos veces duplicaba la decisión | Corregida | `rutas/administracion.py`, `rutas/cotizaciones.py` |
 | E10 | No había prueba de humo de todas las páginas por rol | Corregida | `tests/test_humo.py` |
 | E11 | La vista de consultas al buscador tenía descarga pero no campo de fecha: la exportación fallaba | Corregida | `rutas/analisis.py` |
-| E12 | Un mensaje de validación del revisor quedaba guardado como alerta del gasto y lo veía el piloto | Asignada: `integridad` | `rutas/gastos.py` |
-| E13 | Rechazar un gasto no pedía motivo ni confirmación; el piloto no sabía por qué | Asignada: `integridad` | `rutas/gastos.py`, `gasto.html` |
-| E14 | La revisión no comprobaba el estado que vio quien revisa: dos revisores se pisaban | Asignada: `integridad` | `rutas/gastos.py` |
-| E15 | Importes nulos, cero o negativos; duplicado exacto sin comparar moneda; fechas futuras | Asignada: `integridad` | `validacion.py` |
-| E16 | Telegram marcaba como procesada una entrega que había fallado | Asignada: `integridad` | `servicios/telegram.py` |
-| E17 | La carga web no era idempotente: reintentar creaba otro gasto | Asignada: `integridad` | `servicios/gastos.py` |
-| E18 | Sin transacción real: dos aprobaciones simultáneas podían pasar el presupuesto | Asignada: `integridad` | `db.py`, `rutas/gastos.py` |
+| E12 | Un mensaje de validación del revisor quedaba guardado como alerta del gasto y lo veía el piloto | Corregida | `servicios/revision.py`, `rutas/gastos.py` |
+| E13 | Rechazar un gasto no pedía motivo ni confirmación; el piloto no sabía por qué | Corregida | `servicios/revision.py`, `gasto.html` |
+| E14 | La revisión no comprobaba el estado que vio quien revisa: dos revisores se pisaban | Corregida | `servicios/revision.py`, `rutas/v1_gastos.py` |
+| E15 | Importes nulos, cero o negativos; duplicado exacto sin comparar moneda; fechas futuras | Corregida (la fecha futura avisa, no bloquea: los recibos de la demostración son de diciembre de 2026) | `validacion.py`, `servicios/dinero.py` |
+| E16 | Telegram marcaba como procesada una entrega que había fallado | Corregida | `servicios/telegram.py` |
+| E17 | La carga web no era idempotente: reintentar creaba otro gasto | Corregida | `servicios/envios.py`, `servicios/gastos.py` |
+| E18 | Sin transacción real: dos aprobaciones simultáneas podían pasar el presupuesto | Corregida | `db.py` (`transaccion`, `bloquear_viaje`), `servicios/gastos.py` |
 
 ## Textos y mensajes
 
 | Id | Problema | Estado |
 |---|---|---|
-| T01 | Las alertas del gasto están escritas para el sistema («Confianza de lectura 62 %», «TimeoutError») y las lee el piloto | Asignada: `integridad` (textos en `validacion.py`); Web nueva para su presentación |
+| T01 | Las alertas del gasto están escritas para el sistema («Confianza de lectura 62 %», «TimeoutError») y las lee el piloto | Pendiente: no se hizo en la integridad (textos en `validacion.py`); Web nueva para su presentación |
 | T02 | Vocabulario mezclado: soporte, recibo y gasto; cotización, consulta y solicitud; titular y viajero | Web nueva (glosario abajo) |
 | T03 | Horas en UTC y fechas en formato ISO: un piloto en Miami ve el día siguiente | Web nueva |
 | T04 | Importes con tres formatos distintos | Web nueva |

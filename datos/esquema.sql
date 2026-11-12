@@ -1,4 +1,9 @@
 -- Esquema para Postgres (Supabase). Generado desde app/db.py; la aplicación también crea las tablas al arrancar.
+-- Es una referencia parcial, anterior a los usuarios, los viajes y el buscador mundial: la fuente de verdad son los modelos
+-- de app/db.py y de los servicios, y el diagrama de docs/datos.md. Al final se añaden, con el mismo formato, las tablas
+-- y columnas de la integridad de gastos y del monitoreo del vuelo. Las claves foráneas de esas tablas (a usuarios, viajes
+-- y gastos) no se escriben aquí porque esas tablas no están en este archivo.
+-- Además, `lugares` (datos geográficos) tiene la columna `zona` TEXT: zona horaria IANA de GeoNames.
 
 CREATE TABLE IF NOT EXISTS decisiones (
 	id SERIAL NOT NULL, 
@@ -59,6 +64,8 @@ CREATE TABLE IF NOT EXISTS gastos (
 	alertas TEXT, 
 	origen_dato TEXT, 
 	creado TEXT, 
+	version INTEGER DEFAULT 0 NOT NULL, 
+	motivo_rechazo TEXT, 
 	PRIMARY KEY (id)
 );
 
@@ -174,4 +181,44 @@ CREATE TABLE IF NOT EXISTS viajeros (
 	base TEXT, 
 	rol TEXT, 
 	PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS tramos_vuelo (
+	id SERIAL NOT NULL, 
+	viaje_id INTEGER, 
+	sentido TEXT, 
+	orden INTEGER, 
+	aerolinea TEXT, 
+	numero TEXT, 
+	fecha TEXT, 
+	desde TEXT, 
+	hasta TEXT, 
+	sale_programada TEXT, 
+	llega_programada TEXT, 
+	estado TEXT, 
+	retraso_salida INTEGER, 
+	retraso_llegada INTEGER, 
+	terminal TEXT, 
+	puerta TEXT, 
+	llega_estimada TEXT, 
+	actualizado TEXT, 
+	consultas INTEGER, 
+	ultimo_aviso TEXT, 
+	omitida TEXT, 
+	ultima_consulta TEXT, 
+	PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS envios_soporte (
+	id SERIAL NOT NULL, 
+	usuario_id INTEGER NOT NULL, 
+	clave TEXT NOT NULL, 
+	huella TEXT NOT NULL, 
+	estado TEXT NOT NULL, 
+	gasto_id INTEGER, 
+	propietario TEXT, 
+	expira TEXT, 
+	creado TEXT, 
+	PRIMARY KEY (id), 
+	CONSTRAINT ux_envios_persona_clave UNIQUE (usuario_id, clave)
 );
