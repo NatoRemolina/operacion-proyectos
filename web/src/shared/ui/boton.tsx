@@ -2,9 +2,12 @@ import type { ButtonHTMLAttributes } from "react";
 
 export type VarianteBoton = "primario" | "secundario" | "texto" | "peligro";
 
+// Respuesta inmediata al presionar: escala 0,97 en 100 ms (solo se anima la transformación).
+export const PRESIONAR = "se-mueve transition-transform duration-100 ease-out active:scale-97 disabled:active:scale-100";
+
 const BASE =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg py-2 text-base font-semibold " +
-  "no-underline transition-colors disabled:cursor-not-allowed disabled:opacity-60";
+  `no-underline disabled:cursor-not-allowed disabled:opacity-60 ${PRESIONAR}`;
 
 const VARIANTES: Record<VarianteBoton, string> = {
   primario: "px-4 bg-marca text-sobre-marca hover:bg-marca-oscura hover:text-sobre-marca",

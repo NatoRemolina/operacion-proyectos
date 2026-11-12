@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { TEXTO_PERMISO, type EntradaMenu, type Permiso } from "@/shared/domain/navegacion";
 import { AvisosProvider } from "./aviso-emergente";
+import { PRESIONAR } from "./boton";
 
 export function Marca({ tamano = "grande" }: { tamano?: "grande" | "pequena" }) {
   return (
@@ -25,11 +26,11 @@ function esActivo(enlace: EntradaMenu, ruta: string): boolean {
 
 const BOTON_OSCURO =
   "inline-flex min-h-11 items-center justify-center rounded-lg border border-sobre-grafito-suave px-4 " +
-  "font-semibold text-sobre-grafito hover:bg-white/10 disabled:opacity-60";
+  `font-semibold text-sobre-grafito hover:bg-white/10 disabled:opacity-60 ${PRESIONAR}`;
 
 /** Enlace del menú: las pantallas de esta web navegan sin recargar; las actuales, con un enlace normal. */
 function EnlaceMenuOscuro({ enlace, activo, onNavegar }: { enlace: EntradaMenu; activo: boolean; onNavegar?: () => void }) {
-  const clases = `flex min-h-11 items-center rounded-lg px-3 font-semibold no-underline ${
+  const clases = `flex min-h-11 items-center rounded-lg px-3 font-semibold no-underline ${PRESIONAR} ${
     activo ? "bg-marca text-sobre-marca" : "hover:bg-white/10"
   }`;
   if (enlace.externa) {
@@ -133,14 +134,21 @@ export function MarcoPrivado({
   const [abiertoEn, setAbiertoEn] = useState<string | null>(null);
   const abierto = abiertoEn === rutaActual;
   const boton = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLElement>(null);
   const atajos = enlaces.filter((e) => e.atajo);
   const pie = { nombre, cargo, permiso, entornoDemo, onSalir, saliendo };
 
+  useEffect(() => {
+    if (abierto) panel.current?.querySelector<HTMLElement>("a")?.focus();
+  }, [abierto]);
+
+  function cerrar() {
+    setAbiertoEn(null);
+    boton.current?.focus();
+  }
+
   function alTeclear(evento: KeyboardEvent) {
-    if (evento.key === "Escape" && abierto) {
-      setAbiertoEn(null);
-      boton.current?.focus();
-    }
+    if (evento.key === "Escape" && abierto) cerrar();
   }
 
   return (
@@ -164,34 +172,51 @@ export function MarcoPrivado({
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="zona-oscura bg-grafito text-sobre-grafito md:hidden" onKeyDown={alTeclear}>
-            <header className="flex items-center justify-between gap-3 px-4 py-3">
+          <div className="md:hidden" onKeyDown={alTeclear}>
+          <header className="zona-oscura flex items-center justify-between gap-3 bg-grafito px-4 py-3 text-sobre-grafito">
+            <Marca tamano="pequena" />
+            <button
+              ref={boton}
+              type="button"
+              className={BOTON_OSCURO}
+              aria-expanded={abierto}
+              aria-controls="menu-celular"
+              onClick={() => setAbiertoEn(abierto ? null : rutaActual)}
+            >
+              Menú
+            </button>
+          </header>
+          {/* El menú entra y sale por la izquierda, sobre un velo que lo cierra al tocarlo. */}
+          <div
+            aria-hidden="true"
+            onClick={cerrar}
+            className={`fixed inset-0 z-30 bg-velo transition-opacity duration-200 ease-salida ${
+              abierto ? "opacity-100" : "pointer-events-none opacity-0"
+            }`}
+          />
+          <div
+            id="menu-celular"
+            aria-hidden={!abierto}
+            inert={!abierto}
+            className={`zona-oscura se-mueve fixed inset-y-0 left-0 z-40 flex w-72 max-w-full flex-col overflow-y-auto bg-grafito px-5 py-6 text-sobre-grafito shadow-lg transition-[translate,opacity] duration-200 ease-salida ${
+              abierto ? "translate-x-0 opacity-100" : "-translate-x-full opacity-0"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
               <Marca tamano="pequena" />
-              <button
-                ref={boton}
-                type="button"
-                className={BOTON_OSCURO}
-                aria-expanded={abierto}
-                aria-controls="menu-celular"
-                onClick={() => setAbiertoEn(abierto ? null : rutaActual)}
-              >
-                Menú
+              <button type="button" className={BOTON_OSCURO} onClick={cerrar}>
+                Cerrar menú
               </button>
-            </header>
-            <div id="menu-celular" hidden={!abierto} className="border-t border-white/15 px-4 pb-5 pt-4">
-              {abierto ? (
-                <>
-                  <nav aria-label="Menú">
-                    <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
-                  </nav>
-                  <div className="mt-5 border-t border-white/15 pt-4">
-                    <PiePersona {...pie} />
-                  </div>
-                </>
-              ) : null}
+            </div>
+            <nav aria-label="Menú" className="mt-8" ref={panel}>
+              <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
+            </nav>
+            <div className="mt-auto border-t border-white/15 pt-5">
+              <PiePersona {...pie} />
             </div>
           </div>
-          <main id="contenido" className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10">
+        </div>
+        <main id="contenido" className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10">
             {children}
           </main>
         </div>
@@ -208,7 +233,7 @@ export function MarcoPrivado({
                   <Link
                     href={enlace.href}
                     aria-current={activo ? "page" : undefined}
-                    className={`flex min-h-14 items-center justify-center border-t-4 px-1 text-center text-sm font-bold uppercase tracking-wide no-underline ${
+                    className={`flex min-h-14 items-center justify-center border-t-4 px-1 text-center text-sm font-bold uppercase tracking-wide no-underline ${PRESIONAR} ${
                       activo ? "border-marca text-marca" : "border-transparent text-texto"
                     }`}
                   >

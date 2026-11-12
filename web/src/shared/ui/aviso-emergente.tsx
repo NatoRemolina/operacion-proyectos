@@ -53,7 +53,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         {avisos.map((a) => (
           <div
             key={a.id}
-            className={`pointer-events-auto flex items-start gap-3 rounded-tarjeta border-l-4 bg-superficie p-4 shadow-lg ${BORDE[a.tono]}`}
+            className={`se-mueve pointer-events-auto flex items-start gap-3 rounded-tarjeta border-l-4 bg-superficie p-4 shadow-lg transition-[translate,opacity] duration-200 ease-salida starting:translate-y-2 starting:opacity-0 contrast-more:border-2 ${BORDE[a.tono]}`}
           >
             <span aria-hidden="true" className={`font-bold ${COLOR[a.tono]}`}>
               {SIMBOLO[a.tono]}

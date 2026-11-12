@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Boton } from "./boton";
 
 const ENFOCABLES = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -37,9 +37,15 @@ export function DialogoConfirmacion({
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!abierto) return;
     const previo = document.activeElement as HTMLElement | null;
+    // El diálogo nace del botón que lo abrió: su origen de escala es ese botón.
+    if (previo && panel.current && previo !== document.body) {
+      const desde = previo.getBoundingClientRect();
+      const caja = panel.current.getBoundingClientRect();
+      panel.current.style.transformOrigin = `${desde.left + desde.width / 2 - caja.left}px ${desde.top + desde.height / 2 - caja.top}px`;
+    }
     const primero =
       panel.current?.querySelector<HTMLElement>("input, textarea, select") ??
       panel.current?.querySelector<HTMLElement>(ENFOCABLES);
@@ -75,7 +81,7 @@ export function DialogoConfirmacion({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-grafito/60 p-4 sm:items-center">
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-velo p-4 transition-opacity duration-200 ease-salida starting:opacity-0 sm:items-center">
       <div
         ref={panel}
         role="dialog"
@@ -83,7 +89,7 @@ export function DialogoConfirmacion({
         aria-labelledby={`${id}-titulo`}
         aria-describedby={`${id}-efecto`}
         onKeyDown={alTeclear}
-        className="w-full max-w-md rounded-tarjeta bg-superficie p-5 shadow-lg"
+        className="se-mueve w-full max-w-md rounded-tarjeta bg-superficie p-5 shadow-lg transition-[scale,opacity] duration-200 ease-salida starting:scale-95 starting:opacity-0 contrast-more:border-2 contrast-more:border-texto"
       >
         <form onSubmit={enviar} className="flex flex-col gap-4">
           <h2 id={`${id}-titulo`} className="text-xl font-bold">

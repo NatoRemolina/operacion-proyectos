@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import type { Key, ReactNode } from "react";
+import { useState, type Key, type ReactNode } from "react";
 
 export interface Columna<T> {
   clave: string;
@@ -34,6 +36,8 @@ export function Tabla<T>({
   acciones?: (fila: T) => ReactNode;
   encabezadoAcciones?: string;
 }) {
+  // El borde bajo el encabezado fijo aparece solo cuando hay contenido desplazado debajo.
+  const [desplazada, setDesplazada] = useState(false);
   const principal = columnas.find((c) => c.principal) ?? columnas[0]!;
   const resto = columnas.filter((c) => c !== principal);
 
@@ -52,11 +56,14 @@ export function Tabla<T>({
 
   return (
     <>
-      <div className="hidden max-h-128 overflow-auto rounded-tarjeta border border-linea bg-superficie md:block">
+      <div
+        className="hidden max-h-128 overflow-auto rounded-tarjeta border border-linea bg-superficie md:block"
+        onScroll={(e) => setDesplazada(e.currentTarget.scrollTop > 0)}
+      >
         <table className="w-full border-collapse text-left">
           <caption className={tituloVisible ? "px-4 pt-4 text-left text-lg font-bold" : "sr-only"}>{titulo}</caption>
-          <thead className="sticky top-0 z-10 bg-superficie">
-            <tr className="border-b border-linea">
+          <thead className={`sticky top-0 z-10 bg-superficie ${desplazada ? "shadow-sm" : ""}`}>
+            <tr className={desplazada ? "border-b border-linea" : "border-b border-transparent"}>
               {columnas.map((c) => (
                 <th
                   key={c.clave}
