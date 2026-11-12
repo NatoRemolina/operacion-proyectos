@@ -13,6 +13,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Se incrusta en el JavaScript del navegador al compilar; no admite secretos.
 ARG NEXT_PUBLIC_API_BASE=/api/v1
 ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
+# Origen de las pantallas actuales (Jinja) que la web aún enlaza: Proyectos, Usuarios y la revisión completa de un gasto.
+# Vacío: no se ofrecen esos enlaces.
+ARG NEXT_PUBLIC_PLATAFORMA_URL=
+ENV NEXT_PUBLIC_PLATAFORMA_URL=${NEXT_PUBLIC_PLATAFORMA_URL}
 COPY --from=dependencias /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

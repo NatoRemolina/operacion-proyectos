@@ -60,7 +60,11 @@ services:
 
   web:
     profiles: [web]
-    build: ./web
+    build:
+      context: ./web
+      args:
+        # Se incrusta al compilar: Proyectos, Usuarios y «Abrir la revisión completa» llevan a la plataforma actual
+        NEXT_PUBLIC_PLATAFORMA_URL: http://127.0.0.1:8000
     depends_on:
       app: {condition: service_healthy}
     environment:
