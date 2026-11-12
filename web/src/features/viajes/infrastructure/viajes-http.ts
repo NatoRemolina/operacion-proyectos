@@ -26,6 +26,8 @@ export const viajeResumenSchema = z.object({
   en_revision_usd: dineroSchema,
   ejecucion_pct: z.number().int().nullable(),
   gastos: z.number().int().nonnegative(),
+  propio: z.boolean().default(false),
+  precio_por_confirmar: z.string().nullable().default(null),
 }) satisfies z.ZodType<ViajeResumen>;
 
 const listaSchema = paginaSchema(viajeResumenSchema);

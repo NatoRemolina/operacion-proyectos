@@ -1,7 +1,5 @@
+import type { EstadoVisible } from "@/shared/domain/estados";
 import { InsigniaEstado, type Tono } from "./estado";
-
-/** Estados que comparten viajes y gastos en toda la web. */
-export type EstadoVisible = "aprobado" | "revision" | "rechazado" | "pendiente" | "en_curso" | "cerrado" | "procesando";
 
 const ESTADOS: Record<EstadoVisible, { tono: Tono; texto: string }> = {
   aprobado: { tono: "exito", texto: "Aprobado" },

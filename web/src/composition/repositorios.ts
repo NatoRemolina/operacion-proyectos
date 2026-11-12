@@ -1,3 +1,6 @@
+import type { AdministracionRepository } from "@/features/administracion/domain/administracion";
+import { crearAdministracionHttp } from "@/features/administracion/infrastructure/administracion-http";
+import { crearAdministracionMemoria } from "@/features/administracion/infrastructure/administracion-memoria";
 import type { AuthRepository } from "@/features/auth/domain/auth";
 import { crearAuthHttp } from "@/features/auth/infrastructure/auth-http";
 import { crearAuthMemoria } from "@/features/auth/infrastructure/auth-memoria";
@@ -17,6 +20,7 @@ export interface Repositorios {
   auth: AuthRepository;
   viajes: ViajesRepository;
   gastos: GastosRepository;
+  administracion: AdministracionRepository;
   demo: ModoDemo | null;
 }
 
@@ -36,6 +40,8 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
         sesion,
         latenciaMs: 1200,
       }),
+      // La cuenta de demostración es de colaboración: el resumen responde «sin permiso», como la API.
+      administracion: crearAdministracionMemoria({ sesion, latenciaMs }),
       demo: {
         cuentas: [
           { correo: CUENTA_DEMO.persona.correo, clave: CUENTA_DEMO.clave, descripcion: "Piloto" },
@@ -48,6 +54,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     auth: crearAuthHttp(cliente),
     viajes: crearViajesHttp(cliente),
     gastos: crearGastosHttp(cliente),
+    administracion: crearAdministracionHttp(cliente),
     demo: null,
   };
 }

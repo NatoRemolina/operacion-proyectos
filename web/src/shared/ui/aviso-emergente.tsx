@@ -48,6 +48,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       <div
         role="status"
         aria-live="polite"
+        aria-label="Avisos"
         className="pointer-events-none fixed inset-x-4 bottom-20 z-50 flex flex-col items-stretch gap-2 md:inset-x-auto md:bottom-6 md:right-6 md:w-96"
       >
         {avisos.map((a) => (

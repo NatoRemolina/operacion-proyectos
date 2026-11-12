@@ -1,4 +1,5 @@
 import type { TipoError } from "@/shared/domain/errores";
+import type { EstadoVisible } from "@/shared/domain/estados";
 import type { Dinero, FechaISO, OpcionesListado, Pagina } from "@/shared/domain/tipos";
 
 export type EstadoGasto = "procesando" | "revision" | "aprobado_auto" | "aprobado" | "rechazado";
@@ -103,4 +104,10 @@ export function resultadoDeEnvio(estado: EstadoGasto): ResultadoEnvio {
   if (estado === "aprobado_auto" || estado === "aprobado") return "aprobado";
   if (estado === "revision") return "revision";
   return "otro";
+}
+
+/** Cómo se muestra el estado de un gasto: lo aprobado solo y lo aprobado por una persona se ven igual. */
+export function estadoVisibleGasto(estado: EstadoGasto): EstadoVisible {
+  if (estado === "aprobado_auto" || estado === "aprobado") return "aprobado";
+  return estado;
 }

@@ -12,6 +12,10 @@ export type TipoError =
   | "demasiado_grande"
   | "tipo_no_admitido"
   | "validacion"
+  | "autoaprobacion"
+  | "estado_invalido"
+  | "precio_por_confirmar"
+  | "cambio_ajeno"
   | "red"
   | "contrato"
   | "servidor";
@@ -26,6 +30,10 @@ const MENSAJES: Record<TipoError, string> = {
   demasiado_grande: "El archivo pesa más de 4,5 MB.",
   tipo_no_admitido: "Ese tipo de archivo no se admite. Usa una foto (JPG, PNG o WebP) o un PDF.",
   validacion: "Hay datos que no son válidos.",
+  autoaprobacion: "Nadie aprueba lo suyo: lo decide otra persona de administración.",
+  estado_invalido: "El estado cambió y esa acción ya no aplica. Recarga para ver cómo está.",
+  precio_por_confirmar: "El precio del vuelo cambió: confírmalo para aprobar.",
+  cambio_ajeno: "Otra persona lo cambió mientras lo veías. Cargamos lo último para que lo revises de nuevo.",
   red: "No hubo conexión con el servidor.",
   contrato: "El servidor respondió algo inesperado.",
   servidor: "Algo falló en el servidor. Ya quedó registrado.",

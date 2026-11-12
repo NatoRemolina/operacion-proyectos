@@ -35,6 +35,11 @@ function foto(nombre = "recibo.jpg") {
   return new File(["contenido de la foto"], nombre, { type: "image/jpeg" });
 }
 
+/** La región viva de la pantalla (la de avisos emergentes lleva el nombre «Avisos»). */
+function progreso(): HTMLElement {
+  return screen.getAllByRole("status").find((e) => e.getAttribute("aria-label") !== "Avisos")!;
+}
+
 describe("Cargar un gasto", () => {
   it("con un archivo elegido muestra el estado real «Aprobado» que devuelve la API", async () => {
     const usuario = userEvent.setup();
@@ -47,12 +52,12 @@ describe("Cargar un gasto", () => {
     expect(await screen.findByText("BOG → MIA")).toBeInTheDocument();
     await usuario.upload(screen.getByLabelText("Elegir archivo"), foto());
     expect(screen.getByText("recibo.jpg")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Archivo elegido: recibo.jpg");
+    expect(progreso()).toHaveTextContent("Archivo elegido: recibo.jpg");
 
     await usuario.click(screen.getByRole("button", { name: "Enviar recibo" }));
 
     expect(await screen.findByText("Aprobado", { selector: "span" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Recibo enviado. Estado: Aprobado.");
+    expect(progreso()).toHaveTextContent("Recibo enviado. Estado: Aprobado.");
     expect(screen.getByRole("link", { name: "Ver el detalle" })).toHaveAttribute("href", "/gastos/77");
     expect(enviar).toHaveBeenCalledTimes(1);
     expect(enviar.mock.calls[0]![0]).toMatchObject({ viajeId: null });

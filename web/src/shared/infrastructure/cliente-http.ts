@@ -27,8 +27,19 @@ const POR_CODIGO: Record<string, TipoError> = {
   PAYLOAD_TOO_LARGE: "demasiado_grande",
   UNSUPPORTED_MEDIA_TYPE: "tipo_no_admitido",
   VALIDATION_ERROR: "validacion",
+  SELF_APPROVAL: "autoaprobacion",
+  INVALID_STATE: "estado_invalido",
+  PRICE_CONFIRMATION_REQUIRED: "precio_por_confirmar",
+  EDIT_CONFLICT: "cambio_ajeno",
   INTERNAL_ERROR: "servidor",
 };
+
+const CON_MENSAJE_DEL_SERVIDOR: readonly TipoError[] = [
+  "validacion",
+  "autoaprobacion",
+  "estado_invalido",
+  "precio_por_confirmar",
+];
 
 function tipoPorEstado(estado: number): TipoError {
   if (estado === 401) return "sesion_vencida";
@@ -57,8 +68,8 @@ async function errorDesdeRespuesta(respuesta: Response): Promise<ErrorDeAplicaci
   const { error, request_id } = leido.data;
   const tipo = POR_CODIGO[error.code] ?? tipoPorEstado(respuesta.status);
   return new ErrorDeAplicacion(tipo, {
-    // El texto del servidor solo se usa en validaciones, donde explica qué corregir.
-    mensaje: tipo === "validacion" ? error.message : undefined,
+    // El texto del servidor solo se usa donde explica qué corregir o qué cambió (viene en lenguaje claro).
+    mensaje: CON_MENSAJE_DEL_SERVIDOR.includes(tipo) ? error.message : undefined,
     campos: error.fields,
     idPeticion: request_id ?? idCabecera,
   });
