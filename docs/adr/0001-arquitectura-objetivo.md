@@ -51,7 +51,7 @@ Se registrarán como ADR propios antes del anillo 4:
 
 | Tema | Opciones a evaluar |
 |---|---|
-| Hospedaje de la web Next.js | Contenedor en un servicio administrado; plataforma de hospedaje de Next; exportación estática con proxy |
+| Hospedaje de la web Next.js | **Resuelta en `docs/adr/0002-hospedaje-de-la-web.md`:** AWS, Lambda con la imagen de la web detrás de CloudFront, un solo origen con la API |
 | Identidad entre servicios | Token firmado por el gateway con la identidad verificada; validación de la sesión en Organización por cada servicio |
 | Relay del outbox y trabajador de extracción | Proceso propio con cola en PostgreSQL; cola administrada con consumidor por función |
 | Ambiente previo a producción | Proyecto de base aislado y despliegue con datos de prueba |
