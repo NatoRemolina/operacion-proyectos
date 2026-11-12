@@ -213,5 +213,29 @@ describe("Cotizar un viaje", () => {
     expect(await screen.findByText("Para cotizar para otra persona elige uno de los proyectos que gestionas.")).toBeInTheDocument();
     expect(cotizar).not.toHaveBeenCalled();
   });
+
+  it("no consulta lugares (ni a Google) si nadie escribe: caso de ejemplo, valor elegido o borrador recuperado", async () => {
+    const usuario = userEvent.setup();
+    const base = memoria();
+    const buscarLugares = vi.fn<CotizarRepository["buscarLugares"]>(base.buscarLugares);
+    const { unmount } = renderizarConFuente(<PantallaCotizar />, { cotizar: { ...base, buscarLugares } });
+    await usuario.click(await screen.findByRole("button", { name: "Usar el caso de ejemplo" }));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(buscarLugares).not.toHaveBeenCalled();
+    unmount();
+
+    // Al volver, el borrador guardado se recupera sin consultar nada
+    renderizarConFuente(<PantallaCotizar />, { cotizar: { ...base, buscarLugares } });
+    expect(await screen.findByRole("combobox", { name: "Origen" })).not.toHaveValue("");
+    await new Promise((r) => setTimeout(r, 600));
+    expect(buscarLugares).not.toHaveBeenCalled();
+
+    // Solo cuando la persona escribe
+    const origen = screen.getByRole("combobox", { name: "Origen" });
+    await usuario.clear(origen);
+    await usuario.type(origen, "miami");
+    await waitFor(() => expect(buscarLugares).toHaveBeenCalled());
+    expect(buscarLugares.mock.calls.every(([texto]) => "miami".startsWith(texto.toLowerCase()))).toBe(true);
+  });
 });
 

@@ -60,7 +60,9 @@ function ComboLugar({
   /** Al salir del campo: valida lo escrito. */
   onSalir?: () => void;
 }) {
-  const sugerencias = useSugerenciasLugar(texto);
+  // Solo lo que la persona escribe pide sugerencias; un valor puesto por código no consulta nada.
+  const [escribiendo, setEscribiendo] = useState(false);
+  const sugerencias = useSugerenciasLugar(texto, escribiendo);
   const buscarAhora = useBuscarLugarAhora();
   const [abierta, setAbierta] = useState(false);
   const [activo, setActivo] = useState(-1);
@@ -73,6 +75,7 @@ function ComboLugar({
   function elegir(s: LugarSugerido | undefined, carretera: ReglasCarretera = sugerencias.carretera) {
     setAbierta(false);
     setActivo(-1);
+    setEscribiendo(false);
     if (s) onElegir(s, carretera);
   }
 
@@ -93,6 +96,7 @@ function ComboLugar({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setAbierta(true);
+      setEscribiendo(true);
       if (resultados.length) setActivo(Math.min(activoValido + 1, resultados.length - 1));
     } else if (e.key === "ArrowUp" && hayLista) {
       e.preventDefault();
@@ -137,6 +141,7 @@ function ComboLugar({
         aria-busy={eligiendo || undefined}
         onChange={(e) => {
           onTexto(e.target.value);
+          setEscribiendo(true);
           setAbierta(true);
           setActivo(-1);
         }}

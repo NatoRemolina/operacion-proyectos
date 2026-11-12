@@ -44,8 +44,10 @@ export function useFormularioCotizacion() {
 /**
  * Sugerencias del campo de lugar mientras se escribe. Primero los datos propios; con 3 letras o más y tras una
  * pausa, también Google (el servidor aplica los topes). Una respuesta de un texto viejo nunca pisa la del actual.
+ * Solo se consulta si `escribiendo`: un valor puesto por código (caso de ejemplo, borrador recuperado, lugar ya
+ * elegido) no gasta cupo de Google ni cuenta para los topes.
  */
-export function useSugerenciasLugar(texto: string) {
+export function useSugerenciasLugar(texto: string, escribiendo: boolean) {
   const repositorio = useCotizarRepository();
   const personaId = usePersonaId();
   const actual = texto.trim();
@@ -54,14 +56,14 @@ export function useSugerenciasLugar(texto: string) {
   const consultaLocal = useQuery({
     queryKey: claveDePersona(personaId, "cotizar", "lugares", local, false),
     queryFn: ({ signal }) => repositorio.buscarLugares(local, false, signal),
-    enabled: local.length >= LETRAS_LOCAL,
+    enabled: escribiendo && local.length >= LETRAS_LOCAL,
     staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,
   });
   const consultaGoogle = useQuery({
     queryKey: claveDePersona(personaId, "cotizar", "lugares", google, true),
     queryFn: ({ signal }) => repositorio.buscarLugares(google, true, signal),
-    enabled: google.length >= LETRAS_GOOGLE && google === actual,
+    enabled: escribiendo && google.length >= LETRAS_GOOGLE && google === actual,
     staleTime: 10 * 60_000,
     retry: false,
   });
@@ -76,7 +78,7 @@ export function useSugerenciasLugar(texto: string) {
     avisoGoogle: datos?.aviso_google ?? null,
     carretera: mostrados?.carretera ?? { factor: 1.3, velocidad_kmh: 70 },
     /** Aún no hay respuesta para el texto actual. */
-    esperando: actual.length >= LETRAS_LOCAL && !datos,
+    esperando: escribiendo && actual.length >= LETRAS_LOCAL && !datos,
     /** Hay respuesta para el texto actual (aunque esté vacía). */
     listo: Boolean(datos),
     error: (consultaLocal.error as ErrorDeAplicacion | null) ?? null,
