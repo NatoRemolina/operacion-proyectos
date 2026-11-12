@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { nuevaClaveIdempotencia } from "@/shared/application/clave-idempotencia";
 import { crearContextoRepositorio } from "@/shared/application/contexto-repositorio";
 import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
 import { comoErrorDeAplicacion, type ErrorDeAplicacion } from "@/shared/domain/errores";
@@ -101,20 +102,40 @@ export function useBuscarLugarAhora() {
   );
 }
 
+/**
+ * Una clave de idempotencia por envío: reintentar lo mismo (tras un corte o un error) reutiliza la clave,
+ * así el servidor no repite la búsqueda ni la decisión; un envío distinto, o uno después de un éxito, usa otra.
+ */
+function useClavePorEnvio() {
+  const ultima = useRef<{ firma: string; clave: string } | null>(null);
+  return {
+    para(envio: unknown): string {
+      const firma = JSON.stringify(envio);
+      if (ultima.current?.firma !== firma) ultima.current = { firma, clave: nuevaClaveIdempotencia() };
+      return ultima.current.clave;
+    },
+    olvidar() {
+      ultima.current = null;
+    },
+  };
+}
+
 /** Caso de uso «cotizar»: busca y deja la comparación en caché para abrirla sin otra petición. */
 export function useCotizar() {
   const repositorio = useCotizarRepository();
   const personaId = usePersonaId();
   const queryClient = useQueryClient();
+  const clave = useClavePorEnvio();
   return useMutation<Cotizacion, ErrorDeAplicacion, PedidoCotizacion>({
     mutationFn: async (pedido) => {
       try {
-        return await repositorio.cotizar(pedido);
+        return await repositorio.cotizar(pedido, clave.para(pedido));
       } catch (error) {
         throw comoErrorDeAplicacion(error);
       }
     },
     onSuccess: (c) => {
+      clave.olvidar();
       queryClient.setQueryData(claveDePersona(personaId, "cotizar", "detalle", c.id), c);
     },
   });
@@ -135,15 +156,17 @@ export function useDecidir(id: number) {
   const repositorio = useCotizarRepository();
   const personaId = usePersonaId();
   const queryClient = useQueryClient();
+  const clave = useClavePorEnvio();
   const mutacion = useMutation<Cotizacion, ErrorDeAplicacion, DecisionPedida>({
     mutationFn: async (decision) => {
       try {
-        return await repositorio.decidir(id, decision);
+        return await repositorio.decidir(id, decision, clave.para({ id, decision }));
       } catch (error) {
         throw comoErrorDeAplicacion(error);
       }
     },
     onSuccess: (c) => {
+      clave.olvidar();
       queryClient.setQueryData(claveDePersona(personaId, "cotizar", "detalle", id), c);
       void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "viajes") });
     },

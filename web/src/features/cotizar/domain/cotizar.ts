@@ -212,11 +212,14 @@ export interface CotizarRepository {
   formulario(signal?: AbortSignal): Promise<FormularioCotizacion>;
   /** Sugerencias para el campo de lugar. Con `conGoogle`, suma las de Google (tiene topes de uso). */
   buscarLugares(texto: string, conGoogle: boolean, signal?: AbortSignal): Promise<ListaLugares>;
-  /** Busca vuelos y hoteles y devuelve la comparación lista. Puede tardar unos segundos. */
-  cotizar(pedido: PedidoCotizacion): Promise<Cotizacion>;
+  /**
+   * Busca vuelos y hoteles y devuelve la comparación lista. Puede tardar unos segundos. Con la misma
+   * `claveIdempotencia`, un reintento devuelve la misma cotización sin volver a buscar.
+   */
+  cotizar(pedido: PedidoCotizacion, claveIdempotencia: string): Promise<Cotizacion>;
   obtener(id: number, signal?: AbortSignal): Promise<Cotizacion>;
-  /** Guarda la decisión y crea el viaje, pendiente de aprobación. */
-  decidir(id: number, decision: DecisionPedida): Promise<Cotizacion>;
+  /** Guarda la decisión y crea el viaje, pendiente de aprobación. La clave evita decidir dos veces al reintentar. */
+  decidir(id: number, decision: DecisionPedida, claveIdempotencia: string): Promise<Cotizacion>;
 }
 
 // ---------- reglas del campo de lugar ----------

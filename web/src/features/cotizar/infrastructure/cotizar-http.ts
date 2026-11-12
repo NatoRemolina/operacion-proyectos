@@ -179,15 +179,18 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       const ruta = `/lugares${consulta({ q: texto.trim(), google: conGoogle ? 1 : null, limite: 8 })}`;
       return cliente.get(ruta, listaLugaresSchema, { signal });
     },
-    cotizar(pedido) {
-      // La API admite `Idempotency-Key`; `postJson` del cliente compartido aún no envía cabeceras propias.
-      return cliente.postJson("/cotizaciones", pedido, cotizacionSchema);
+    cotizar(pedido, claveIdempotencia) {
+      return cliente.postJson("/cotizaciones", pedido, cotizacionSchema, {
+        cabeceras: { "Idempotency-Key": claveIdempotencia },
+      });
     },
     obtener(id, signal) {
       return cliente.get(`/cotizaciones/${id}`, cotizacionSchema, { signal });
     },
-    decidir(id, decision) {
-      return cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema);
+    decidir(id, decision, claveIdempotencia) {
+      return cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema, {
+        cabeceras: { "Idempotency-Key": claveIdempotencia },
+      });
     },
   };
 }

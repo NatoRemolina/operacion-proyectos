@@ -47,7 +47,7 @@ describe("adaptador HTTP de cotizar", () => {
   it("cotizar: envía el pedido en JSON con el token CSRF y valida la comparación", async () => {
     const { fetchFalso, cotizar } = preparar(respuestaJson(COTIZACION_MOAB, 201));
     const pedido = pedidoDesdeBorrador({ ...borradorDeEjemplo(BORRADOR_VACIO), proyectoId: "1", viajeroId: "1" }, 1);
-    const c = await cotizar.cotizar(pedido);
+    const c = await cotizar.cotizar(pedido, "clave-1");
     expect(c.recomendada_id).toBe(COTIZACION_MOAB.recomendada_id);
     const [url, init] = fetchFalso.mock.calls[0]!;
     expect(url).toBe("/api/v1/cotizaciones");
@@ -65,7 +65,7 @@ describe("adaptador HTTP de cotizar", () => {
     const { cotizar } = preparar(
       respuestaJson({ error: { code: "VALIDATION_ERROR", message: "Hay datos que no son válidos.", fields: { destino: "No reconozco \"ZZZ\"." } }, request_id: "r1" }, 422),
     );
-    const error = await errorDe(cotizar.decidir(7, { vuelo_id: 1, hotel_id: null, motivo: "", razones: [] }));
+    const error = await errorDe(cotizar.decidir(7, { vuelo_id: 1, hotel_id: null, motivo: "", razones: [] }, "clave-2"));
     expect(error.tipo).toBe("validacion");
     expect(error.campos).toEqual({ destino: "No reconozco \"ZZZ\"." });
   });
@@ -74,8 +74,19 @@ describe("adaptador HTTP de cotizar", () => {
     const { fetchFalso, cotizar } = preparar(
       respuestaJson({ error: { code: "DECISION_LOCKED", message: "El viaje ya está aprobado." }, request_id: "r2" }, 409),
     );
-    const error = await errorDe(cotizar.decidir(7, { vuelo_id: 1, hotel_id: null, motivo: "", razones: ["horario"] }));
+    const error = await errorDe(cotizar.decidir(7, { vuelo_id: 1, hotel_id: null, motivo: "", razones: ["horario"] }, "clave-3"));
     expect(error.tipo).toBe("conflicto");
     expect(fetchFalso.mock.calls[0]![0]).toBe("/api/v1/cotizaciones/7/decision");
   });
+
+  it("crear la cotización y decidir mandan la Idempotency-Key recibida", async () => {
+    const { fetchFalso, cotizar } = preparar(respuestaJson(COTIZACION_MOAB), respuestaJson(COTIZACION_MOAB));
+    const pedido = pedidoDesdeBorrador(borradorDeEjemplo(BORRADOR_VACIO), 1);
+    await cotizar.cotizar(pedido, "clave-cotizar");
+    await cotizar.decidir(COTIZACION_MOAB.id, { vuelo_id: 1, hotel_id: null, motivo: "", razones: [] }, "clave-decidir");
+    expect(new Headers(fetchFalso.mock.calls[0]![1]?.headers).get("Idempotency-Key")).toBe("clave-cotizar");
+    expect(new Headers(fetchFalso.mock.calls[1]![1]?.headers).get("Idempotency-Key")).toBe("clave-decidir");
+    expect(new Headers(fetchFalso.mock.calls[1]![1]?.headers).get("X-CSRF-Token")).toBe("token-csrf");
+  });
 });
+
