@@ -12,7 +12,7 @@ from starlette.testclient import TestClient
 from app import api_v1, db
 from app.api_v1.esquemas_cotizacion import NuevaCotizacion
 from app.main import app
-from app.servicios import acceso, costo, cotizacion, viajes
+from app.servicios import acceso, consultas, costo, cotizacion, viajes
 
 MOAB = {"nombre": "Moab", "region": "Utah", "pais": "Estados Unidos", "lat": 38.57332, "lon": -109.54984}
 
@@ -312,6 +312,8 @@ def test_decidir_por_la_api_crea_el_viaje(piloto, cliente):
     assert DINERO.match(d["total_usd"])
     v = viajes.de_solicitud(c["id"])
     assert v["usuario_id"] == _cuenta("piloto@demo.local")["id"] and hecha["viaje"]["id"] == v["id"]
+    # el presupuesto que aprueba administración (sin riesgo de cambio ni millas, con viáticos), no el costo esperado
+    assert hecha["viaje"]["presupuesto_usd"] == consultas.dinero(v["presupuesto_usd"])
     # el mismo envío otra vez no duplica nada
     assert piloto.post(ruta, json=decision, headers=_csrf(piloto)).json()["decision"]["id"] == d["id"]
     assert db.uno("select count(*) n from decisiones where solicitud_id=:s", s=c["id"])["n"] == 1

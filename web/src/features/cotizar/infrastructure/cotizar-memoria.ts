@@ -162,11 +162,19 @@ export function crearCotizarMemoria(opciones: {
       }
       const hotel = c.hoteles.find((h) => h.id === decision.hotel_id) ?? null;
       const total = (Number(vuelo.costo_total_usd ?? 0) + Number(hotel?.total_usd ?? 0)).toFixed(2);
-      const viaje = c.viaje ?? {
-        id: siguienteViaje,
-        codigo: `V-2026-${String(siguienteViaje++).padStart(4, "0")}`,
-        estado: "pendiente_aprobacion" as const,
-        estado_texto: "Pendiente de aprobación",
+      // El presupuesto no lleva el riesgo de cambio ni las millas (solo sirven para comparar)
+      const d = vuelo.desglose;
+      const presupuesto = [d.precio_usd, d.equipaje_usd, d.traslado_usd, hotel?.total_usd ?? null, c.carro_usd]
+        .reduce((suma, v) => suma + Number(v ?? 0), 0)
+        .toFixed(2);
+      const viaje = {
+        ...(c.viaje ?? {
+          id: siguienteViaje,
+          codigo: `V-2026-${String(siguienteViaje++).padStart(4, "0")}`,
+          estado: "pendiente_aprobacion" as const,
+          estado_texto: "Pendiente de aprobación",
+        }),
+        presupuesto_usd: presupuesto,
       };
       const decidida: Cotizacion = {
         ...c,

@@ -161,6 +161,7 @@ export const cotizacionSchema = z.object({
       codigo: z.string(),
       estado: z.enum(["pendiente_aprobacion", "aprobado", "rechazado", "cerrado"]),
       estado_texto: z.string(),
+      presupuesto_usd: dineroSchema,
     })
     .nullable(),
   puede_decidir: z.boolean(),

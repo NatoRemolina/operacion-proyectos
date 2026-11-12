@@ -109,6 +109,10 @@ describe("Comparación de una cotización", () => {
 
     const confirmacion = await screen.findByRole("heading", { name: /^Viaje V-2026-\d{4} creado, pendiente de aprobación$/ });
     expect(confirmacion).toHaveFocus();
+    // el presupuesto que aprueba administración: sin riesgo de cambio ni millas
+    const presupuesto = (Number(OTRA.desglose.precio_usd) + Number(OTRA.desglose.equipaje_usd) +
+      Number(OTRA.desglose.traslado_usd) + Number(COTIZACION_MOAB.carro_usd)).toFixed(2);
+    expect(screen.getByText("Presupuesto para aprobar:").nextElementSibling).toHaveTextContent(dinero(presupuesto));
     expect(screen.getByRole("link", { name: "Ver mis viajes" })).toHaveAttribute("href", "/viajes");
     expect(screen.getByRole("link", { name: "Cotizar otro viaje" })).toHaveAttribute("href", "/cotizar");
     expect(screen.queryByRole("button", { name: "Guardar decisión y enviar a aprobación" })).not.toBeInTheDocument();
@@ -129,7 +133,7 @@ describe("Comparación de una cotización", () => {
       bloqueo: "El viaje V-2026-0031 ya está aprobado: para cambiar la decisión, administración debe reabrirlo.",
       decision: { id: 3, vuelo_id: RECOMENDADA.id, hotel_id: null, motivo: null, razones: [], total_usd: "980.00",
         siguio_recomendacion: true, creado: "2026-11-12T20:00:00Z" },
-      viaje: { id: 31, codigo: "V-2026-0031", estado: "aprobado", estado_texto: "Aprobado" },
+      viaje: { id: 31, codigo: "V-2026-0031", estado: "aprobado", estado_texto: "Aprobado", presupuesto_usd: "1240.58" },
     };
     renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(aprobada) });
     expect(await screen.findByText(/administración debe reabrirlo/)).toBeInTheDocument();

@@ -196,6 +196,8 @@ export interface Cotizacion {
     readonly codigo: string;
     readonly estado: EstadoViajeCotizado;
     readonly estado_texto: string;
+    /** Lo que aprueba administración: sin riesgo de cambio ni millas, con viáticos. */
+    readonly presupuesto_usd: Dinero;
   } | null;
   readonly puede_decidir: boolean;
   readonly bloqueo: string | null;

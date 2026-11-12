@@ -226,8 +226,10 @@ interface Cotizacion {
   hoteles: OpcionHotel[];                     // del menor al mayor total
   recomendada_id: number | null; mas_barata_id: number | null;
   decision: { id: number; vuelo_id: number; hotel_id: number | null; motivo: string | null; razones: string[];
-              total_usd: Dinero; siguio_recomendacion: boolean; creado: string } | null;
-  viaje: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string } | null;
+              total_usd: Dinero;              // costo total esperado de lo decidido (con riesgo de cambio y millas)
+              siguio_recomendacion: boolean; creado: string } | null;
+  viaje: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string;
+           presupuesto_usd: Dinero } | null; // lo que aprueba administración: sin riesgo ni millas, con viáticos
   puede_decidir: boolean;                     // la persona puede guardar o cambiar la decisión ahora
   bloqueo: string | null;                     // por qué ya no, si es el caso
 }

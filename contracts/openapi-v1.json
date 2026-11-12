@@ -1641,7 +1641,7 @@
               }
             ],
             "title": "Total Usd",
-            "description": "Presupuesto previsto de la decisión."
+            "description": "Costo total esperado de lo decidido (vuelo con riesgo y millas, hotel y carro)."
           },
           "siguio_recomendacion": {
             "type": "boolean",
@@ -3579,6 +3579,18 @@
           "estado_texto": {
             "type": "string",
             "title": "Estado Texto"
+          },
+          "presupuesto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto Usd",
+            "description": "Lo que aprueba administración: vuelo, equipaje, hotel, carro y viáticos; sin el riesgo de cambio ni las millas, que solo sirven para comparar."
           }
         },
         "type": "object",
@@ -3586,7 +3598,8 @@
           "id",
           "codigo",
           "estado",
-          "estado_texto"
+          "estado_texto",
+          "presupuesto_usd"
         ],
         "title": "ViajeDeCotizacion"
       },

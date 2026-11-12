@@ -258,7 +258,8 @@ def _cotizacion(yo: dict, sid: int) -> dict:
         "decision": {"id": d["id"], "vuelo_id": d["vuelo_id"], "hotel_id": d["hotel_id"], "motivo": d["motivo"] or None,
                      "razones": db.de_json(d["razones"], []) or [], "total_usd": consultas.dinero(d["total"]),
                      "siguio_recomendacion": bool(d["siguio_recomendacion"]), "creado": consultas.instante(d["creado"])} if d else None,
-        "viaje": {k: viaje[k] for k in ("id", "codigo", "estado", "estado_texto")} if viaje else None,
+        "viaje": {**{k: viaje[k] for k in ("id", "codigo", "estado", "estado_texto")},
+                  "presupuesto_usd": consultas.dinero(viaje["presupuesto_usd"])} if viaje else None,
         "puede_decidir": acceso.es_propio(yo, sol) and not bloqueo and bool(c["vuelos"] or c["descartados"]),
         "bloqueo": bloqueo,
     }

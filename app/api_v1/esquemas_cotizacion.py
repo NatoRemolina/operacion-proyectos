@@ -205,7 +205,7 @@ class DecisionCotizacion(BaseModel):
     hotel_id: int | None
     motivo: str | None
     razones: list[str]
-    total_usd: Dinero = Field(description="Presupuesto previsto de la decisión.")
+    total_usd: Dinero = Field(description="Costo total esperado de lo decidido (vuelo con riesgo y millas, hotel y carro).")
     siguio_recomendacion: bool
     creado: str
 
@@ -215,6 +215,8 @@ class ViajeDeCotizacion(BaseModel):
     codigo: str
     estado: EstadoViaje
     estado_texto: str
+    presupuesto_usd: Dinero = Field(description="Lo que aprueba administración: vuelo, equipaje, hotel, carro y viáticos; "
+                                                "sin el riesgo de cambio ni las millas, que solo sirven para comparar.")
 
 
 class Cotizacion(BaseModel):

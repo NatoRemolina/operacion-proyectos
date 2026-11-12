@@ -104,7 +104,7 @@ function VistaCotizacion({ c, migas }: { c: Cotizacion; migas: { texto: string; 
 function Dato({ nombre, valor }: { nombre: string; valor: string }) {
   return (
     <div className="flex gap-2">
-      <dt className="text-texto-secundario">{nombre}:</dt>
+      <dt className="shrink-0 whitespace-nowrap text-texto-secundario">{nombre}:</dt>
       <dd className="font-semibold">{valor}</dd>
     </div>
   );
@@ -251,7 +251,7 @@ function DecisionGuardada({
       </h2>
       <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
         <Dato nombre="Estado del viaje" valor={viaje.estado_texto} />
-        <Dato nombre="Presupuesto previsto" valor={formatearDinero(d.total_usd)} />
+        <Dato nombre="Presupuesto para aprobar" valor={formatearDinero(viaje.presupuesto_usd)} />
         {vuelo ? <Dato nombre="Vuelo elegido" valor={`${nombreVuelo(vuelo)} (${hora(vuelo.sale)})`} /> : null}
         <Dato nombre="Hotel" valor={hotel?.nombre ?? "Sin hotel en esta decisión"} />
         {d.motivo ? <Dato nombre="Por qué" valor={d.motivo} /> : null}
