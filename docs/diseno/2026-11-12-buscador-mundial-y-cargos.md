@@ -106,6 +106,13 @@ Los datos se preparan con un script (`datos/geografia.py`) que descarga, filtra 
 - La búsqueda de hotel usa el lugar de destino, no la ciudad del aeropuerto.
 - Las respuestas ya guardadas con un solo código (por ejemplo, Miami a Las Vegas) siguen funcionando igual.
 
+### Lo que dice la documentación del buscador (revisada el 12 de noviembre)
+
+- `departure_id` y `arrival_id` aceptan códigos IATA o el identificador de un lugar de Google (kgmid, como `/m/0vzm` para Austin), y varios separados por coma. El kgmid deja que Google elija los aeropuertos de una ciudad, pero no resuelve pueblos ni el traslado por carretera. Por eso se usa la lista de aeropuertos cercanos propia.
+- **Ida y vuelta (`type=1`) devuelve solo los vuelos de ida.** Para conocer el vuelo de regreso hace falta otra consulta con el `departure_token` de la opción elegida. Para tener los números de vuelo del regreso, que el monitoreo necesita, al guardar la decisión se hace **una** consulta extra, solo para la opción elegida. Total: una búsqueda al cotizar y una al decidir.
+- `deep_search=true` da resultados idénticos a los del navegador, pero tarda más. Queda desactivado por velocidad y como regla editable.
+- Otros parámetros útiles para después, fuera de alcance del viernes: `stops` (máximo de escalas), `exclude_basic` (excluir tarifas básicas, solo vuelos nacionales de Estados Unidos), `travel_class`, `adults` (varias personas en el mismo viaje) y `type=3` (multiciudad).
+
 ## Roles: cambios concretos
 
 - El valor guardado del rol pasa de `piloto` a `colaborador`, con una migración idempotente que actualiza filas y la restricción de la tabla. El contrato de la API v1 (`Rol`) y la web Next.js se actualizan en el mismo cambio; hoy no hay consumidores externos.
