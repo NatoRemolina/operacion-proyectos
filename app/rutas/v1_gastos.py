@@ -1,14 +1,68 @@
-"""API v1: gastos visibles para la persona, envío de un recibo y su archivo original. Contrato en `contracts/api-v1.md`."""
+"""API v1: gastos visibles para la persona, envío de un recibo, su archivo original y la revisión de administración.
+
+Contrato en `contracts/api-v1.md`.
+"""
+from typing import Literal
+
 from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
-from ..api_v1.esquemas import EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, errores
-from ..servicios import consultas, envios, justificaciones, viajes
+from ..api_v1.esquemas import Dinero, EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, errores
+from ..servicios import acceso, consultas, dinero, envios, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
 
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
+
+
+class GastoRevisable(GastoDetalle):
+    version: int = Field(description="Versión del gasto. La revisión la manda de vuelta para no pisar un cambio ajeno.")
+    motivo_rechazo: str | None = Field(description="Por qué se rechazó, con las palabras de quien revisó.")
+
+
+class RevisionGasto(BaseModel):
+    """Una revisión de administración. Los campos de datos que no se mandan se conservan como están."""
+    model_config = ConfigDict(extra="forbid")
+    version: int = Field(ge=0, description="La `version` del gasto que vio quien revisa.")
+    accion: Literal["guardar", "aprobar", "excepcion", "rechazar"] = Field(
+        description="`guardar` corrige y deja en revisión; `aprobar` aprueba si las reglas lo permiten (si no, guarda y "
+                    "sigue en revisión); `excepcion` aprueba lo que las reglas no dejan pasar, con motivo; `rechazar`, con motivo.")
+    motivo: str = Field("", max_length=500, description="Obligatorio para rechazar (5 caracteres o más) y para la excepción (8 o más).")
+    comercio: str | None = Field(None, max_length=200)
+    fecha: str | None = Field(None, max_length=10, description="AAAA-MM-DD")
+    categoria: str | None = Field(None, max_length=40)
+    subtotal: Dinero = None
+    impuesto: Dinero = None
+    propina: Dinero = None
+    total: Dinero = None
+    moneda: str | None = Field(None, max_length=3)
+    metodo_pago: str | None = Field(None, max_length=200)
+    canal_reserva: str | None = Field(None, max_length=200)
+    viaje_id: int | None = Field(None, ge=0, description="Omitido conserva el viaje; 0 lo quita.")
+
+
+def _revisable(yo: dict, id: int) -> dict | None:
+    g = consultas.gasto(yo, id)
+    if not g:
+        return None
+    extra = db.uno("select version, motivo_rechazo from gastos where id=:i", i=id)
+    return {**g, "version": extra["version"] or 0, "motivo_rechazo": extra["motivo_rechazo"]}
+
+
+def _campos(datos: RevisionGasto) -> dict:
+    """Los datos que se mandaron. Un importe que no es un número finito se rechaza aquí; uno negativo o cero lo marcan las reglas."""
+    campos = datos.model_dump(exclude_unset=True, exclude={"version", "accion", "motivo", "viaje_id"})
+    for c in ("subtotal", "impuesto", "propina", "total"):
+        if campos.get(c) is not None:
+            try:
+                campos[c] = float(dinero.decimal(campos[c]))
+            except ValueError as e:
+                raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {c: "Debe ser un importe como \"54.00\"."}) from e
+    if campos.get("moneda"):
+        campos["moneda"] = campos["moneda"].upper().strip()
+    return campos
 
 
 def _no_encontrado() -> ErrorApi:
@@ -23,15 +77,15 @@ def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, pagina
     return consultas.lista_gastos(yo, viaje_id, estado, limite, cursor)
 
 
-@router.get("/gastos/{id}", response_model=GastoDetalle, responses=errores(401, 404, 422))
+@router.get("/gastos/{id}", response_model=GastoRevisable, responses=errores(401, 404, 422))
 def detalle(id: int, yo: dict = Depends(persona)):
-    g = consultas.gasto(yo, id)
+    g = _revisable(yo, id)
     if not g:
         raise _no_encontrado()
     return g
 
 
-@router.post("/gastos", status_code=201, response_model=GastoDetalle, responses=errores(401, 403, 409, 413, 415, 422))
+@router.post("/gastos", status_code=201, response_model=GastoRevisable, responses=errores(401, 403, 409, 413, 415, 422))
 def enviar(response: Response, archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."),
            viaje_id: int | None = Form(None, description="Opcional. Sin él, se usa el viaje que corresponde hoy a la persona."),
            justificacion: str | None = Form(None, max_length=2000,
@@ -69,13 +123,32 @@ def enviar(response: Response, archivo: UploadFile = File(..., description="Foto
         raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"archivo": str(e)}) from e
     if repetido:
         response.status_code = 200
-        return consultas.gasto(yo, gid)
+        return _revisable(yo, gid)
     if justificacion and len(justificacion.strip()) >= justificaciones.MINIMO:
         justificaciones.registrar(gid, yo, "api", justificacion)
-    return consultas.gasto(yo, gid)
+    return _revisable(yo, gid)
 
 
-@router.post("/gastos/{id}/justificaciones", status_code=201, response_model=GastoDetalle, responses=errores(401, 403, 404, 422))
+@router.post("/gastos/{id}/revision", response_model=GastoRevisable, responses=errores(401, 403, 404, 409, 422))
+def revisar(id: int, datos: RevisionGasto, yo: dict = Depends(escritura)):
+    """Revisión de administración, con las mismas reglas que la web: versión esperada, nadie revisa lo suyo,
+    motivo para rechazar y saldo del viaje releído con el viaje bloqueado. 200 con el gasto y su versión nueva."""
+    if not acceso.es_admin(yo):
+        raise ErrorApi(403, "FORBIDDEN", "Esta operación es solo para administración.")
+    try:
+        revision.guardar(id, yo, datos.version, datos.accion, _campos(datos), datos.motivo, viaje_id=datos.viaje_id)
+    except LookupError as e:
+        raise _no_encontrado() from e
+    except revision.RevisionImpedida as e:
+        raise ErrorApi(403, "FORBIDDEN", str(e)) from e
+    except revision.ConflictoRevision as e:
+        raise ErrorApi(409, "EDIT_CONFLICT", str(e)) from e
+    except ValueError as e:
+        raise ErrorApi(422, "VALIDATION_ERROR", str(e)) from e
+    return _revisable(yo, id)
+
+
+@router.post("/gastos/{id}/justificaciones", status_code=201, response_model=GastoRevisable, responses=errores(401, 403, 404, 422))
 def justificar(id: int, cuerpo: NuevaJustificacion, yo: dict = Depends(escritura)):
     """Añade por escrito para qué fue el gasto. Solo quien lo hizo o quien viaja puede justificarlo."""
     g = consultas.gasto(yo, id)
@@ -88,7 +161,7 @@ def justificar(id: int, cuerpo: NuevaJustificacion, yo: dict = Depends(escritura
         justificaciones.registrar(id, yo, "api", cuerpo.texto)
     except justificaciones.JustificacionRechazada as e:
         raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"texto": str(e)}) from e
-    return consultas.gasto(yo, id)
+    return _revisable(yo, id)
 
 
 @router.get("/documentos/{id}/contenido", response_class=Response, responses={

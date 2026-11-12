@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from .. import config, db
-from . import almacen, envios, eventos, extraccion, llm, validacion
+from . import almacen, envios, eventos, extraccion, llm, revision, validacion
 
 
 class SoporteRechazado(ValueError):
@@ -174,6 +174,7 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c != "ciudad"}, confianza=x["confianza"],
                       origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"],
                       total_usd=r["total_usd"], extraido=None if x.get("error") else original)
+        revision.subir_version(gid)   # quien abrió el gasto mientras se leía tiene que ver los datos leídos antes de revisar
         eventos.registrar("gasto", gid, "aprobado sin intervención" if r["estado"] == "aprobado_auto" else "enviado a revisión",
                           " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
         if op:
@@ -220,6 +221,7 @@ def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
                 raise ValueError(f"El viaje {viaje['codigo']} no admite este gasto ya aprobado: " + " ".join(r["alertas"]))
             cambios["total_usd"] = r["total_usd"]
         db.actualizar("gastos", gasto_id, **cambios)
+        revision.subir_version(gasto_id)
         if g["documento_id"]:
             db.actualizar("documentos", g["documento_id"], viaje_id=viaje["id"])
         eventos.registrar("gasto", gasto_id, "asignado a viaje", viaje["codigo"])

@@ -301,7 +301,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GastoDetalle"
+                  "$ref": "#/components/schemas/GastoRevisable"
                 }
               }
             }
@@ -393,7 +393,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GastoDetalle"
+                  "$ref": "#/components/schemas/GastoRevisable"
                 }
               }
             }
@@ -410,6 +410,99 @@
           },
           "404": {
             "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gastos/{id}/revision": {
+      "post": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Revisar",
+        "description": "Revisión de administración, con las mismas reglas que la web: versión esperada, nadie revisa lo suyo,\nmotivo para rechazar y saldo del viaje releído con el viaje bloqueado. 200 con el gasto y su versión nueva.",
+        "operationId": "revisar_api_v1_gastos__id__revision_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionGasto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GastoRevisable"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Misma Idempotency-Key con un archivo distinto",
             "content": {
               "application/json": {
                 "schema": {
@@ -466,7 +559,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GastoDetalle"
+                  "$ref": "#/components/schemas/GastoRevisable"
                 }
               }
             }
@@ -806,7 +899,125 @@
         ],
         "title": "DetalleError"
       },
-      "GastoDetalle": {
+      "GastoResumen": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViajeCodigo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "procesando",
+              "revision",
+              "aprobado_auto",
+              "aprobado",
+              "rechazado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "viaje",
+          "comercio",
+          "fecha",
+          "categoria",
+          "total",
+          "moneda",
+          "total_usd",
+          "estado",
+          "estado_texto",
+          "creado"
+        ],
+        "title": "GastoResumen"
+      },
+      "GastoRevisable": {
         "properties": {
           "id": {
             "type": "integer",
@@ -978,6 +1189,23 @@
             },
             "type": "array",
             "title": "Justificaciones"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Versión del gasto. La revisión la manda de vuelta para no pisar un cambio ajeno."
+          },
+          "motivo_rechazo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo Rechazo",
+            "description": "Por qué se rechazó, con las palabras de quien revisó."
           }
         },
         "type": "object",
@@ -1001,127 +1229,11 @@
           "canal",
           "documento_id",
           "lectura",
-          "justificaciones"
+          "justificaciones",
+          "version",
+          "motivo_rechazo"
         ],
-        "title": "GastoDetalle"
-      },
-      "GastoResumen": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "viaje": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ViajeCodigo"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "comercio": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Comercio"
-          },
-          "fecha": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fecha"
-          },
-          "categoria": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Categoria"
-          },
-          "total": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total"
-          },
-          "moneda": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Moneda"
-          },
-          "total_usd": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Usd"
-          },
-          "estado": {
-            "type": "string",
-            "enum": [
-              "procesando",
-              "revision",
-              "aprobado_auto",
-              "aprobado",
-              "rechazado"
-            ],
-            "title": "Estado"
-          },
-          "estado_texto": {
-            "type": "string",
-            "title": "Estado Texto"
-          },
-          "creado": {
-            "type": "string",
-            "title": "Creado"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "viaje",
-          "comercio",
-          "fecha",
-          "categoria",
-          "total",
-          "moneda",
-          "total_usd",
-          "estado",
-          "estado_texto",
-          "creado"
-        ],
-        "title": "GastoResumen"
+        "title": "GastoRevisable"
       },
       "Ingreso": {
         "properties": {
@@ -1421,6 +1533,172 @@
           "request_id"
         ],
         "title": "RespuestaError"
+      },
+      "RevisionGasto": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version",
+            "description": "La `version` del gasto que vio quien revisa."
+          },
+          "accion": {
+            "type": "string",
+            "enum": [
+              "guardar",
+              "aprobar",
+              "excepcion",
+              "rechazar"
+            ],
+            "title": "Accion",
+            "description": "`guardar` corrige y deja en revisión; `aprobar` aprueba si las reglas lo permiten (si no, guarda y sigue en revisión); `excepcion` aprueba lo que las reglas no dejan pasar, con motivo; `rechazar`, con motivo."
+          },
+          "motivo": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Motivo",
+            "description": "Obligatorio para rechazar (5 caracteres o más) y para la excepción (8 o más).",
+            "default": ""
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha",
+            "description": "AAAA-MM-DD"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "subtotal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotal"
+          },
+          "impuesto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impuesto"
+          },
+          "propina": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Propina"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "metodo_pago": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metodo Pago"
+          },
+          "canal_reserva": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canal Reserva"
+          },
+          "viaje_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viaje Id",
+            "description": "Omitido conserva el viaje; 0 lo quita."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "accion"
+        ],
+        "title": "RevisionGasto",
+        "description": "Una revisión de administración. Los campos de datos que no se mandan se conservan como están."
       },
       "Sesion": {
         "properties": {

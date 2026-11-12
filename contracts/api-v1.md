@@ -34,6 +34,7 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 403 | `FORBIDDEN` | Operación reservada a otro rol |
 | 404 | `NOT_FOUND` | No existe o no es visible para la persona |
 | 409 | `IDEMPOTENCY_CONFLICT` | Misma `Idempotency-Key` con un archivo distinto o con otro `viaje_id` |
+| 409 | `EDIT_CONFLICT` | La revisión trae una `version` que ya no es la del gasto, o el recibo todavía se está leyendo |
 | 409 | `REQUEST_IN_PROGRESS` | El primer envío con esa clave todavía no creó su gasto: reintentar con la misma clave |
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF ni correo |
@@ -90,6 +91,8 @@ interface GastoDetalle extends GastoResumen {
   documento_id: number | null;
   lectura: { origen: string; confianza: number | null };
   justificaciones: Justificacion[];           // en orden de llegada
+  version: number;                            // sube con cada cambio; la revisión la manda de vuelta
+  motivo_rechazo: string | null;              // por qué se rechazó, si se rechazó
 }
 
 interface Justificacion {
@@ -134,6 +137,18 @@ Parámetros: `viaje_id`, `estado` (opcionales), `limite`, `cursor`. Mismo alcanc
 - Si la lectura se interrumpe, el gasto no queda `procesando`: pasa a `revision` con el motivo `lectura_fallida`, y el reintento con la misma clave lo devuelve.
 - Errores: 413, 415, 422.
 
+### `POST /gastos/{id}/revision`
+Solo administración. Cuerpo JSON `RevisionGasto` y `X-CSRF-Token`:
+`{"version": 3, "accion": "guardar|aprobar|excepcion|rechazar", "motivo": "...", "total": "54.00", "moneda": "USD", ..., "viaje_id": 12}`.
+Los campos de datos que no se mandan se conservan; los importes van como cadena. Es la misma regla que la revisión de la web (`app/servicios/revision.py`):
+
+- `version` debe ser la del gasto: si otra persona lo cambió mientras tanto (u otro proceso, como la lectura o la asignación de viaje), 409 `EDIT_CONFLICT` y no se aplica nada. Cada revisión sube la versión.
+- Nadie revisa ni aprueba lo suyo, tampoco un administrador: 403 `FORBIDDEN` con el mensaje, y el intento queda en la auditoría.
+- `rechazar` exige `motivo` de 5 caracteres o más (si no, 422); se guarda en `motivo_rechazo`, queda en el evento y le llega a la persona por Telegram si tiene el chat vinculado.
+- `aprobar` vuelve a evaluar las reglas con el viaje bloqueado: si no pasan, guarda las correcciones y el gasto sigue en `revision` (200, con sus `motivos`). `excepcion` aprueba con `motivo` de 8 caracteres o más, salvo un importe o una fecha que no son válidos, o sin total, moneda o tasa (422).
+- Un importe que no es un número finito: 422 por campo. Uno negativo o cero se guarda y queda en revisión con `importe_invalido`.
+- 200 `GastoDetalle` con la `version` nueva. 404 si el gasto no existe.
+
 ### `POST /gastos/{id}/justificaciones`
 Cuerpo JSON `{"texto": string}` (3 a 2.000 caracteres) y `X-CSRF-Token`. Añade para qué fue el gasto, con las palabras de la persona. 201 `GastoDetalle` con la justificación nueva al final. Solo justifica quien hizo el gasto o quien viaja: un gasto que la persona ve pero no es suyo (el gestor, administración) responde 403 `FORBIDDEN`; uno que no ve, 404. Texto vacío o muy corto: 422. Las notas de voz entran por la web o por Telegram; ver `docs/justificaciones.md`.
 
@@ -142,4 +157,4 @@ El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `appl
 
 ## Fuera de este contrato (siguientes fases)
 
-Cotizar y decidir, transiciones del viaje, revisión de gastos (guardar, aprobar, rechazar, excepción), reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Ver la sección 9 del plan fullstack.
+Cotizar y decidir, transiciones del viaje, reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Ver la sección 9 del plan fullstack.

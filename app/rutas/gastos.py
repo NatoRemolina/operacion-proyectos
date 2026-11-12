@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import acceso, almacen, envios, eventos, justificaciones, telegram, validacion, viajes
+from ..servicios import acceso, almacen, envios, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
 from ..web import (
     NO_ENCONTRADO,
@@ -112,13 +112,13 @@ def gastos_ejemplos(nombres: list[str] = Form([]), proyecto_id: int = Form(0), v
 
 
 @router.get("/gastos/{gid}", response_class=HTMLResponse)
-def gasto(request: Request, gid: int, aviso: str = ""):
+def gasto(request: Request, gid: int, aviso: str = "", revision: str = ""):
     g = db.uno("""select g.*, d.nombre archivo, d.mime, d.canal from gastos g
                   left join documentos d on d.id=g.documento_id where g.id=:i""", i=gid) if _gasto_propio(gid) else None
     if not g:
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "gasto.html", _ctx(
-        g=g, alertas=db.de_json(g["alertas"], []), el_viaje=viajes.uno(g["viaje_id"]), aviso=aviso[:300],
+        g=g, alertas=db.de_json(g["alertas"], []), el_viaje=viajes.uno(g["viaje_id"]), aviso=aviso[:300], aviso_revision=revision[:300],
         propio=viajes.gasto_propio_de(g, _yo()), no_autorrevisar=viajes.NO_AUTORREVISAR,
         hay_otro_admin=acceso.es_admin(_yo()) and viajes.hay_otro_admin(_yo()),
         justifs=justificaciones.de_gasto(gid), puede_justificar=justificaciones.puede_justificar(_yo(), g),
@@ -194,56 +194,29 @@ def _numero(texto: str):
 def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0), viajero_id: int = Form(0),
                   comercio: str = Form(""), fecha: str = Form(""), categoria: str = Form("otros"),
                   subtotal: str = Form(""), impuesto: str = Form(""), propina: str = Form(""), total: str = Form(""),
-                  moneda: str = Form(""), metodo_pago: str = Form(""), canal_reserva: str = Form(""), revisor: str = Form(""),
-                  motivo_excepcion: str = Form(""), viaje_id: int = Form(-1)):
-    # Revisar es tarea de administración, y nadie revisa su propio gasto (la regla vive en el servicio)
+                  moneda: str = Form(""), metodo_pago: str = Form(""), canal_reserva: str = Form(""),
+                  motivo_excepcion: str = Form(""), motivo_rechazo: str = Form(""), viaje_id: int = Form(-1),
+                  version: int = Form(-1)):
+    """Revisión de administración. Las reglas (versión, nadie revisa lo suyo, motivo, saldo del viaje) viven en
+    `servicios/revision.py` y son las mismas de la API v1. El formulario manda la versión que vio quien revisa."""
     if not acceso.es_admin(_yo()):
         return SOLO_ADMIN
-    previo = db.uno("select id, viaje_id, viajero_id, usuario_id from gastos where id=:i", i=gid)
-    if not previo:
-        return NO_ENCONTRADO
-    # El formulario puede cambiar el viaje; si no lo trae, se conserva el que tenía
-    el_viaje = viajes.uno(previo["viaje_id"] if viaje_id < 0 else viaje_id)
-    if el_viaje:
-        proyecto_id, viajero_id = el_viaje["proyecto_id"] or proyecto_id, el_viaje["viajero_id"] or viajero_id
-    despues = previo if accion == "rechazar" else \
-        {"usuario_id": previo["usuario_id"], "viajero_id": viajero_id or None, "viaje_id": el_viaje["id"] if el_viaje else None}
-    impedido = viajes.revision_permitida(gid, previo, despues, _yo(), accion)
-    if impedido:
-        return RedirectResponse(f"/gastos/{gid}?aviso={quote(impedido)}", status_code=303)
-    revisor = _yo()["nombre"]
-    if accion == "rechazar":
-        db.actualizar("gastos", gid, estado="rechazado", revisado_por=_yo()["id"])
-        eventos.registrar("gasto", gid, "rechazado en revisión", "", revisor or "revisor")
-        telegram.avisar(previo["usuario_id"], f"Tu gasto #{gid} fue rechazado en la revisión.")
-        return RedirectResponse("/gastos?estado=revision", status_code=303)
-    campos ={"comercio": comercio.strip() or None, "fecha": fecha or None, "categoria": categoria,
+    campos = {"comercio": comercio.strip() or None, "fecha": fecha or None, "categoria": categoria,
               "subtotal": _numero(subtotal), "impuesto": _numero(impuesto), "propina": _numero(propina),
               "total": _numero(total), "moneda": moneda.upper().strip() or None,
               "metodo_pago": metodo_pago.strip() or None, "canal_reserva": canal_reserva.strip() or None}
-    # Aprobar relee lo gastado con los viajes bloqueados: dos aprobaciones a la vez no gastan el mismo saldo
-    with db.transaccion() as c:
-        for vid in sorted({previo["viaje_id"], el_viaje["id"] if el_viaje else None} - {None}):
-            fila = db.bloquear_viaje(c, vid)
-            if el_viaje and fila and vid == el_viaje["id"]:
-                el_viaje = {**el_viaje, **fila}
-        proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
-        # Una persona confirmó los datos: la confianza de lectura deja de ser el criterio
-        r = validacion.revisar({**campos, "confianza": 1.0, "dudas": []}, proyecto, gid, el_viaje)
-        estado = "aprobado" if r["estado"] == "aprobado_auto" else "revision"
-        # Excepción justificada: una persona responde por un gasto que las reglas no dejan pasar (dos peajes iguales el mismo día)
-        excepcion = accion == "excepcion" and estado == "revision"
-        if excepcion and len(motivo_excepcion.strip()) < 8:
-            r["alertas"].append("Para aprobar con excepción hay que escribir el motivo.")
-        elif excepcion and campos["total"] is not None and campos["moneda"] and r["total_usd"] is not None:
-            estado = "aprobado"
-            r["alertas"].append(f"Aprobado con excepción: {motivo_excepcion.strip()[:200]}")
-        db.actualizar("gastos", gid, **campos, proyecto_id=proyecto_id or None, viajero_id=viajero_id or None,
-                      viaje_id=el_viaje["id"] if el_viaje else None, estado=estado, alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"], revisado_por=_yo()["id"])
-        paso = "aprobado con excepción" if excepcion and estado == "aprobado" else \
-            "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión"
-        eventos.registrar("gasto", gid, paso, " ".join(r["alertas"]), revisor or "revisor")
-    if estado == "aprobado":
-        telegram.avisar(previo["usuario_id"], f"Tu gasto #{gid} ({campos['comercio'] or 'sin comercio'}, "
-                                              f"{campos['total'] or 0:.2f} {campos['moneda'] or ''}) fue aprobado.")
-    return RedirectResponse("/gastos" if estado == "aprobado" else f"/gastos/{gid}", status_code=303)
+    try:
+        r = revision.guardar(gid, _yo(), version if version >= 0 else None, accion,
+                             None if accion == "rechazar" else campos,
+                             motivo_rechazo if accion == "rechazar" else motivo_excepcion,
+                             # Sin viaje en el formulario se conserva el que tenía; 0 lo quita
+                             viaje_id=None if viaje_id < 0 else viaje_id, proyecto_id=proyecto_id, viajero_id=viajero_id)
+    except LookupError:
+        return NO_ENCONTRADO
+    except revision.RevisionImpedida as e:
+        return RedirectResponse(f"/gastos/{gid}?aviso={quote(str(e))}", status_code=303)
+    except ValueError as e:   # versión vieja, motivo corto, viaje inexistente: se le dice a quien revisa, no se guarda
+        return RedirectResponse(f"/gastos/{gid}?revision={quote(str(e))}", status_code=303)
+    if r["estado"] == "rechazado":
+        return RedirectResponse("/gastos?estado=revision", status_code=303)
+    return RedirectResponse("/gastos" if r["estado"] == "aprobado" else f"/gastos/{gid}", status_code=303)

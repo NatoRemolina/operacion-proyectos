@@ -14,7 +14,7 @@ from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
-from . import eventos
+from . import eventos, revision
 
 VIGENCIA = timedelta(minutes=15)
 LARGO_MAXIMO = 200
@@ -57,6 +57,7 @@ def marcar_interrumpido(gasto_id: int, detalle: str = INTERRUMPIDA) -> bool:
     if hecho:
         db.ejecutar("""update gastos set estado='revision', motivos=:m, alertas=:a where id=:i and estado='procesando'""",
                     i=gasto_id, m=json.dumps(["lectura_fallida"]), a=json.dumps([detalle], ensure_ascii=False))
+        revision.subir_version(gasto_id)
         eventos.registrar("gasto", gasto_id, "enviado a revisión", detalle, "recuperación del envío")
     return bool(hecho)
 

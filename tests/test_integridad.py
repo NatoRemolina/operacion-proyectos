@@ -189,7 +189,7 @@ def _viaje_con_tope(nuevo_viaje, margen: float) -> dict:
 def _gasto_en(v: dict, comercio: str, total: float, estado: str = "revision", **extra) -> int:
     return db.insertar("gastos", **{"viaje_id": v["id"], "proyecto_id": v["proyecto_id"], "viajero_id": v["viajero_id"],
                                     "usuario_id": v["usuario_id"], "comercio": comercio, "fecha": v["ida"], "categoria": "otros",
-                                    "total": total, "moneda": "USD", "confianza": 1.0, "estado": estado, **extra})
+                                    "total": total, "moneda": "USD", "confianza": 1.0, "estado": estado, "creado": db.ahora(), **extra})
 
 
 def test_registrar_valida_con_el_viaje_releido(nuevo_viaje, ejemplos):
@@ -412,3 +412,130 @@ def test_la_pagina_de_carga_envia_la_clave_y_el_servidor_la_respeta(cliente, eje
     assert a.status_code == b.status_code == 200 and a.json()["gastos"] == b.json()["gastos"]
     c = subir(_foto(ejemplos, "web distinto"), "clave-web")
     assert c.status_code == 409 and c.json()["errores"]
+
+
+# ---------- revisión versionada ----------
+def _version(gid) -> int:
+    return db.uno("select version from gastos where id=:i", i=gid)["version"]
+
+
+def test_la_revision_web_exige_la_version_que_se_vio(cliente, nuevo_viaje):
+    v = _viaje_con_tope(nuevo_viaje, 500)
+    gid = _gasto_en(v, "Sonda versión web", 20)
+    try:
+        pagina = cliente.get(f"/gastos/{gid}").text
+        assert f'name="version" value="{_version(gid)}"' in pagina
+        campos = {"comercio": "Sonda versión web", "fecha": v["ida"], "categoria": "otros", "total": "20", "moneda": "USD"}
+        vista = _version(gid)
+        db.ejecutar("update gastos set version=version+1 where id=:i", i=gid)   # otra persona lo cambió mientras tanto
+        r = cliente.post(f"/gastos/{gid}", data={**campos, "accion": "aprobar", "version": vista}, follow_redirects=False)
+        assert r.status_code == 303 and db.uno("select estado from gastos where id=:i", i=gid)["estado"] == "revision"
+        assert "Otra persona cambió" in cliente.get(r.headers["location"]).text
+        r = cliente.post(f"/gastos/{gid}", data={**campos, "accion": "aprobar", "version": _version(gid)}, follow_redirects=False)
+        assert db.uno("select estado from gastos where id=:i", i=gid)["estado"] == "aprobado" and _version(gid) == vista + 2
+    finally:
+        _sin_rastro(gid)
+
+
+def test_rechazar_exige_motivo_lo_guarda_y_avisa_por_telegram(cliente, nuevo_viaje, monkeypatch):
+    from app.servicios import telegram
+    avisos = []
+    v = nuevo_viaje()
+    monkeypatch.setattr(telegram, "avisar", lambda uid, texto: avisos.append((uid, texto)))
+    gid = _gasto_en(v, "Sonda rechazo", 20)
+    try:
+        r = cliente.post(f"/gastos/{gid}", data={"accion": "rechazar", "motivo_rechazo": "no", "version": 0}, follow_redirects=False)
+        assert db.uno("select estado from gastos where id=:i", i=gid)["estado"] == "revision" and not avisos
+        assert "motivo" in cliente.get(r.headers["location"]).text
+        alertas = db.uno("select alertas from gastos where id=:i", i=gid)["alertas"]
+        assert "motivo" not in (alertas or "")   # el aviso al revisor no se guarda como alerta del gasto
+        cliente.post(f"/gastos/{gid}", data={"accion": "rechazar", "motivo_rechazo": "Recibo de otro viaje", "version": 0})
+        g = db.uno("select estado, motivo_rechazo, revisado_por, version from gastos where id=:i", i=gid)
+        assert g["estado"] == "rechazado" and g["motivo_rechazo"] == "Recibo de otro viaje" and g["version"] == 1
+        assert avisos == [(v["usuario_id"], avisos[0][1])] and "Recibo de otro viaje" in avisos[0][1] and f"#{gid}" in avisos[0][1]
+        evento = db.uno("select * from eventos where entidad='gasto' and entidad_id=:i and paso='rechazado en revisión'", i=gid)
+        assert "Recibo de otro viaje" in evento["detalle"] and evento["fuente"]
+        assert "Recibo de otro viaje" in cliente.get(f"/gastos/{gid}").text
+    finally:
+        _sin_rastro(gid)
+
+
+def test_excepcion_sin_motivo_no_se_guarda_como_alerta(cliente, nuevo_viaje):
+    v = nuevo_viaje()
+    base = _gasto_en(v, "Sonda excepción", 20, estado="aprobado", total_usd=20)
+    gid = _gasto_en(v, "Sonda excepción", 20)   # duplicado exacto: las reglas no lo dejan pasar
+    try:
+        campos = {"comercio": "Sonda excepción", "fecha": v["ida"], "categoria": "otros", "total": "20", "moneda": "USD"}
+        cliente.post(f"/gastos/{gid}", data={**campos, "accion": "excepcion", "motivo_excepcion": "corto", "version": 0})
+        g = db.uno("select estado, alertas, version from gastos where id=:i", i=gid)
+        assert g["estado"] == "revision" and g["version"] == 0 and "motivo" not in (g["alertas"] or "")
+    finally:
+        _sin_rastro(gid, base)
+
+
+def _revisar_api(c, gid, **cuerpo):
+    return c.post(f"/api/v1/gastos/{gid}/revision", json=cuerpo, headers=_csrf(c))
+
+
+def test_revision_por_la_api_con_version_csrf_y_permisos(cliente, piloto, nuevo_viaje, monkeypatch):
+    from app.servicios import telegram
+    avisos = []
+    v = nuevo_viaje()
+    monkeypatch.setattr(telegram, "avisar", lambda uid, texto: avisos.append((uid, texto)))
+    gid = _gasto_en(v, "Sonda API", 20)
+    try:
+        datos = {"version": 0, "accion": "rechazar", "motivo": "No corresponde al viaje"}
+        assert piloto.get(f"/api/v1/gastos/{gid}").json()["version"] == 0
+        assert _revisar_api(piloto, gid, **datos).status_code == 403
+        assert cliente.post(f"/api/v1/gastos/{gid}/revision", json=datos).status_code == 403   # sin token CSRF
+        r = _revisar_api(cliente, gid, **{**datos, "motivo": "no"})
+        assert r.status_code == 422 and r.json()["error"]["code"] == "VALIDATION_ERROR"
+        r = _revisar_api(cliente, gid, **datos)
+        assert r.status_code == 200 and r.json()["estado"] == "rechazado" and r.json()["version"] == 1
+        assert r.json()["motivo_rechazo"] == "No corresponde al viaje" and avisos
+        r = _revisar_api(cliente, gid, **datos)
+        assert r.status_code == 409 and r.json()["error"]["code"] == "EDIT_CONFLICT"
+        assert _revisar_api(cliente, 99999999, **datos).status_code == 404
+    finally:
+        _sin_rastro(gid)
+
+
+def test_la_api_aprueba_y_corrige_con_las_mismas_reglas(cliente, nuevo_viaje):
+    v = _viaje_con_tope(nuevo_viaje, 500)
+    gid = _gasto_en(v, "Sonda API aprobar", 20)
+    try:
+        r = _revisar_api(cliente, gid, version=0, accion="aprobar", total="abc")
+        assert r.status_code == 422
+        r = _revisar_api(cliente, gid, version=0, accion="aprobar", total="-5")
+        assert r.status_code == 200 and r.json()["estado"] == "revision" and "importe_invalido" in r.json()["motivos"]
+        r = _revisar_api(cliente, gid, version=1, accion="aprobar", total="25.50")
+        assert r.status_code == 200 and r.json()["estado"] == "aprobado" and r.json()["total"] == "25.50"
+    finally:
+        _sin_rastro(gid)
+
+
+def test_un_admin_no_aprueba_su_propio_gasto_por_la_api(cliente):
+    yo = db.uno("select * from usuarios where correo='admin@demo.local'")
+    gid = db.insertar("gastos", usuario_id=yo["id"], viajero_id=yo["viajero_id"], comercio="Sonda propia", fecha="2026-10-05",
+                      total=12, moneda="USD", confianza=1.0, estado="revision", creado=db.ahora())
+    try:
+        for accion, extra in (("aprobar", {}), ("rechazar", {"motivo": "Me lo rechazo yo"}), ("excepcion", {"motivo": "Excepción propia"})):
+            r = _revisar_api(cliente, gid, version=0, accion=accion, **extra)
+            assert r.status_code == 403 and "Nadie revisa sus propios gastos" in r.json()["error"]["message"]
+        assert db.uno("select estado, version from gastos where id=:i", i=gid) == {"estado": "revision", "version": 0}
+        intentos = db.todos("select id from eventos where entidad='gasto' and entidad_id=:i and paso='autoaprobación impedida'", i=gid)
+        assert len(intentos) == 3
+    finally:
+        _sin_rastro(gid)
+
+
+def test_dos_revisiones_por_la_api_no_gastan_el_mismo_saldo(cliente, nuevo_viaje):
+    from concurrent.futures import ThreadPoolExecutor
+    v = _viaje_con_tope(nuevo_viaje, 100)
+    ids = [_gasto_en(v, f"Sonda API saldo {n}", 70) for n in range(2)]
+    try:
+        with ThreadPoolExecutor(max_workers=2) as ejecutor:
+            respuestas = list(ejecutor.map(lambda i: _revisar_api(cliente, i, version=0, accion="aprobar"), ids))
+        assert sorted(r.json()["estado"] for r in respuestas) == ["aprobado", "revision"]
+    finally:
+        _sin_rastro(*ids)
