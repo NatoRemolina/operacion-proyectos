@@ -143,6 +143,381 @@
         }
       }
     },
+    "/api/v1/lugares": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Lugares",
+        "description": "Sugerencias para el campo de origen o destino. Mismos datos y mismos topes de Google que el formulario de siempre.",
+        "operationId": "lugares_api_v1_lugares_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 80,
+              "description": "Lo escrito: país, ciudad, pueblo o código de aeropuerto.",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "Lo escrito: país, ciudad, pueblo o código de aeropuerto."
+          },
+          {
+            "name": "google",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Sumar las sugerencias de Google (con pausa: gasta cupo, con topes).",
+              "default": false,
+              "title": "Google"
+            },
+            "description": "Sumar las sugerencias de Google (con pausa: gasta cupo, con topes)."
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 8,
+              "title": "Limite"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListaLugares"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/formulario": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Formulario",
+        "description": "Lo que hace falta para llenar una cotización: proyectos, quién puede viajar y las razones de la decisión.",
+        "operationId": "formulario_api_v1_cotizaciones_formulario_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormularioCotizacion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones": {
+      "post": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Crear",
+        "description": "Guarda el pedido y busca vuelos y hoteles (una consulta para todos los aeropuertos marcados; lo guardado no se paga).\nResponde 201 con la comparación lista.\n\nCon `Idempotency-Key`, el reintento con el mismo pedido responde 200 con la misma cotización; con otro pedido, 409\n`IDEMPOTENCY_CONFLICT`; si el primero todavía está buscando, 409 `REQUEST_IN_PROGRESS`. Un pedido rechazado (422)\ndeja la clave libre. Pasado el tope de cotizaciones nuevas del día por persona: 429 `TOO_MANY_REQUESTS`.",
+        "operationId": "crear_api_v1_cotizaciones_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Un valor único por pedido, que se repite si se reintenta el mismo.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Un valor único por pedido, que se repite si se reintenta el mismo."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuevaCotizacion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cotizacion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Misma Idempotency-Key con otro pedido, pedido en curso, o decisión bloqueada por el viaje aprobado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Tope de cotizaciones nuevas del día alcanzado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Detalle",
+        "operationId": "detalle_api_v1_cotizaciones__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cotizacion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}/decision": {
+      "post": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Decidir",
+        "description": "Guarda la decisión y crea el viaje (o actualiza el que ya tiene la cotización), pendiente de aprobación.\n\nSi el vuelo no es el recomendado, `motivo` es obligatorio. El mismo envío repetido no duplica la decisión.\nCon el presupuesto ya aprobado o el viaje cerrado: 409 `DECISION_LOCKED` (administración debe reabrirlo).",
+        "operationId": "decidir_api_v1_cotizaciones__id__decision_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuevaDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cotizacion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Misma Idempotency-Key con otro pedido, pedido en curso, o decisión bloqueada por el viaje aprobado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gastos": {
       "get": {
         "tags": [
@@ -833,6 +1208,75 @@
   },
   "components": {
     "schemas": {
+      "AeropuertoSugerido": {
+        "properties": {
+          "iata": {
+            "type": "string",
+            "title": "Iata"
+          },
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre"
+          },
+          "municipio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Municipio"
+          },
+          "km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Km",
+            "description": "Distancia en línea recta al lugar; null si no se conoce (por ejemplo, en un país)."
+          },
+          "horas": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horas",
+            "description": "Horas estimadas por carretera desde el lugar."
+          },
+          "grande": {
+            "type": "boolean",
+            "title": "Grande",
+            "description": "Aeropuerto con muchos vuelos."
+          }
+        },
+        "type": "object",
+        "required": [
+          "iata",
+          "nombre",
+          "municipio",
+          "km",
+          "horas",
+          "grande"
+        ],
+        "title": "AeropuertoSugerido"
+      },
       "Body_enviar_api_v1_gastos_post": {
         "properties": {
           "archivo": {
@@ -873,6 +1317,440 @@
         ],
         "title": "Body_enviar_api_v1_gastos_post"
       },
+      "Cotizacion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "buscando",
+              "comparando",
+              "decidido"
+            ],
+            "title": "Estado"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          },
+          "solicitado_por": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solicitado Por"
+          },
+          "proyecto": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Referencia"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "viajero": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Referencia"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origen": {
+            "$ref": "#/components/schemas/LadoCotizacion"
+          },
+          "destino": {
+            "$ref": "#/components/schemas/LadoCotizacion"
+          },
+          "ciudad_hotel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ciudad Hotel"
+          },
+          "ida": {
+            "type": "string",
+            "title": "Ida"
+          },
+          "regreso": {
+            "type": "string",
+            "title": "Regreso"
+          },
+          "noches": {
+            "type": "integer",
+            "title": "Noches"
+          },
+          "hora_limite": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hora Limite"
+          },
+          "baterias_n": {
+            "type": "integer",
+            "title": "Baterias N"
+          },
+          "baterias_wh": {
+            "type": "number",
+            "title": "Baterias Wh"
+          },
+          "maleta": {
+            "type": "boolean",
+            "title": "Maleta"
+          },
+          "prob_cambio_pct": {
+            "type": "integer",
+            "title": "Prob Cambio Pct"
+          },
+          "carro_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carro Usd",
+            "description": "Carro de alquiler de todo el viaje."
+          },
+          "equipo": {
+            "$ref": "#/components/schemas/Equipo",
+            "description": "Si las baterías pueden viajar."
+          },
+          "origen_dato": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen Dato",
+            "description": "De dónde salieron los vuelos: `en vivo`, `guardado`, `guardado (otras fechas)` o `fallida`."
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Cuando lo más barato no es lo mejor, la explicación."
+          },
+          "fallos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fallos",
+            "description": "Consultas en vivo que fallaron."
+          },
+          "recomendacion": {
+            "type": "string",
+            "title": "Recomendacion",
+            "description": "Explicación de la recomendación (análisis determinista)."
+          },
+          "vuelos": {
+            "items": {
+              "$ref": "#/components/schemas/OpcionVuelo"
+            },
+            "type": "array",
+            "title": "Vuelos",
+            "description": "Los que sirven, del menor al mayor costo total esperado."
+          },
+          "descartados": {
+            "items": {
+              "$ref": "#/components/schemas/OpcionVuelo"
+            },
+            "type": "array",
+            "title": "Descartados"
+          },
+          "hoteles": {
+            "items": {
+              "$ref": "#/components/schemas/OpcionHotel"
+            },
+            "type": "array",
+            "title": "Hoteles",
+            "description": "Del menor al mayor total."
+          },
+          "recomendada_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recomendada Id"
+          },
+          "mas_barata_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mas Barata Id"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecisionCotizacion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViajeDeCotizacion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "puede_decidir": {
+            "type": "boolean",
+            "title": "Puede Decidir",
+            "description": "La persona puede guardar o cambiar la decisión ahora."
+          },
+          "bloqueo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bloqueo",
+            "description": "Por qué la decisión ya no se puede cambiar, si es el caso."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "estado",
+          "creado",
+          "solicitado_por",
+          "proyecto",
+          "viajero",
+          "origen",
+          "destino",
+          "ciudad_hotel",
+          "ida",
+          "regreso",
+          "noches",
+          "hora_limite",
+          "baterias_n",
+          "baterias_wh",
+          "maleta",
+          "prob_cambio_pct",
+          "carro_usd",
+          "equipo",
+          "origen_dato",
+          "aviso",
+          "fallos",
+          "recomendacion",
+          "vuelos",
+          "descartados",
+          "hoteles",
+          "recomendada_id",
+          "mas_barata_id",
+          "decision",
+          "viaje",
+          "puede_decidir",
+          "bloqueo"
+        ],
+        "title": "Cotizacion"
+      },
+      "DecisionCotizacion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "vuelo_id": {
+            "type": "integer",
+            "title": "Vuelo Id"
+          },
+          "hotel_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Id"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "razones": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Razones"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd",
+            "description": "Costo total esperado de lo decidido (vuelo con riesgo y millas, hotel y carro)."
+          },
+          "siguio_recomendacion": {
+            "type": "boolean",
+            "title": "Siguio Recomendacion"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Si se decidió sin consultar en vivo por el tope del día, lo dice."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "vuelo_id",
+          "hotel_id",
+          "motivo",
+          "razones",
+          "total_usd",
+          "siguio_recomendacion",
+          "creado",
+          "aviso"
+        ],
+        "title": "DecisionCotizacion"
+      },
+      "Desglose": {
+        "properties": {
+          "precio_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Usd"
+          },
+          "equipaje_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equipaje Usd"
+          },
+          "riesgo_cambio_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Riesgo Cambio Usd"
+          },
+          "millas_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Millas Usd"
+          },
+          "traslado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Traslado Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "precio_usd",
+          "equipaje_usd",
+          "riesgo_cambio_usd",
+          "millas_usd",
+          "traslado_usd"
+        ],
+        "title": "Desglose",
+        "description": "El costo total esperado por partes. Las millas restan."
+      },
       "DetalleError": {
         "properties": {
           "code": {
@@ -898,6 +1776,88 @@
           "fields"
         ],
         "title": "DetalleError"
+      },
+      "Equipo": {
+        "properties": {
+          "nivel": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "aviso",
+              "bloqueo"
+            ],
+            "title": "Nivel"
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nivel",
+          "texto"
+        ],
+        "title": "Equipo"
+      },
+      "FormularioCotizacion": {
+        "properties": {
+          "proyectos": {
+            "items": {
+              "$ref": "#/components/schemas/ProyectoOpcion"
+            },
+            "type": "array",
+            "title": "Proyectos"
+          },
+          "viajeros": {
+            "items": {
+              "$ref": "#/components/schemas/ViajeroOpcion"
+            },
+            "type": "array",
+            "title": "Viajeros",
+            "description": "Quién puede viajar en esta cotización según el permiso de la persona."
+          },
+          "viajero_propio_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viajero Propio Id",
+            "description": "El perfil de viajero de la persona; null si no viaja."
+          },
+          "elige_viajero": {
+            "type": "boolean",
+            "title": "Elige Viajero",
+            "description": "Gestión y administración pueden cotizar para otra persona."
+          },
+          "razones": {
+            "items": {
+              "$ref": "#/components/schemas/Razon"
+            },
+            "type": "array",
+            "title": "Razones",
+            "description": "Razones que se pueden marcar al decidir."
+          },
+          "precios_en_vivo": {
+            "type": "boolean",
+            "title": "Precios En Vivo",
+            "description": "false: sin clave del buscador, solo hay precios para las rutas guardadas."
+          }
+        },
+        "type": "object",
+        "required": [
+          "proyectos",
+          "viajeros",
+          "viajero_propio_id",
+          "elige_viajero",
+          "razones",
+          "precios_en_vivo"
+        ],
+        "title": "FormularioCotizacion"
       },
       "GastoResumen": {
         "properties": {
@@ -1314,6 +2274,75 @@
         ],
         "title": "Justificacion"
       },
+      "LadoCotizacion": {
+        "properties": {
+          "codigo": {
+            "type": "string",
+            "title": "Codigo",
+            "description": "El aeropuerto principal; tras decidir, el del vuelo elegido."
+          },
+          "aeropuertos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aeropuertos",
+            "description": "Los aeropuertos comparados."
+          },
+          "lugar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lugar"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "codigo",
+          "aeropuertos",
+          "lugar"
+        ],
+        "title": "LadoCotizacion"
+      },
+      "LadoPedido": {
+        "properties": {
+          "texto": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Texto",
+            "description": "Ciudad o código de aeropuerto. Se usa si no hay `aeropuertos`.",
+            "default": ""
+          },
+          "aeropuertos": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{3}$"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Aeropuertos",
+            "description": "Códigos IATA marcados; se comparan todos en una sola búsqueda."
+          },
+          "lugar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lugar"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LadoPedido",
+        "description": "Origen o destino: los aeropuertos que se comparan (con el lugar, si lo hay) o un texto con ciudad o código."
+      },
       "Lectura": {
         "properties": {
           "origen": {
@@ -1338,6 +2367,50 @@
           "confianza"
         ],
         "title": "Lectura"
+      },
+      "LineaCosto": {
+        "properties": {
+          "concepto": {
+            "type": "string",
+            "title": "Concepto"
+          },
+          "valor_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor Usd"
+          },
+          "origen": {
+            "type": "string",
+            "title": "Origen",
+            "description": "De dónde sale: `buscador`, `regla` o `supuesto`."
+          },
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "precio",
+              "equipaje",
+              "riesgo_cambio",
+              "millas",
+              "traslado",
+              "otro"
+            ],
+            "title": "Tipo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "concepto",
+          "valor_usd",
+          "origen",
+          "tipo"
+        ],
+        "title": "LineaCosto"
       },
       "LineaPresupuesto": {
         "properties": {
@@ -1397,6 +2470,40 @@
         ],
         "title": "ListaGastos"
       },
+      "ListaLugares": {
+        "properties": {
+          "resultados": {
+            "items": {
+              "$ref": "#/components/schemas/LugarSugerido"
+            },
+            "type": "array",
+            "title": "Resultados"
+          },
+          "aviso_google": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso Google",
+            "description": "Por qué no hay sugerencias de Google (sin clave, tope alcanzado...)."
+          },
+          "carretera": {
+            "$ref": "#/components/schemas/ReglasCarretera",
+            "description": "Para estimar las horas de un aeropuerto agregado a mano."
+          }
+        },
+        "type": "object",
+        "required": [
+          "resultados",
+          "aviso_google",
+          "carretera"
+        ],
+        "title": "ListaLugares"
+      },
       "ListaViajes": {
         "properties": {
           "items": {
@@ -1425,6 +2532,309 @@
         ],
         "title": "ListaViajes"
       },
+      "Lugar": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Nombre"
+          },
+          "region": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Region",
+            "default": ""
+          },
+          "pais": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Pais",
+            "default": ""
+          },
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nombre",
+          "lat",
+          "lon"
+        ],
+        "title": "Lugar",
+        "description": "El lugar elegido en el buscador. El traslado por carretera se calcula hasta aquí."
+      },
+      "LugarSugerido": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "lugar",
+              "aeropuerto",
+              "pais"
+            ],
+            "title": "Tipo"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "pais": {
+            "type": "string",
+            "title": "Pais"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "tambien": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tambien",
+            "description": "Otro nombre con que se conoce, si coincidió por él."
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Por qué no trae aeropuertos, cuando no los trae."
+          },
+          "origen": {
+            "type": "string",
+            "enum": [
+              "local",
+              "google"
+            ],
+            "title": "Origen",
+            "description": "`local` (datos propios) o `google` (autocompletado de Google Flights)."
+          },
+          "aeropuertos": {
+            "items": {
+              "$ref": "#/components/schemas/AeropuertoSugerido"
+            },
+            "type": "array",
+            "title": "Aeropuertos",
+            "description": "Los aeropuertos cercanos que se proponen comparar."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "id",
+          "nombre",
+          "region",
+          "pais",
+          "lat",
+          "lon",
+          "tambien",
+          "aviso",
+          "origen",
+          "aeropuertos"
+        ],
+        "title": "LugarSugerido"
+      },
+      "NuevaCotizacion": {
+        "properties": {
+          "proyecto_id": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Proyecto Id"
+          },
+          "viajero_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viajero Id",
+            "description": "Quién viaja. Omitido, quien cotiza. Otra persona: administración, o el gestor en los proyectos que gestiona."
+          },
+          "origen": {
+            "$ref": "#/components/schemas/LadoPedido"
+          },
+          "destino": {
+            "$ref": "#/components/schemas/LadoPedido"
+          },
+          "ida": {
+            "type": "string",
+            "format": "date",
+            "title": "Ida"
+          },
+          "regreso": {
+            "type": "string",
+            "format": "date",
+            "title": "Regreso"
+          },
+          "hora_limite": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hora Limite",
+            "description": "Hora a la que debe estar en el destino el día de ida, como \"18:00\"."
+          },
+          "ciudad_hotel": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Ciudad Hotel",
+            "description": "Vacío: el lugar de destino.",
+            "default": ""
+          },
+          "baterias_n": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Baterias N",
+            "description": "Baterías de repuesto del dron.",
+            "default": 0
+          },
+          "baterias_wh": {
+            "type": "number",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Baterias Wh",
+            "description": "Capacidad de cada batería.",
+            "default": 0
+          },
+          "maleta": {
+            "type": "boolean",
+            "title": "Maleta",
+            "description": "Lleva maleta facturada.",
+            "default": false
+          },
+          "prob_cambio_pct": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Prob Cambio Pct",
+            "description": "Probabilidad de que cambie la fecha, en porcentaje.",
+            "default": 0
+          },
+          "carro_dia_usd": {
+            "type": "string",
+            "pattern": "^\\d{1,4}(\\.\\d{1,2})?$",
+            "title": "Carro Dia Usd",
+            "description": "Carro de alquiler por día; \"0\" sin carro.",
+            "default": "0"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "proyecto_id",
+          "origen",
+          "destino",
+          "ida",
+          "regreso"
+        ],
+        "title": "NuevaCotizacion",
+        "description": "Un pedido de cotización. Quien cotiza sale de la sesión; nunca del cuerpo."
+      },
+      "NuevaDecision": {
+        "properties": {
+          "vuelo_id": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Vuelo Id"
+          },
+          "hotel_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Id",
+            "description": "Opcional: puede no haber hoteles para el lugar."
+          },
+          "motivo": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Motivo",
+            "description": "Obligatorio (5 caracteres o más) si el vuelo no es el recomendado.",
+            "default": ""
+          },
+          "razones": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Razones",
+            "description": "Claves de `razones` del formulario."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vuelo_id"
+        ],
+        "title": "NuevaDecision"
+      },
       "NuevaJustificacion": {
         "properties": {
           "texto": {
@@ -1440,6 +2850,293 @@
         ],
         "title": "NuevaJustificacion",
         "description": "Para qué fue el gasto, con las palabras de la persona."
+      },
+      "OpcionHotel": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "noche_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noche Usd"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "calificacion": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calificacion"
+          },
+          "clase": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clase"
+          },
+          "programa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Programa",
+            "description": "Programa de fidelización, solo con reserva directa."
+          },
+          "origen_dato": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen Dato"
+          },
+          "recomendada": {
+            "type": "boolean",
+            "title": "Recomendada"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre",
+          "noche_usd",
+          "total_usd",
+          "calificacion",
+          "clase",
+          "programa",
+          "origen_dato",
+          "recomendada"
+        ],
+        "title": "OpcionHotel"
+      },
+      "OpcionVuelo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "aerolinea": {
+            "type": "string",
+            "title": "Aerolinea"
+          },
+          "numeros": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Numeros"
+          },
+          "desde": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desde"
+          },
+          "hasta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hasta"
+          },
+          "sale": {
+            "type": "string",
+            "title": "Sale",
+            "description": "Hora local de salida, \"2026-12-08 09:15\"."
+          },
+          "llega": {
+            "type": "string",
+            "title": "Llega",
+            "description": "Hora local de llegada."
+          },
+          "escalas": {
+            "type": "integer",
+            "title": "Escalas"
+          },
+          "duracion_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duracion Min"
+          },
+          "precio_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Usd",
+            "description": "Precio del buscador."
+          },
+          "tarifa": {
+            "$ref": "#/components/schemas/Tarifa"
+          },
+          "costo_total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Total Usd",
+            "description": "Costo total esperado: precio + equipaje + riesgo de cambio − millas + traslado."
+          },
+          "desglose": {
+            "$ref": "#/components/schemas/Desglose"
+          },
+          "lineas": {
+            "items": {
+              "$ref": "#/components/schemas/LineaCosto"
+            },
+            "type": "array",
+            "title": "Lineas"
+          },
+          "avisos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Avisos"
+          },
+          "descartada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descartada",
+            "description": "Por qué no sirve (llega tarde, el equipo no cabe...); null si sirve."
+          },
+          "recomendada": {
+            "type": "boolean",
+            "title": "Recomendada"
+          },
+          "mas_barata": {
+            "type": "boolean",
+            "title": "Mas Barata",
+            "description": "La de menor precio del buscador."
+          },
+          "origen_dato": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen Dato",
+            "description": "`en vivo`, `guardado` o `guardado (otras fechas)`."
+          },
+          "esperado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Esperado Usd",
+            "description": "Precio esperado según el modelo, si hay uno utilizable."
+          },
+          "frente_esperado_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frente Esperado Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "aerolinea",
+          "numeros",
+          "desde",
+          "hasta",
+          "sale",
+          "llega",
+          "escalas",
+          "duracion_min",
+          "precio_usd",
+          "tarifa",
+          "costo_total_usd",
+          "desglose",
+          "lineas",
+          "avisos",
+          "descartada",
+          "recomendada",
+          "mas_barata",
+          "origen_dato",
+          "esperado_usd",
+          "frente_esperado_pct"
+        ],
+        "title": "OpcionVuelo"
       },
       "Persona": {
         "properties": {
@@ -1492,6 +3189,84 @@
         ],
         "title": "Persona"
       },
+      "ProyectoOpcion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "ciudad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ciudad"
+          },
+          "inicio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inicio"
+          },
+          "fin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fin"
+          },
+          "para_otra_persona": {
+            "type": "boolean",
+            "title": "Para Otra Persona",
+            "description": "Se puede cotizar aquí para otra persona: administración en todos; el gestor, en los proyectos que gestiona."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre",
+          "ciudad",
+          "inicio",
+          "fin",
+          "para_otra_persona"
+        ],
+        "title": "ProyectoOpcion"
+      },
+      "Razon": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "title": "Clave"
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clave",
+          "texto"
+        ],
+        "title": "Razon"
+      },
       "Referencia": {
         "properties": {
           "id": {
@@ -1516,6 +3291,25 @@
           "nombre"
         ],
         "title": "Referencia"
+      },
+      "ReglasCarretera": {
+        "properties": {
+          "factor": {
+            "type": "number",
+            "title": "Factor",
+            "description": "Kilómetros por carretera por cada kilómetro en línea recta."
+          },
+          "velocidad_kmh": {
+            "type": "number",
+            "title": "Velocidad Kmh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "factor",
+          "velocidad_kmh"
+        ],
+        "title": "ReglasCarretera"
       },
       "RespuestaError": {
         "properties": {
@@ -1717,6 +3511,30 @@
         ],
         "title": "Sesion"
       },
+      "Tarifa": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "permite_cambio": {
+            "type": "boolean",
+            "title": "Permite Cambio"
+          },
+          "reales": {
+            "type": "boolean",
+            "title": "Reales",
+            "description": "false: tarifa supuesta por reglas; true: tarifas reales del buscador."
+          }
+        },
+        "type": "object",
+        "required": [
+          "nombre",
+          "permite_cambio",
+          "reales"
+        ],
+        "title": "Tarifa"
+      },
       "Titular": {
         "properties": {
           "id": {
@@ -1764,6 +3582,53 @@
           "codigo"
         ],
         "title": "ViajeCodigo"
+      },
+      "ViajeDeCotizacion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "pendiente_aprobacion",
+              "aprobado",
+              "rechazado",
+              "cerrado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "presupuesto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto Usd",
+            "description": "Lo que aprueba administración: vuelo, equipaje, hotel, carro y viáticos; sin el riesgo de cambio ni las millas, que solo sirven para comparar."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "estado",
+          "estado_texto",
+          "presupuesto_usd"
+        ],
+        "title": "ViajeDeCotizacion"
       },
       "ViajeDetalle": {
         "properties": {
@@ -2120,6 +3985,41 @@
           "gastos"
         ],
         "title": "ViajeResumen"
+      },
+      "ViajeroOpcion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "soy_yo": {
+            "type": "boolean",
+            "title": "Soy Yo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre",
+          "base",
+          "soy_yo"
+        ],
+        "title": "ViajeroOpcion"
       }
     }
   }

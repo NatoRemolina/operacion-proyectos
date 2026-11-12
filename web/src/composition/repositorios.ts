@@ -1,4 +1,8 @@
 import type { AuthRepository } from "@/features/auth/domain/auth";
+import type { CotizarRepository } from "@/features/cotizar/domain/cotizar";
+import { crearCotizarHttp } from "@/features/cotizar/infrastructure/cotizar-http";
+import { crearCotizarMemoria } from "@/features/cotizar/infrastructure/cotizar-memoria";
+import { COTIZACION_MOAB, LUGARES_EJEMPLO, SOLO_GOOGLE } from "@/features/cotizar/infrastructure/ejemplo-moab";
 import { crearAuthHttp } from "@/features/auth/infrastructure/auth-http";
 import { crearAuthMemoria } from "@/features/auth/infrastructure/auth-memoria";
 import type { GastosRepository } from "@/features/gastos/domain/gastos";
@@ -17,6 +21,7 @@ export interface Repositorios {
   auth: AuthRepository;
   viajes: ViajesRepository;
   gastos: GastosRepository;
+  cotizar: CotizarRepository;
   demo: ModoDemo | null;
 }
 
@@ -36,6 +41,30 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
         sesion,
         latenciaMs: 1200,
       }),
+      cotizar: crearCotizarMemoria({
+        formulario: {
+          proyectos: [
+            { id: 31, nombre: "Proyecto de demostración", ciudad: "Moab", inicio: "2026-12-08", fin: "2026-12-11", para_otra_persona: false },
+          ],
+          viajeros: [{ id: CUENTA_DEMO.persona.id, nombre: CUENTA_DEMO.persona.nombre, base: "Miami", soy_yo: true }],
+          viajero_propio_id: CUENTA_DEMO.persona.id,
+          elige_viajero: false,
+          razones: [
+            { clave: "costo_total", texto: "Menor costo total" },
+            { clave: "horario", texto: "Mejor horario" },
+            { clave: "directo", texto: "Vuelo directo" },
+            { clave: "equipaje", texto: "Equipaje del equipo" },
+            { clave: "otra", texto: "Otra" },
+          ],
+          precios_en_vivo: false,
+        },
+        lugares: Object.values(LUGARES_EJEMPLO).flatMap((l) => l.resultados),
+        lugaresGoogle: [SOLO_GOOGLE],
+        guardadas: [COTIZACION_MOAB],
+        sesion,
+        latenciaMs: 120,
+        latenciaBusquedaMs: 2500,
+      }),
       demo: {
         cuentas: [
           { correo: CUENTA_DEMO.persona.correo, clave: CUENTA_DEMO.clave, descripcion: "Piloto" },
@@ -48,6 +77,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     auth: crearAuthHttp(cliente),
     viajes: crearViajesHttp(cliente),
     gastos: crearGastosHttp(cliente),
+    cotizar: crearCotizarHttp(cliente),
     demo: null,
   };
 }
