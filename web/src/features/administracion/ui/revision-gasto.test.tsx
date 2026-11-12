@@ -145,5 +145,25 @@ describe("Revisar un gasto", () => {
     await usuario.click(await screen.findByRole("button", { name: "Rechazar" }));
     expect(screen.getByRole("dialog", { name: "Rechazar este gasto" })).toBeInTheDocument();
   });
+
+  it("si el gasto es de quien revisa, no ofrece revisarlo y explica quién lo hace", async () => {
+    montar({ gastos: [{ ...EN_REVISION, propio: true }] });
+    expect(await screen.findByText("Es tu gasto: lo revisa otra persona de administración.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aprobar gasto" })).not.toBeInTheDocument();
+  });
+
+  it("el siguiente en revisión salta los gastos propios", async () => {
+    const usuario = userEvent.setup();
+    montar({
+      gastos: [
+        EN_REVISION,
+        gastoDePrueba({ id: 124, comercio: "Mío", propio: true, creado: "2026-11-11T05:00:00Z" }),
+        gastoDePrueba({ id: 125, comercio: "De otra persona", creado: "2026-11-11T04:00:00Z" }),
+      ],
+    });
+    await usuario.click(await screen.findByRole("button", { name: "Aprobar gasto" }));
+    await within(screen.getByRole("status", { name: "Avisos" })).findByText(/Gasto aprobado/);
+    expect(navegacion.push).toHaveBeenCalledWith("/gastos/125");
+  });
 });
 

@@ -20,6 +20,7 @@ router = APIRouter(prefix=PREFIJO, tags=["gastos"])
 class GastoRevisable(GastoDetalle):
     version: int = Field(description="Versión del gasto. La revisión la manda de vuelta para no pisar un cambio ajeno.")
     motivo_rechazo: str | None = Field(description="Por qué se rechazó, con las palabras de quien revisó.")
+    puede_justificar: bool = Field(False, description="La persona de la sesión hizo el gasto o es quien viaja: puede contar para qué fue.")
 
 
 class RevisionGasto(BaseModel):
@@ -43,12 +44,26 @@ class RevisionGasto(BaseModel):
     viaje_id: int | None = Field(None, ge=0, description="Omitido conserva el viaje; 0 lo quita.")
 
 
+def marcar_propios(items: list[dict], yo: dict) -> list[dict]:
+    """Añade de quién es cada gasto para quien mira: `propio` (nadie revisa lo suyo, la misma regla que la revisión)
+    y `puede_justificar` (solo quien lo hizo o quien viaja). Así la web no ofrece botones que la API rechazaría."""
+    if not items:
+        return items
+    ids = ",".join(str(int(g["id"])) for g in items)
+    filas = {f["id"]: f for f in db.todos(f"select id, usuario_id, viajero_id, viaje_id from gastos where id in ({ids})")}
+    for g in items:
+        fila = filas.get(g["id"])
+        g["propio"] = viajes.gasto_propio_de(fila, yo)
+        g["puede_justificar"] = justificaciones.puede_justificar(yo, fila)
+    return items
+
+
 def _revisable(yo: dict, id: int) -> dict | None:
     g = consultas.gasto(yo, id)
     if not g:
         return None
     extra = db.uno("select version, motivo_rechazo from gastos where id=:i", i=id)
-    return {**g, "version": extra["version"] or 0, "motivo_rechazo": extra["motivo_rechazo"]}
+    return marcar_propios([{**g, "version": extra["version"] or 0, "motivo_rechazo": extra["motivo_rechazo"]}], yo)[0]
 
 
 def _campos(datos: RevisionGasto) -> dict:
@@ -74,7 +89,9 @@ def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, pagina
           yo: dict = Depends(persona)):
     """Mismo alcance que los viajes. Más reciente primero."""
     limite, cursor = paginacion
-    return consultas.lista_gastos(yo, viaje_id, estado, limite, cursor)
+    resultado = consultas.lista_gastos(yo, viaje_id, estado, limite, cursor)
+    marcar_propios(resultado["items"], yo)
+    return resultado
 
 
 @router.get("/gastos/{id}", response_model=GastoRevisable, responses=errores(401, 404, 422))

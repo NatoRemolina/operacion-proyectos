@@ -68,7 +68,8 @@ export function useRevisarGasto(id: number) {
       try {
         const gasto = await repositorio.revisarGasto(id, revision);
         const pendientes = await gastos.listar({ estado: "revision", limite: 5 }).catch(() => null);
-        return { gasto, siguiente: pendientes?.items.find((g) => g.id !== id) ?? null };
+        // Lo propio no lo revisa quien revisa: el siguiente es el primero ajeno.
+        return { gasto, siguiente: pendientes?.items.find((g) => g.id !== id && !g.propio) ?? null };
       } catch (error) {
         throw comoErrorDeAplicacion(error);
       }

@@ -16,6 +16,8 @@ export interface GastoResumen {
   readonly estado: EstadoGasto;
   readonly estado_texto: string;
   readonly creado: string;
+  /** Es de la persona de la sesión: nadie revisa sus propios gastos. */
+  readonly propio?: boolean;
 }
 
 export type TipoJustificacion = "texto" | "audio";
@@ -45,6 +47,8 @@ export interface GastoDetalle extends GastoResumen {
   readonly version?: number;
   /** Por qué se rechazó, con las palabras de quien revisó. */
   readonly motivo_rechazo?: string | null;
+  /** Hizo el gasto o es quien viaja: puede contar para qué fue. Sin el dato (memoria), se asume que sí. */
+  readonly puede_justificar?: boolean;
 }
 
 export interface FiltroGastos extends OpcionesListado {

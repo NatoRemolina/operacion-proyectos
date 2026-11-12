@@ -25,6 +25,7 @@ export const gastoResumenSchema = z.object({
   estado: z.enum(["procesando", "revision", "aprobado_auto", "aprobado", "rechazado"]),
   estado_texto: z.string(),
   creado: z.string(),
+  propio: z.boolean().default(false),
 }) satisfies z.ZodType<GastoResumen>;
 
 export const justificacionSchema = z.object({
@@ -48,6 +49,7 @@ export const gastoDetalleSchema = gastoResumenSchema.extend({
   justificaciones: z.array(justificacionSchema),
   version: z.number().int().nonnegative().default(0),
   motivo_rechazo: z.string().nullable().default(null),
+  puede_justificar: z.boolean().default(false),
 }) satisfies z.ZodType<GastoDetalle>;
 
 const listaSchema = paginaSchema(gastoResumenSchema);

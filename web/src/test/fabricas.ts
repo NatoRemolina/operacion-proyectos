@@ -40,6 +40,8 @@ export function gastoDePrueba(datos: Partial<GastoDetalle> = {}): GastoDetalle {
     lectura: { origen: "modelo", confianza: 0.9 },
     justificaciones: [],
     version: 0,
+    propio: false,
+    puede_justificar: true,
     ...datos,
   };
 }

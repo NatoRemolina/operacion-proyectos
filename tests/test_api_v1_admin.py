@@ -209,3 +209,41 @@ def test_el_cambio_de_estado_exige_csrf_y_valida_la_accion(cliente, nuevo_viaje)
            422, "VALIDATION_ERROR")
     _error(_estado(cliente, 999999, "aprobar"), 404, "NOT_FOUND")
     assert viajes.uno(v["id"])["estado"] == "pendiente_aprobacion"
+
+
+# ---------- gastos: de quién es (ronda 1) ----------
+def _enviar_recibo(c: TestClient, ejemplos, viaje_id: int | None = None) -> dict:
+    foto = (ejemplos / "recibo_lisboa.png").read_bytes()
+    datos = {"viaje_id": str(viaje_id)} if viaje_id else {}
+    r = c.post(f"{V1}/gastos", files={"archivo": ("lisboa.png", foto, "image/png")}, data=datos,
+               headers={**_csrf(c), "Idempotency-Key": f"propio-{id(c)}-{viaje_id}"})
+    assert r.status_code in (200, 201), r.text
+    return r.json()
+
+
+def test_el_gasto_dice_si_es_propio_y_si_se_puede_justificar(cliente, piloto, gestor, viaje_aprobado, ejemplos):
+    g = _enviar_recibo(piloto, ejemplos, viaje_aprobado["id"])
+    assert g["propio"] is True and g["puede_justificar"] is True
+    del_admin = cliente.get(f"{V1}/gastos/{g['id']}").json()
+    assert del_admin["propio"] is False and del_admin["puede_justificar"] is False
+    del_gestor = gestor.get(f"{V1}/gastos/{g['id']}").json()
+    assert del_gestor["propio"] is False and del_gestor["puede_justificar"] is False
+    # La lista también lo dice, para no ofrecer revisar lo propio
+    items = {x["id"]: x for x in cliente.get(f"{V1}/gastos", params={"limite": 100}).json()["items"]}
+    assert items[g["id"]]["propio"] is False
+    assert {x["id"]: x for x in piloto.get(f"{V1}/gastos", params={"limite": 100}).json()["items"]}[g["id"]]["propio"] is True
+
+
+def test_el_gasto_que_sube_administracion_para_si_es_propio(cliente, ejemplos):
+    g = _enviar_recibo(cliente, ejemplos)
+    assert g["propio"] is True
+    items = {x["id"]: x for x in cliente.get(f"{V1}/gastos", params={"limite": 100}).json()["items"]}
+    assert items[g["id"]]["propio"] is True
+
+
+def test_cambiar_el_estado_desde_otro_origen_no_cambia_nada(cliente, nuevo_viaje):
+    v = nuevo_viaje(aprobar=False)
+    r = cliente.post(f"{V1}/viajes/{v['id']}/estado", json={"accion": "aprobar"},
+                     headers={**_csrf(cliente), "Origin": "https://sitio-ajeno.example", "Sec-Fetch-Site": "cross-site"})
+    _error(r, 403, "ORIGIN_NOT_ALLOWED")
+    assert viajes.uno(v["id"])["estado"] == "pendiente_aprobacion"

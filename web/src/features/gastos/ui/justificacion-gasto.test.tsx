@@ -68,4 +68,19 @@ describe("Para qué fue el gasto", () => {
     await usuario.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Solo quien hizo el gasto o quien viaja puede justificarlo.");
   });
+
+  it("quien no puede justificarlo (gestor, administración en lo ajeno) lo ve en lectura, sin formulario", async () => {
+    const gastos = crearGastosMemoria({ gastos: [{ ...conAudio, puede_justificar: false }] });
+    renderizarConFuente(<PantallaDetalleGasto id={5} />, { gastos, permiso: "gestor" });
+    expect(await screen.findByText("Hotel cerca del set para salir a las cinco")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Añadir algo más")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Guardar" })).not.toBeInTheDocument();
+  });
+
+  it("sin justificación y sin permiso para darla, lo dice en tercera persona", async () => {
+    const gastos = crearGastosMemoria({ gastos: [gastoDePrueba({ id: 6, puede_justificar: false })] });
+    renderizarConFuente(<PantallaDetalleGasto id={6} />, { gastos, permiso: "gestor" });
+    expect(await screen.findByText("La persona aún no contó para qué fue.")).toBeInTheDocument();
+  });
 });
+

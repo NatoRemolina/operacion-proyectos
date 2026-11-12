@@ -2235,6 +2235,12 @@
           "creado": {
             "type": "string",
             "title": "Creado"
+          },
+          "propio": {
+            "type": "boolean",
+            "title": "Propio",
+            "description": "Es de la persona de la sesión: nadie revisa sus propios gastos.",
+            "default": false
           }
         },
         "type": "object",
@@ -2354,6 +2360,12 @@
             "type": "string",
             "title": "Creado"
           },
+          "propio": {
+            "type": "boolean",
+            "title": "Propio",
+            "description": "Es de la persona de la sesión: nadie revisa sus propios gastos.",
+            "default": false
+          },
           "subtotal": {
             "anyOf": [
               {
@@ -2442,6 +2454,12 @@
             ],
             "title": "Motivo Rechazo",
             "description": "Por qué se rechazó, con las palabras de quien revisó."
+          },
+          "puede_justificar": {
+            "type": "boolean",
+            "title": "Puede Justificar",
+            "description": "La persona de la sesión hizo el gasto o es quien viaja: puede contar para qué fue.",
+            "default": false
           }
         },
         "type": "object",

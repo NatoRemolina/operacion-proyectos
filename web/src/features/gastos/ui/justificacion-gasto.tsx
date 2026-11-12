@@ -38,6 +38,8 @@ export function JustificacionGasto({ gasto }: { gasto: GastoDetalle }) {
   const [texto, setTexto] = useState("");
   const accion = useJustificacion(gasto.id);
   const hay = gasto.justificaciones.length > 0;
+  // Solo quien hizo el gasto o quien viaja lo justifica; los demás lo leen.
+  const puede = gasto.puede_justificar ?? true;
 
   function guardar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -62,6 +64,8 @@ export function JustificacionGasto({ gasto }: { gasto: GastoDetalle }) {
             <Entrada key={j.id} j={j} />
           ))}
         </ul>
+      ) : !puede ? (
+        <p className="mt-1 text-texto-secundario">La persona aún no contó para qué fue.</p>
       ) : (
         <p className="mt-1 text-texto-secundario">
           {gasto.estado === "revision"
@@ -70,29 +74,31 @@ export function JustificacionGasto({ gasto }: { gasto: GastoDetalle }) {
         </p>
       )}
 
-      <form onSubmit={guardar} className="mt-4 flex flex-col gap-3 border-t border-linea pt-4">
-        <CampoAreaTexto
-          id="nueva-justificacion"
-          etiqueta={hay ? "Añadir algo más" : "¿Para qué fue este gasto?"}
-          ayuda="Con tus palabras. Para dejar una nota de voz, respóndele al bot de Telegram."
-          placeholder="Por ejemplo: cena con el equipo de grabación después de la jornada en el lago"
-          maxLength={JUSTIFICACION_MAXIMO}
-          value={texto}
-          onChange={(e) => {
-            setTexto(e.target.value);
-            if (accion.errorTexto || accion.error) accion.limpiar();
-          }}
-          error={accion.errorTexto}
-          disabled={accion.guardando}
-        />
-        {errorServidor ? <Alerta tono="error" titulo={errorServidor} rol="alert" /> : null}
-        <p role="status" aria-live="polite" className="sr-only">
-          {accion.guardando ? "Guardando la justificación…" : accion.guardada ? "Justificación guardada." : ""}
-        </p>
-        <Boton type="submit" disabled={accion.guardando} className="self-start">
-          {accion.guardando ? "Guardando…" : "Guardar"}
-        </Boton>
-      </form>
+      {puede ? (
+        <form onSubmit={guardar} className="mt-4 flex flex-col gap-3 border-t border-linea pt-4">
+          <CampoAreaTexto
+            id="nueva-justificacion"
+            etiqueta={hay ? "Añadir algo más" : "¿Para qué fue este gasto?"}
+            ayuda="Con tus palabras. Para dejar una nota de voz, respóndele al bot de Telegram."
+            placeholder="Por ejemplo: cena con el equipo de grabación después de la jornada en el lago"
+            maxLength={JUSTIFICACION_MAXIMO}
+            value={texto}
+            onChange={(e) => {
+              setTexto(e.target.value);
+              if (accion.errorTexto || accion.error) accion.limpiar();
+            }}
+            error={accion.errorTexto}
+            disabled={accion.guardando}
+          />
+          {errorServidor ? <Alerta tono="error" titulo={errorServidor} rol="alert" /> : null}
+          <p role="status" aria-live="polite" className="sr-only">
+            {accion.guardando ? "Guardando la justificación…" : accion.guardada ? "Justificación guardada." : ""}
+          </p>
+          <Boton type="submit" disabled={accion.guardando} className="self-start">
+            {accion.guardando ? "Guardando…" : "Guardar"}
+          </Boton>
+        </form>
+      ) : null}
     </section>
   );
 }

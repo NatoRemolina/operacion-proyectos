@@ -110,6 +110,7 @@ class GastoResumen(BaseModel):
     estado: EstadoGasto
     estado_texto: str
     creado: str
+    propio: bool = Field(False, description="Es de la persona de la sesión: nadie revisa sus propios gastos.")
 
 
 class Lectura(BaseModel):

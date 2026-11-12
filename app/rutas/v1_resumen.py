@@ -11,6 +11,7 @@ from .. import config, db
 from ..api_v1 import PREFIJO, solo_admin
 from ..api_v1.esquemas import ResumenAdmin, errores
 from ..servicios import consultas, metricas, viajes
+from .v1_gastos import marcar_propios
 from .v1_viajes import con_decision
 
 router = APIRouter(prefix=PREFIJO + "/resumen", tags=["administracion"])
@@ -49,7 +50,7 @@ def resumen(yo: dict = Depends(solo_admin)):
         "presupuesto_aprobado_usd": consultas.dinero(aprobado), "gastado_usd": consultas.dinero(gastado),
         "disponible_usd": consultas.dinero(Decimal(str(aprobado)) - Decimal(str(gastado))), "en_revision_usd": consultas.dinero(en_revision_usd),
         "ejecucion_pct": v["ejecucion"], "viajes_por_aprobar": v["pendientes"], "gastos_en_revision": en_revision,
-        "pendientes": pendientes, "revision": consultas.lista_gastos(yo, estado="revision", limite=5)["items"],
+        "pendientes": pendientes, "revision": marcar_propios(consultas.lista_gastos(yo, estado="revision", limite=5)["items"], yo),
         "actividad": _actividad(yo), "nota": NOTA,
         "datos_demostracion": config.LOCAL and (config.ES_SQLITE or os.getenv("CUENTAS_DEMO") == "1"),
     }

@@ -88,6 +88,7 @@ interface GastoResumen {
   total: Dinero; moneda: string | null; total_usd: Dinero;
   estado: EstadoGasto; estado_texto: string;  // "En revisión"
   creado: string;
+  propio: boolean;                            // es de la persona de la sesión: nadie revisa sus propios gastos
 }
 
 interface GastoDetalle extends GastoResumen {
@@ -100,6 +101,7 @@ interface GastoDetalle extends GastoResumen {
   justificaciones: Justificacion[];           // en orden de llegada
   version: number;                            // sube con cada cambio; la revisión la manda de vuelta
   motivo_rechazo: string | null;              // por qué se rechazó, si se rechazó
+  puede_justificar: boolean;                  // hizo el gasto o viaja: puede contar para qué fue
 }
 
 interface Justificacion {

@@ -5,6 +5,7 @@ import { usePermiso } from "@/shared/application/identidad";
 import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
 import { EsqueletoDetalle } from "@/shared/ui/esqueleto";
+import { Alerta } from "@/shared/ui/estado";
 import { Migas } from "@/shared/ui/migas";
 import { useGasto, useUrlOriginal } from "../application/gastos";
 import { DetalleGasto } from "./detalle-gasto";
@@ -35,14 +36,17 @@ export function PantallaDetalleGasto({ id }: { id: number }) {
     );
   }
 
-  // Administración revisa aquí mismo lo que está en revisión: recibo, lectura y decisión.
-  if (permiso === "admin" && gasto.estado === "revision") {
+  // Administración revisa aquí mismo lo que está en revisión: recibo, lectura y decisión. Lo propio lo revisa otra persona.
+  if (permiso === "admin" && gasto.estado === "revision" && !gasto.propio) {
     return <RevisionGasto gasto={gasto} urlOriginal={urlOriginal} migas={migas} />;
   }
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
       <Migas items={migas} />
+      {permiso === "admin" && gasto.estado === "revision" && gasto.propio ? (
+        <Alerta tono="info" titulo="Es tu gasto: lo revisa otra persona de administración." />
+      ) : null}
       <DetalleGasto gasto={gasto} urlOriginal={urlOriginal} />
       <JustificacionGasto gasto={gasto} />
     </div>
