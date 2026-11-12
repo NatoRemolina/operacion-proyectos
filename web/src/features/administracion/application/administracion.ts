@@ -67,7 +67,8 @@ export function useRevisarGasto(id: number) {
     mutationFn: async (revision) => {
       try {
         const gasto = await repositorio.revisarGasto(id, revision);
-        const pendientes = await gastos.listar({ estado: "revision", limite: 5 }).catch(() => null);
+        // Se miran varios: si los primeros son propios, el siguiente ajeno puede venir más abajo.
+        const pendientes = await gastos.listar({ estado: "revision", limite: 50 }).catch(() => null);
         // Lo propio no lo revisa quien revisa: el siguiente es el primero ajeno.
         return { gasto, siguiente: pendientes?.items.find((g) => g.id !== id && !g.propio) ?? null };
       } catch (error) {

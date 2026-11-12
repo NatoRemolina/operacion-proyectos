@@ -169,6 +169,34 @@ describe("DialogoConfirmacion", () => {
     expect(container).not.toHaveAttribute("inert");
   });
 
+  it("con el diálogo abierto, los avisos emergentes siguen fuera de lo inerte y se anuncian", async () => {
+    const usuario = userEvent.setup();
+    function ConAvisoYDialogo() {
+      const { avisar } = useAvisos();
+      const [abierto, setAbierto] = useState(true);
+      return (
+        <DialogoConfirmacion
+          abierto={abierto}
+          titulo="Rechazar"
+          efecto="Efecto."
+          confirmar="Confirmar"
+          enviando={false}
+          onConfirmar={() => avisar({ tono: "exito", texto: "Hecho." })}
+          onCancelar={() => setAbierto(false)}
+        />
+      );
+    }
+    render(
+      <AvisosProvider>
+        <ConAvisoYDialogo />
+      </AvisosProvider>,
+    );
+    await usuario.click(screen.getByRole("button", { name: "Confirmar" }));
+    const region = screen.getByRole("status", { name: "Avisos" });
+    expect(within(region).getByText("Hecho.")).toBeInTheDocument();
+    expect(region.closest("[inert]")).toBeNull();
+  });
+
   it("el foco no se escapa del diálogo con Tab", async () => {
     const usuario = userEvent.setup();
     render(<ConDialogo onConfirmar={() => {}} />);

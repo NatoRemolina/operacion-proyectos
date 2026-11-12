@@ -45,7 +45,7 @@ export function DialogoConfirmacion({
     const previo = document.activeElement as HTMLElement | null;
     // Lo de detrás no recibe foco ni clics: todo lo que cuelga del body salvo el propio diálogo.
     const detras = Array.from(document.body.children).filter(
-      (e) => e !== velo.current && !e.hasAttribute("inert"),
+      (e) => e !== velo.current && !e.hasAttribute("inert") && !e.hasAttribute("data-avisos"),
     );
     detras.forEach((e) => e.setAttribute("inert", ""));
     // El diálogo nace del botón que lo abrió: su origen de escala es ese botón.

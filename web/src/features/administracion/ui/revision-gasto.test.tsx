@@ -165,5 +165,18 @@ describe("Revisar un gasto", () => {
     await within(screen.getByRole("status", { name: "Avisos" })).findByText(/Gasto aprobado/);
     expect(navegacion.push).toHaveBeenCalledWith("/gastos/125");
   });
+
+  it("el siguiente ajeno se encuentra aunque los primeros pendientes sean propios", async () => {
+    const usuario = userEvent.setup();
+    const propios = Array.from({ length: 6 }, (_, i) =>
+      gastoDePrueba({ id: 200 + i, propio: true, creado: `2026-11-11T1${i}:00:00Z` }),
+    );
+    montar({
+      gastos: [EN_REVISION, ...propios, gastoDePrueba({ id: 300, comercio: "Ajeno", creado: "2026-11-10T00:00:00Z" })],
+    });
+    await usuario.click(await screen.findByRole("button", { name: "Aprobar gasto" }));
+    await within(screen.getByRole("status", { name: "Avisos" })).findByText(/Gasto aprobado/);
+    expect(navegacion.push).toHaveBeenCalledWith("/gastos/300");
+  });
 });
 

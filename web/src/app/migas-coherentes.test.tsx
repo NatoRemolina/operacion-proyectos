@@ -33,8 +33,11 @@ describe("Migas coherentes en todas las pantallas", () => {
     expect(migas().getByText("Gastos")).toHaveAttribute("aria-current", "page");
   });
 
-  it("cargar un gasto cuelga de gastos", () => {
-    renderizarConFuente(<PantallaNuevoGasto />);
+  it("cargar un gasto cuelga de gastos, con el mismo nombre que la lista", () => {
+    const { unmount } = renderizarConFuente(<PantallaNuevoGasto />, { permiso: "colaborador" });
+    expect(migas().getByRole("link", { name: "Mis gastos" })).toHaveAttribute("href", "/gastos");
+    unmount();
+    renderizarConFuente(<PantallaNuevoGasto />, { permiso: "admin" });
     expect(migas().getByRole("link", { name: "Gastos" })).toHaveAttribute("href", "/gastos");
     expect(migas().getByText("Cargar un gasto")).toHaveAttribute("aria-current", "page");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);

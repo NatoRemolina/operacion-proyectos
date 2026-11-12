@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AccionesViaje } from "@/features/administracion/ui/acciones-viaje";
 import { DecisionViaje } from "@/features/administracion/ui/decision-viaje";
 import { useGastos } from "@/features/gastos/application/gastos";
+import { usePermiso } from "@/shared/application/identidad";
 import { estadoVisibleGasto } from "@/features/gastos/domain/gastos";
 import { clasesBoton } from "@/shared/ui/boton";
 import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
@@ -128,8 +129,10 @@ function GastosDelViaje({ viaje }: { viaje: ViajeDetalle }) {
 
 export function PantallaDetalleViaje({ id }: { id: number }) {
   const consulta = useViaje(id);
+  const permiso = usePermiso();
   const viaje = consulta.data;
-  const migas = [{ texto: "Viajes", href: "/viajes" }, { texto: viaje?.codigo ?? "Detalle del viaje" }];
+  const lista = permiso === "colaborador" ? "Mis viajes" : "Viajes";
+  const migas = [{ texto: lista, href: "/viajes" }, { texto: viaje?.codigo ?? "Detalle del viaje" }];
 
   if (!viaje) {
     return (
@@ -139,7 +142,7 @@ export function PantallaDetalleViaje({ id }: { id: number }) {
           <ErrorConsulta
             error={consulta.error}
             onReintentar={() => void consulta.refetch()}
-            volverA={{ href: "/viajes", texto: "Volver a viajes" }}
+            volverA={{ href: "/viajes", texto: `Volver a ${lista.toLowerCase()}` }}
           />
         ) : (
           <EsqueletoDetalle texto="Cargando el viaje…" />

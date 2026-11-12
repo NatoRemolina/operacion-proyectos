@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useViajesParaRecibo } from "@/features/viajes/application/viajes";
+import { usePermiso } from "@/shared/application/identidad";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { clasesBoton } from "@/shared/ui/boton";
 import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
@@ -82,6 +83,7 @@ function useVistaPrevia() {
 
 export function PantallaNuevoGasto({ viajeInicial }: { viajeInicial?: number } = {}) {
   const envio = useEnvioRecibo();
+  const permiso = usePermiso();
   const viajes = useViajesParaRecibo();
   // Desde el detalle de un viaje se llega con ese viaje ya elegido.
   const inicial = viajeInicial ? String(viajeInicial) : "";
@@ -110,7 +112,7 @@ export function PantallaNuevoGasto({ viajeInicial }: { viajeInicial?: number } =
     <section aria-labelledby="titulo-nuevo" className="flex max-w-xl flex-col gap-4">
       <EncabezadoPagina
         idTitulo="titulo-nuevo"
-        migas={[{ texto: "Gastos", href: "/gastos" }, { texto: "Cargar un gasto" }]}
+        migas={[{ texto: permiso === "colaborador" ? "Mis gastos" : "Gastos", href: "/gastos" }, { texto: "Cargar un gasto" }]}
         titulo="Cargar un gasto"
         descripcion="Guarda el soporte ahora. Confirma los datos después."
       />

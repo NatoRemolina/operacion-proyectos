@@ -33,7 +33,8 @@ describe("Detalle del viaje", () => {
   it("dice dónde estás, el estado y el desglose del presupuesto con su moneda", async () => {
     montar(viaje());
     expect(await screen.findByRole("heading", { level: 1, name: "V-2026-0007" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "Migas de pan" })).toHaveTextContent("Viajes");
+    // Las migas usan el mismo nombre que la lista de quien mira: «Mis viajes» para colaboración
+    expect(screen.getByRole("navigation", { name: "Migas de pan" })).toHaveTextContent("Mis viajes");
     const desglose = screen.getByRole("table", { name: "Desglose del presupuesto" });
     expect(within(desglose).getByText("Precio del vuelo")).toBeInTheDocument();
     expect(within(desglose).getByText("USD 390,00")).toBeInTheDocument();
@@ -72,6 +73,6 @@ describe("Detalle del viaje", () => {
   it("si no existe o no es visible lo dice y ofrece volver", async () => {
     montar(new ErrorDeAplicacion("no_encontrado"));
     expect(await screen.findByText("No encontramos esta información")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Volver a viajes" })).toHaveAttribute("href", "/viajes");
+    expect(screen.getByRole("link", { name: "Volver a mis viajes" })).toHaveAttribute("href", "/viajes");
   });
 });
