@@ -4,7 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { crearContextoRepositorio } from "@/shared/application/contexto-repositorio";
 import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
 import { comoErrorDeAplicacion, type ErrorDeAplicacion } from "@/shared/domain/errores";
-import type { AdministracionRepository, CambioEstadoViaje, ResultadoCambioEstado } from "../domain/administracion";
+import { useGastosRepository } from "@/features/gastos/application/gastos";
+import type { GastoDetalle, GastoResumen } from "@/features/gastos/domain/gastos";
+import type {
+  AdministracionRepository,
+  CambioEstadoViaje,
+  ResultadoCambioEstado,
+  RevisionGasto,
+} from "../domain/administracion";
 
 const contexto = crearContextoRepositorio<AdministracionRepository>("AdministracionRepository");
 export const AdministracionRepositoryProvider = contexto.Proveedor;
@@ -42,6 +49,38 @@ export function useCambiarEstadoViaje() {
       queryClient.setQueryData(claveDePersona(personaId, "viajes", "detalle", viaje.id), viaje);
       void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "viajes") });
       void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion") });
+    },
+  });
+}
+
+/**
+ * Caso de uso «revisar un gasto». Además del gasto revisado devuelve el siguiente en revisión, para
+ * seguir con la bandeja sin volver a la lista. Si otra persona lo cambió, se recarga lo último.
+ */
+export function useRevisarGasto(id: number) {
+  const repositorio = useAdministracionRepository();
+  const gastos = useGastosRepository();
+  const personaId = usePersonaId();
+  const queryClient = useQueryClient();
+  const claveDetalle = claveDePersona(personaId, "gastos", "detalle", id);
+  return useMutation<{ gasto: GastoDetalle; siguiente: GastoResumen | null }, ErrorDeAplicacion, RevisionGasto>({
+    mutationFn: async (revision) => {
+      try {
+        const gasto = await repositorio.revisarGasto(id, revision);
+        const pendientes = await gastos.listar({ estado: "revision", limite: 5 }).catch(() => null);
+        return { gasto, siguiente: pendientes?.items.find((g) => g.id !== id) ?? null };
+      } catch (error) {
+        throw comoErrorDeAplicacion(error);
+      }
+    },
+    onSuccess: ({ gasto }) => {
+      queryClient.setQueryData(claveDetalle, gasto);
+      void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "gastos", "lista") });
+      void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "viajes") });
+      void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion") });
+    },
+    onError: (error) => {
+      if (error.tipo === "cambio_ajeno") void queryClient.invalidateQueries({ queryKey: claveDetalle });
     },
   });
 }

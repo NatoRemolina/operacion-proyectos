@@ -1,4 +1,4 @@
-import type { EstadoGasto, GastoResumen } from "@/features/gastos/domain/gastos";
+import type { EstadoGasto, GastoDetalle, GastoResumen } from "@/features/gastos/domain/gastos";
 import type { ViajeDetalle, ViajeResumen } from "@/features/viajes/domain/viajes";
 import type { Dinero } from "@/shared/domain/tipos";
 
@@ -54,6 +54,18 @@ export interface AdministracionRepository {
   resumen(signal?: AbortSignal): Promise<ResumenAdmin>;
   /** Solo administración y nunca sobre lo propio («autoaprobacion»). */
   cambiarEstadoViaje(id: number, cambio: CambioEstadoViaje): Promise<ResultadoCambioEstado>;
+  /**
+   * Aprueba o rechaza un gasto en revisión. Con la `version` que se vio: si otra persona lo cambió
+   * entretanto falla con «cambio_ajeno» y no se aplica nada. Nadie revisa lo suyo («prohibido»).
+   */
+  revisarGasto(id: number, revision: RevisionGasto): Promise<GastoDetalle>;
+}
+
+export interface RevisionGasto {
+  readonly version: number;
+  readonly accion: "aprobar" | "rechazar";
+  /** Obligatorio para rechazar; la persona lo verá. */
+  readonly motivo?: string;
 }
 
 export const MOTIVO_MINIMO = 5;

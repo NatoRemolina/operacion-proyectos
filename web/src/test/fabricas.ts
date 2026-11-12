@@ -39,6 +39,7 @@ export function gastoDePrueba(datos: Partial<GastoDetalle> = {}): GastoDetalle {
     documento_id: 55,
     lectura: { origen: "modelo", confianza: 0.9 },
     justificaciones: [],
+    version: 0,
     ...datos,
   };
 }

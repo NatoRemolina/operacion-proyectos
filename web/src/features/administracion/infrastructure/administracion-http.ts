@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { gastoResumenSchema } from "@/features/gastos/infrastructure/gastos-http";
+import { gastoDetalleSchema, gastoResumenSchema } from "@/features/gastos/infrastructure/gastos-http";
 import { viajeDetalleSchema, viajeResumenSchema } from "@/features/viajes/infrastructure/viajes-http";
 import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { ActividadGasto, AdministracionRepository, ResumenAdmin } from "../domain/administracion";
@@ -46,6 +46,13 @@ export function crearAdministracionHttp(cliente: ClienteHttp): AdministracionRep
         `/viajes/${encodeURIComponent(id)}/estado`,
         { accion, motivo: (motivo ?? "").trim(), confirmar_precio: confirmarPrecio ?? false },
         resultadoCambioSchema,
+      );
+    },
+    revisarGasto(id, { version, accion, motivo }) {
+      return cliente.postJson(
+        `/gastos/${encodeURIComponent(id)}/revision`,
+        { version, accion, motivo: (motivo ?? "").trim() },
+        gastoDetalleSchema,
       );
     },
   };

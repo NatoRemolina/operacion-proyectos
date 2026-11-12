@@ -1,3 +1,4 @@
+import type { GastoDetalle } from "@/features/gastos/domain/gastos";
 import type { ViajeResumen } from "@/features/viajes/domain/viajes";
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { esperar, exigirSesion, type SesionMemoria } from "@/shared/infrastructure/memoria";
@@ -24,11 +25,13 @@ const TRANSICIONES: Record<AccionViaje, { desde: ViajeResumen["estado"][]; hacia
 export function crearAdministracionMemoria(opciones: {
   resumen?: ResumenAdmin | null;
   viajes?: ViajeResumen[];
+  gastos?: GastoDetalle[];
   sesion?: SesionMemoria;
   latenciaMs?: number;
 }): AdministracionRepository {
   const { sesion, latenciaMs = 0 } = opciones;
   const viajes = opciones.viajes ?? [];
+  const gastos = opciones.gastos ?? [];
   return {
     async resumen(signal) {
       await esperar(latenciaMs, signal);
@@ -63,6 +66,26 @@ export function crearAdministracionMemoria(opciones: {
         },
         mensaje: `${viaje.codigo}: ${regla.paso}.`,
       };
+    },
+
+    async revisarGasto(id, { version, accion, motivo = "" }) {
+      await esperar(latenciaMs);
+      exigirSesion(sesion);
+      if (!opciones.resumen) throw new ErrorDeAplicacion("prohibido");
+      const indice = gastos.findIndex((g) => g.id === id);
+      if (indice < 0) throw new ErrorDeAplicacion("no_encontrado");
+      const gasto = gastos[indice]!;
+      if ((gasto.version ?? 0) !== version) throw new ErrorDeAplicacion("cambio_ajeno");
+      const problema = accion === "rechazar" ? problemaDeMotivo(motivo) : null;
+      if (problema) throw new ErrorDeAplicacion("validacion", { campos: { motivo: problema } });
+      const nuevo: GastoDetalle = {
+        ...gasto,
+        estado: accion === "aprobar" ? "aprobado" : "rechazado",
+        estado_texto: accion === "aprobar" ? "Aprobado" : "Rechazado",
+        version: version + 1,
+      };
+      gastos[indice] = nuevo;
+      return nuevo;
     },
   };
 }

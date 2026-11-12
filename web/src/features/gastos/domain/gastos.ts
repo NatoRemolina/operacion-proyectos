@@ -41,6 +41,8 @@ export interface GastoDetalle extends GastoResumen {
   readonly documento_id: number | null;
   readonly lectura: { readonly origen: string; readonly confianza: number | null };
   readonly justificaciones: readonly Justificacion[];
+  /** Sube con cada cambio; la revisión la manda de vuelta para no pisar el cambio de otra persona. */
+  readonly version?: number;
 }
 
 export interface FiltroGastos extends OpcionesListado {
