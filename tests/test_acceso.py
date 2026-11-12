@@ -5,7 +5,7 @@ from app import db
 from app.main import app
 from app.servicios import acceso
 
-FORM = dict(proyecto_id=1, viajero_id=2, origen="MIA", destino="LAS", ida="2026-12-08", regreso="2026-12-11")
+FORM = dict(proyecto_id=1, viajero_id=2, origen="MIA", destino="LAS", ida="2026-12-08", regreso="2026-12-11", para_otra_persona="1")
 
 
 def test_toda_ruta_tiene_nivel_y_sin_sesion_no_se_entra(anonimo):

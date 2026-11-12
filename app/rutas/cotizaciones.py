@@ -29,11 +29,11 @@ def viaje_nuevo(request: Request, error: str = ""):
 
 
 @router.post("/viajes")
-def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(...), origen: str = Form(...),
+def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen: str = Form(...),
                 destino: str = Form(...), ciudad: str = Form(""), ida: str = Form(...), regreso: str = Form(...),
                 llegar_antes: str = Form(""), baterias_n: int = Form(0), baterias_wh: float = Form(0),
                 maleta: str = Form(""), prob_cambio: float = Form(0), carro_dia: float = Form(0),
-                solicitado_por: str = Form(""), viajero_nuevo: str = Form("")):
+                solicitado_por: str = Form(""), viajero_nuevo: str = Form(""), para_otra_persona: str = Form("")):
     desde, hacia = aeropuertos.resolver(origen), aeropuertos.resolver(destino)
     if not desde or not hacia:
         malo = origen if not desde else destino
@@ -51,14 +51,18 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(...), orige
     prob_cambio, baterias_n = min(max(prob_cambio, 0), 100), max(baterias_n, 0)
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
     solicitado_por, viajero_nuevo = _yo()["nombre"], viajero_nuevo.strip()[:80]  # quien consulta sale de la sesión
-    if _yo().get("rol") == "colaborador" and _yo().get("viajero_id"):
-        # Un piloto cotiza su propio viaje: el titular no puede salir de un campo que se olvidó cambiar
+    # Todos viajan: quien cotiza viaja, salvo que gestión o administración marquen que es para otra persona.
+    # Así el titular no sale de un campo que se olvidó cambiar.
+    para_otra = para_otra_persona == "1" and _yo().get("rol") in ("gestor", "admin")
+    if _yo().get("viajero_id") and not para_otra:
         viajero_id, viajero_nuevo = _yo()["viajero_id"], ""
     elif not acceso.es_admin(_yo()):
         viajero_nuevo = ""   # registrar viajeros es tarea de administración
     if viajero_nuevo:
         existente = db.uno("select id from viajeros where lower(nombre)=lower(:n)", n=viajero_nuevo)
         viajero_id = existente["id"] if existente else db.insertar("viajeros", nombre=viajero_nuevo, base=desde[1], rol="Viajero")
+    if not viajero_id or not db.uno("select id from viajeros where id=:i", i=viajero_id):
+        return RedirectResponse("/viajes/nuevo?error=Elige+qui%C3%A9n+viaja.", status_code=303)
     sid = db.insertar("solicitudes", proyecto_id=proyecto_id, viajero_id=viajero_id, origen=origen,
                       destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
                       llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,

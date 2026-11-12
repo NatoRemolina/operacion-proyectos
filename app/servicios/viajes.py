@@ -147,13 +147,39 @@ TRANSICIONES = {   # acción: (estados desde los que se permite, estado al que l
 }
 
 
+NO_AUTOAPROBAR = "Nadie aprueba ni rechaza su propio presupuesto: debe hacerlo otra persona de administración."
+
+
+def es_propio_de(viaje: dict | None, u: dict | None) -> bool:
+    """El viaje es de la persona: es su titular o es quien viaja. A diferencia de `acceso.es_propio`, ser admin no cuenta."""
+    if not viaje or not u:
+        return False
+    return viaje.get("usuario_id") == u["id"] or bool(u.get("viajero_id") and viaje.get("viajero_id") == u["viajero_id"])
+
+
+def hay_otro_admin(u: dict) -> bool:
+    """Si existe otra cuenta de administración activa que pueda aprobar lo de esta persona."""
+    return bool(db.uno("select id from usuarios where rol='admin' and activo=1 and id<>:i limit 1", i=u["id"]))
+
+
+def impedir_autoaprobacion(entidad: str, entidad_id: int, quien: dict, que: str) -> None:
+    """Deja constancia de cada intento de aprobar o revisar lo propio: quién y qué."""
+    eventos.registrar(entidad, entidad_id, "autoaprobación impedida", f"{quien['nombre']} intentó {que}", quien["nombre"])
+
+
 def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict) -> tuple[bool, str]:
-    """Solo administración mueve el estado. Devuelve (hecho, mensaje para mostrar)."""
+    """Solo administración mueve el estado, y nadie aprueba ni rechaza su propio presupuesto.
+
+    Devuelve (hecho, mensaje para mostrar).
+    """
     v = uno(viaje_id)
     if not v or accion not in TRANSICIONES:
         return False, "Viaje o acción no válidos."
     if not acceso.es_admin(quien):
         return False, "Solo un administrador puede aprobar, rechazar, reabrir o cerrar un viaje."
+    if accion in ("aprobar", "rechazar") and es_propio_de(v, quien):
+        impedir_autoaprobacion("viaje", viaje_id, quien, f"{accion} el presupuesto de su propio viaje {v['codigo']}")
+        return False, NO_AUTOAPROBAR
     desde, hacia, paso = TRANSICIONES[accion]
     if v["estado"] not in desde:
         return False, f"El viaje {v['codigo']} está {v['estado_texto'].lower()}: no se puede {accion}."
@@ -206,6 +232,31 @@ def resolver_para_gasto(usuario: dict, viaje_id: int | None = None, hoy: date | 
         return None, aprobados   # solo viajes ya pasados: mejor preguntar que adivinar
     pendientes = de_persona(usuario, ("pendiente_aprobacion",))
     return (pendientes[0], []) if len(pendientes) == 1 else (None, pendientes)
+
+
+NO_AUTORREVISAR = "Nadie revisa sus propios gastos: debe hacerlo otra persona de administración."
+
+
+def gasto_propio_de(gasto: dict | None, u: dict | None) -> bool:
+    """El gasto es de la persona: se carga a su perfil de viajero, a un viaje suyo, o lo subió sin cargarlo a nadie más.
+
+    Un recibo que administración sube a nombre de otra persona es de esa persona, no de quien lo subió.
+    """
+    if not gasto or not u:
+        return False
+    if u.get("viajero_id") and gasto.get("viajero_id") == u["viajero_id"]:
+        return True
+    if not gasto.get("viajero_id") and gasto.get("usuario_id") == u["id"]:
+        return True
+    return es_propio_de(uno(gasto.get("viaje_id")), u)
+
+
+def revision_permitida(gid: int, antes: dict, despues: dict, quien: dict, accion: str) -> str | None:
+    """Nadie revisa sus propios gastos, ni los que la revisión le asignaría a sí mismo. Devuelve el aviso si se impide."""
+    if gasto_propio_de(antes, quien) or gasto_propio_de(despues, quien):
+        impedir_autoaprobacion("gasto", gid, quien, f"{accion} su propio gasto #{gid} en la revisión")
+        return NO_AUTORREVISAR
+    return None
 
 
 def gastado(viaje_id: int, excepto_gasto: int = 0) -> float:

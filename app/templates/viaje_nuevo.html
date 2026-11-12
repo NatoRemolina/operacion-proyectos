@@ -9,8 +9,14 @@
   <div class="campos">
 
     <div><label>Proyecto{% if es_admin %} · <a href="/admin/proyectos">crear otro</a>{% endif %}</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }} ({{ p.ciudad or 'sin ciudad' }}, {{ p.fecha_inicio }} a {{ p.fecha_fin }})</option>{% endfor %}</select></div>
-    {% if yo.rol == 'colaborador' and yo.viajero_id %}<div><label>¿Quién viaja?</label><input type="hidden" name="viajero_id" value="{{ yo.viajero_id }}"><p style="margin:8px 0 0"><b>{{ yo.nombre }}</b> (tú)</p></div>
-    {% else %}<div><label for="viajero_id">¿Quién viaja?</label><select id="viajero_id" name="viajero_id" required>{% if not yo.viajero_id %}<option value="" disabled selected>Elige quién viaja</option>{% endif %}{% for v in viajeros %}<option value="{{ v.id }}" {{ 'selected' if v.id == yo.viajero_id }}>{{ v.nombre }} ({{ v.base }})</option>{% endfor %}</select></div>
+    {% set elige = yo.rol in ('gestor', 'admin') %}
+    {% if yo.viajero_id and not elige %}<div><label>¿Quién viaja?</label><input type="hidden" name="viajero_id" value="{{ yo.viajero_id }}"><p style="margin:8px 0 0"><b>{{ yo.nombre }}</b> (tú)</p></div>
+    {% elif yo.viajero_id %}<div><label>¿Quién viaja?</label>
+      <label style="font-weight:400"><input type="radio" name="para_otra_persona" value="" checked> <b>{{ yo.nombre }}</b> (tú)</label>
+      <label style="font-weight:400"><input type="radio" name="para_otra_persona" value="1" id="para_otra"> Otra persona:</label>
+      <select name="viajero_id" aria-label="Quién viaja" onchange="document.getElementById('para_otra').checked = true">{% for v in viajeros if v.id != yo.viajero_id %}<option value="{{ v.id }}">{{ v.nombre }}{% if v.base %} ({{ v.base }}){% endif %}</option>{% endfor %}</select></div>
+    {% if es_admin %}<div><label for="viajero_nuevo">O registrar un viajero nuevo</label><input id="viajero_nuevo" name="viajero_nuevo" maxlength="80" placeholder="Nombre (opcional)" oninput="if (this.value) document.getElementById('para_otra').checked = true"></div>{% endif %}
+    {% else %}<div><label for="viajero_id">¿Quién viaja?</label><select id="viajero_id" name="viajero_id" required><option value="" disabled selected>Elige quién viaja</option>{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}{% if v.base %} ({{ v.base }}){% endif %}</option>{% endfor %}</select><input type="hidden" name="para_otra_persona" value="1"></div>
     {% if es_admin %}<div><label for="viajero_nuevo">O registrar un viajero nuevo</label><input id="viajero_nuevo" name="viajero_nuevo" maxlength="80" placeholder="Nombre (opcional)"></div>{% endif %}{% endif %}
   </div>
   <h2>Ruta y fechas</h2>

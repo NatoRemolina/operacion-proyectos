@@ -30,7 +30,8 @@ def viaje_detalle(request: Request, vid: int, aviso: str = ""):
     if not v:
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "viaje_detalle.html", _ctx(
-        v=v, aviso=aviso[:300], detalle=db.de_json(v["presupuesto_detalle"], []),
+        v=v, aviso=aviso[:300], detalle=db.de_json(v["presupuesto_detalle"], []), propio=viajes.es_propio_de(v, _yo()),
+        hay_otro_admin=acceso.es_admin(_yo()) and viajes.hay_otro_admin(_yo()),
         gastos=db.todos("""select g.*, d.canal, d.nombre archivo from gastos g left join documentos d on d.id=g.documento_id
                            where g.viaje_id=:i order by g.id desc""", i=vid),
         evidencias=db.todos("select * from documentos where viaje_id=:i and tipo in ('audio','nota') order by id desc", i=vid),
@@ -50,7 +51,10 @@ def viaje_evidencia(vid: int, doc: int):
 @router.get("/admin/viajes", response_class=HTMLResponse)
 def viajes_admin(request: Request, aviso: str = ""):
     todos_ = viajes.lista()
+    for v in todos_:   # lo propio no se aprueba aquí: lo hace otra persona de administración
+        v["propio"] = viajes.es_propio_de(v, _yo())
     return plantillas.TemplateResponse(request, "viajes_admin.html", _ctx(
+        hay_otro_admin=viajes.hay_otro_admin(_yo()),
         aviso=aviso[:300], pendientes=[v for v in todos_ if v["estado"] == "pendiente_aprobacion"],
         abiertos=[v for v in todos_ if v["estado"] == "aprobado"],
         otros=[v for v in todos_ if v["estado"] in ("rechazado", "cerrado")]))

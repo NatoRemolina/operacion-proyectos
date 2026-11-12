@@ -61,7 +61,7 @@ def anonimo():
 
 FORM_VIAJE = dict(proyecto_id=1, viajero_id=1, origen="Miami (MIA)", destino="las vegas", ciudad="", ida="2026-12-08",
                   regreso="2026-12-11", llegar_antes="2026-12-08T18:00", baterias_n=4, baterias_wh=77, maleta="on",
-                  prob_cambio=25, carro_dia=65, solicitado_por="Pruebas")
+                  prob_cambio=25, carro_dia=65, solicitado_por="Pruebas", para_otra_persona="1")
 
 
 @pytest.fixture(scope="session")

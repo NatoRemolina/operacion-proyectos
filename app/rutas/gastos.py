@@ -107,6 +107,8 @@ def gasto(request: Request, gid: int, aviso: str = ""):
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "gasto.html", _ctx(
         g=g, alertas=db.de_json(g["alertas"], []), el_viaje=viajes.uno(g["viaje_id"]), aviso=aviso[:300],
+        propio=viajes.gasto_propio_de(g, _yo()), no_autorrevisar=viajes.NO_AUTORREVISAR,
+        hay_otro_admin=acceso.es_admin(_yo()) and viajes.hay_otro_admin(_yo()),
         justifs=justificaciones.de_gasto(gid), puede_justificar=justificaciones.puede_justificar(_yo(), g),
         mis_viajes=viajes.lista("v.estado<>'rechazado'") if acceso.es_admin(_yo()) else [],
         eventos=db.todos("select * from eventos where entidad='gasto' and entidad_id=:i order by id", i=gid)))
@@ -182,23 +184,28 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
                   subtotal: str = Form(""), impuesto: str = Form(""), propina: str = Form(""), total: str = Form(""),
                   moneda: str = Form(""), metodo_pago: str = Form(""), canal_reserva: str = Form(""), revisor: str = Form(""),
                   motivo_excepcion: str = Form(""), viaje_id: int = Form(-1)):
-    # Revisar es tarea de administración: nadie aprueba su propio gasto
+    # Revisar es tarea de administración, y nadie revisa su propio gasto (la regla vive en el servicio)
     if not acceso.es_admin(_yo()):
         return SOLO_ADMIN
-    previo = db.uno("select id, viaje_id, usuario_id from gastos where id=:i", i=gid)
+    previo = db.uno("select id, viaje_id, viajero_id, usuario_id from gastos where id=:i", i=gid)
     if not previo:
         return NO_ENCONTRADO
+    # El formulario puede cambiar el viaje; si no lo trae, se conserva el que tenía
+    el_viaje = viajes.uno(previo["viaje_id"] if viaje_id < 0 else viaje_id)
+    if el_viaje:
+        proyecto_id, viajero_id = el_viaje["proyecto_id"] or proyecto_id, el_viaje["viajero_id"] or viajero_id
+    despues = previo if accion == "rechazar" else \
+        {"usuario_id": previo["usuario_id"], "viajero_id": viajero_id or None, "viaje_id": el_viaje["id"] if el_viaje else None}
+    impedido = viajes.revision_permitida(gid, previo, despues, _yo(), accion)
+    if impedido:
+        return RedirectResponse(f"/gastos/{gid}?aviso={quote(impedido)}", status_code=303)
     revisor = _yo()["nombre"]
     if accion == "rechazar":
         db.actualizar("gastos", gid, estado="rechazado", revisado_por=_yo()["id"])
         eventos.registrar("gasto", gid, "rechazado en revisión", "", revisor or "revisor")
         telegram.avisar(previo["usuario_id"], f"Tu gasto #{gid} fue rechazado en la revisión.")
         return RedirectResponse("/gastos?estado=revision", status_code=303)
-    # El formulario puede cambiar el viaje; si no lo trae, se conserva el que tenía
-    el_viaje = viajes.uno(previo["viaje_id"] if viaje_id < 0 else viaje_id)
-    if el_viaje:
-        proyecto_id, viajero_id = el_viaje["proyecto_id"] or proyecto_id, el_viaje["viajero_id"] or viajero_id
-    campos = {"comercio": comercio.strip() or None, "fecha": fecha or None, "categoria": categoria,
+    campos ={"comercio": comercio.strip() or None, "fecha": fecha or None, "categoria": categoria,
               "subtotal": _numero(subtotal), "impuesto": _numero(impuesto), "propina": _numero(propina),
               "total": _numero(total), "moneda": moneda.upper().strip() or None,
               "metodo_pago": metodo_pago.strip() or None, "canal_reserva": canal_reserva.strip() or None}

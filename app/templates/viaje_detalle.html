@@ -19,7 +19,8 @@
 {% if es_admin %}<form method="post" action="/admin/viajes/{{ v.id }}" class="tarjeta"><h3>Decisión de administración</h3>
   <input type="hidden" name="volver" value="detalle">
   <div class="fila"><input name="motivo" placeholder="Motivo (obligatorio para rechazar)" style="flex:1;min-width:220px">
-  {% if v.estado == 'pendiente_aprobacion' %}<button name="accion" value="aprobar">Aprobar presupuesto</button> <button class="mal" name="accion" value="rechazar">Rechazar</button>
+  {% if v.estado == 'pendiente_aprobacion' and propio %}<span class="eti">Es tu viaje: {{ 'lo aprueba otra persona de administración.' if hay_otro_admin else 'Hace falta otra persona de administración para aprobarlo.' }}</span>
+  {% elif v.estado == 'pendiente_aprobacion' %}<button name="accion" value="aprobar">Aprobar presupuesto</button> <button class="mal" name="accion" value="rechazar">Rechazar</button>
   {% elif v.estado == 'aprobado' %}<button class="sec" name="accion" value="cerrar" data-confirmar="Al cerrar el viaje, los gastos que lleguen después irán a revisión. ¿Cerrarlo?">Cerrar viaje</button> <button class="sec" name="accion" value="reabrir">Reabrir para cambiar la decisión</button>
   {% else %}<button class="sec" name="accion" value="reabrir">Reabrir</button>{% endif %}</div>
   <p class="eti">Con el presupuesto aprobado, los gastos claros de este viaje se aprueban solos; sin aprobar, todos esperan revisión.</p></form>{% endif %}
