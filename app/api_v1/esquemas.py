@@ -46,6 +46,7 @@ class Persona(BaseModel):
 class Sesion(BaseModel):
     persona: Persona
     csrf_token: str
+    demostracion: bool = Field(False, description="La plataforma corre en local con cuentas y datos de demostración.")
 
 
 class Referencia(BaseModel):

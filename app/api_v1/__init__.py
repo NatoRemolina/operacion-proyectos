@@ -11,13 +11,20 @@ Los endpoints viven en `app/rutas/v1_*.py` y usan las dependencias de aquí con 
 """
 import hashlib
 import hmac
+import os
 
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 
+from .. import config
 from ..servicios import acceso
 
 PREFIJO = "/api/v1"
+
+
+def datos_demostracion() -> bool:
+    """La plataforma corre en local con las cuentas de demostración (la misma regla que la pantalla de ingreso)."""
+    return config.LOCAL and (config.ES_SQLITE or os.getenv("CUENTAS_DEMO") == "1")
 
 
 class ErrorApi(Exception):

@@ -9,6 +9,8 @@ export interface Persona {
   readonly correo: string;
   /** Qué hace la persona en la empresa («Pilotaje de dron»…). No da permisos. */
   readonly cargo: string | null;
+  /** La sesión es de un entorno de demostración (lo dice el servidor): la barra lo indica. */
+  readonly demostracion?: boolean;
 }
 
 /** Sesión del navegador. La identidad la decide el servidor a partir de la cookie. */

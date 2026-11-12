@@ -50,6 +50,11 @@ describe("Zona privada", () => {
     expect(within(barra).getByRole("link", { name: "Cotizar viaje" })).toHaveAttribute("href", "/cotizar");
   });
 
+  it("si el servidor dice que el entorno es de demostración, la barra lo indica", async () => {
+    await barraPara(personaDePrueba({ rol: "admin", demostracion: true }));
+    expect(screen.getAllByText("Entorno de demostración").length).toBeGreaterThan(0);
+  });
+
   it("con datos de demostración la barra dice «Entorno de demostración»", async () => {
     await barraPara(personaDePrueba({ rol: "colaborador" }), true);
     expect(screen.getAllByText("Entorno de demostración").length).toBeGreaterThan(0);

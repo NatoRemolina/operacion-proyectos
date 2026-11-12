@@ -3934,6 +3934,12 @@
           "csrf_token": {
             "type": "string",
             "title": "Csrf Token"
+          },
+          "demostracion": {
+            "type": "boolean",
+            "title": "Demostracion",
+            "description": "La plataforma corre en local con cuentas y datos de demostración.",
+            "default": false
           }
         },
         "type": "object",

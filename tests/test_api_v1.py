@@ -73,7 +73,7 @@ def test_login_correcto_devuelve_persona_token_y_cookie():
     r = c.post(f"{V1}/auth/login", json={"correo": "PILOTO@demo.local ", "clave": "demo-piloto-2026"})
     assert r.status_code == 200, r.text
     cuerpo = r.json()
-    assert set(cuerpo) == {"persona", "csrf_token"}
+    assert set(cuerpo) == {"persona", "csrf_token", "demostracion"}
     assert set(cuerpo["persona"]) == {"id", "codigo", "nombre", "rol", "correo", "cargo"}   # nada de la huella de la contraseña
     assert cuerpo["persona"]["rol"] == "colaborador" and cuerpo["persona"]["codigo"] == f"P-{cuerpo['persona']['id']:04d}"
     assert "httponly" in r.headers["set-cookie"].lower() and c.cookies.get(acceso.COOKIE)
@@ -106,6 +106,7 @@ def test_me_con_y_sin_sesion(piloto, anonimo):
     r = piloto.get(f"{V1}/auth/me")
     assert r.status_code == 200 and r.json()["persona"]["correo"] == "piloto@demo.local"
     assert r.json()["csrf_token"] == _csrf(piloto)["X-CSRF-Token"]
+    assert r.json()["demostracion"] is True   # las pruebas corren en local con cuentas de demostración
     _contrato(anonimo.get(f"{V1}/auth/me"), 401, "UNAUTHENTICATED")
 
 

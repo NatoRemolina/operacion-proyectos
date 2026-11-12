@@ -12,7 +12,11 @@ export const personaSchema = z.object({
   cargo: z.string().nullable(),
 });
 
-const sesionSchema = z.object({ persona: personaSchema, csrf_token: z.string().min(1) });
+const sesionSchema = z.object({
+  persona: personaSchema,
+  csrf_token: z.string().min(1),
+  demostracion: z.boolean().default(false),
+});
 
 export function crearAuthHttp(cliente: ClienteHttp): AuthRepository {
   return {
@@ -24,13 +28,13 @@ export function crearAuthHttp(cliente: ClienteHttp): AuthRepository {
         { csrf: false },
       );
       cliente.fijarCsrf(sesion.csrf_token);
-      return sesion.persona;
+      return { ...sesion.persona, demostracion: sesion.demostracion };
     },
     async quienSoy(signal) {
       try {
         const sesion = await cliente.get("/auth/me", sesionSchema, { signal });
         cliente.fijarCsrf(sesion.csrf_token);
-        return sesion.persona;
+        return { ...sesion.persona, demostracion: sesion.demostracion };
       } catch (error) {
         if (esErrorDeAplicacion(error) && error.tipo === "sesion_vencida") {
           cliente.fijarCsrf(null);

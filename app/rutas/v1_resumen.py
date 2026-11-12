@@ -2,13 +2,12 @@
 
 Las cifras salen del catálogo de métricas, la misma definición que usan los tableros y los KPI.
 """
-import os
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
 
-from .. import config, db
-from ..api_v1 import PREFIJO, solo_admin
+from .. import db
+from ..api_v1 import PREFIJO, datos_demostracion, solo_admin
 from ..api_v1.esquemas import ResumenAdmin, errores
 from ..servicios import consultas, metricas, viajes
 from .v1_gastos import marcar_propios
@@ -52,5 +51,5 @@ def resumen(yo: dict = Depends(solo_admin)):
         "ejecucion_pct": v["ejecucion"], "viajes_por_aprobar": v["pendientes"], "gastos_en_revision": en_revision,
         "pendientes": pendientes, "revision": marcar_propios(consultas.lista_gastos(yo, estado="revision", limite=5)["items"], yo),
         "actividad": _actividad(yo), "nota": NOTA,
-        "datos_demostracion": config.LOCAL and (config.ES_SQLITE or os.getenv("CUENTAS_DEMO") == "1"),
+        "datos_demostracion": datos_demostracion(),
     }

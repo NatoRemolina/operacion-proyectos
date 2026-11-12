@@ -19,7 +19,7 @@ export function ZonaPrivada({
   plataforma,
   children,
 }: {
-  /** Origen de las pantallas actuales de la plataforma ("" = mismo origen). */
+  /** Origen de las pantallas actuales de la plataforma; vacío si no está configurado (entonces no se enlazan). */
   plataforma: string;
   children: ReactNode;
 }) {
@@ -64,7 +64,7 @@ export function ZonaPrivada({
       nombre={sesion.data.nombre}
       cargo={sesion.data.cargo}
       permiso={sesion.data.rol}
-      entornoDemo={demo !== null}
+      entornoDemo={demo !== null || sesion.data.demostracion === true}
       enlaces={menuPara(sesion.data.rol, plataforma)}
       rutaActual={ruta}
       saliendo={salir.isPending}

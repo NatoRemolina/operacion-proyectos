@@ -1,7 +1,7 @@
 """API v1: ingreso, sesión actual y salida. Contrato en `contracts/api-v1.md`."""
 from fastapi import APIRouter, Depends, Request, Response
 
-from ..api_v1 import PREFIJO, ErrorApi, escritura, persona, token_csrf
+from ..api_v1 import PREFIJO, ErrorApi, datos_demostracion, escritura, persona, token_csrf
 from ..api_v1.esquemas import Ingreso, Sesion, errores
 from ..servicios import acceso, consultas, eventos
 
@@ -23,12 +23,14 @@ def login(datos: Ingreso, response: Response):
     acceso.fijar(usuario)
     eventos.registrar("acceso", usuario["id"], "ingreso", usuario["correo"], "api v1")
     acceso.abrir_sesion(response, usuario["id"])
-    return {"persona": consultas.persona(usuario), "csrf_token": token_csrf(response.token_sesion)}
+    return {"persona": consultas.persona(usuario), "csrf_token": token_csrf(response.token_sesion),
+            "demostracion": datos_demostracion()}
 
 
 @router.get("/me", response_model=Sesion, responses=errores(401))
 def me(request: Request, yo: dict = Depends(persona)):
-    return {"persona": consultas.persona(yo), "csrf_token": token_csrf(request.cookies.get(acceso.COOKIE))}
+    return {"persona": consultas.persona(yo), "csrf_token": token_csrf(request.cookies.get(acceso.COOKIE)),
+            "demostracion": datos_demostracion()}
 
 
 @router.post("/logout", status_code=204, response_class=Response, responses=errores(401, 403))
