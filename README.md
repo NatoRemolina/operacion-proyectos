@@ -33,7 +33,7 @@ docker build -t operacion . && docker run -p 8080:8080 --env-file .env operacion
 
 La guía completa, con Docker y el monitoreo del vuelo, está en «Guía de demostración» más abajo.
 
-1. **Planear viaje** → dejar los valores de ejemplo → *Buscar y comparar*. Ver el aviso "lo más barato no es lo mejor" y abrir un desglose.
+1. **Cotizar viaje** → dejar los valores de ejemplo → *Buscar y comparar*. Ver el aviso "lo más barato no es lo mejor" y abrir un desglose.
 2. Guardar la **ficha de decisión**.
 3. **Gastos → Cargar soportes** → procesar los ejemplos y leer el buzón simulado.
 4. Abrir la bandeja **En revisión**: un recibo ilegible y un duplicado. Corregir y aprobar uno.
@@ -98,8 +98,10 @@ Todo corre en local con una base PostgreSQL desechable y **sin claves**: no toca
 **Qué es simulado.** Sin clave del buscador, las cotizaciones usan respuestas reales guardadas en `datos/respaldo/` (Miami a Moab y Las Vegas, capturadas el 11 de noviembre de 2026), y la lectura de recibos usa las lecturas guardadas de los ejemplos. El estado del vuelo usa una respuesta de ejemplo escrita a mano con la forma que documenta el proveedor (no es una consulta real) y una fecha fija. Telegram no está conectado: los avisos quedan en el tablero. La reconfirmación del precio al aprobar necesita la clave: sin ella aprueba con el aviso «precio no reconfirmado».
 
 1. **Levantar el entorno.** `make entorno` (plataforma en http://127.0.0.1:8000) o `make entorno-web` (además la web nueva en http://127.0.0.1:8088). `make entorno-abajo` lo detiene y conserva los datos; `docker compose down -v` los borra.
-2. **Cuentas de demostración** (en `entrar`, la pantalla de ingreso las muestra con sus contraseñas): `admin@demo.local` (administración), `piloto@demo.local` y `piloto2@demo.local` (colaboradores) y `gestor@demo.local` (gestor de proyecto).
-3. **Cotizar Miami → Moab** con `piloto@demo.local`: *Planear viaje*, origen Miami (MIA), destino «Moab», 8 a 11 de diciembre de 2026 (las fechas de la respuesta guardada), con los aeropuertos CNY, GJT y SLC marcados.
+2. **Cuentas de demostración** (la pantalla de ingreso muestra tres con sus contraseñas): `admin@demo.local` (administración), `piloto@demo.local` (colaborador) y `gestor@demo.local` (gestor de proyecto). Hay una cuarta colaboradora, `piloto2@demo.local`, con la contraseña `demo-piloto2-2026` (cuentas de `datos/semilla.py`, solo en local).
+3. **Cotizar Miami → Moab** con `piloto@demo.local`: *Cotizar viaje*, 8 a 11 de diciembre de 2026 (las fechas de la respuesta guardada).
+   - **Origen:** escribir **MIA** y elegir «Miami International Airport (MIA)», no la ciudad Miami: la ciudad marca también OPF, FLL y BIM, y esa combinación no tiene respuesta guardada (si se elige la ciudad, desmarcar esos tres).
+   - **Destino:** elegir «Moab». Se marcan solos los cuatro aeropuertos más cercanos (CNY, GJT, MTJ y TEX): **desmarcar MTJ y TEX** y, en «Agregar otro aeropuerto (nombre o código)», escribir **SLC** y elegirlo. Deben quedar CNY, GJT y SLC, que es la combinación guardada; con otra, sin clave del buscador, la búsqueda queda «sin datos».
 4. **Comparar CNY, GJT y SLC con traslado.** Cada opción suma el traslado por carretera entre el aeropuerto y Moab (CNY está a unos 27 km y no suma línea; desde SLC aparece «Combustible y peajes»). La recomendada es por costo total esperado, no la más barata.
 5. **Decidir.** Elegir la recomendada (o otra, explicando por qué) y guardar. Se crea el viaje, pendiente de aprobación. Sin clave aparece «regreso sin datos» en la bitácora del viaje: es lo esperado.
 6. **Aprobar con otra cuenta.** Entrar como `admin@demo.local`, *Viajes*, aprobar. Para ver que nadie aprueba lo suyo: con la cuenta de administración cotizar y decidir otro viaje e intentar aprobarlo; el servicio lo impide y lo deja en la bitácora. Una segunda cuenta de administración (se crea en *Usuarios*) sí puede aprobarlo.
