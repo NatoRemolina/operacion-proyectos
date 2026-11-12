@@ -33,6 +33,9 @@ erDiagram
   DOCUMENTOS ||--o{ GASTOS : origina
   USUARIOS ||--o{ GASTOS : reporta
   PROYECTOS ||--o{ GASTOS : imputa
+  SOLICITUDES }o..o{ AEROPUERTOS_MUNDO : "aeropuertos marcados (códigos IATA en texto)"
+  LUGARES }o..o{ AEROPUERTOS_MUNDO : "cercanos, por distancia"
+  PAISES ||..o{ LUGARES : "código de país"
   USUARIOS ||--o{ VINCULOS_TELEGRAM : solicita
   GASTOS ||--o{ JUSTIFICACIONES : "para qué fue"
   USUARIOS ||--o{ JUSTIFICACIONES : escribe
@@ -49,6 +52,63 @@ erDiagram
     int id PK
     text nombre UK "Pilotaje de dron, Edición de video..."
     int activo "un cargo asignado no se borra: se desactiva"
+  }
+  AEROPUERTOS_MUNDO {
+    int id PK
+    text iata UK "solo con servicio regular"
+    text nombre
+    text municipio
+    text pais
+    text region
+    float lat
+    float lon
+    int grande "1 si suele tener más vuelos"
+    text buscable "nombre y municipio sin tildes ni mayúsculas"
+  }
+  LUGARES {
+    int id PK "el de GeoNames"
+    text nombre
+    text buscable "nombre y nombres alternativos normalizados"
+    text pais
+    text region
+    float lat
+    float lon
+    int poblacion
+  }
+  PAISES {
+    int id PK
+    text codigo UK
+    text nombre_es
+    text nombre_en
+  }
+  AEROPUERTOS_GOOGLE {
+    int id PK
+    text iata UK
+    text nombre
+    text ciudad
+    text kgmid
+    text consulta "texto que lo trajo"
+    text visto
+  }
+  CARGAS_DATOS {
+    int id PK
+    text fuente
+    text archivo
+    text url
+    text huella "sha256 del archivo"
+    int filas
+    text resultado
+    text momento
+    text quien
+  }
+  SOLICITUDES {
+    int id PK
+    text origen "código del aeropuerto principal"
+    text destino
+    text origen_lugar "JSON: nombre, región, país, coordenadas"
+    text destino_lugar
+    text origen_aeropuertos "códigos marcados, ordenados, con coma"
+    text destino_aeropuertos
   }
   VIAJES {
     int id PK "se muestra como V-2026-0012"
@@ -91,7 +151,11 @@ erDiagram
   }
 ```
 
-Tablas de registro, sin claves foráneas a propósito (un hecho se conserva aunque cambie lo demás): `eventos`, `errores`, `llamadas_modelo`, `telegram_mensajes`, `busquedas`, `observaciones`, `historial_ruta`.
+Tablas de registro, sin claves foráneas a propósito (un hecho se conserva aunque cambie lo demás): `eventos`, `errores`, `llamadas_modelo`, `telegram_mensajes`, `busquedas`, `observaciones`, `historial_ruta`, `consultas_buscador` y `cargas_datos`.
+
+Datos de referencia del buscador mundial: `aeropuertos_mundo`, `lugares` y `paises` se cargan de los archivos de `datos/geografia/` (OurAirports y GeoNames, ver el README) y no tienen claves foráneas: un viaje guarda los códigos y el lugar elegido como texto, de modo que sigue siendo legible aunque los datos se actualicen. `aeropuertos_google` guarda los aeropuertos que solo conoce el autocompletado de Google, para poder elegirlos aunque no estén en los datos locales. `cargas_datos` deja una fila por archivo en cada carga, también si no cambió nada.
+
+`consultas_buscador` guarda además las consultas de autocompletado con `tipo = 'autocompletado'` (la respuesta completa queda en `busquedas`, con clave `autocompletado_<texto>`). Solo las que gastaron una búsqueda (`en vivo` o `fallida`) cuentan contra los topes; las servidas de lo guardado no se registran porque serían una por pulsación.
 
 ## Identificadores
 
@@ -114,22 +178,34 @@ Se calculan a partir de la clave primaria, así que no pueden repetirse ni queda
 | Con el presupuesto aprobado la decisión no cambia sin reabrir | — | `viajes.bloquea_decision` |
 | Todo gasto pertenece a un viaje aprobado; si no, se guarda y va a revisión | Clave foránea `gastos.viaje_id` | `validacion.revisar`: `sin_viaje`, `viaje_no_aprobado`, `viaje_cerrado`, `fuera_del_viaje`, `presupuesto_superado` |
 | A qué viaje va un gasto | — | `viajes.resolver_para_gasto`: el indicado, el fijado, el que está en curso, el próximo aprobado |
-| Roles válidos | Restricción `ck_usuarios_rol` | `acceso.ROLES` |
+| Permisos válidos: `colaborador`, `gestor`, `admin` | Restricción `ck_usuarios_rol` | `acceso.ROLES` |
+| El cargo no da permisos; es opcional | `usuarios.cargo_id`, clave foránea a `cargos` | `acceso.asignar_cargo` |
+| Nombre de cargo único; un cargo con personas asignadas no se borra, se desactiva | `cargos.nombre` único | `acceso.crear_cargo`, `acceso.cambiar_cargo` |
+| Toda cuenta tiene perfil de viajero | `usuarios.viajero_id` | `acceso.crear_usuario`, `acceso.crear_perfil_viajero` |
+| Nadie aprueba ni rechaza su propio presupuesto, ni revisa sus propios gastos; el intento queda en la bitácora | — | `viajes.cambiar_estado`, `viajes.impedir_autoaprobacion` |
+| El traslado por carretera suma al costo, a la hora límite y al presupuesto; a menos de `traslado_minimo_km` no se suma | — | `costo.traslado` |
+| Un código de aeropuerto marcado debe existir en los datos locales o en `aeropuertos_google` | — | `geografia.aeropuertos_conocidos` |
+| El autocompletado de Google respeta `tope_autocompletado_mes` y `tope_autocompletado_persona_dia` | — | `geografia._tope_alcanzado` |
+| Cada carga de datos de referencia deja su registro | Tabla `cargas_datos` | `geografia` (carga desde `datos/geografia/`) |
 | Un chat de Telegram, una cuenta | Índice único en `usuarios.telegram_chat_id` | `telegram.vincular` |
 | Una entrega de Telegram se procesa una vez | `telegram_mensajes.update_id` único | `telegram.procesar` |
 | Nada apunta a algo que no existe | Claves foráneas en todo el núcleo | `datos/migracion.py` las crea y limpia referencias huérfanas |
 
 ## Quién ve qué
 
-| Rol | Ve | Puede |
+El permiso (`usuarios.rol`) decide qué se puede hacer. El cargo (`cargos`) dice qué hace la persona en la empresa, aparece en su ficha y en la analítica, y no cambia lo que ve ni lo que puede.
+
+| Permiso | Ve | Puede |
 |---|---|---|
-| Piloto | Sus cotizaciones, viajes, gastos y evidencias | Cotizar, decidir sus viajes, cargar gastos (web, celular, Telegram) |
-| Gestor de proyecto | Lo suyo y todo lo de los proyectos que gestiona | Lo mismo que el piloto sobre lo suyo; lo ajeno, solo lectura |
-| Administrador | Todo | Aprobar presupuestos, revisar gastos, administrar cuentas, monitorear |
+| Colaborador (antes piloto) | Sus cotizaciones, viajes, gastos y evidencias | Cotizar, decidir sus viajes, cargar gastos (web, celular, Telegram) |
+| Gestor de proyecto | Lo suyo y todo lo de los proyectos que gestiona | Lo mismo que el colaborador sobre lo suyo; lo ajeno, solo lectura |
+| Administrador | Todo | Aprobar presupuestos, revisar gastos, administrar cuentas y cargos, monitorear. No aprueba lo propio |
+
+Todas las cuentas viajan: cotizan, reciben viajes a su nombre y reportan gastos.
 
 ## Migración
 
-`python -m datos.semilla` crea lo que falte y ejecuta `datos/migracion.py`, que se puede repetir sin efecto: renombra el rol antiguo, crea los viajes de las decisiones que ya existían, enlaza los gastos cuyo viaje es inequívoco, vacía referencias huérfanas, añade claves foráneas, restricciones e índices, activa la seguridad por filas y retira los permisos de los roles públicos.
+`python -m datos.semilla` crea lo que falte y ejecuta `datos/migracion.py`, que se puede repetir sin efecto: renombra el permiso antiguo (`piloto` pasa a `colaborador` con el cargo «Pilotaje de dron»), siembra los cinco cargos iniciales en una tabla vacía, crea el perfil de viajero de las cuentas que no lo tienen, crea los viajes de las decisiones que ya existían, enlaza los gastos cuyo viaje es inequívoco, vacía referencias huérfanas, añade claves foráneas, restricciones e índices, activa la seguridad por filas y retira los permisos de los roles públicos.
 
 ## Telegram
 

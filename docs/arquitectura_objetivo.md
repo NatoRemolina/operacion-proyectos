@@ -89,3 +89,21 @@ Tablas sin dueño claro, que hay que decidir antes de separar:
 | Migraciones | Idempotentes, sin versión | Versionadas por servicio | 2 |
 | Integración continua | Linter y pruebas en SQLite | Además PostgreSQL aislado, web y un trabajo por servicio | 1 a 3 |
 | Entorno local | PostgreSQL, aplicación, web y gateway en Compose | Un contenedor por servicio | 3 |
+
+## Referencias
+
+Patrones del repositorio público [`dotnet/eShop`](https://github.com/dotnet/eShop), una aplicación de comercio electrónico de referencia dividida en servicios. Son una guía de forma, no código que se copie: el lenguaje y las herramientas son otros. Los anillos son los de la tabla anterior.
+
+| Anillo | Patrón | Dónde verlo en eShop |
+|---|---|---|
+| 0 (entrada local) | Entrada y configuración comunes a todos los servicios: autenticación, documentación de la API y comprobaciones de salud en un solo proyecto compartido. eShop no tiene un gateway propio: la web llama a los servicios por su nombre. Aquí el gateway local sí existe, así que esta referencia cubre solo lo común de cada servicio | [`src/eShop.ServiceDefaults`](https://github.com/dotnet/eShop/tree/main/src/eShop.ServiceDefaults) |
+| 1 (web) | Aplicación web aparte que consume las APIs de los servicios | [`src/WebApp`](https://github.com/dotnet/eShop/tree/main/src/WebApp) |
+| 2 (datos) | Cada servicio con su propia base y sus migraciones versionadas junto al código | [`src/Catalog.API/Infrastructure`](https://github.com/dotnet/eShop/tree/main/src/Catalog.API/Infrastructure) (contexto, semilla y `Migrations`) y [`src/Ordering.Infrastructure`](https://github.com/dotnet/eShop/tree/main/src/Ordering.Infrastructure) |
+| 2 (datos) | Identidad separada: un servicio propio de cuentas y tokens, que los demás solo validan | [`src/Identity.API`](https://github.com/dotnet/eShop/tree/main/src/Identity.API) |
+| 3 (eventos) | Eventos de integración entre servicios con un bus de mensajes y su abstracción | [`src/EventBus`](https://github.com/dotnet/eShop/tree/main/src/EventBus) y [`src/EventBusRabbitMQ`](https://github.com/dotnet/eShop/tree/main/src/EventBusRabbitMQ) |
+| 3 (eventos) | Bandeja de salida (outbox): el evento se guarda en la misma transacción que el cambio y se publica después | [`src/IntegrationEventLogEF`](https://github.com/dotnet/eShop/tree/main/src/IntegrationEventLogEF) y [`src/Ordering.API/Application/IntegrationEvents`](https://github.com/dotnet/eShop/tree/main/src/Ordering.API/Application/IntegrationEvents) |
+| 3 (eventos) | Consumidores que reaccionan a eventos de otro servicio | [`src/Ordering.API/Application/IntegrationEvents/EventHandling`](https://github.com/dotnet/eShop/tree/main/src/Ordering.API/Application/IntegrationEvents/EventHandling) y [`src/Basket.API/IntegrationEvents`](https://github.com/dotnet/eShop/tree/main/src/Basket.API/IntegrationEvents) |
+| 3 (eventos) | Idempotencia: una orden repetida no se procesa dos veces | [`src/Ordering.Infrastructure/Idempotency`](https://github.com/dotnet/eShop/tree/main/src/Ordering.Infrastructure/Idempotency) |
+| 3 (cómputo) | Proceso en segundo plano aparte, para trabajo que no es una petición | [`src/OrderProcessor`](https://github.com/dotnet/eShop/tree/main/src/OrderProcessor) |
+| 3 (local) | Orquestación local: un proyecto que levanta bases, bus y servicios con sus dependencias | [`src/eShop.AppHost`](https://github.com/dotnet/eShop/tree/main/src/eShop.AppHost) |
+| 1 a 3 (integración continua) | Validación de cada cambio con pruebas por proyecto | [`.github/workflows`](https://github.com/dotnet/eShop/tree/main/.github/workflows) y [`tests`](https://github.com/dotnet/eShop/tree/main/tests) |
