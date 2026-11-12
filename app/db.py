@@ -5,6 +5,8 @@ texto ISO y los campos compuestos como texto JSON.
 """
 import json
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -239,8 +241,68 @@ def crear_tablas():
                     c.execute(text(f"alter table {t.name} add column {col.name} {col.type.compile(motor.dialect)}"))
 
 
+# ---------- transacción de verdad ----------
+# Fuera de `transaccion()` todo sigue igual: en Postgres cada consulta se confirma sola (un viaje de red por consulta).
+_en_transaccion: ContextVar = ContextVar("conexion_en_transaccion", default=None)
+
+
+@contextmanager
+def transaccion():
+    """Entrega una conexión con transacción real; al salir confirma, y ante cualquier error revierte todo.
+
+    Las funciones de este módulo usadas dentro (`uno`, `insertar`, `actualizar`...) participan en ella, y una
+    `transaccion()` anidada se une a la exterior. En Postgres, aislamiento READ COMMITTED solo en esta conexión;
+    en SQLite, BEGIN IMMEDIATE: toma el cerrojo de escritura al empezar y la siguiente espera su turno.
+    Si dentro se atrapa un error y se sigue, va en un punto de guardado (`conexion.begin_nested()`).
+    """
+    actual = _en_transaccion.get()
+    if actual is not None:
+        yield actual
+        return
+    with motor.connect() as conexion:
+        if not config.ES_SQLITE:
+            conexion = conexion.execution_options(isolation_level="READ COMMITTED")
+        marca = _en_transaccion.set(conexion)
+        try:
+            if config.ES_SQLITE:
+                conexion.exec_driver_sql("BEGIN IMMEDIATE")
+            else:
+                conexion.begin()
+            yield conexion
+            conexion.commit()
+        except BaseException:
+            conexion.rollback()
+            raise
+        finally:
+            _en_transaccion.reset(marca)
+            _cache.clear()
+
+
+def bloquear_viaje(conexion, viaje_id: int | None) -> dict | None:
+    """Relee el viaje y lo deja bloqueado hasta el final de la transacción (en SQLite ya lo está la base entera)."""
+    if not viaje_id:
+        return None
+    sql = "select * from viajes where id=:i" + ("" if config.ES_SQLITE else " for update")
+    fila = conexion.execute(text(sql), {"i": viaje_id}).first()
+    return dict(fila._mapping) if fila else None
+
+
+@contextmanager
+def _conexion(escritura: bool = False):
+    """La conexión de la transacción en curso, o una propia como siempre."""
+    actual = _en_transaccion.get()
+    if actual is not None:
+        yield actual
+    elif escritura:
+        with motor.begin() as c:
+            yield c
+    else:
+        with motor.connect() as c:
+            yield c
+
+
 def todos(sql: str, **p) -> list[dict]:
-    with motor.connect() as c:
+    with _conexion() as c:
         # Postgres devuelve sumas y promedios como Decimal; se pasan a float para que todo sea serializable
         return [{k: float(v) if isinstance(v, Decimal) else v for k, v in f._mapping.items()} for f in c.execute(text(sql), p)]
 
@@ -266,7 +328,7 @@ def uno(sql: str, **p) -> dict | None:
 
 def ejecutar(sql: str, **p):
     _cache.clear()
-    with motor.begin() as c:
+    with _conexion(escritura=True) as c:
         c.execute(text(sql), p)
 
 
@@ -278,13 +340,13 @@ def insertar(tabla: str, **valores) -> int:
     t = TABLAS[tabla]
     if tabla not in ("eventos", "opciones", "observaciones"):
         _cache.clear()
-    with motor.begin() as c:
+    with _conexion(escritura=True) as c:
         return c.execute(t.insert().values(**_plano(valores)).returning(t.c.id)).scalar_one()
 
 
 def insertar_varios(tabla: str, filas: list[dict]):
     if filas:
-        with motor.begin() as c:
+        with _conexion(escritura=True) as c:
             c.execute(TABLAS[tabla].insert(), [_plano(f) for f in filas])
 
 
@@ -292,7 +354,7 @@ def actualizar(tabla: str, id_: int, **valores):
     t = TABLAS[tabla]
     if tabla not in ("solicitudes", "opciones", "gastos"):
         _cache.clear()
-    with motor.begin() as c:
+    with _conexion(escritura=True) as c:
         c.execute(t.update().where(t.c.id == id_).values(**_plano(valores)))
 
 

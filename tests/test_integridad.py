@@ -102,3 +102,73 @@ def test_la_api_no_publica_importes_no_finitos():
     from app.servicios import consultas
     assert consultas.dinero(float("nan")) is None and consultas.dinero(float("inf")) is None
     assert consultas.dinero(54) == "54.00"
+
+
+# ---------- transacción real ----------
+def test_transaccion_revierte_todas_las_escrituras():
+    ids = []
+    with pytest.raises(RuntimeError), db.transaccion():
+        ids.append(db.insertar("proyectos", nombre="No debe quedar"))
+        ids.append(db.insertar("proyectos", nombre="Tampoco"))
+        db.actualizar("proyectos", ids[0], ciudad="Ninguna")
+        raise RuntimeError("caída controlada")
+    assert ids and all(db.uno("select id from proyectos where id=:i", i=i) is None for i in ids)
+
+
+def test_transaccion_confirma_y_la_anidada_participa_en_la_exterior():
+    with db.transaccion() as c:
+        pid = db.insertar("proyectos", nombre="Confirmado en transacción")
+        with db.transaccion() as interna:
+            assert interna is c
+            db.actualizar("proyectos", pid, ciudad="Bogotá")
+    assert db.uno("select ciudad from proyectos where id=:i", i=pid)["ciudad"] == "Bogotá"
+    with pytest.raises(RuntimeError), db.transaccion():
+        db.actualizar("proyectos", pid, ciudad="Revertida")
+        with db.transaccion():
+            db.actualizar("proyectos", pid, nombre="Revertido")
+        raise RuntimeError("caída después de la anidada")
+    fila = db.uno("select nombre, ciudad from proyectos where id=:i", i=pid)
+    assert fila == {"nombre": "Confirmado en transacción", "ciudad": "Bogotá"}
+    db.ejecutar("delete from proyectos where id=:i", i=pid)
+
+
+def test_un_error_atrapado_dentro_usa_punto_de_guardado():
+    from sqlalchemy.exc import IntegrityError
+    with db.transaccion() as c:
+        pid = db.insertar("proyectos", nombre="Sigue tras el error")
+        with pytest.raises(IntegrityError), c.begin_nested():
+            db.insertar("cargos", nombre="Pilotaje de dron")   # nombre único que ya existe
+        db.actualizar("proyectos", pid, ciudad="Lisboa")
+    assert db.uno("select ciudad from proyectos where id=:i", i=pid)["ciudad"] == "Lisboa"
+    db.ejecutar("delete from proyectos where id=:i", i=pid)
+
+
+def test_bloquear_viaje_devuelve_la_fila_vigente(viaje_aprobado):
+    with db.transaccion() as c:
+        fila = db.bloquear_viaje(c, viaje_aprobado["id"])
+        assert fila["id"] == viaje_aprobado["id"] and fila["estado"] == "aprobado"
+        assert db.bloquear_viaje(c, None) is None
+
+
+def test_una_segunda_transaccion_espera_a_la_primera():
+    """En SQLite la transacción toma el cerrojo de escritura al empezar: la segunda lee lo que confirmó la primera."""
+    import threading
+    import time
+    dentro, vista = threading.Event(), {}
+
+    def primera():
+        with db.transaccion():
+            pid = db.insertar("proyectos", nombre="Primera transacción")
+            dentro.set()
+            time.sleep(0.3)
+            db.actualizar("proyectos", pid, ciudad="Confirmada")
+        vista["pid"] = pid
+
+    hilo = threading.Thread(target=primera)
+    hilo.start()
+    assert dentro.wait(5)
+    with db.transaccion():
+        vista["fila"] = db.uno("select ciudad from proyectos where nombre='Primera transacción'")
+    hilo.join(5)
+    assert vista["fila"] == {"ciudad": "Confirmada"}
+    db.ejecutar("delete from proyectos where id=:i", i=vista["pid"])
