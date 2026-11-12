@@ -170,6 +170,7 @@ Entradas que el diseño implica y que ninguna prueba obvia cubre; cada una tiene
   - `test_varios_aeropuertos_una_sola_consulta`: con `httpx.get` simulado, cotizar Miami → Moab (3 aeropuertos) hace **una** llamada al buscador de vuelos con `arrival_id == "CNY,GJT,SLC"` y deja una fila en `consultas_buscador`.
   - `test_sin_clave_ni_respaldo_no_falla` (punto de atención 3): sin `SERPAPI_KEY` y sin archivo guardado, la cotización redirige a la comparación con «sin datos» y estado 303, nunca 500.
   - `test_la_respuesta_guardada_de_un_solo_codigo_sigue_valiendo`: MIA-LAS 18–21 nov usa el respaldo de siempre.
+  - `test_parametros_estables_para_la_cache_del_proveedor`: `MIA` con `[GJT, CNY, SLC]` y con `[SLC, GJT, CNY]` envían exactamente los mismos parámetros (`arrival_id == "CNY,GJT,SLC"`) y nunca `no_cache`.
 - [ ] **Paso 2:** fallan. **Paso 3:** implementar. **Paso 4:** verificación. Commit «Una búsqueda compara varios aeropuertos».
 
 ### Tarea 9: El traslado por carretera en el costo

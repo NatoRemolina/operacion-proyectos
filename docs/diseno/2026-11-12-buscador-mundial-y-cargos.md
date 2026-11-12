@@ -111,6 +111,13 @@ Los datos se preparan con un script (`datos/geografia.py`) que descarga, filtra 
 - `departure_id` y `arrival_id` aceptan códigos IATA o el identificador de un lugar de Google (kgmid, como `/m/0vzm` para Austin), y varios separados por coma. El kgmid deja que Google elija los aeropuertos de una ciudad, pero no resuelve pueblos ni el traslado por carretera. Por eso se usa la lista de aeropuertos cercanos propia.
 - **Ida y vuelta (`type=1`) devuelve solo los vuelos de ida.** Para conocer el vuelo de regreso hace falta otra consulta con el `departure_token` de la opción elegida. Para tener los números de vuelo del regreso, que el monitoreo necesita, al guardar la decisión se hace **una** consulta extra, solo para la opción elegida. Total: una búsqueda al cotizar y una al decidir.
 - `deep_search=true` da resultados idénticos a los del navegador, pero tarda más. Queda desactivado por velocidad y como regla editable.
+- **Caché del proveedor:** una consulta idéntica (mismos parámetros) dentro de la misma hora se sirve de su caché y **no cuenta** en las búsquedas del mes. Por eso la plataforma nunca envía `no_cache=true` y arma los parámetros siempre en el mismo orden y formato (códigos ordenados), para que un reintento no se cobre dos veces.
+- Ideas anotadas para después, sin construir el viernes:
+  - `bags=1` cuando viajan baterías, para que el precio ya incluya el equipaje de mano en vez de estimarlo con la regla;
+  - `outbound_times` con el rango de llegada, para pedir solo vuelos que lleguen antes de la hora límite;
+  - `json_restrictor`, para traer solo los campos que se usan;
+  - `booking_token`, para mostrar las opciones de reserva del vuelo elegido;
+  - `max_duration` y `layover_duration`, para descartar en origen itinerarios absurdos.
 - Otros parámetros útiles para después, fuera de alcance del viernes: `stops` (máximo de escalas), `exclude_basic` (excluir tarifas básicas, solo vuelos nacionales de Estados Unidos), `travel_class`, `adults` (varias personas en el mismo viaje) y `type=3` (multiciudad).
 
 ## Roles: cambios concretos
