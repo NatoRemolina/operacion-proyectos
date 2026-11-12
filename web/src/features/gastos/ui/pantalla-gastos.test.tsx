@@ -76,6 +76,6 @@ describe("Mis gastos con fuentes intercambiables (ARCH-01)", () => {
     };
     renderizarConFuente(<PantallaGastos />, { gastos: vencida });
     expect(await screen.findByRole("alert")).toHaveTextContent("Tu sesión venció");
-    expect(screen.getByRole("link", { name: "Entra de nuevo" })).toHaveAttribute("href", "/entrar");
+    expect(screen.getByRole("link", { name: "Entra de nuevo" })).toHaveAttribute("href", `/entrar?volver=${encodeURIComponent("/")}`);
   });
 });

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { TEXTO_PERMISO, type EntradaMenu, type Permiso } from "@/shared/domain/navegacion";
+import { AvisosProvider } from "./aviso-emergente";
 
 export function Marca({ tamano = "grande" }: { tamano?: "grande" | "pequena" }) {
   return (
@@ -143,81 +144,83 @@ export function MarcoPrivado({
   }
 
   return (
-    <div className="flex flex-1">
-      <a
-        href="#contenido"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-30 focus:rounded-lg focus:bg-superficie focus:p-3"
-      >
-        Saltar al contenido
-      </a>
+    <AvisosProvider>
+      <div className="flex flex-1">
+        <a
+          href="#contenido"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-30 focus:rounded-lg focus:bg-superficie focus:p-3"
+        >
+          Saltar al contenido
+        </a>
 
-      <aside className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
-        <Marca />
-        <nav aria-label="Principal" className="mt-10">
-          <ListaMenu enlaces={enlaces} rutaActual={rutaActual} />
-        </nav>
-        <div className="mt-auto pt-6">
-          <PiePersona {...pie} />
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="zona-oscura bg-grafito text-sobre-grafito md:hidden" onKeyDown={alTeclear}>
-          <header className="flex items-center justify-between gap-3 px-4 py-3">
-            <Marca tamano="pequena" />
-            <button
-              ref={boton}
-              type="button"
-              className={BOTON_OSCURO}
-              aria-expanded={abierto}
-              aria-controls="menu-celular"
-              onClick={() => setAbiertoEn(abierto ? null : rutaActual)}
-            >
-              Menú
-            </button>
-          </header>
-          <div id="menu-celular" hidden={!abierto} className="border-t border-white/15 px-4 pb-5 pt-4">
-            {abierto ? (
-              <>
-                <nav aria-label="Menú">
-                  <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
-                </nav>
-                <div className="mt-5 border-t border-white/15 pt-4">
-                  <PiePersona {...pie} />
-                </div>
-              </>
-            ) : null}
+        <aside className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
+          <Marca />
+          <nav aria-label="Principal" className="mt-10">
+            <ListaMenu enlaces={enlaces} rutaActual={rutaActual} />
+          </nav>
+          <div className="mt-auto pt-6">
+            <PiePersona {...pie} />
           </div>
-        </div>
-        <main id="contenido" className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10">
-          {children}
-        </main>
-      </div>
+        </aside>
 
-      <nav
-        aria-label="Atajos"
-        className="fixed inset-x-0 bottom-0 z-20 border-t border-linea bg-superficie pb-[env(safe-area-inset-bottom)] md:hidden"
-      >
-        <ul className="grid" style={{ gridTemplateColumns: `repeat(${Math.max(atajos.length, 1)}, minmax(0, 1fr))` }}>
-          {atajos.map((enlace) => {
-            const activo = esActivo(enlace, rutaActual);
-            return (
-              <li key={enlace.href}>
-                <Link
-                  href={enlace.href}
-                  aria-current={activo ? "page" : undefined}
-                  className={`flex min-h-14 items-center justify-center border-t-4 px-1 text-center text-sm font-bold uppercase tracking-wide no-underline ${
-                    activo ? "border-marca text-marca" : "border-transparent text-texto"
-                  }`}
-                >
-                  {enlace.corto}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-    </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="zona-oscura bg-grafito text-sobre-grafito md:hidden" onKeyDown={alTeclear}>
+            <header className="flex items-center justify-between gap-3 px-4 py-3">
+              <Marca tamano="pequena" />
+              <button
+                ref={boton}
+                type="button"
+                className={BOTON_OSCURO}
+                aria-expanded={abierto}
+                aria-controls="menu-celular"
+                onClick={() => setAbiertoEn(abierto ? null : rutaActual)}
+              >
+                Menú
+              </button>
+            </header>
+            <div id="menu-celular" hidden={!abierto} className="border-t border-white/15 px-4 pb-5 pt-4">
+              {abierto ? (
+                <>
+                  <nav aria-label="Menú">
+                    <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
+                  </nav>
+                  <div className="mt-5 border-t border-white/15 pt-4">
+                    <PiePersona {...pie} />
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+          <main id="contenido" className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10">
+            {children}
+          </main>
+        </div>
+
+        <nav
+          aria-label="Atajos"
+          className="fixed inset-x-0 bottom-0 z-20 border-t border-linea bg-superficie pb-[env(safe-area-inset-bottom)] md:hidden"
+        >
+          <ul className="grid" style={{ gridTemplateColumns: `repeat(${Math.max(atajos.length, 1)}, minmax(0, 1fr))` }}>
+            {atajos.map((enlace) => {
+              const activo = esActivo(enlace, rutaActual);
+              return (
+                <li key={enlace.href}>
+                  <Link
+                    href={enlace.href}
+                    aria-current={activo ? "page" : undefined}
+                    className={`flex min-h-14 items-center justify-center border-t-4 px-1 text-center text-sm font-bold uppercase tracking-wide no-underline ${
+                      activo ? "border-marca text-marca" : "border-transparent text-texto"
+                    }`}
+                  >
+                    {enlace.corto}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      </div>
+    </AvisosProvider>
   );
 }
 

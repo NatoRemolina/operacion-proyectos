@@ -4,15 +4,20 @@ const LOCALE = "es-CO";
 
 /**
  * Intl.NumberFormat acepta la cadena decimal tal cual, sin pasar por float,
- * así "0.10" + redondeos nunca alteran lo que dice el servidor.
+ * así "0.10" + redondeos nunca alteran lo que dice el servidor. La moneda va por su código
+ * («USD 1.672,00»): «US$» y «$» se confunden con el peso.
  */
 export function formatearDinero(valor: Dinero, moneda: string | null = "USD"): string {
   if (valor === null) return "Importe por confirmar";
   if (!moneda) return `${valor} (moneda por confirmar)`;
   try {
-    return new Intl.NumberFormat(LOCALE, { style: "currency", currency: moneda }).format(
-      valor as unknown as number,
-    );
+    return new Intl.NumberFormat(LOCALE, {
+      style: "currency",
+      currency: moneda,
+      currencyDisplay: "code",
+    })
+      .format(valor as unknown as number)
+      .replace(/\u00a0/g, " ");
   } catch {
     return `${moneda} ${valor}`;
   }
@@ -22,14 +27,15 @@ function aFecha(iso: string): Date {
   return new Date(`${iso}T00:00:00Z`);
 }
 
+const FECHA = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+/** «9 dic 2026»: sin los «de» ni el punto de la abreviatura que pone es-CO. */
 export function formatearFecha(iso: string | null): string {
   if (!iso) return "Fecha por confirmar";
-  return new Intl.DateTimeFormat(LOCALE, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(aFecha(iso));
+  const fecha = aFecha(iso);
+  if (Number.isNaN(fecha.getTime())) return iso;
+  const partes = Object.fromEntries(FECHA.formatToParts(fecha).map((p) => [p.type, p.value]));
+  return `${partes.day} ${(partes.month ?? "").replace(".", "")} ${partes.year}`;
 }
 
 export function formatearRango(ida: string, regreso: string): string {

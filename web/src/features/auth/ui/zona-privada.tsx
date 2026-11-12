@@ -8,7 +8,7 @@ import { menuPara } from "@/shared/domain/navegacion";
 import { Cargando } from "@/shared/ui/estado";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
 import { MarcoPrivado } from "@/shared/ui/marco-privado";
-import { useSalir, useSesion } from "../application/sesion";
+import { useSalir, useSesion, useVigilarSesionVencida } from "../application/sesion";
 
 /**
  * Comprueba la sesión antes de mostrar una pantalla privada. Es solo experiencia de uso:
@@ -27,6 +27,7 @@ export function ZonaPrivada({
   const ruta = usePathname();
   const sesion = useSesion();
   const salir = useSalir();
+  useVigilarSesionVencida();
   // Al salir a propósito se va a /entrar sin «volver»; esto cubre la sesión que vence sola.
   const sinSesion = sesion.isSuccess && sesion.data === null && salir.isIdle;
 
