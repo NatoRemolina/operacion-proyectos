@@ -33,7 +33,14 @@ def instante(valor: str | None) -> str | None:
 
 
 def persona(u: dict) -> dict:
-    return {"id": u["id"], "codigo": viajes.codigo_persona(u["id"]), "nombre": u["nombre"], "rol": u["rol"], "correo": u["correo"]}
+    """El permiso (`rol`) y el cargo van por separado: el cargo describe a la persona y no da permisos."""
+    if "cargo" in u:
+        cargo = u["cargo"]
+    else:
+        fila = db.uno("select c.nombre from usuarios u join cargos c on c.id=u.cargo_id where u.id=:i", i=u["id"])
+        cargo = fila["nombre"] if fila else None
+    return {"id": u["id"], "codigo": viajes.codigo_persona(u["id"]), "nombre": u["nombre"], "rol": u["rol"], "correo": u["correo"],
+            "cargo": cargo}
 
 
 def _pagina(filas: list[dict], limite: int) -> dict:

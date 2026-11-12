@@ -30,8 +30,8 @@ def caso(cliente):
     if not db.uno("select id from proyectos where id=:i", i=PROYECTO):
         db.insertar("proyectos", id=PROYECTO, nombre="Proyecto de indicadores", moneda="USD")
     admin = _id_admin()
-    a = acceso.crear_usuario("kpi-a@demo.local", "Persona A de indicadores", "piloto", "clave-de-prueba-a")
-    b = acceso.crear_usuario("kpi-b@demo.local", "Persona B de indicadores", "piloto", "clave-de-prueba-b")
+    a = acceso.crear_usuario("kpi-a@demo.local", "Persona A de indicadores", "colaborador", "clave-de-prueba-a")
+    b = acceso.crear_usuario("kpi-b@demo.local", "Persona B de indicadores", "colaborador", "clave-de-prueba-b")
     vj = {u: db.uno("select viajero_id from usuarios where id=:i", i=u)["viajero_id"] for u in (a, b)}
 
     def cotizacion(u, creado, ida, decidido, siguio, ahorro, presupuesto, detalle, aprobado_en):
@@ -196,7 +196,7 @@ def test_tendencia_semanal(caso):
 
 def test_ficha_de_una_persona_no_muestra_nada_de_otra(caso, cliente):
     a, b = kpis.ficha_persona(caso["a"]), kpis.ficha_persona(caso["b"])
-    assert a["usuario"]["codigo"] == viajes.codigo_persona(caso["a"]) and a["usuario"]["rol"] == "piloto"
+    assert a["usuario"]["codigo"] == viajes.codigo_persona(caso["a"]) and a["usuario"]["rol"] == "colaborador"
     assert [c["id"] for c in a["cotizaciones"]] == [caso["s1"]] and a["cotizaciones"][0]["ida"] == "2026-11-23"
     assert [v["id"] for v in a["viajes"]] == [caso["v1"]] and [v["id"] for v in b["viajes"]] == [caso["v2"]]
     assert {g["id"] for g in a["gastos"]} == set(caso["g"][:2]) and {g["id"] for g in b["gastos"]} == set(caso["g"][2:])

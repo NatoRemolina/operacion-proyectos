@@ -45,12 +45,13 @@ Un gasto que queda **en revisión** no es un error: es una respuesta correcta co
 ## Tipos
 
 ```ts
-type Rol = "piloto" | "gestor" | "admin";
+type Rol = "colaborador" | "gestor" | "admin";   // el permiso; antes del 12 nov 2026 «colaborador» se llamaba «piloto»
 type EstadoViaje = "pendiente_aprobacion" | "aprobado" | "rechazado" | "cerrado";
 type EstadoGasto = "procesando" | "revision" | "aprobado_auto" | "aprobado" | "rechazado";
 type Dinero = string | null;   // "54.00"
 
-interface Persona { id: number; codigo: string; nombre: string; rol: Rol; correo: string }
+interface Persona { id: number; codigo: string; nombre: string; rol: Rol; correo: string; cargo: string | null }
+// `cargo`: qué hace la persona en la empresa («Pilotaje de dron», «Edición de video»...). Lo mantiene administración y no da permisos.
 
 interface ViajeResumen {
   id: number; codigo: string;                 // "V-2026-0001"

@@ -1,4 +1,5 @@
-export type Rol = "piloto" | "gestor" | "admin";
+/** El permiso: qué puede hacer la persona en la plataforma. */
+export type Rol = "colaborador" | "gestor" | "admin";
 
 export interface Persona {
   readonly id: number;
@@ -6,6 +7,8 @@ export interface Persona {
   readonly nombre: string;
   readonly rol: Rol;
   readonly correo: string;
+  /** Qué hace la persona en la empresa («Pilotaje de dron»…). No da permisos. */
+  readonly cargo: string | null;
 }
 
 /** Sesión del navegador. La identidad la decide el servidor a partir de la cookie. */

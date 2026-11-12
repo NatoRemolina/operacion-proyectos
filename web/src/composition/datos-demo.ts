@@ -13,8 +13,9 @@ export const CUENTA_DEMO: CuentaMemoria = {
     id: 901,
     codigo: "P-DEMO",
     nombre: "Piloto de demostración",
-    rol: "piloto",
+    rol: "colaborador",
     correo: "piloto@demo.local",
+    cargo: "Pilotaje de dron",
   },
   clave: "demo1234",
 };

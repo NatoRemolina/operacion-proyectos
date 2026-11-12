@@ -26,7 +26,7 @@ def test_el_menu_depende_del_rol(cliente, piloto, gestor):
 
 
 def test_cada_persona_cambia_su_propia_clave(cliente, anonimo):
-    cliente.post("/admin/usuarios", data={"correo": "clave@demo.local", "nombre": "Cambia Clave", "rol": "piloto", "clave": "clave-inicial-1"})
+    cliente.post("/admin/usuarios", data={"correo": "clave@demo.local", "nombre": "Cambia Clave", "rol": "colaborador", "clave": "clave-inicial-1"})
     anonimo.post("/entrar", data={"correo": "clave@demo.local", "clave": "clave-inicial-1"})
     assert "no+coincide" in anonimo.post("/mi-cuenta/clave", data={"actual": "otra", "nueva": "clave-nueva-123"}, follow_redirects=False).headers["location"]
     assert "10+caracteres" in anonimo.post("/mi-cuenta/clave", data={"actual": "clave-inicial-1", "nueva": "corta"}, follow_redirects=False).headers["location"]

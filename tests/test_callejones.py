@@ -80,7 +80,7 @@ def test_el_gestor_abre_solo_el_tablero_de_sus_proyectos(gestor):
 
 
 def test_desactivar_dos_veces_no_reactiva_la_cuenta(cliente):
-    cliente.post("/admin/usuarios", data={"correo": "doble@demo.local", "nombre": "Doble Envío", "rol": "piloto", "clave": "clave-doble-1"})
+    cliente.post("/admin/usuarios", data={"correo": "doble@demo.local", "nombre": "Doble Envío", "rol": "colaborador", "clave": "clave-doble-1"})
     uid = db.uno("select id from usuarios where correo='doble@demo.local'")["id"]
     for _ in range(2):
         cliente.post(f"/admin/usuarios/{uid}", data={"accion": "estado", "activo": "0"})

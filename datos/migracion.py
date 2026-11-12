@@ -3,9 +3,15 @@
 `db.crear_tablas()` crea tablas y añade columnas; aquí va lo demás: datos que cambian de forma,
 claves foráneas, restricciones, índices y permisos.
 """
+import re
+
 from sqlalchemy import CheckConstraint
 
 from app import config, db
+
+CARGOS = ("Pilotaje de dron", "Edición de video", "Desarrollo de software", "Ingeniería de datos", "Producción")
+CARGO_DE_PILOTO = "Pilotaje de dron"
+ROLES_VIEJOS = {"piloto": "colaborador", "usuario": "colaborador"}   # valor guardado antes → permiso actual
 
 INDICES = [  # nombre, tabla, columnas, único
     ("ux_usuarios_telegram", "usuarios", "telegram_chat_id", True),
@@ -24,11 +30,86 @@ INDICES = [  # nombre, tabla, columnas, único
 ]
 
 
+def sembrar_cargos() -> int:
+    """Los cinco cargos iniciales, solo en una tabla vacía: después la lista es de administración (renombra, desactiva)."""
+    from app.servicios import acceso
+    if db.uno("select id from cargos limit 1"):
+        return 0
+    for nombre in CARGOS:
+        acceso.crear_cargo(nombre)
+    return len(CARGOS)
+
+
+def _sql_usuarios_sqlite() -> str:
+    return db.uno("select sql from sqlite_master where type='table' and name='usuarios'")["sql"]
+
+
+def _rehacer_usuarios_sqlite(roles: tuple[str, ...], renombrar: dict[str, str]) -> bool:
+    """SQLite no cambia una restricción en su lugar: se rehace la tabla con la nueva y se copian las filas.
+
+    Es el procedimiento que documenta SQLite (tabla nueva, copia, borrar, renombrar) con las claves foráneas apagadas;
+    las referencias de las otras tablas siguen apuntando a `usuarios` y los índices los vuelve a crear `_indices()`.
+    """
+    sql = _sql_usuarios_sqlite()
+    permitidos = ",".join(f"'{r}'" for r in roles)
+    nuevo, cambios = re.subn(r"CHECK \(rol in \([^)]*\)\)", f"CHECK (rol in ({permitidos}))", sql)
+    if not cambios:
+        return False
+    nuevo = re.sub(r'^CREATE TABLE "?usuarios"?', "CREATE TABLE usuarios__nueva", nuevo)
+    columnas = [c["name"] for c in db.todos("pragma table_info(usuarios)")]
+    caso = "case " + " ".join(f"when rol='{a}' then '{b}'" for a, b in renombrar.items()) + " else rol end" if renombrar else "rol"
+    origen = ", ".join(caso if c == "rol" else c for c in columnas)
+    crudo = db.motor.raw_connection()
+    try:
+        crudo.driver_connection.executescript(f"""
+            PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON;
+            BEGIN;
+            {nuevo};
+            INSERT INTO usuarios__nueva ({", ".join(columnas)}) SELECT {origen} FROM usuarios;
+            DROP TABLE usuarios;
+            ALTER TABLE usuarios__nueva RENAME TO usuarios;
+            COMMIT;
+            PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON;""")
+    finally:
+        crudo.close()
+    db.ejecutar("select 1")   # vacía la caché de lecturas
+    return True
+
+
+def _roles() -> dict:
+    """El permiso `piloto` pasa a `colaborador` con el cargo «Pilotaje de dron», y toda cuenta queda con perfil de viajero."""
+    from app.servicios import acceso, eventos
+    hechos = {"cargos_sembrados": sembrar_cargos(), "permisos_migrados": 0, "perfiles_creados": 0}
+    viejos = db.todos("select id, correo, rol, cargo_id from usuarios where rol in ('piloto','usuario')")
+    if config.ES_SQLITE:
+        sql = _sql_usuarios_sqlite()
+        if "ck_usuarios_rol" in sql and "'colaborador'" not in sql:
+            _rehacer_usuarios_sqlite(acceso.ROLES, ROLES_VIEJOS)
+    else:
+        actual = db.uno("select pg_get_constraintdef(oid) d from pg_constraint where conname='ck_usuarios_rol'")
+        if actual and "colaborador" not in actual["d"]:   # `_restricciones_postgres` la vuelve a crear con el valor nuevo
+            db.ejecutar("alter table usuarios drop constraint ck_usuarios_rol")
+    if viejos:
+        db.ejecutar("update usuarios set rol='colaborador' where rol in ('piloto','usuario')")
+        cargo = next((c for c in acceso.cargos(solo_activos=False) if c["nombre"].casefold() == CARGO_DE_PILOTO.casefold()), None)
+        cargo_id = cargo["id"] if cargo else acceso.crear_cargo(CARGO_DE_PILOTO)
+        for u in viejos:
+            if not u["cargo_id"]:
+                db.actualizar("usuarios", u["id"], cargo_id=cargo_id)
+            eventos.registrar("usuario", u["id"], "permiso migrado",
+                              f"{u['correo']}: {u['rol']} → colaborador" + ("" if u["cargo_id"] else f" · cargo {CARGO_DE_PILOTO}"), "migración")
+            hechos["permisos_migrados"] += 1
+    for u in db.todos("""select u.id, u.nombre, c.nombre cargo from usuarios u left join cargos c on c.id=u.cargo_id
+                         where u.viajero_id is null"""):
+        db.actualizar("usuarios", u["id"], viajero_id=acceso.crear_perfil_viajero(u["nombre"], u["cargo"]))
+        hechos["perfiles_creados"] += 1
+    return hechos
+
+
 def _datos() -> dict:
-    """Cambios en los datos: rol renombrado, viajes de las decisiones que ya existían y gastos enlazados."""
+    """Cambios en los datos: viajes de las decisiones que ya existían y gastos enlazados."""
     from app.servicios import viajes
     hechos = {"viajes_creados": 0, "gastos_enlazados": 0}
-    db.ejecutar("update usuarios set rol='piloto' where rol='usuario'")
     db.ejecutar("update documentos set tipo='soporte' where tipo is null")
     vigentes = db.todos("""select max(d.id) id from decisiones d where d.vuelo_id is not null
                            and not exists (select 1 from viajes v where v.solicitud_id=d.solicitud_id) group by d.solicitud_id""")
@@ -90,7 +171,7 @@ def permisos_de_vistas(vistas):
 
 
 def migrar() -> dict:
-    hechos = _datos()
+    hechos = {**_roles(), **_datos()}
     _indices()
     if not config.ES_SQLITE:
         hechos.update(_restricciones_postgres())

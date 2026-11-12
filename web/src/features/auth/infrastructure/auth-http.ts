@@ -7,8 +7,9 @@ export const personaSchema = z.object({
   id: z.number().int().positive(),
   codigo: z.string(),
   nombre: z.string(),
-  rol: z.enum(["piloto", "gestor", "admin"]),
+  rol: z.enum(["colaborador", "gestor", "admin"]),
   correo: z.string(),
+  cargo: z.string().nullable(),
 });
 
 const sesionSchema = z.object({ persona: personaSchema, csrf_token: z.string().min(1) });

@@ -57,7 +57,7 @@ Resultado de cuatro revisiones de la plataforma (recorridos por rol, interfaz y 
 | El registro que nace del recibo | gasto |
 | La comparación de vuelos y hoteles | cotización |
 | Una llamada al buscador de precios | búsqueda |
-| Quien viaja | viajero («piloto» es un rol) |
+| Quien viaja | viajero («colaborador» es un permiso; «Pilotaje de dron», un cargo) |
 | La elección de vuelo y hotel | decisión (el documento: ficha de decisión) |
 | La aprobación del dinero | aprobación del presupuesto |
 | Dinero autorizado / usado | presupuesto / gastado |

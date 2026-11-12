@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Rol = Literal["piloto", "gestor", "admin"]
+Rol = Literal["colaborador", "gestor", "admin"]
 EstadoViaje = Literal["pendiente_aprobacion", "aprobado", "rechazado", "cerrado"]
 EstadoGasto = Literal["procesando", "revision", "aprobado_auto", "aprobado", "rechazado"]
 Dinero = str | None   # "54.00"; null si no se pudo leer
@@ -31,6 +31,7 @@ class Persona(BaseModel):
     nombre: str
     rol: Rol
     correo: str
+    cargo: str | None = Field(description="Qué hace la persona en la empresa (por ejemplo, «Pilotaje de dron»). No da permisos.")
 
 
 class Sesion(BaseModel):

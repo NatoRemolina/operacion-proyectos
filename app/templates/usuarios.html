@@ -1,8 +1,9 @@
 {% extends "base.html" %}{% block titulo %}Usuarios y roles{% endblock %}{% block cuerpo %}
-<h1>Usuarios</h1><p class="sub">El administrador crea las cuentas; cada una recibe su ID al nacer. Cambiar el rol, desactivar o restablecer la contraseña cierra las sesiones abiertas de esa persona.</p>
+<h1>Usuarios</h1><p class="sub">El administrador crea las cuentas; cada una recibe su ID al nacer. Cambiar el permiso, desactivar o restablecer la contraseña cierra las sesiones abiertas de esa persona. El cargo describe qué hace la persona en la empresa y no da permisos.</p>
 {% if aviso %}<p class="nota">{{ aviso }}</p>{% endif %}
-<div class="tarjeta tabla"><table><tr><th>ID</th><th>Nombre</th><th>Correo</th><th>Viajero</th><th>Rol</th><th>Estado</th><th>Última actividad (UTC)</th><th>Contraseña</th></tr>
+<div class="tarjeta tabla"><table><tr><th>ID</th><th>Nombre</th><th>Correo</th><th>Viajero</th><th>Cargo</th><th>Permiso</th><th>Estado</th><th>Última actividad (UTC)</th><th>Contraseña</th></tr>
 {% for u in usuarios %}<tr><td class="mono">{{ codigo(u.id) }}</td><td><b>{{ u.nombre }}</b>{% if u.telegram_chat_id %}<br><span class="chip ok">Telegram{% if u.telegram_usuario %} @{{ u.telegram_usuario }}{% endif %}</span>{% endif %}</td><td>{{ u.correo }}</td><td>{{ u.viajero or '—' }}</td>
+<td><form method="post" action="/admin/usuarios/{{ u.id }}" class="fila"><input type="hidden" name="accion" value="cargo"><select name="cargo_id" style="width:170px"><option value="0">Sin cargo</option>{% for c in cargos %}{% if c.activo or c.id == u.cargo_id %}<option value="{{ c.id }}" {{ 'selected' if c.id == u.cargo_id }}>{{ c.nombre }}{% if not c.activo %} (desactivado){% endif %}</option>{% endif %}{% endfor %}</select><button class="sec peq">Asignar</button></form></td>
 <td><form method="post" action="/admin/usuarios/{{ u.id }}" class="fila"><input type="hidden" name="accion" value="rol"><select name="rol" style="width:150px">{% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == u.rol }}>{{ nombre_rol[r] }}</option>{% endfor %}</select><button class="sec peq">Cambiar</button></form>
 {% if u.rol == 'gestor' %}<form method="post" action="/admin/usuarios/{{ u.id }}" style="margin-top:6px"><input type="hidden" name="accion" value="proyectos"><span class="eti">Proyectos que gestiona:</span>
 {% for p in proyectos %}<label style="display:block;font-size:13px"><input type="checkbox" name="proyectos_ids" value="{{ p.id }}" {{ 'checked' if p.id in miembros.get(u.id, []) }}> {{ p.nombre }}</label>{% endfor %}<button class="sec peq">Guardar proyectos</button></form>{% endif %}</td>
@@ -10,10 +11,18 @@
 <td class="mono">{{ u.ultima or '—' }}</td>
 <td><form method="post" action="/admin/usuarios/{{ u.id }}" class="fila"><input type="hidden" name="accion" value="clave"><input type="password" name="clave" placeholder="Nueva (10+)" autocomplete="new-password" style="width:130px"><button class="sec peq">Restablecer</button></form></td></tr>{% endfor %}
 </table></div>
-<form method="post" action="/admin/usuarios" class="tarjeta"><h3>Crear cuenta</h3>
+<form method="post" action="/admin/usuarios" class="tarjeta" id="crear-cuenta"><h3>Crear cuenta</h3>
 <div class="campos"><div><label>Correo</label><input type="email" name="correo" required></div><div><label>Nombre</label><input name="nombre" required></div>
-<div><label>Rol</label><select name="rol">{% for r in roles %}<option value="{{ r }}">{{ nombre_rol[r] }}</option>{% endfor %}</select></div>
-<div><label>Perfil de viajero existente (si es piloto y se deja vacío, se crea)</label><select name="viajero_id"><option value="0">—</option>{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
+<div><label>Permiso</label><select name="rol">{% for r in roles %}<option value="{{ r }}">{{ nombre_rol[r] }}</option>{% endfor %}</select></div>
+<div><label>Cargo</label><select name="cargo_id"><option value="0">Sin cargo</option>{% for c in cargos_activos %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+<div><label>Perfil de viajero existente (si se deja vacío, se crea uno: toda cuenta viaja)</label><select name="viajero_id"><option value="0">—</option>{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
 <div><label>Contraseña inicial (10 o más caracteres)</label><input type="password" name="clave" autocomplete="new-password" minlength="10" required></div></div>
 <p><button>Crear cuenta</button></p></form>
+<div class="tarjeta" id="cargos"><h3>Cargos</h3><p class="sub">Qué hace cada persona en la empresa. Agregar un cargo no requiere cambiar nada más; un cargo asignado no se borra, se desactiva y quien lo tiene lo conserva.</p>
+<div class="tabla"><table><tr><th>Cargo</th><th class="d">Personas</th><th>Estado</th><th>Renombrar</th></tr>
+{% for c in cargos %}<tr><td><b>{{ c.nombre }}</b></td><td class="d">{{ c.personas }}</td>
+<td><form method="post" action="/admin/cargos/{{ c.id }}" class="fila"><input type="hidden" name="accion" value="estado"><input type="hidden" name="activo" value="{{ 0 if c.activo else 1 }}"><span class="chip {{ 'ok' if c.activo else 'mal' }}">{{ 'Activo' if c.activo else 'Desactivado' }}</span><button class="sec peq">{{ 'Desactivar' if c.activo else 'Reactivar' }}</button></form></td>
+<td><form method="post" action="/admin/cargos/{{ c.id }}" class="fila"><input type="hidden" name="accion" value="renombrar"><input name="nombre" value="{{ c.nombre }}" minlength="3" maxlength="60" style="width:170px"><button class="sec peq">Guardar</button></form></td></tr>
+{% else %}<tr><td colspan="4">Todavía no hay cargos.</td></tr>{% endfor %}</table></div>
+<form method="post" action="/admin/cargos" class="fila" style="margin-top:10px"><input name="nombre" placeholder="Nuevo cargo" minlength="3" maxlength="60" required style="width:220px"><button>Agregar cargo</button></form></div>
 {% endblock %}

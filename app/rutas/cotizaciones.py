@@ -51,7 +51,7 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(...), orige
     prob_cambio, baterias_n = min(max(prob_cambio, 0), 100), max(baterias_n, 0)
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
     solicitado_por, viajero_nuevo = _yo()["nombre"], viajero_nuevo.strip()[:80]  # quien consulta sale de la sesión
-    if _yo().get("rol") == "piloto" and _yo().get("viajero_id"):
+    if _yo().get("rol") == "colaborador" and _yo().get("viajero_id"):
         # Un piloto cotiza su propio viaje: el titular no puede salir de un campo que se olvidó cambiar
         viajero_id, viajero_nuevo = _yo()["viajero_id"], ""
     elif not acceso.es_admin(_yo()):

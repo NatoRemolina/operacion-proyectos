@@ -56,6 +56,7 @@ export function ZonaPrivada({ children }: { children: ReactNode }) {
   return (
     <MarcoPrivado
       nombre={sesion.data.nombre}
+      cargo={sesion.data.cargo}
       enlaces={ENLACES}
       rutaActual={ruta}
       saliendo={salir.isPending}

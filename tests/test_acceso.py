@@ -64,7 +64,7 @@ def test_formulario_desde_otro_sitio_se_rechaza(cliente):
 
 
 def test_desactivar_expulsa_y_el_admin_no_se_bloquea_a_si_mismo(cliente):
-    cliente.post("/admin/usuarios", data={"correo": "temporal@demo.local", "nombre": "Temporal", "rol": "piloto", "clave": "clave-temporal-1"})
+    cliente.post("/admin/usuarios", data={"correo": "temporal@demo.local", "nombre": "Temporal", "rol": "colaborador", "clave": "clave-temporal-1"})
     uid = db.uno("select id from usuarios where correo='temporal@demo.local'")["id"]
     temporal = TestClient(app)
     temporal.post("/entrar", data={"correo": "temporal@demo.local", "clave": "clave-temporal-1"})
@@ -73,7 +73,7 @@ def test_desactivar_expulsa_y_el_admin_no_se_bloquea_a_si_mismo(cliente):
     assert temporal.get("/", follow_redirects=False).status_code == 303                 # expulsado en la siguiente petición
     yo = db.uno("select id from usuarios where correo='admin@demo.local'")["id"]
     cliente.post(f"/admin/usuarios/{yo}", data={"accion": "estado"})
-    cliente.post(f"/admin/usuarios/{yo}", data={"accion": "rol", "rol": "piloto"})
+    cliente.post(f"/admin/usuarios/{yo}", data={"accion": "rol", "rol": "colaborador"})
     u = db.uno("select rol, activo from usuarios where id=:i", i=yo)
     assert u["rol"] == "admin" and u["activo"] == 1
 

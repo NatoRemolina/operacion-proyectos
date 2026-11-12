@@ -36,6 +36,7 @@ const BOTON_OSCURO =
  */
 export function MarcoPrivado({
   nombre,
+  cargo = null,
   enlaces,
   rutaActual,
   onSalir,
@@ -43,6 +44,8 @@ export function MarcoPrivado({
   children,
 }: {
   nombre: string;
+  /** Qué hace la persona en la empresa; se muestra bajo el nombre. */
+  cargo?: string | null;
   enlaces: readonly EnlaceMenu[];
   rutaActual: string;
   onSalir: () => void;
@@ -85,6 +88,7 @@ export function MarcoPrivado({
           <p className="text-sm text-sobre-grafito-suave">
             <span className="sr-only">Sesión de </span>
             {nombre}
+            {cargo ? <span className="block text-xs">{cargo}</span> : null}
           </p>
           <button type="button" className={BOTON_OSCURO} onClick={onSalir} disabled={saliendo}>
             {saliendo ? "Saliendo…" : "Salir"}

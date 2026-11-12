@@ -151,6 +151,10 @@ historial_ruta = _tabla(
     Column("busqueda", Text), Column("origen", Text), Column("destino", Text), Column("fecha", Text), Column("precio", Float),
 )
 
+cargos = _tabla(
+    "cargos",  # qué hace la persona en la empresa; no da permisos. Con personas asignadas no se borra, se desactiva
+    Column("nombre", Text, nullable=False, unique=True), Column("activo", Integer), Column("creado", Text),
+)
 usuarios = _tabla(
     "usuarios",
     Column("correo", Text, unique=True), Column("nombre", Text), Column("rol", Text), Column("activo", Integer),
@@ -158,7 +162,8 @@ usuarios = _tabla(
     Column("bloqueado_hasta", Text), Column("creado", Text),
     Column("telegram_chat_id", BigInteger), Column("telegram_usuario", Text),
     Column("viaje_activo_id", Integer),  # viaje que la persona fijó a mano para sus próximos gastos
-    CheckConstraint("rol in ('piloto','gestor','admin')", name="ck_usuarios_rol"),
+    _ref("usuarios", "cargo_id", "cargos"),   # opcional
+    CheckConstraint("rol in ('colaborador','gestor','admin')", name="ck_usuarios_rol"),
 )
 proyecto_miembros = _tabla(
     "proyecto_miembros",  # qué proyectos ve un gestor

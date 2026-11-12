@@ -88,7 +88,7 @@ def test_la_api_recibe_y_devuelve_las_justificaciones(piloto, piloto2, gestor, e
 def chat(anonimo, bot):  # noqa: F811
     """Una cuenta nueva con su chat vinculado, para que sus gastos no se mezclen con los de otras pruebas."""
     correo = f"tg-{next(_serie)}@demo.local"
-    uid = acceso.crear_usuario(correo, "Persona Telegram", "piloto", "clave-de-pruebas-2026")
+    uid = acceso.crear_usuario(correo, "Persona Telegram", "colaborador", "clave-de-pruebas-2026")
     chat_id = next(_serie)
     entregar = lambda **m: anonimo.post("/telegram/webhook", headers=SECRETO, json={  # noqa: E731
         "update_id": next(_serie), "message": {"chat": {"id": chat_id, "type": "private"}, "from": {"username": "tg"}, **m}}).json()

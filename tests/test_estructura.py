@@ -15,7 +15,7 @@ def test_cada_modulo_de_rutas_queda_cargado():
 def test_el_menu_sale_de_lo_que_declara_cada_modulo(cliente, piloto):
     textos = [e["texto"] for e in web.menu_para({"rol": "admin"})]
     assert textos.index("Inicio") < textos.index("Cotizar viaje") < textos.index("Viajes") < textos.index("Gastos") < textos.index("Monitoreo")
-    assert "Mis viajes" not in textos and "Mis viajes" in [e["texto"] for e in web.menu_para({"rol": "piloto"})]
+    assert "Mis viajes" not in textos and "Mis viajes" in [e["texto"] for e in web.menu_para({"rol": "colaborador"})]
     web.MENU.append({"texto": "Área de prueba", "href": "/admin/area-de-prueba", "orden": 65, "rol": "admin"})
     try:
         assert "Área de prueba" in cliente.get("/").text and "Área de prueba" not in piloto.get("/").text

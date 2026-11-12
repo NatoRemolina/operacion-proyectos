@@ -12,7 +12,8 @@ persona ──► cotización ──► decisión ──► VIAJE ──► gast
 
 ```mermaid
 erDiagram
-  USUARIOS ||--o| VIAJEROS : "perfil operativo"
+  USUARIOS ||--|| VIAJEROS : "perfil operativo"
+  CARGOS ||--o{ USUARIOS : "qué hace en la empresa"
   USUARIOS ||--o{ SESIONES : abre
   USUARIOS ||--o{ PROYECTO_MIEMBROS : gestiona
   PROYECTOS ||--o{ PROYECTO_MIEMBROS : tiene
@@ -39,9 +40,15 @@ erDiagram
   USUARIOS {
     int id PK "se muestra como P-0007"
     text correo UK
-    text rol "piloto, gestor o admin"
+    text rol "permiso: colaborador, gestor o admin"
+    int cargo_id FK "opcional; no da permisos"
     bigint telegram_chat_id UK
-    int viajero_id FK
+    int viajero_id FK "toda cuenta tiene perfil de viajero"
+  }
+  CARGOS {
+    int id PK
+    text nombre UK "Pilotaje de dron, Edición de video..."
+    int activo "un cargo asignado no se borra: se desactiva"
   }
   VIAJES {
     int id PK "se muestra como V-2026-0012"

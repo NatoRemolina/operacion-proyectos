@@ -99,7 +99,7 @@ describe("adaptador HTTP de gastos", () => {
   it("enviar: multipart con X-CSRF-Token del login e Idempotency-Key", async () => {
     const { fetchFalso, gastos, auth } = preparar(
       respuestaJson({
-        persona: { id: 1, codigo: "P-1", nombre: "Ana", rol: "piloto", correo: "a@b.co" },
+        persona: { id: 1, codigo: "P-1", nombre: "Ana", rol: "colaborador", correo: "a@b.co", cargo: null },
         csrf_token: "token-csrf",
       }),
       respuestaJson(gastoDePrueba({ estado: "aprobado_auto", estado_texto: "Aprobado" }), 201),

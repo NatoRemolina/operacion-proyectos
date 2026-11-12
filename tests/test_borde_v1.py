@@ -55,7 +55,7 @@ def test_sin_sesion_responde_401_en_json(anonimo, eco):
 
 
 def test_con_sesion_los_errores_del_marco_salen_en_json(piloto, eco):
-    assert piloto.get("/api/v1/_prueba/yo").json()["rol"] == "piloto"     # un piloto entra: no es solo administración
+    assert piloto.get("/api/v1/_prueba/yo").json()["rol"] == "colaborador"     # un piloto entra: no es solo administración
     _contrato(piloto.get("/api/v1/no-existe"), 404, "NOT_FOUND")
     cuerpo = _contrato(piloto.get("/api/v1/_prueba/numero/abc"), 422, "VALIDATION_ERROR")
     assert cuerpo["error"]["fields"]

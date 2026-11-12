@@ -74,8 +74,8 @@ def test_login_correcto_devuelve_persona_token_y_cookie():
     assert r.status_code == 200, r.text
     cuerpo = r.json()
     assert set(cuerpo) == {"persona", "csrf_token"}
-    assert set(cuerpo["persona"]) == {"id", "codigo", "nombre", "rol", "correo"}      # nada de la huella de la contraseña
-    assert cuerpo["persona"]["rol"] == "piloto" and cuerpo["persona"]["codigo"] == f"P-{cuerpo['persona']['id']:04d}"
+    assert set(cuerpo["persona"]) == {"id", "codigo", "nombre", "rol", "correo", "cargo"}   # nada de la huella de la contraseña
+    assert cuerpo["persona"]["rol"] == "colaborador" and cuerpo["persona"]["codigo"] == f"P-{cuerpo['persona']['id']:04d}"
     assert "httponly" in r.headers["set-cookie"].lower() and c.cookies.get(acceso.COOKIE)
     assert cuerpo["csrf_token"] == api_v1.token_csrf(c.cookies.get(acceso.COOKIE))
     assert r.headers["Cache-Control"] == "no-store" and r.headers["X-Peticion"]
@@ -83,7 +83,7 @@ def test_login_correcto_devuelve_persona_token_y_cookie():
 
 
 def test_login_incorrecto_es_generico_y_tras_el_bloqueo_responde_429(anonimo):
-    acceso.crear_usuario("bloqueo-api@demo.local", "Bloqueo", "piloto", "clave-correcta-2026")
+    acceso.crear_usuario("bloqueo-api@demo.local", "Bloqueo", "colaborador", "clave-correcta-2026")
     inexistente = _contrato(anonimo.post(f"{V1}/auth/login", json={"correo": "nadie@demo.local", "clave": "x"}), 401, "INVALID_CREDENTIALS")
     for _ in range(acceso.MAX_FALLOS):
         equivocada = _contrato(anonimo.post(f"{V1}/auth/login", json={"correo": "bloqueo-api@demo.local", "clave": "equivocada"}),
@@ -126,7 +126,7 @@ def test_logout_exige_csrf_y_revoca_la_sesion():
 def test_el_rol_nunca_sale_del_cuerpo(piloto, cliente, ejemplos, mundo):
     c = TestClient(app)
     r = c.post(f"{V1}/auth/login", json={"correo": "piloto@demo.local", "clave": "demo-piloto-2026", "rol": "admin", "usuario_id": 1})
-    assert r.json()["persona"]["rol"] == "piloto"
+    assert r.json()["persona"]["rol"] == "colaborador"
     admin_id = cliente.get(f"{V1}/auth/me").json()["persona"]["id"]
     yo = piloto.get(f"{V1}/auth/me").json()["persona"]["id"]
     g = _enviar(piloto, "lisboa.png", mundo["foto"], mundo["viaje1"]["id"], rol="admin", usuario_id=str(admin_id))

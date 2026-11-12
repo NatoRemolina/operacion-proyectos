@@ -62,8 +62,9 @@ def sembrar():
     from app.servicios import asistente, kpis  # metas de los indicadores y tope del asistente, visibles en Reglas desde el inicio
     kpis.asegurar_metas()
     asistente.asegurar_regla()
-    sembrar_cuentas()
     from datos import migracion
+    migracion.sembrar_cargos()   # antes de las cuentas: las de demostración nacen con su cargo
+    sembrar_cuentas()
     hechos = migracion.migrar()
     crear_vistas()
     migracion.permisos_de_vistas(VISTAS)
@@ -119,10 +120,16 @@ def crear_vistas():
 
 
 # Cuentas de demostración para ejecutar en local sin configurar nada. Nunca se crean en una base compartida.
-DEMO = [("admin@demo.local", "Administración (demo)", "admin", "demo-admin-2026", None),
-        ("piloto@demo.local", "Andrés Molina", "piloto", "demo-piloto-2026", 1),
-        ("piloto2@demo.local", "Laura Pérez", "piloto", "demo-piloto2-2026", 2),
-        ("gestor@demo.local", "Gestión de proyecto (demo)", "gestor", "demo-gestor-2026", None)]
+# correo, nombre, permiso, contraseña, viajero, cargo
+DEMO = [("admin@demo.local", "Administración (demo)", "admin", "demo-admin-2026", None, None),
+        ("piloto@demo.local", "Andrés Molina", "colaborador", "demo-piloto-2026", 1, "Pilotaje de dron"),
+        ("piloto2@demo.local", "Laura Pérez", "colaborador", "demo-piloto2-2026", 2, "Pilotaje de dron"),
+        ("gestor@demo.local", "Gestión de proyecto (demo)", "gestor", "demo-gestor-2026", None, "Producción")]
+
+
+def _id_cargo(nombre: str | None) -> int | None:
+    fila = db.uno("select id from cargos where nombre=:n and activo=1", n=nombre) if nombre else None
+    return fila["id"] if fila else None
 
 
 def sembrar_cuentas():
@@ -134,8 +141,8 @@ def sembrar_cuentas():
         return
     # Cuentas de demostración: solo en local, y en PostgreSQL solo si se piden de forma explícita (entorno con Compose)
     if config.LOCAL and (config.ES_SQLITE or os.getenv("CUENTAS_DEMO") == "1"):
-        for correo, nombre, rol, clave, viajero in DEMO:
-            uid = acceso.crear_usuario(correo, nombre, rol, clave, viajero)
+        for correo, nombre, rol, clave, viajero, cargo in DEMO:
+            uid = acceso.crear_usuario(correo, nombre, rol, clave, viajero, _id_cargo(cargo))
             if rol == "gestor":   # gestiona el primer proyecto de ejemplo
                 db.insertar("proyecto_miembros", usuario_id=uid, proyecto_id=1, papel="gestor", creado=db.ahora())
         return
@@ -145,7 +152,7 @@ def sembrar_cuentas():
         acceso.crear_usuario(correo, "Administración", "admin", clave)
         demo_correo, demo_clave = os.getenv("USUARIO_DEMO_CORREO", ""), os.getenv("USUARIO_DEMO_CLAVE", "")
         if demo_correo and demo_clave:
-            acceso.crear_usuario(demo_correo, "Andrés Molina", "piloto", demo_clave, 1)
+            acceso.crear_usuario(demo_correo, "Andrés Molina", "colaborador", demo_clave, 1, _id_cargo("Pilotaje de dron"))
 
 
 if __name__ == "__main__":

@@ -106,7 +106,7 @@ def test_cada_rol_ve_lo_que_le_corresponde(cliente, piloto, gestor, anonimo, via
     vuelo = _comparacion(sid)["vuelos"][0]["id"]
     assert gestor.post(f"/viajes/{sid}/decidir", data={"vuelo_id": vuelo}).status_code == 404   # ve, no decide
     # Una cuenta nueva no ve viajes ajenos; un gestor no ve proyectos que no gestiona
-    cliente.post("/admin/usuarios", data={"correo": "otra@demo.local", "nombre": "Otra Persona", "rol": "piloto", "clave": "clave-de-otra-1"})
+    cliente.post("/admin/usuarios", data={"correo": "otra@demo.local", "nombre": "Otra Persona", "rol": "colaborador", "clave": "clave-de-otra-1"})
     anonimo.post("/entrar", data={"correo": "otra@demo.local", "clave": "clave-de-otra-1"})
     assert anonimo.get(f"/viaje/{vid}").status_code == 404
     assert viaje_aprobado["codigo"] not in anonimo.get("/mi-cuenta").text

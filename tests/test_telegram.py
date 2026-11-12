@@ -82,7 +82,7 @@ def test_la_foto_de_un_recibo_queda_en_el_viaje(anonimo, bot, viaje_aprobado):
 
 
 def test_persona_sin_viaje_el_gasto_se_guarda_en_revision(cliente, anonimo, bot):
-    cliente.post("/admin/usuarios", data={"correo": "nueva@demo.local", "nombre": "Piloto Nueva", "rol": "piloto", "clave": "clave-de-nueva-1"})
+    cliente.post("/admin/usuarios", data={"correo": "nueva@demo.local", "nombre": "Piloto Nueva", "rol": "colaborador", "clave": "clave-de-nueva-1"})
     uid, _ = _vincular(anonimo, "nueva@demo.local", 777010)
     _entrega(anonimo, 777010, photo=[{"file_id": "gasolina", "file_size": 1000}])
     g = db.uno("select * from gastos where usuario_id=:u order by id desc limit 1", u=uid)

@@ -22,8 +22,8 @@
 </div>
 
 <h2>Mis viajes</h2>
-<div class="tarjeta tabla"><table><tr><th>Viaje</th><th>Ruta</th><th>Fechas</th><th>Proyecto</th>{% if yo.rol != 'piloto' %}<th>Titular</th>{% endif %}<th>Estado</th><th style="min-width:220px">Presupuesto</th><th class="d">Gastos</th></tr>
-{% for v in mis_viajes %}<tr><td><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a></td><td>{{ v.origen }} → {{ v.destino }}</td><td>{{ v.ida }} a {{ v.regreso }}</td><td>{{ v.proyecto or '—' }}</td>{% if yo.rol != 'piloto' %}<td>{{ v.titular or '—' }}</td>{% endif %}
+<div class="tarjeta tabla"><table><tr><th>Viaje</th><th>Ruta</th><th>Fechas</th><th>Proyecto</th>{% if yo.rol != 'colaborador' %}<th>Titular</th>{% endif %}<th>Estado</th><th style="min-width:220px">Presupuesto</th><th class="d">Gastos</th></tr>
+{% for v in mis_viajes %}<tr><td><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a></td><td>{{ v.origen }} → {{ v.destino }}</td><td>{{ v.ida }} a {{ v.regreso }}</td><td>{{ v.proyecto or '—' }}</td>{% if yo.rol != 'colaborador' %}<td>{{ v.titular or '—' }}</td>{% endif %}
 <td>{{ mv.chip(v) }}</td><td>{{ mv.ejecucion(v) }}</td><td class="d">{{ v.n_gastos }}</td></tr>
 {% else %}<tr><td colspan="8">Todavía no hay viajes. Un viaje nace cuando se guarda la decisión de una cotización.</td></tr>{% endfor %}</table></div>
 

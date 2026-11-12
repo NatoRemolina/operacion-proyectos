@@ -16,8 +16,8 @@ MENU = [{"texto": "Asistente", "href": "/admin/asistente", "orden": 66, "rol": "
 def _ejemplos() -> list[str]:
     """Preguntas armadas con datos que existen, para que el primer clic ya responda algo."""
     salida = []
-    piloto = db.uno("""select u.id from usuarios u where u.rol='piloto' and exists (select 1 from viajes v where v.usuario_id=u.id)
-                       order by u.id limit 1""") or db.uno("select id from usuarios where rol='piloto' order by id limit 1")
+    piloto = db.uno("""select u.id from usuarios u where u.rol='colaborador' and exists (select 1 from viajes v where v.usuario_id=u.id)
+                       order by u.id limit 1""") or db.uno("select id from usuarios where rol='colaborador' order by id limit 1")
     if piloto:
         salida.append(f"¿Qué ha reportado {viajes.codigo_persona(piloto['id'])} en su viaje?")
     v = db.uno("select id, creado from viajes order by id desc limit 1")

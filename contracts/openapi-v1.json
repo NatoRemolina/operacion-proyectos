@@ -1346,7 +1346,7 @@
           "rol": {
             "type": "string",
             "enum": [
-              "piloto",
+              "colaborador",
               "gestor",
               "admin"
             ],
@@ -1355,6 +1355,18 @@
           "correo": {
             "type": "string",
             "title": "Correo"
+          },
+          "cargo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cargo",
+            "description": "Qué hace la persona en la empresa (por ejemplo, «Pilotaje de dron»). No da permisos."
           }
         },
         "type": "object",
@@ -1363,7 +1375,8 @@
           "codigo",
           "nombre",
           "rol",
-          "correo"
+          "correo",
+          "cargo"
         ],
         "title": "Persona"
       },

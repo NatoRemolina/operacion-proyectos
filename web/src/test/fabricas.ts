@@ -1,7 +1,20 @@
+import type { Persona } from "@/features/auth/domain/auth";
 import type { GastoDetalle } from "@/features/gastos/domain/gastos";
 import type { ViajeResumen } from "@/features/viajes/domain/viajes";
 
 /** Datos de prueba con la forma exacta del contrato (contracts/api-v1.md). */
+
+export function personaDePrueba(datos: Partial<Persona> = {}): Persona {
+  return {
+    id: 1,
+    codigo: "P-0001",
+    nombre: "Persona de prueba",
+    rol: "colaborador",
+    correo: "persona@demo.local",
+    cargo: "Pilotaje de dron",
+    ...datos,
+  };
+}
 
 export function gastoDePrueba(datos: Partial<GastoDetalle> = {}): GastoDetalle {
   return {
