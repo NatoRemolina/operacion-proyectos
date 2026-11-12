@@ -1,6 +1,9 @@
 """Asistente de administración: responde en lenguaje natural sobre lo que ha reportado cada persona.
 
-    pregunta ──> índice al día (acotado) ──> (¿hay modelo?) ──no──> respuesta determinista
+    pregunta ──> índice al día (acotado) ──> (¿asesor?) ──sí──> agente alojado <──> herramientas de solo lectura
+                                                  │ no, o falló                     (las responde esta plataforma)
+                                                  v
+                                             (¿hay modelo?) ──no──> respuesta determinista
                                                   │ sí
                                                   v
                                                modelo <──> herramientas de solo lectura
@@ -20,7 +23,7 @@ from datetime import date
 from sqlalchemy import Column, Integer, Text
 
 from .. import config, db
-from . import acceso, costo, eventos, llm, memoria, metricas, viajes
+from . import acceso, costo, eventos, kpis, llm, memoria, metricas, viajes
 
 MAX_VUELTAS = 6
 PLAZO_TOTAL_S = 60       # toda la conversación con el modelo, no cada llamada
@@ -57,6 +60,7 @@ class Rastro:
     def __init__(self):
         self.fuentes: dict[tuple, dict] = {}
         self.pasos: list[str] = []
+        self.sesion: dict = {}   # solo con el asesor: identificador de la sesión, tokens y tipos de evento
 
     def _poner(self, tipo: str, id_: int, codigo: str, enlace: str | None):
         self.fuentes.setdefault((tipo, id_), {"tipo": tipo, "id": id_, "codigo": codigo, "enlace": enlace})
@@ -70,6 +74,9 @@ class Rastro:
 
     def gasto(self, gid: int):
         self._poner("gasto", gid, f"gasto #{gid}", f"/gastos/{gid}")
+
+    def cotizacion(self, sid: int):
+        self._poner("cotizacion", sid, f"Cotización #{sid}", f"/viajes/{sid}")
 
     def nota(self, doc_id: int, tipo: str, vid: int | None):
         self._poner(tipo, doc_id, f"{'nota' if tipo == 'nota' else 'audio'} #{doc_id}", f"/viaje/{vid}" if vid else None)
@@ -155,7 +162,8 @@ def h_viajes_de(r: Rastro, persona: str = "", **_) -> dict:
         salida.append({"viaje": v["codigo"], "ruta": f"{v['origen'] or '?'} → {v['destino'] or '?'}", "ida": v["ida"], "regreso": v["regreso"],
                        "proyecto": v["proyecto"], "estado": v["estado_texto"], "presupuesto_usd": v["presupuesto_usd"],
                        "gastado_aprobado_usd": round(v["gastado"] or 0, 2), "en_revision_usd": round(v["en_revision"] or 0, 2),
-                       "numero_de_gastos": v["n_gastos"], "motivo": v["motivo"]})
+                       "numero_de_gastos": v["n_gastos"], "motivo": v["motivo"],
+                       "cotizacion": f"#{v['solicitud_id']}" if v.get("solicitud_id") else None})
     return {"persona": p["codigo"], "viajes": salida}
 
 
@@ -233,9 +241,18 @@ def h_detalle_gasto(r: Rastro, id: int = 0, **_) -> dict:
 
 def h_kpi(r: Rastro, nombre: str = "", filtros: dict | None = None, **_) -> dict:
     f = {k: v for k, v in (filtros or {}).items() if k in ("proyecto_id", "desde", "hasta") and v not in (None, "", 0)}
+    if str(nombre or "").strip().lower() in ("todos", "tablero"):   # todo el tablero en una consulta, como la pantalla de KPIs
+        filas = kpis.evaluar(f)
+        return {"filtros": f, "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos")},
+                "indicadores": [{"nombre": k["nombre"], "titulo": k["titulo"], "valor": k["valor"], "unidad": k["unidad"], "meta": k["meta"],
+                                 "umbral_alerta": k["alerta"], "sentido": k["sentido"], "semaforo": k["estado"]} for k in filas]}
     res = metricas.valor(nombre, f)
     if not res:
         return {"error": "Ese indicador no existe.", "disponibles": {n: t[0] for n, t in metricas.CATALOGO.items()}}
+    if nombre in kpis.KPIS:   # los indicadores con meta traen también su meta y su semáforo, como en el tablero
+        e = kpis.evaluar(f, [nombre])[0]
+        res = {**res, "valor": e["valor"], "meta": e["meta"], "umbral_alerta": e["alerta"], "sentido": e["sentido"],
+               "semaforo": e["estado"], "semaforo_texto": e["estado_texto"]}
     return res
 
 
@@ -266,8 +283,8 @@ def _fuente_de_ficha(r: Rastro, f: dict):
         r.gasto(int(eid))
     elif entidad == "documentos":
         r.nota(int(eid), f["tipo"], int(f["viaje_id"]) if f.get("viaje_id") else None)
-    elif entidad == "eventos" and f.get("texto", "").startswith("Evento del gasto"):
-        m = re.search(r"gasto #(\d+)", f["texto"])
+    elif (entidad == "eventos" and f.get("texto", "").startswith("Evento del gasto")) or entidad == "justificaciones":
+        m = re.search(r"gasto #(\d+)", f.get("texto", ""))
         if m:
             r.gasto(int(m.group(1)))
     if f.get("viaje_id"):
@@ -455,23 +472,42 @@ def responder(pregunta: str, usuario: dict) -> dict:
         memoria.actualizar(max_envios=INDEXAR_ANTES)
     except Exception as e:  # el índice al día ayuda, pero nunca impide responder con las consultas exactas
         eventos.registrar("indice", None, "actualización del índice fallida", type(e).__name__)
-    r, nota = Rastro(), ""
+    from . import asesor  # aquí y no arriba: el asesor importa este módulo
+    r, nota, fallo = Rastro(), "", None
     with eventos.cronometro() as t:
         texto, modo = "", "determinista"
-        if llm.activo():
+        if asesor.activo():
+            try:
+                texto, modo = asesor.preguntar(pregunta, r, usuario), "asesor"
+            except Exception as e:   # ningún fallo del asesor llega a la página: responde la vía siguiente
+                fallo = e
+                eventos.registrar("asistente", None, "asesor sin respuesta",
+                                  f"{asesor.motivo(e)} · sesión {r.sesion.get('id', '—')} · {len(r.pasos)} herramientas", "asesor")
+                r = Rastro()   # las fuentes que se muestran son las de la vía que respondió
+        # Si el asesor agotó el plazo o tardó en fallar, no se suma la espera del modelo de lenguaje
+        salto = fallo is not None and (getattr(fallo, "agotado", False) or getattr(fallo, "segundos", 0) > asesor.SEGUNDA_VIA_S)
+        if not texto and llm.activo() and not salto:
             try:
                 texto, modo = _con_modelo(pregunta, r), "modelo"
             except llm.ErrorDelModelo as e:
                 nota = f"(El modelo de lenguaje no respondió: {e} Se usó la respuesta determinista.)\n\n"
             if not texto:
                 modo = "determinista"
-        if modo == "determinista":
-            texto = nota + _determinista(pregunta, r)
+        if not texto:
+            if fallo is not None and not nota:
+                nota = f"(El asesor no respondió: {asesor.motivo(fallo)}. Se usó la respuesta determinista.)\n\n"
+            texto, modo = nota + _determinista(pregunta, r), "determinista"
     fuentes = list(r.fuentes.values())
-    if modo == "modelo":   # se muestran las que la respuesta cita; si no cita ninguna, todas las consultadas
-        citadas = [f for f in fuentes if f["codigo"].lower() in texto.lower() or (f["tipo"] == "gasto" and f"#{f['id']}" in texto)]
+    if modo in ("modelo", "asesor"):   # se muestran las que la respuesta cita; si no cita ninguna, todas las consultadas
+        bajo = texto.lower()
+        citadas = [f for f in fuentes if f["codigo"].lower() in bajo or (f["tipo"] == "gasto" and f"#{f['id']}" in texto)
+                   or (f["tipo"] == "cotizacion" and f"cotizacion #{f['id']}" in bajo)]
         fuentes = citadas or fuentes
     cid = db.insertar("asistente_consultas", usuario_id=usuario["id"], pregunta=pregunta, herramientas=r.pasos,
                       fuentes=[{k: f[k] for k in ("tipo", "id", "codigo")} for f in fuentes], modo=modo, duracion_ms=t(), momento=db.ahora())
-    eventos.registrar("asistente", cid, "pregunta respondida", f"modo {modo} · {len(r.pasos)} herramientas · {len(fuentes)} fuentes", modo, t())
+    sesion = (f" · sesión {r.sesion['id']} · tokens {r.sesion.get('entrada', 0)}/{r.sesion.get('salida', 0)}"
+              + (f" · {r.sesion['centavos_usd'] / 100:.2f} USD" if "centavos_usd" in r.sesion else "")
+              if modo == "asesor" and r.sesion.get("id") else "")
+    eventos.registrar("asistente", cid, "pregunta respondida",
+                      f"modo {modo} · {len(r.pasos)} herramientas · {len(fuentes)} fuentes{sesion}", modo, t())
     return {"texto": texto, "fuentes": fuentes, "modo": modo, "herramientas": r.pasos, "duracion_ms": t(), "consulta_id": cid}

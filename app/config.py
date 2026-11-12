@@ -36,6 +36,19 @@ try:
 except json.JSONDecodeError:
     MODELO_CABECERAS = {}
 
+# Asesor del asistente (opcional): un servicio de agentes alojado al que la plataforma solo le abre sesiones;
+# las herramientas del agente las responde la propia plataforma con sus consultas. Sin estas variables queda apagado.
+ASESOR_API_URL = _txt("ASESOR_API_URL").rstrip("/")   # esquema y servidor, sin /v1
+ASESOR_API_KEY = _txt("ASESOR_API_KEY")                # viaja en la cabecera x-api-key
+ASESOR_AGENTE_ID = _txt("ASESOR_AGENTE_ID")
+ASESOR_ENTORNO_ID = _txt("ASESOR_ENTORNO_ID")
+try:
+    ASESOR_CABECERAS = json.loads(_txt("ASESOR_CABECERAS") or "{}")
+except json.JSONDecodeError:
+    ASESOR_CABECERAS = {}
+if not isinstance(ASESOR_CABECERAS, dict):
+    ASESOR_CABECERAS = {}
+
 DATABASE_URL = _txt("DATABASE_URL")
 # La cadena puede traer el marcador [YOUR-PASSWORD] tal como la entrega el proveedor;
 # la contraseña va aparte y aquí se codifica para que los símbolos no rompan la conexión.

@@ -15,6 +15,8 @@ os.environ.update({
     "ENTORNO": "local", "DATABASE_URL": _pg or f"sqlite:///{_tmp / 'pruebas.db'}",
     "PREPARAR_BASE_LOCAL": "1" if _pg else "", "CUENTAS_DEMO": "1" if _pg else "",
     "SERPAPI_KEY": "", "MODELO_API_URL": "", "MODELO_API_KEY": "", "MODELO_NOMBRE": "",
+    "ASESOR_API_URL": "", "ASESOR_API_KEY": "", "ASESOR_AGENTE_ID": "", "ASESOR_ENTORNO_ID": "",
+    "ASESOR_CABECERAS": "",
     "SUPABASE_URL": "", "SUPABASE_SERVICE_KEY": "", "APP_CLAVE": "", "SECRETO_ARN": "",
     # La semilla carga un subconjunto pequeño de los datos geográficos, no el mundo entero
     "GEOGRAFIA_DIR": str(Path(__file__).parent / "datos" / "geografia_mini"),

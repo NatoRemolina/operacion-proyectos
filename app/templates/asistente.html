@@ -27,8 +27,8 @@
 {% if respuesta %}
 <div class="tarjeta">
   <div class="fila"><h2 style="margin:0">Respuesta</h2>
-    <span class="chip {{ 'ok' if respuesta.modo == 'modelo' else 'azul' if respuesta.modo == 'determinista' else 'aviso' }}">
-      {{ 'Modelo de lenguaje con herramientas' if respuesta.modo == 'modelo' else 'Sin modelo: consultas directas' if respuesta.modo == 'determinista' else respuesta.modo }}</span>
+    <span class="chip {{ 'ok' if respuesta.modo in ('modelo', 'asesor') else 'azul' if respuesta.modo == 'determinista' else 'aviso' }}">
+      {{ 'Asesor con herramientas' if respuesta.modo == 'asesor' else 'Modelo de lenguaje con herramientas' if respuesta.modo == 'modelo' else 'Sin modelo: consultas directas' if respuesta.modo == 'determinista' else respuesta.modo }}</span>
     {% if respuesta.duracion_ms %}<span class="eti der">{{ '%.1f'|format(respuesta.duracion_ms / 1000) }} s</span>{% endif %}</div>
   <p class="respuesta">{{ respuesta.texto }}</p>
   {% if respuesta.fuentes %}<b>Fuentes citadas</b>
