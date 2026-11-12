@@ -1,12 +1,8 @@
-import Link from "next/link";
-import type { ReactNode } from "react";
+"use client";
 
-export interface EnlaceMenu {
-  href: string;
-  texto: string;
-  /** Texto corto para la barra inferior del celular. */
-  corto: string;
-}
+import Link from "next/link";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { TEXTO_PERMISO, type EntradaMenu, type Permiso } from "@/shared/domain/navegacion";
 
 export function Marca({ tamano = "grande" }: { tamano?: "grande" | "pequena" }) {
   return (
@@ -21,22 +17,99 @@ export function Marca({ tamano = "grande" }: { tamano?: "grande" | "pequena" }) 
   );
 }
 
-function esActivo(href: string, ruta: string): boolean {
-  if (href === "/gastos") return ruta === "/gastos" || /^\/gastos\/\d+/.test(ruta);
-  return ruta === href || ruta.startsWith(`${href}/`);
+function esActivo(enlace: EntradaMenu, ruta: string): boolean {
+  if (enlace.externa) return false;
+  return ruta === enlace.href || ruta.startsWith(`${enlace.href}/`);
 }
 
 const BOTON_OSCURO =
   "inline-flex min-h-11 items-center justify-center rounded-lg border border-sobre-grafito-suave px-4 " +
   "font-semibold text-sobre-grafito hover:bg-white/10 disabled:opacity-60";
 
+/** Enlace del menú: las pantallas de esta web navegan sin recargar; las actuales, con un enlace normal. */
+function EnlaceMenuOscuro({ enlace, activo, onNavegar }: { enlace: EntradaMenu; activo: boolean; onNavegar?: () => void }) {
+  const clases = `flex min-h-11 items-center rounded-lg px-3 font-semibold no-underline ${
+    activo ? "bg-marca text-sobre-marca" : "hover:bg-white/10"
+  }`;
+  if (enlace.externa) {
+    return (
+      <a href={enlace.href} className={clases} onClick={onNavegar}>
+        {enlace.texto}
+      </a>
+    );
+  }
+  return (
+    <Link href={enlace.href} aria-current={activo ? "page" : undefined} className={clases} onClick={onNavegar}>
+      {enlace.texto}
+    </Link>
+  );
+}
+
+function ListaMenu({
+  enlaces,
+  rutaActual,
+  onNavegar,
+}: {
+  enlaces: readonly EntradaMenu[];
+  rutaActual: string;
+  onNavegar?: () => void;
+}) {
+  return (
+    <>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-cian-claro">Operaciones</p>
+      <ul className="flex flex-col gap-1">
+        {enlaces.map((enlace) => (
+          <li key={enlace.href}>
+            <EnlaceMenuOscuro enlace={enlace} activo={esActivo(enlace, rutaActual)} onNavegar={onNavegar} />
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function PiePersona({
+  nombre,
+  cargo,
+  permiso,
+  entornoDemo,
+  onSalir,
+  saliendo,
+}: {
+  nombre: string;
+  cargo: string | null;
+  permiso: Permiso;
+  entornoDemo: boolean;
+  onSalir: () => void;
+  saliendo: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-sm">
+        <p className="font-semibold text-sobre-grafito">{TEXTO_PERMISO[permiso]}</p>
+        {entornoDemo ? <p className="mt-1 text-cian-claro">Entorno de demostración</p> : null}
+      </div>
+      <p className="text-sm text-sobre-grafito-suave">
+        <span className="sr-only">Sesión de </span>
+        {nombre}
+        {cargo ? <span className="block text-xs">{cargo}</span> : null}
+      </p>
+      <button type="button" className={BOTON_OSCURO} onClick={onSalir} disabled={saliendo}>
+        {saliendo ? "Saliendo…" : "Salir"}
+      </button>
+    </div>
+  );
+}
+
 /**
- * Marco de las pantallas con sesión: navegación lateral grafito en escritorio y barra
- * inferior en celular (dirección visual del diseño en Figma).
+ * Marco de las pantallas con sesión (diseño de Figma): barra lateral grafito en escritorio; en
+ * celular la barra se pliega tras el botón «Menú» y abajo quedan los atajos principales.
  */
 export function MarcoPrivado({
   nombre,
   cargo = null,
+  permiso,
+  entornoDemo = false,
   enlaces,
   rutaActual,
   onSalir,
@@ -46,12 +119,29 @@ export function MarcoPrivado({
   nombre: string;
   /** Qué hace la persona en la empresa; se muestra bajo el nombre. */
   cargo?: string | null;
-  enlaces: readonly EnlaceMenu[];
+  permiso: Permiso;
+  /** Muestra «Entorno de demostración» bajo el permiso. */
+  entornoDemo?: boolean;
+  enlaces: readonly EntradaMenu[];
   rutaActual: string;
   onSalir: () => void;
   saliendo: boolean;
   children: ReactNode;
 }) {
+  // El menú del celular queda abierto solo en la ruta donde se abrió: al navegar se cierra solo.
+  const [abiertoEn, setAbiertoEn] = useState<string | null>(null);
+  const abierto = abiertoEn === rutaActual;
+  const boton = useRef<HTMLButtonElement>(null);
+  const atajos = enlaces.filter((e) => e.atajo);
+  const pie = { nombre, cargo, permiso, entornoDemo, onSalir, saliendo };
+
+  function alTeclear(evento: KeyboardEvent) {
+    if (evento.key === "Escape" && abierto) {
+      setAbiertoEn(null);
+      boton.current?.focus();
+    }
+  }
+
   return (
     <div className="flex flex-1">
       <a
@@ -61,60 +151,56 @@ export function MarcoPrivado({
         Saltar al contenido
       </a>
 
-      <aside className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col bg-grafito px-5 py-7 text-sobre-grafito md:flex">
+      <aside className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
         <Marca />
         <nav aria-label="Principal" className="mt-10">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-cian-claro">Operaciones</p>
-          <ul className="flex flex-col gap-1">
-            {enlaces.map((enlace) => {
-              const activo = esActivo(enlace.href, rutaActual);
-              return (
-                <li key={enlace.href}>
-                  <Link
-                    href={enlace.href}
-                    aria-current={activo ? "page" : undefined}
-                    className={`flex min-h-11 items-center rounded-lg px-3 font-semibold no-underline ${
-                      activo ? "bg-marca text-sobre-marca" : "hover:bg-white/10"
-                    }`}
-                  >
-                    {enlace.texto}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <ListaMenu enlaces={enlaces} rutaActual={rutaActual} />
         </nav>
-        <div className="mt-auto flex flex-col gap-3">
-          <p className="text-sm text-sobre-grafito-suave">
-            <span className="sr-only">Sesión de </span>
-            {nombre}
-            {cargo ? <span className="block text-xs">{cargo}</span> : null}
-          </p>
-          <button type="button" className={BOTON_OSCURO} onClick={onSalir} disabled={saliendo}>
-            {saliendo ? "Saliendo…" : "Salir"}
-          </button>
+        <div className="mt-auto pt-6">
+          <PiePersona {...pie} />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="zona-oscura flex items-center justify-between gap-3 bg-grafito px-4 py-3 text-sobre-grafito md:hidden">
-          <Marca tamano="pequena" />
-          <button type="button" className={BOTON_OSCURO} onClick={onSalir} disabled={saliendo}>
-            {saliendo ? "Saliendo…" : "Salir"}
-          </button>
-        </header>
+        <div className="zona-oscura bg-grafito text-sobre-grafito md:hidden" onKeyDown={alTeclear}>
+          <header className="flex items-center justify-between gap-3 px-4 py-3">
+            <Marca tamano="pequena" />
+            <button
+              ref={boton}
+              type="button"
+              className={BOTON_OSCURO}
+              aria-expanded={abierto}
+              aria-controls="menu-celular"
+              onClick={() => setAbiertoEn(abierto ? null : rutaActual)}
+            >
+              Menú
+            </button>
+          </header>
+          <div id="menu-celular" hidden={!abierto} className="border-t border-white/15 px-4 pb-5 pt-4">
+            {abierto ? (
+              <>
+                <nav aria-label="Menú">
+                  <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
+                </nav>
+                <div className="mt-5 border-t border-white/15 pt-4">
+                  <PiePersona {...pie} />
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
         <main id="contenido" className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10">
           {children}
         </main>
       </div>
 
       <nav
-        aria-label="Principal"
+        aria-label="Atajos"
         className="fixed inset-x-0 bottom-0 z-20 border-t border-linea bg-superficie pb-[env(safe-area-inset-bottom)] md:hidden"
       >
-        <ul className="grid grid-cols-3">
-          {enlaces.map((enlace) => {
-            const activo = esActivo(enlace.href, rutaActual);
+        <ul className="grid" style={{ gridTemplateColumns: `repeat(${Math.max(atajos.length, 1)}, minmax(0, 1fr))` }}>
+          {atajos.map((enlace) => {
+            const activo = esActivo(enlace, rutaActual);
             return (
               <li key={enlace.href}>
                 <Link

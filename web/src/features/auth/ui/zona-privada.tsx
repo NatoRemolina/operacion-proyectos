@@ -3,23 +3,27 @@
 import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { IdentidadProvider } from "@/shared/application/identidad";
+import { useModoDemo } from "@/shared/application/modo";
+import { menuPara } from "@/shared/domain/navegacion";
 import { Cargando } from "@/shared/ui/estado";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
-import { MarcoPrivado, type EnlaceMenu } from "@/shared/ui/marco-privado";
+import { MarcoPrivado } from "@/shared/ui/marco-privado";
 import { useSalir, useSesion } from "../application/sesion";
-
-const ENLACES: readonly EnlaceMenu[] = [
-  { href: "/viajes", texto: "Mis viajes", corto: "Viajes" },
-  { href: "/gastos", texto: "Mis gastos", corto: "Gastos" },
-  { href: "/gastos/nuevo", texto: "Cargar un gasto", corto: "Cargar" },
-];
 
 /**
  * Comprueba la sesión antes de mostrar una pantalla privada. Es solo experiencia de uso:
  * los permisos los aplica la API en cada petición.
  */
-export function ZonaPrivada({ children }: { children: ReactNode }) {
+export function ZonaPrivada({
+  plataforma,
+  children,
+}: {
+  /** Origen de las pantallas actuales de la plataforma ("" = mismo origen). */
+  plataforma: string;
+  children: ReactNode;
+}) {
   const router = useRouter();
+  const demo = useModoDemo();
   const ruta = usePathname();
   const sesion = useSesion();
   const salir = useSalir();
@@ -57,7 +61,9 @@ export function ZonaPrivada({ children }: { children: ReactNode }) {
     <MarcoPrivado
       nombre={sesion.data.nombre}
       cargo={sesion.data.cargo}
-      enlaces={ENLACES}
+      permiso={sesion.data.rol}
+      entornoDemo={demo !== null}
+      enlaces={menuPara(sesion.data.rol, plataforma)}
       rutaActual={ruta}
       saliendo={salir.isPending}
       onSalir={() => salir.mutate(undefined, { onSettled: () => router.replace("/entrar") })}
