@@ -98,9 +98,14 @@ describe("Marco privado", () => {
     const panel = screen.getByRole("navigation", { name: "Menú" });
     expect(within(panel).getByRole("link", { name: "Usuarios" })).toBeInTheDocument();
 
+    // Lo que queda bajo el velo no recibe el foco mientras el menú está abierto
+    expect(document.getElementById("contenido")).toHaveAttribute("inert");
+    expect(screen.getByRole("navigation", { name: "Principal", hidden: true }).closest("aside")).toHaveAttribute("inert");
+
     await usuario.keyboard("{Escape}");
     expect(boton).toHaveAttribute("aria-expanded", "false");
     expect(boton).toHaveFocus();
+    expect(document.getElementById("contenido")).not.toHaveAttribute("inert");
   });
 
   it("la barra inferior del celular solo lleva los atajos", () => {

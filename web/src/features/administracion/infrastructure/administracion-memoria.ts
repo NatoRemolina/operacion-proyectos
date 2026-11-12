@@ -78,10 +78,12 @@ export function crearAdministracionMemoria(opciones: {
       if ((gasto.version ?? 0) !== version) throw new ErrorDeAplicacion("cambio_ajeno");
       const problema = accion === "rechazar" ? problemaDeMotivo(motivo) : null;
       if (problema) throw new ErrorDeAplicacion("validacion", { campos: { motivo: problema } });
+      // Como el servidor: aprobar vuelve a pasar las reglas y, si hay motivos, el gasto sigue en revisión.
+      const sigue = accion === "aprobar" && gasto.motivos.length > 0;
       const nuevo: GastoDetalle = {
         ...gasto,
-        estado: accion === "aprobar" ? "aprobado" : "rechazado",
-        estado_texto: accion === "aprobar" ? "Aprobado" : "Rechazado",
+        estado: sigue ? "revision" : accion === "aprobar" ? "aprobado" : "rechazado",
+        estado_texto: sigue ? "En revisión" : accion === "aprobar" ? "Aprobado" : "Rechazado",
         version: version + 1,
       };
       gastos[indice] = nuevo;

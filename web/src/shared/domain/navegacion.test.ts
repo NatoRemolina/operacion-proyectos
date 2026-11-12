@@ -37,8 +37,9 @@ describe("menú por permiso", () => {
     expect(menu.find((e) => e.texto === "Viajes")?.externa).toBe(false);
   });
 
-  it("sin dirección de la plataforma, las pantallas actuales se piden al mismo origen", () => {
-    expect(menuPara("admin", "").find((e) => e.texto === "Usuarios")?.href).toBe("/admin/usuarios");
+  it("sin dirección de la plataforma no se ofrecen las pantallas actuales (serían enlaces rotos)", () => {
+    expect(textos("admin")).toContain("Usuarios");
+    expect(menuPara("admin", "").map((e) => e.texto)).toEqual(["Resumen", "Cotizar viaje", "Viajes", "Gastos"]);
   });
 
   it("a lo sumo cuatro atajos para la barra inferior del celular", () => {

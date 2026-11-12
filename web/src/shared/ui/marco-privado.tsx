@@ -26,12 +26,12 @@ function esActivo(enlace: EntradaMenu, ruta: string): boolean {
 
 const BOTON_OSCURO =
   "inline-flex min-h-11 items-center justify-center rounded-lg border border-sobre-grafito-suave px-4 " +
-  `font-semibold text-sobre-grafito hover:bg-white/10 disabled:opacity-60 ${PRESIONAR}`;
+  `font-semibold text-sobre-grafito hover:bg-sobre-grafito/10 disabled:opacity-60 ${PRESIONAR}`;
 
 /** Enlace del menú: las pantallas de esta web navegan sin recargar; las actuales, con un enlace normal. */
 function EnlaceMenuOscuro({ enlace, activo, onNavegar }: { enlace: EntradaMenu; activo: boolean; onNavegar?: () => void }) {
   const clases = `flex min-h-11 items-center rounded-lg px-3 font-semibold no-underline ${PRESIONAR} ${
-    activo ? "bg-marca text-sobre-marca" : "hover:bg-white/10"
+    activo ? "bg-marca text-sobre-marca" : "hover:bg-sobre-grafito/10"
   }`;
   if (enlace.externa) {
     return (
@@ -161,7 +161,7 @@ export function MarcoPrivado({
           Saltar al contenido
         </a>
 
-        <aside className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
+        <aside inert={abierto} className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
           <Marca />
           <nav aria-label="Principal" className="mt-10">
             <ListaMenu enlaces={enlaces} rutaActual={rutaActual} />
@@ -211,18 +211,19 @@ export function MarcoPrivado({
             <nav aria-label="Menú" className="mt-8" ref={panel}>
               <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
             </nav>
-            <div className="mt-auto border-t border-white/15 pt-5">
+            <div className="mt-auto border-t border-sobre-grafito-suave/30 pt-5">
               <PiePersona {...pie} />
             </div>
           </div>
         </div>
-        <main id="contenido" className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10">
+        <main id="contenido" inert={abierto} className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10">
             {children}
           </main>
         </div>
 
         <nav
           aria-label="Atajos"
+          inert={abierto}
           className="fixed inset-x-0 bottom-0 z-20 border-t border-linea bg-superficie pb-[env(safe-area-inset-bottom)] md:hidden"
         >
           <ul className="grid" style={{ gridTemplateColumns: `repeat(${Math.max(atajos.length, 1)}, minmax(0, 1fr))` }}>

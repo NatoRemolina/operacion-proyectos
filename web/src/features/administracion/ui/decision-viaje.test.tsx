@@ -106,4 +106,18 @@ describe("Decidir un viaje pendiente", () => {
     await usuario.click(screen.getByRole("button", { name: "Aprobar presupuesto" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("debe hacerlo otra persona de administración");
   });
+
+  it("el aviso del motivo corto se va mientras se escribe, sin esperar a salir del campo", async () => {
+    const usuario = userEvent.setup();
+    montar(async () => ({ viaje: detalle({ estado: "rechazado" }), mensaje: "Rechazado." }));
+    await usuario.click(screen.getByRole("button", { name: "Rechazar" }));
+    const campo = screen.getByLabelText("Motivo del rechazo");
+    await usuario.type(campo, "no");
+    await usuario.tab();
+    expect(screen.getByText(/al menos 5 caracteres/)).toBeInTheDocument();
+    await usuario.type(campo, " conviene");
+    expect(campo).toHaveFocus();
+    expect(screen.queryByText(/al menos 5 caracteres/)).not.toBeInTheDocument();
+  });
 });
+

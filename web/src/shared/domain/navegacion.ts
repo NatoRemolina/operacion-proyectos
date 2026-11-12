@@ -44,9 +44,12 @@ const MENU: readonly Declaracion[] = [
   { ruta: "/admin/usuarios", texto: "Usuarios", corto: "Usuarios", permisos: ["admin"], externa: true },
 ];
 
-/** Entradas que ve un permiso, en orden. `plataforma` es el origen de las pantallas actuales ("" = mismo origen). */
+/**
+ * Entradas que ve un permiso, en orden. `plataforma` es el origen de las pantallas actuales; sin él
+ * no se ofrecen, porque el gateway solo lleva /api/v1 a la API y serían enlaces rotos.
+ */
 export function menuPara(permiso: Permiso, plataforma: string): EntradaMenu[] {
-  return MENU.filter((d) => d.permisos.includes(permiso)).map((d) => ({
+  return MENU.filter((d) => d.permisos.includes(permiso) && (!d.externa || plataforma)).map((d) => ({
     href: d.externa ? `${plataforma}${d.ruta}` : d.ruta,
     texto: d.texto,
     corto: d.corto,
@@ -57,7 +60,7 @@ export function menuPara(permiso: Permiso, plataforma: string): EntradaMenu[] {
 
 /**
  * Dónde viven las pantallas actuales (Jinja). `NEXT_PUBLIC_PLATAFORMA_URL` manda; sin ella, el
- * origen de la API si es otro; si la API está en el mismo origen, queda vacío.
+ * origen de la API si es otro; si la API está en el mismo origen, queda vacío (no configurado).
  */
 export function origenPantallasActuales(explicita: string | undefined, baseApi: string): string {
   const valor = (explicita ?? "").trim();

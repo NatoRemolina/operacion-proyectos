@@ -119,7 +119,11 @@ export function DecisionViaje({ viaje }: { viaje: ViajeResumen }) {
           ayuda="La persona lo verá en su viaje."
           value={motivo}
           maxLength={300}
-          onChange={(e) => setMotivo(e.target.value)}
+          onChange={(e) => {
+            setMotivo(e.target.value);
+            // Si ya se mostró el aviso, se revisa al escribir: así no cambia el alto del diálogo justo al pulsar.
+            if (errorMotivo) setErrorMotivo(problemaDeMotivo(e.target.value));
+          }}
           onBlur={() => motivo && setErrorMotivo(problemaDeMotivo(motivo))}
           error={errorMotivo}
         />

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { estadoVisibleGasto, type GastoDetalle } from "@/features/gastos/domain/gastos";
+import { usePlataforma } from "@/shared/application/plataforma";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { useAvisos } from "@/shared/ui/aviso-emergente";
 import { Boton } from "@/shared/ui/boton";
@@ -76,15 +77,24 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
   const [motivo, setMotivo] = useState("");
   const [errorMotivo, setErrorMotivo] = useState<string | null>(null);
   const [error, setError] = useState<ErrorDeAplicacion | null>(null);
+  const [sigueEnRevision, setSigueEnRevision] = useState(false);
+  const plataforma = usePlataforma();
   const comercio = gasto.comercio ?? "gasto sin comercio leído";
   const version = gasto.version ?? 0;
 
   function decidir(accion: "aprobar" | "rechazar") {
     setError(null);
+    setSigueEnRevision(false);
     const cuerpo = accion === "aprobar" ? { version, accion } : { version, accion, motivo: motivo.trim() };
     revision.mutate(cuerpo, {
-      onSuccess: ({ siguiente }) => {
+      onSuccess: ({ gasto: revisado, siguiente }) => {
         setRechazando(false);
+        // Aprobar vuelve a pasar las reglas: si no pasan, el gasto sigue en revisión y no se aprobó.
+        if (revisado.estado === "revision") {
+          setSigueEnRevision(true);
+          avisar({ tono: "aviso", texto: "No se aprobó: el gasto sigue en revisión." });
+          return;
+        }
         setMotivo("");
         const hecho = accion === "aprobar" ? "Gasto aprobado." : "Gasto rechazado: la persona verá el motivo.";
         if (siguiente) {
@@ -196,6 +206,18 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
             <h2 id="titulo-decision" className="text-lg font-bold">
               Tu decisión
             </h2>
+            {sigueEnRevision ? (
+              <Alerta tono="aviso" rol="alert" titulo="No se aprobó: las reglas todavía no lo dejan pasar">
+                <p>Mira «Por qué va a revisión». Para corregir los datos o aprobarlo con una excepción justificada:</p>
+                {plataforma ? (
+                  <p className="mt-2">
+                    <a href={`${plataforma}/gastos/${gasto.id}`}>Abrir la revisión completa de este gasto</a>
+                  </p>
+                ) : (
+                  <p className="mt-1">usa la revisión completa de la plataforma actual.</p>
+                )}
+              </Alerta>
+            ) : null}
             {error ? (
               <Alerta tono={error.tipo === "cambio_ajeno" ? "aviso" : "error"} rol="alert" titulo={TITULO_ERROR[error.tipo] ?? "No se pudo guardar la revisión"}>
                 <p>
@@ -219,7 +241,7 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
 
       <DialogoConfirmacion
         abierto={rechazando}
-        titulo={`Rechazar el gasto de ${comercio}`}
+        titulo={gasto.comercio ? `Rechazar el gasto de ${gasto.comercio}` : "Rechazar este gasto"}
         efecto="El gasto no cuenta para el presupuesto y la persona verá el motivo en su lista de gastos."
         confirmar="Rechazar gasto"
         peligro
@@ -236,7 +258,11 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
           ayuda="Escríbelo para la persona: lo verá tal cual."
           value={motivo}
           maxLength={500}
-          onChange={(e) => setMotivo(e.target.value)}
+          onChange={(e) => {
+            setMotivo(e.target.value);
+            // Si ya se mostró el aviso, se revisa al escribir: así no cambia el alto del diálogo justo al pulsar.
+            if (errorMotivo) setErrorMotivo(problemaDeMotivo(e.target.value));
+          }}
           onBlur={() => motivo && setErrorMotivo(problemaDeMotivo(motivo))}
           error={errorMotivo}
         />

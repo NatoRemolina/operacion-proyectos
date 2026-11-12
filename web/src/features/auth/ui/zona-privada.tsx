@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { IdentidadProvider } from "@/shared/application/identidad";
 import { useModoDemo } from "@/shared/application/modo";
+import { PlataformaProvider } from "@/shared/application/plataforma";
 import { menuPara } from "@/shared/domain/navegacion";
 import { Cargando } from "@/shared/ui/estado";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
@@ -69,7 +70,9 @@ export function ZonaPrivada({
       saliendo={salir.isPending}
       onSalir={() => salir.mutate(undefined, { onSettled: () => router.replace("/entrar") })}
     >
-      <IdentidadProvider personaId={sesion.data.id} permiso={sesion.data.rol}>{children}</IdentidadProvider>
+      <IdentidadProvider personaId={sesion.data.id} permiso={sesion.data.rol}>
+        <PlataformaProvider origen={plataforma}>{children}</PlataformaProvider>
+      </IdentidadProvider>
     </MarcoPrivado>
   );
 }

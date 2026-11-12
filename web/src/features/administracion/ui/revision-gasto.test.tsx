@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { GastoDetalle, GastosRepository } from "@/features/gastos/domain/gastos";
 import { crearGastosMemoria } from "@/features/gastos/infrastructure/gastos-memoria";
 import { PantallaDetalleGasto } from "@/features/gastos/ui/pantalla-detalle-gasto";
+import { PlataformaProvider } from "@/shared/application/plataforma";
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { renderizarConFuente } from "@/test/renderizar";
 import { gastoDePrueba, resumenDePrueba } from "@/test/fabricas";
@@ -39,7 +40,12 @@ function montar({
       revisar ?? (async (_id, r) => ({ ...EN_REVISION, estado: r.accion === "aprobar" ? "aprobado" : "rechazado", estado_texto: "Hecho", version: 4 })),
     ),
   };
-  renderizarConFuente(<PantallaDetalleGasto id={123} />, { gastos: repoGastos, administracion, permiso });
+  renderizarConFuente(
+    <PlataformaProvider origen="http://plataforma.local">
+      <PantallaDetalleGasto id={123} />
+    </PlataformaProvider>,
+    { gastos: repoGastos, administracion, permiso },
+  );
   return { revisar: administracion.revisarGasto, obtener };
 }
 
@@ -119,4 +125,25 @@ describe("Revisar un gasto", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Café del centro" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Aprobar gasto" })).not.toBeInTheDocument();
   });
+
+  it("si las reglas no dejan aprobarlo, lo dice, no salta al siguiente y ofrece la revisión completa", async () => {
+    const usuario = userEvent.setup();
+    montar({
+      revisar: async () => ({ ...EN_REVISION, estado: "revision", estado_texto: "En revisión", version: 4, alertas: ["Sin viaje asignado."] }),
+    });
+    await usuario.click(await screen.findByRole("button", { name: "Aprobar gasto" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se aprobó");
+    expect(navegacion.push).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("status", { name: "Avisos" })).queryByText(/Gasto aprobado/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /revisión completa/ })).toHaveAttribute("href", "http://plataforma.local/gastos/123");
+    expect(screen.getByText("Sin viaje asignado.")).toBeInTheDocument();
+  });
+
+  it("sin comercio leído, el diálogo no repite «gasto»", async () => {
+    const usuario = userEvent.setup();
+    montar({ gastos: [{ ...EN_REVISION, comercio: null }] });
+    await usuario.click(await screen.findByRole("button", { name: "Rechazar" }));
+    expect(screen.getByRole("dialog", { name: "Rechazar este gasto" })).toBeInTheDocument();
+  });
 });
+
