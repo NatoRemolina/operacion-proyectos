@@ -302,6 +302,10 @@ def _boton(c: dict, registro: dict):
     if not g or not v or g["usuario_id"] != u["id"] or not acceso.es_propio(u, v):
         registro["estado"] = "ignorado"
         return
-    gastos.asignar_viaje(g["id"], v)
     registro.update(gasto_id=g["id"], viaje_id=v["id"])
+    try:
+        gastos.asignar_viaje(g["id"], v)
+    except ValueError as e:   # la persona siempre recibe respuesta, aunque el gasto no se pueda mover
+        registro["estado"] = "rechazado"
+        return _responder(registro, f"No pude asignar el gasto #{g['id']} al viaje {v['codigo']}. {e}")
     _responder(registro, _resumen_gasto(g["id"], v))

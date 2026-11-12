@@ -209,22 +209,28 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
               "subtotal": _numero(subtotal), "impuesto": _numero(impuesto), "propina": _numero(propina),
               "total": _numero(total), "moneda": moneda.upper().strip() or None,
               "metodo_pago": metodo_pago.strip() or None, "canal_reserva": canal_reserva.strip() or None}
-    proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
-    # Una persona confirmó los datos: la confianza de lectura deja de ser el criterio
-    r = validacion.revisar({**campos, "confianza": 1.0, "dudas": []}, proyecto, gid, el_viaje)
-    estado = "aprobado" if r["estado"] == "aprobado_auto" else "revision"
-    # Excepción justificada: una persona responde por un gasto que las reglas no dejan pasar (dos peajes iguales el mismo día)
-    excepcion = accion == "excepcion" and estado == "revision"
-    if excepcion and len(motivo_excepcion.strip()) < 8:
-        r["alertas"].append("Para aprobar con excepción hay que escribir el motivo.")
-    elif excepcion and campos["total"] is not None and campos["moneda"] and r["total_usd"] is not None:
-        estado = "aprobado"
-        r["alertas"].append(f"Aprobado con excepción: {motivo_excepcion.strip()[:200]}")
-    db.actualizar("gastos", gid, **campos, proyecto_id=proyecto_id or None, viajero_id=viajero_id or None,
-                  viaje_id=el_viaje["id"] if el_viaje else None, estado=estado, alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"], revisado_por=_yo()["id"])
-    paso = "aprobado con excepción" if excepcion and estado == "aprobado" else \
-        "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión"
-    eventos.registrar("gasto", gid, paso, " ".join(r["alertas"]), revisor or "revisor")
+    # Aprobar relee lo gastado con los viajes bloqueados: dos aprobaciones a la vez no gastan el mismo saldo
+    with db.transaccion() as c:
+        for vid in sorted({previo["viaje_id"], el_viaje["id"] if el_viaje else None} - {None}):
+            fila = db.bloquear_viaje(c, vid)
+            if el_viaje and fila and vid == el_viaje["id"]:
+                el_viaje = {**el_viaje, **fila}
+        proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
+        # Una persona confirmó los datos: la confianza de lectura deja de ser el criterio
+        r = validacion.revisar({**campos, "confianza": 1.0, "dudas": []}, proyecto, gid, el_viaje)
+        estado = "aprobado" if r["estado"] == "aprobado_auto" else "revision"
+        # Excepción justificada: una persona responde por un gasto que las reglas no dejan pasar (dos peajes iguales el mismo día)
+        excepcion = accion == "excepcion" and estado == "revision"
+        if excepcion and len(motivo_excepcion.strip()) < 8:
+            r["alertas"].append("Para aprobar con excepción hay que escribir el motivo.")
+        elif excepcion and campos["total"] is not None and campos["moneda"] and r["total_usd"] is not None:
+            estado = "aprobado"
+            r["alertas"].append(f"Aprobado con excepción: {motivo_excepcion.strip()[:200]}")
+        db.actualizar("gastos", gid, **campos, proyecto_id=proyecto_id or None, viajero_id=viajero_id or None,
+                      viaje_id=el_viaje["id"] if el_viaje else None, estado=estado, alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"], revisado_por=_yo()["id"])
+        paso = "aprobado con excepción" if excepcion and estado == "aprobado" else \
+            "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión"
+        eventos.registrar("gasto", gid, paso, " ".join(r["alertas"]), revisor or "revisor")
     if estado == "aprobado":
         telegram.avisar(previo["usuario_id"], f"Tu gasto #{gid} ({campos['comercio'] or 'sin comercio'}, "
                                               f"{campos['total'] or 0:.2f} {campos['moneda'] or ''}) fue aprobado.")

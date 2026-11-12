@@ -84,8 +84,8 @@ def test_dos_gastos_sin_moneda_del_mismo_comercio_dia_e_importe_son_duplicado():
 
 
 def test_la_tolerancia_del_diez_por_ciento_se_conserva(nuevo_viaje):
-    v = nuevo_viaje()
-    db.actualizar("viajes", v["id"], presupuesto_usd=100)   # se devuelve al final: otras pruebas suman los presupuestos
+    v = nuevo_viaje(proyecto_id=2)
+    db.actualizar("viajes", v["id"], presupuesto_usd=100)
     v = {**v, "presupuesto_usd": 100}
     gid = db.insertar("gastos", viaje_id=v["id"], comercio="Base tolerancia", fecha=v["ida"], total=80, moneda="USD",
                       total_usd=80, estado="aprobado")
@@ -172,3 +172,108 @@ def test_una_segunda_transaccion_espera_a_la_primera():
     hilo.join(5)
     assert vista["fila"] == {"ciudad": "Confirmada"}
     db.ejecutar("delete from proyectos where id=:i", i=vista["pid"])
+
+
+# ---------- bloqueo al registrar, al asignar viaje y al aprobar ----------
+def _viaje_con_tope(nuevo_viaje, margen: float) -> dict:
+    """Un viaje propio de la prueba cuyo tope (presupuesto más la tolerancia del 10 %) deja `margen` USD libres.
+
+    Va al proyecto 2: el tablero del proyecto 1 se compara en otra prueba con el detalle del presupuesto.
+    """
+    from app.servicios import viajes
+    v = nuevo_viaje(proyecto_id=2)
+    db.actualizar("viajes", v["id"], presupuesto_usd=round((viajes.gastado(v["id"]) + margen) / 1.10, 2))
+    return viajes.uno(v["id"])
+
+
+def _gasto_en(v: dict, comercio: str, total: float, estado: str = "revision", **extra) -> int:
+    return db.insertar("gastos", **{"viaje_id": v["id"], "proyecto_id": v["proyecto_id"], "viajero_id": v["viajero_id"],
+                                    "usuario_id": v["usuario_id"], "comercio": comercio, "fecha": v["ida"], "categoria": "otros",
+                                    "total": total, "moneda": "USD", "confianza": 1.0, "estado": estado, **extra})
+
+
+def test_registrar_valida_con_el_viaje_releido(nuevo_viaje, ejemplos):
+    """Si el viaje se cerró mientras se leía el recibo, cuenta lo que dice la base, no la copia de antes."""
+    from app.servicios import gastos
+    v = nuevo_viaje()
+    db.actualizar("viajes", v["id"], estado="cerrado")
+    contenido = (ejemplos / "recibo_gasolina.png").read_bytes()
+    gid = gastos.registrar(contenido, "r.png", "web", {"id": v["usuario_id"]}, v)   # `v` todavía dice «aprobado»
+    g = db.uno("select estado, motivos from gastos where id=:i", i=gid)
+    assert g["estado"] == "revision" and "viaje_cerrado" in db.de_json(g["motivos"])
+
+
+def test_asignar_viaje_no_toca_un_gasto_que_se_sigue_leyendo(nuevo_viaje):
+    from app.servicios import gastos
+    v = nuevo_viaje()
+    gid = _gasto_en(v, "Sonda procesando", 10, estado="procesando", viaje_id=None)
+    with pytest.raises(ValueError, match="leyendo"):
+        gastos.asignar_viaje(gid, v)
+    assert db.uno("select viaje_id from gastos where id=:i", i=gid)["viaje_id"] is None
+    _sin_rastro(gid)
+
+
+def test_un_gasto_aprobado_no_se_mueve_a_un_viaje_que_no_lo_admite(nuevo_viaje):
+    from app.servicios import gastos
+    origen, destino = nuevo_viaje(), _viaje_con_tope(nuevo_viaje, 20)
+    gid = _gasto_en(origen, "Sonda aprobada", 50, estado="aprobado", total_usd=50)
+    with pytest.raises(ValueError, match="no admite"):
+        gastos.asignar_viaje(gid, destino)
+    assert db.uno("select viaje_id from gastos where id=:i", i=gid)["viaje_id"] == origen["id"]
+    _sin_rastro(gid)
+
+
+def test_telegram_responde_cuando_no_se_puede_asignar_el_viaje(anonimo, monkeypatch, nuevo_viaje):
+    from app import config
+    from app.servicios import telegram
+    enviados = []
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+    monkeypatch.setattr(config, "TELEGRAM_WEBHOOK_SECRETO", "secreto-de-pruebas")
+    monkeypatch.setattr(telegram, "_llamar", lambda metodo, **d: enviados.append((metodo, d)) or {})
+    v = nuevo_viaje()
+    db.actualizar("usuarios", v["usuario_id"], telegram_chat_id=880001)
+    gid = _gasto_en(v, "Sonda Telegram", 10, estado="procesando", viaje_id=None)
+    try:
+        r = anonimo.post("/telegram/webhook", headers={"X-Telegram-Bot-Api-Secret-Token": "secreto-de-pruebas"},
+                         json={"update_id": 880001, "callback_query": {"id": "q", "data": f"v:{gid}:{v['id']}",
+                                                                       "message": {"chat": {"id": 880001}}}})
+        assert r.status_code == 200 and r.json()["estado"] == "rechazado"
+        texto = next(d["text"] for m, d in reversed(enviados) if m == "sendMessage")
+        assert f"#{gid}" in texto and v["codigo"] in texto and "leyendo" in texto
+    finally:
+        db.actualizar("usuarios", v["usuario_id"], telegram_chat_id=None)
+        _sin_rastro(gid)
+
+
+def test_dos_aprobaciones_a_la_vez_no_gastan_el_mismo_saldo(cliente, nuevo_viaje, monkeypatch):
+    """Las dos leen lo gastado antes de que la otra escriba, salvo que la aprobación bloquee el viaje."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.servicios import viajes
+    v = _viaje_con_tope(nuevo_viaje, 100)
+    ids = [_gasto_en(v, f"Sonda saldo {n}", 70) for n in range(2)]
+    barrera, leer = threading.Barrier(2), viajes.gastado
+
+    def gastado_lento(*a, **k):
+        valor = leer(*a, **k)
+        try:
+            barrera.wait(timeout=1)   # sin bloqueo, las dos lecturas se cruzan aquí
+        except threading.BrokenBarrierError:
+            pass
+        return valor
+
+    monkeypatch.setattr(viajes, "gastado", gastado_lento)
+
+    def aprobar(gid):
+        return cliente.post(f"/gastos/{gid}", data={"accion": "aprobar", "comercio": f"Sonda saldo {ids.index(gid)}",
+                                                    "fecha": v["ida"], "categoria": "otros", "total": "70", "moneda": "USD"},
+                            follow_redirects=False).status_code
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as ejecutor:
+            assert list(ejecutor.map(aprobar, ids)) == [303, 303]
+        estados = sorted(db.uno("select estado from gastos where id=:i", i=i)["estado"] for i in ids)
+        assert estados == ["aprobado", "revision"]
+    finally:
+        _sin_rastro(*ids)

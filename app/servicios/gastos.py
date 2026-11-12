@@ -84,12 +84,13 @@ def registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, v
         proyecto_id, viajero_id = viaje["proyecto_id"], viaje["viajero_id"] or viajero_id
     yo = usuario["id"] if usuario else None
     vid = viaje["id"] if viaje else None
-    doc = db.insertar("documentos", nombre=nombre, mime=mime, canal=canal, ruta=ruta, huella=huella, creado=db.ahora(),
-                      usuario_id=yo, viaje_id=vid, tipo="soporte")
-    gid = db.insertar("gastos", documento_id=doc, proyecto_id=proyecto_id, viajero_id=viajero_id, viaje_id=vid,
-                      estado="procesando", creado=db.ahora(), usuario_id=yo)
-    eventos.registrar("gasto", gid, "documento recibido", f"{nombre} ({mime})" + (f" · {viaje['codigo']}" if viaje else ""),
-                      f"canal: {canal}")
+    with db.transaccion():
+        doc = db.insertar("documentos", nombre=nombre, mime=mime, canal=canal, ruta=ruta, huella=huella, creado=db.ahora(),
+                          usuario_id=yo, viaje_id=vid, tipo="soporte")
+        gid = db.insertar("gastos", documento_id=doc, proyecto_id=proyecto_id, viajero_id=viajero_id, viaje_id=vid,
+                          estado="procesando", creado=db.ahora(), usuario_id=yo)
+        eventos.registrar("gasto", gid, "documento recibido", f"{nombre} ({mime})" + (f" · {viaje['codigo']}" if viaje else ""),
+                          f"canal: {canal}")
     # Un archivo idéntico ya leído no se vuelve a pagar: se reutiliza su lectura
     previo = db.uno("""select g.extraido from gastos g join documentos d on d.id=g.documento_id
                        where d.huella=:h and g.id<>:i and g.extraido is not null order by g.id limit 1""", h=huella, i=gid)
@@ -102,37 +103,68 @@ def registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, v
         llm.RAPIDO.reset(marca)
     eventos.registrar("gasto", gid, "datos extraídos", x.get("error") or f"{x['comercio']} · {x['total']} {x['moneda']} · confianza {x['confianza']:.0%}",
                       f"modelo ({x['origen_dato']})", t())
-    proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
-    r = validacion.revisar(x, proyecto, gid, viaje)
-    if x.get("error"):
-        # Una lectura fallida nunca se aprueba sola
-        r["alertas"].insert(0, x["error"])
-        r["motivos"].insert(0, "lectura_fallida")
-        r["estado"] = "revision"
-    original = {c: x.get(c) for c in extraccion.CAMPOS} | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
-    db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c != "ciudad"}, confianza=x["confianza"],
-                  origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"],
-                  total_usd=r["total_usd"], extraido=None if x.get("error") else original)
-    eventos.registrar("gasto", gid, "aprobado sin intervención" if r["estado"] == "aprobado_auto" else "enviado a revisión",
-                      " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
+    # La lectura tarda y va fuera; la decisión, con el viaje bloqueado y releído: lo gastado no cambia mientras se decide
+    with db.transaccion() as c:
+        viaje = _vigente(c, viaje)
+        proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
+        r = validacion.revisar(x, proyecto, gid, viaje)
+        if x.get("error"):
+            # Una lectura fallida nunca se aprueba sola
+            r["alertas"].insert(0, x["error"])
+            r["motivos"].insert(0, "lectura_fallida")
+            r["estado"] = "revision"
+        original = {c: x.get(c) for c in extraccion.CAMPOS} | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
+        db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c != "ciudad"}, confianza=x["confianza"],
+                      origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"],
+                      total_usd=r["total_usd"], extraido=None if x.get("error") else original)
+        eventos.registrar("gasto", gid, "aprobado sin intervención" if r["estado"] == "aprobado_auto" else "enviado a revisión",
+                          " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
     return gid
 
 
+def _vigente(conexion, viaje: dict | None) -> dict | None:
+    """El viaje bloqueado y releído; conserva los datos calculados (código, ruta) de la copia que se tenía."""
+    fila = db.bloquear_viaje(conexion, viaje["id"]) if viaje else None
+    return {**viaje, **fila} if fila else None
+
+
 def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
-    """Enlaza un gasto con su viaje y lo vuelve a validar. Lo que una persona ya aprobó o rechazó no cambia de estado."""
-    g = db.uno("select * from gastos where id=:i", i=gasto_id)
-    proyecto = db.uno("select * from proyectos where id=:i", i=viaje["proyecto_id"]) if viaje["proyecto_id"] else None
-    cambios = {"viaje_id": viaje["id"], "proyecto_id": viaje["proyecto_id"], "viajero_id": viaje["viajero_id"] or g["viajero_id"]}
-    if g["estado"] in ("revision", "procesando", "aprobado_auto"):
-        r = validacion.revisar(_campos_de(g), proyecto, gasto_id, viaje)
-        if "lectura_fallida" in (db.de_json(g["motivos"], []) or []):
-            r["estado"], r["motivos"] = "revision", ["lectura_fallida"] + r["motivos"]
-            r["alertas"] = (db.de_json(g["alertas"], []) or [])[:1] + r["alertas"]
-        cambios.update(estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"])
-    db.actualizar("gastos", gasto_id, **cambios)
-    if g["documento_id"]:
-        db.actualizar("documentos", g["documento_id"], viaje_id=viaje["id"])
-    eventos.registrar("gasto", gasto_id, "asignado a viaje", viaje["codigo"])
+    """Enlaza un gasto con su viaje y lo vuelve a validar. Lo que una persona ya aprobó o rechazó no cambia de estado.
+
+    Bloquea el viaje de antes y el de destino (en orden, para que dos asignaciones cruzadas no se esperen entre sí).
+    Lanza ValueError con un texto para la persona si el gasto no se puede mover.
+    """
+    with db.transaccion() as c:
+        previo = db.uno("select viaje_id from gastos where id=:i", i=gasto_id)
+        if not previo:
+            raise ValueError("Ese gasto ya no existe.")
+        vigentes = {vid: db.bloquear_viaje(c, vid) for vid in sorted({previo["viaje_id"], viaje["id"]} - {None})}
+        g = db.uno("select * from gastos where id=:i", i=gasto_id)
+        if g["viaje_id"] != previo["viaje_id"]:
+            raise ValueError("El gasto cambió de viaje mientras tanto. Vuelve a consultarlo.")
+        if g["estado"] == "procesando":
+            raise ValueError("El recibo todavía se está leyendo. Inténtalo de nuevo en un momento.")
+        if not vigentes.get(viaje["id"]):
+            raise ValueError("Ese viaje ya no existe.")
+        viaje = {**viaje, **vigentes[viaje["id"]]}
+        proyecto = db.uno("select * from proyectos where id=:i", i=viaje["proyecto_id"]) if viaje["proyecto_id"] else None
+        cambios = {"viaje_id": viaje["id"], "proyecto_id": viaje["proyecto_id"], "viajero_id": viaje["viajero_id"] or g["viajero_id"]}
+        if g["estado"] in ("revision", "aprobado_auto"):
+            r = validacion.revisar(_campos_de(g), proyecto, gasto_id, viaje)
+            if "lectura_fallida" in (db.de_json(g["motivos"], []) or []):
+                r["estado"], r["motivos"] = "revision", ["lectura_fallida"] + r["motivos"]
+                r["alertas"] = (db.de_json(g["alertas"], []) or [])[:1] + r["alertas"]
+            cambios.update(estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"])
+        elif g["estado"] == "aprobado" and g["viaje_id"] != viaje["id"]:
+            # Lo aprobado por una persona conserva su estado, pero no puede llevarse a un viaje que no lo admite
+            r = validacion.revisar({**_campos_de(g), "confianza": 1.0, "dudas": []}, proyecto, gasto_id, viaje)
+            if r["estado"] != "aprobado_auto":
+                raise ValueError(f"El viaje {viaje['codigo']} no admite este gasto ya aprobado: " + " ".join(r["alertas"]))
+            cambios["total_usd"] = r["total_usd"]
+        db.actualizar("gastos", gasto_id, **cambios)
+        if g["documento_id"]:
+            db.actualizar("documentos", g["documento_id"], viaje_id=viaje["id"])
+        eventos.registrar("gasto", gasto_id, "asignado a viaje", viaje["codigo"])
     return db.uno("select * from gastos where id=:i", i=gasto_id)
 
 
