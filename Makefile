@@ -1,7 +1,7 @@
 # Tareas habituales. `make` sin argumentos las lista.
 PY := .venv/bin/python
 
-.PHONY: ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo respaldar verificar-respaldo
+.PHONY: ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo respaldar verificar-respaldo ganchos
 ayuda:            ## Lista las tareas
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
 
@@ -43,6 +43,9 @@ demo-monitoreo:   ## Prepara en el entorno local el viaje IB 5634 del 13 dic par
 
 respaldar:        ## Copia la base publicada y sus recibos (solo lectura) a ~/Respaldos; ver docs/respaldo.md
 	$(PY) -m datos.respaldar respaldar --env $(or $(ENV),.env.supabase-publicada)
+
+ganchos:          ## Instala los ganchos de git de scripts/ganchos/ (valen para todas las carpetas de trabajo)
+	@d=$$(git rev-parse --git-common-dir)/hooks; for g in scripts/ganchos/*; do install -m 755 "$$g" "$$d/"; done; echo "Ganchos instalados en $$d"
 
 verificar-respaldo: ## Restaura una copia en una base NUEVA del proyecto de pruebas: RESPALDO=carpeta BASE=nombre
 	$(PY) -m datos.respaldar verificar --respaldo $(RESPALDO) --env $(or $(ENV),.env.supabase-pruebas) --base $(BASE)
