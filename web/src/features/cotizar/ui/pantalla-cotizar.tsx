@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { Boton } from "@/shared/ui/boton";
 import { CampoSelector, CampoTexto } from "@/shared/ui/campo";
-import { Alerta } from "@/shared/ui/estado";
+import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
+import { EsqueletoDetalle } from "@/shared/ui/esqueleto";
+import { Alerta } from "@/shared/ui/estado";
 import { formatearRango } from "@/shared/ui/formato";
 import { useCotizar, useFormularioCotizacion } from "../application/cotizar";
 import {
@@ -25,7 +27,6 @@ import {
   type PedidoCotizacion,
 } from "../domain/cotizar";
 import { CampoLugar } from "./campo-lugar";
-import { EncabezadoPagina, EsqueletoDetalle, PRESION } from "./piezas";
 
 const CLAVE_BORRADOR = "cotizar-borrador";
 const ORDEN: readonly CampoCotizacion[] = [
@@ -180,7 +181,6 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
       <p>
         <Boton
           variante="texto"
-          className={PRESION}
           onClick={() => {
             setBorrador((b) => {
               const ejemplo = borradorDeEjemplo(conOmisiones(b, datos));
@@ -329,7 +329,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <Boton type="submit" disabled={buscando} className={PRESION}>
+          <Boton type="submit" disabled={buscando}>
             {buscando ? "Buscando…" : "Buscar y comparar"}
           </Boton>
           {!buscando ? (
@@ -382,7 +382,7 @@ function ResultadoEnvio({
       <p>{textos[error.tipo] ?? error.message}</p>
       {error.idPeticion ? <p className="mt-1 text-sm text-texto-secundario">Referencia: {error.idPeticion}</p> : null}
       {error.tipo === "red" || error.tipo === "servidor" ? (
-        <Boton variante="secundario" className={`mt-3 ${PRESION}`} onClick={onReintentar}>
+        <Boton variante="secundario" className="mt-3" onClick={onReintentar}>
           Reintentar
         </Boton>
       ) : null}

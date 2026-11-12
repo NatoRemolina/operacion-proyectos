@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { TEXTO_PERMISO, type EntradaMenu, type Permiso } from "@/shared/domain/navegacion";
 import { AvisosProvider } from "./aviso-emergente";
-import { PRESIONAR } from "./boton";
+import { PRESIONAR } from "./movimiento";
 
 export function Marca({ tamano = "grande" }: { tamano?: "grande" | "pequena" }) {
   return (

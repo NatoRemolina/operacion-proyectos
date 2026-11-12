@@ -11,7 +11,8 @@ import {
   type LugarSugerido,
   type ReglasCarretera,
 } from "../domain/cotizar";
-import { Marca, PRESION } from "./piezas";
+import { Distintivo } from "@/shared/ui/distintivo";
+import { PRESIONAR } from "@/shared/ui/movimiento";
 
 const CONTROL =
   "block min-h-11 w-full rounded-lg border border-borde-campo bg-superficie px-3 py-2 text-base text-texto " +
@@ -178,7 +179,7 @@ function ComboLugar({
               <span className="flex flex-wrap items-center gap-2 font-semibold">
                 {s.nombre}
                 {s.tambien ? <span className="font-normal text-texto-secundario">también {s.tambien}</span> : null}
-                {s.origen === "google" ? <Marca>Google</Marca> : null}
+                {s.origen === "google" ? <Distintivo>Google</Distintivo> : null}
               </span>
               {donde(s) ? <span className="block text-sm text-texto-secundario">{donde(s)}</span> : null}
               {aeropuertosDe(s) ? <span className="block text-sm text-texto-secundario">{aeropuertosDe(s)}</span> : null}
@@ -263,11 +264,11 @@ export function CampoLugar({
                       <span className="text-sm text-texto-secundario">{textoDistancia(a)}</span>
                     ) : null}
                   </span>
-                  {a.origen === "google" ? <Marca>Google</Marca> : null}
+                  {a.origen === "google" ? <Distintivo>Google</Distintivo> : null}
                   <button
                     type="button"
                     aria-label={`Quitar ${a.iata}`}
-                    className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESION}`}
+                    className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
                     onClick={() => onCambio(quitarAeropuerto(valor, a.iata))}
                   >
                     Quitar

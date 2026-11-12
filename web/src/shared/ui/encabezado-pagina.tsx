@@ -24,7 +24,8 @@ export function EncabezadoPagina({
         </h1>
         {accion ? <div className="flex flex-wrap gap-2">{accion}</div> : null}
       </div>
-      {descripcion ? <p className="max-w-prose text-texto-secundario">{descripcion}</p> : null}
+      {/* Un div y no un p: la descripción puede traer listas o datos (por ejemplo, el resumen de una cotización). */}
+      {descripcion ? <div className="max-w-prose text-texto-secundario">{descripcion}</div> : null}
     </header>
   );
 }

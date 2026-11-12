@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
+import { useAvisos } from "@/shared/ui/aviso-emergente";
 import { Boton, clasesBoton } from "@/shared/ui/boton";
 import { CampoAreaTexto } from "@/shared/ui/campo";
-import { Alerta } from "@/shared/ui/estado";
+import { Distintivo } from "@/shared/ui/distintivo";
+import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
+import { EsqueletoDetalle } from "@/shared/ui/esqueleto";
+import { Alerta } from "@/shared/ui/estado";
+import { EstadoVacio } from "@/shared/ui/estado-vacio";
 import { formatearDinero, formatearRango } from "@/shared/ui/formato";
+import { GIRO, PRESIONAR } from "@/shared/ui/movimiento";
 import { useCotizacion, useDecidir, useFormularioCotizacion } from "../application/cotizar";
 import {
   MOTIVO_MINIMO,
@@ -21,7 +27,6 @@ import {
   type OpcionVuelo,
 } from "../domain/cotizar";
 import { Horario, Leyenda, OpcionDeVuelo, nombreVuelo, pesoTotal } from "./opcion-vuelo";
-import { EncabezadoPagina, EsqueletoDetalle, EstadoVacio, GIRO, Marca, PRESION } from "./piezas";
 
 
 export function PantallaCotizacion({ id }: { id: number }) {
@@ -74,9 +79,9 @@ function VistaCotizacion({ c, migas }: { c: Cotizacion; migas: { texto: string; 
         }
         accion={
           <div className="flex flex-wrap items-center gap-3">
-            <Marca tono={origen.enVivo ? "exito" : "neutro"}>{origen.texto}</Marca>
+            <Distintivo tono={origen.enVivo ? "exito" : "neutro"}>{origen.texto}</Distintivo>
             {!vacia ? (
-              <Link href="/cotizar" className={clasesBoton("secundario", PRESION)}>
+              <Link href="/cotizar" className={clasesBoton("secundario")}>
                 Cotizar con otros datos
               </Link>
             ) : null}
@@ -163,7 +168,7 @@ function Resumen({ c }: { c: Cotizacion }) {
           type="button"
           aria-expanded={verPorque}
           onClick={() => setVerPorque((v) => !v)}
-          className={`inline-flex min-h-11 items-center px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESION}`}
+          className={`inline-flex min-h-11 items-center px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
         >
           {verPorque ? "Ocultar el análisis" : "Por qué se recomienda"}
         </button>
@@ -288,14 +293,14 @@ function DecisionGuardada({
             : `Estado: ${viaje.estado_texto}.`}
       </p>
       <div className="flex flex-wrap gap-3">
-        <Link href="/viajes" className={clasesBoton("primario", PRESION)}>
+        <Link href="/viajes" className={clasesBoton("primario")}>
           Ver mis viajes
         </Link>
-        <Link href="/cotizar" className={clasesBoton("secundario", PRESION)}>
+        <Link href="/cotizar" className={clasesBoton("secundario")}>
           Cotizar otro viaje
         </Link>
         {puedeCambiar ? (
-          <Boton variante="texto" className={PRESION} onClick={onCambiar}>
+          <Boton variante="texto" onClick={onCambiar}>
             Cambiar la decisión
           </Boton>
         ) : null}
@@ -316,6 +321,7 @@ function FormularioDecision({
   onDecidida: () => void;
 }) {
   const decidir = useDecidir(c.id);
+  const { avisar } = useAvisos();
   const formulario = useFormularioCotizacion();
   const clave = `${CLAVE_DECISION}${c.id}`;
   const [inicial] = useState(() => leerDecision(clave));
@@ -349,9 +355,15 @@ function FormularioDecision({
       else document.querySelector<HTMLInputElement>(`input[name="${nombreGrupo}"]`)?.focus();
       return;
     }
-    decidir.decidir({ vuelo_id: vueloId, hotel_id: hotelId, motivo: motivo.trim(), razones }, () => {
+    decidir.decidir({ vuelo_id: vueloId, hotel_id: hotelId, motivo: motivo.trim(), razones }, (decidida) => {
       setIntentado(false);
       borrarDecision(clave);
+      avisar({
+        tono: "exito",
+        texto: decidida.viaje
+          ? `Viaje ${decidida.viaje.codigo} creado, pendiente de aprobación.`
+          : "Decisión guardada.",
+      });
       onDecidida();
     });
   }
@@ -397,7 +409,7 @@ function FormularioDecision({
               type="button"
               aria-expanded={verDescartados}
               onClick={() => setVerDescartados((v) => !v)}
-              className={`inline-flex min-h-11 items-center gap-2 text-left ${PRESION}`}
+              className={`inline-flex min-h-11 items-center gap-2 text-left ${PRESIONAR}`}
             >
               <span aria-hidden="true" className={`${GIRO} ${verDescartados ? "rotate-90" : ""}`}>
                 ›
@@ -484,7 +496,7 @@ function FormularioDecision({
               : ""}
           </p>
           <div>
-            <Boton type="submit" disabled={decidir.isPending} className={PRESION}>
+            <Boton type="submit" disabled={decidir.isPending}>
               {decidir.isPending ? "Consultando el regreso y la tarifa del vuelo…" : "Guardar decisión y enviar a aprobación"}
             </Boton>
           </div>

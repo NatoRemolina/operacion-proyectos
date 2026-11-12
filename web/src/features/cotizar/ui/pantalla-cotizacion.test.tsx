@@ -197,12 +197,12 @@ describe("Comparación de una cotización", () => {
     renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB) });
     await screen.findByRole("heading", { level: 1, name: "MIA → Moab" });
     const guardar = screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" });
+    // La respuesta al presionar es la del sistema compartido: escala 0,97 en 100 ms, sin escala con movimiento reducido
     expect(guardar.className).toMatch(/se-mueve/);
-    expect(guardar.className).toMatch(/motion-safe:active:scale-\[0\.97\]/);
-    expect(guardar.className).toMatch(/active:transition-\[[^\]]*scale\]/);
-    expect(guardar.className).toMatch(/active:duration-100/);
+    expect(guardar.className).toMatch(/active:scale-97/);
+    expect(guardar.className).toMatch(/duration-100/);
     const flecha = screen.getAllByRole("button", { name: /Ver desglose/ })[0]!.querySelector("[aria-hidden]")!;
-    expect(flecha.className).toMatch(/se-mueve/);
+    // La flecha conserva el giro (indica si está abierto); con movimiento reducido cambia sin animación
     expect(flecha.className).toMatch(/transition-\[rotate\]/);
     expect(flecha.className).toMatch(/motion-reduce:transition-none/);
   });
@@ -256,6 +256,16 @@ describe("Comparación de una cotización", () => {
     expect(await screen.findByText("Ningún vuelo cumple")).toBeInTheDocument();
     expect(screen.queryByText(/Puedes elegir uno abajo/)).not.toBeInTheDocument();
     expect(screen.getByText(/Ya decidiste con un vuelo descartado/)).toBeInTheDocument();
+  });
+
+  it("al decidir, un aviso emergente confirma el viaje creado", async () => {
+    const usuario = userEvent.setup();
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB) });
+    const opciones = await screen.findAllByRole("radio", { name: /costo total esperado/ });
+    await usuario.click(opciones[0]!);
+    await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
+    const avisos = screen.getByRole("status", { name: "Avisos" });
+    expect(await within(avisos).findByText(/^Viaje V-2026-\d{4} creado, pendiente de aprobación\.$/)).toBeInTheDocument();
   });
 });
 

@@ -1,7 +1,9 @@
 "use client";
 
 import { useId, useState } from "react";
+import { Distintivo } from "@/shared/ui/distintivo";
 import { formatearDinero } from "@/shared/ui/formato";
+import { GIRO, PRESIONAR } from "@/shared/ui/movimiento";
 import {
   ORIGEN_LINEA,
   diasDespues,
@@ -12,7 +14,6 @@ import {
   type OpcionVuelo,
   type SegmentoCosto,
 } from "../domain/cotizar";
-import { GIRO, Marca, PRESION } from "./piezas";
 
 const COLOR: Record<SegmentoCosto["tipo"], string> = {
   precio: "bg-marca",
@@ -157,12 +158,12 @@ export function OpcionDeVuelo({
             </span>
           </p>
           <p className="flex flex-wrap gap-1.5">
-            {vuelo.recomendada ? <Marca tono="exito">Recomendada</Marca> : null}
-            {vuelo.mas_barata ? <Marca tono="marca">La más barata</Marca> : null}
-            <Marca tono={vuelo.tarifa.reales ? "exito" : "aviso"}>
+            {vuelo.recomendada ? <Distintivo tono="exito">Recomendada</Distintivo> : null}
+            {vuelo.mas_barata ? <Distintivo tono="marca">La más barata</Distintivo> : null}
+            <Distintivo tono={vuelo.tarifa.reales ? "exito" : "aviso"}>
               {vuelo.tarifa.reales ? "Tarifas reales" : "Tarifa supuesta"}
-            </Marca>
-            <Marca>{origen.texto}</Marca>
+            </Distintivo>
+            <Distintivo>{origen.texto}</Distintivo>
           </p>
         </div>
         <dl className="grid grid-cols-2 gap-x-6 text-right sm:min-w-64">
@@ -221,7 +222,7 @@ export function OpcionDeVuelo({
           aria-expanded={abierto}
           aria-controls={desglose}
           onClick={() => setAbierto((a) => !a)}
-          className={`inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESION}`}
+          className={`inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
         >
           <span aria-hidden="true" className={`${GIRO} ${abierto ? "rotate-90" : ""}`}>
             ›

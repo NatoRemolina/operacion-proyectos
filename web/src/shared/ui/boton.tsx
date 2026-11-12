@@ -1,9 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
+import { PRESIONAR } from "./movimiento";
 
 export type VarianteBoton = "primario" | "secundario" | "texto" | "peligro";
-
-// Respuesta inmediata al presionar: escala 0,97 en 100 ms (solo se anima la transformación).
-export const PRESIONAR = "se-mueve transition-transform duration-100 ease-out active:scale-97 disabled:active:scale-100";
 
 const BASE =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg py-2 text-base font-semibold " +
