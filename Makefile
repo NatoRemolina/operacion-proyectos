@@ -1,7 +1,7 @@
 # Tareas habituales. `make` sin argumentos las lista.
 PY := .venv/bin/python
 
-.PHONY: ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo
+.PHONY: ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo
 ayuda:            ## Lista las tareas
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
 
@@ -37,3 +37,6 @@ entorno-web:      ## Además la web nueva y el gateway (http://127.0.0.1:8088)
 
 entorno-abajo:    ## Detiene el entorno local; los datos de demostración se conservan
 	docker compose --profile web down
+
+demo-monitoreo:   ## Prepara en el entorno local el viaje IB 5634 del 13 dic para ver el monitoreo (fijar MONITOREO_AHORA)
+	docker compose exec app python -m datos.demo_monitoreo
