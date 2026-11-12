@@ -206,5 +206,56 @@ describe("Comparación de una cotización", () => {
     expect(flecha.className).toMatch(/transition-\[rotate\]/);
     expect(flecha.className).toMatch(/motion-reduce:transition-none/);
   });
+
+  it("sin vuelo recomendado, los textos no hablan de «la recomendada»", async () => {
+    const descartados: Cotizacion = { ...COTIZACION_MOAB, vuelos: [], recomendada_id: null, mas_barata_id: null, aviso: null };
+    const usuario = userEvent.setup();
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(descartados) });
+    const opciones = await screen.findAllByRole("radio", { name: /costo total esperado/ });
+    await usuario.click(opciones[0]!);
+    const decision = screen.getByRole("region", { name: "Tu decisión" });
+    expect(decision.textContent).not.toMatch(/recomendad/);
+    await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
+    expect(await screen.findByText(/Ningún vuelo cumple las condiciones: cuenta por qué/)).toBeInTheDocument();
+    expect(screen.queryByText(/distinto al recomendado/)).not.toBeInTheDocument();
+  });
+
+  it("mientras guarda la decisión dice qué está haciendo", async () => {
+    const usuario = userEvent.setup();
+    renderizarConFuente(<PantallaCotizacion id={12} />, {
+      cotizar: repositorio(COTIZACION_MOAB, { decidir: () => new Promise(() => {}) }),
+    });
+    const opciones = await screen.findAllByRole("radio", { name: /costo total esperado/ });
+    await usuario.click(opciones[0]!);
+    await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
+    expect(await screen.findByRole("button", { name: "Consultando el regreso y la tarifa del vuelo…" })).toBeDisabled();
+    expect(screen.getByText(/Puede tardar unos 20 segundos/)).toBeInTheDocument();
+  });
+
+  it("después de decidir, «Ningún vuelo cumple» ya no invita a elegir un vuelo", async () => {
+    const decidida: Cotizacion = {
+      ...COTIZACION_MOAB,
+      vuelos: [],
+      recomendada_id: null,
+      mas_barata_id: null,
+      aviso: null,
+      decision: {
+        id: 3,
+        vuelo_id: COTIZACION_MOAB.descartados[0]!.id,
+        hotel_id: null,
+        motivo: "La grabación puede empezar más tarde",
+        razones: [],
+        total_usd: "900.00",
+        siguio_recomendacion: false,
+        creado: "2026-11-12T10:00:00Z",
+        aviso: null,
+      },
+      viaje: { id: 4, codigo: "V-2026-0004", estado: "pendiente_aprobacion", estado_texto: "Pendiente de aprobación", presupuesto_usd: "1200.00" },
+    };
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(decidida) });
+    expect(await screen.findByText("Ningún vuelo cumple")).toBeInTheDocument();
+    expect(screen.queryByText(/Puedes elegir uno abajo/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Ya decidiste con un vuelo descartado/)).toBeInTheDocument();
+  });
 });
 

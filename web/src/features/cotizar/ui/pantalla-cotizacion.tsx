@@ -127,10 +127,17 @@ function Resumen({ c }: { c: Cotizacion }) {
   if (!recomendada) {
     return (
       <Alerta tono="aviso" titulo="Ningún vuelo cumple" rol="status">
-        <p>
-          Todos los vuelos encontrados se descartaron por la hora límite o el equipo. Puedes elegir uno abajo, con su razón a
-          la vista, contando por qué; o <Link href="/cotizar">cotizar con otros datos</Link>.
-        </p>
+        {c.decision ? (
+          <p>
+            Ya decidiste con un vuelo descartado, contando por qué. Si prefieres otra opción,{" "}
+            <Link href="/cotizar">cotiza con otros datos</Link>.
+          </p>
+        ) : (
+          <p>
+            Todos los vuelos encontrados se descartaron por la hora límite o el equipo. Puedes elegir uno abajo, con su razón
+            a la vista, contando por qué; o <Link href="/cotizar">cotizar con otros datos</Link>.
+          </p>
+        )}
       </Alerta>
     );
   }
@@ -427,7 +434,9 @@ function FormularioDecision({
             {elegido
               ? elegido.recomendada
                 ? `Elegiste ${nombreVuelo(elegido)}, la recomendada.`
-                : `Elegiste ${nombreVuelo(elegido)}, que no es la recomendada: explica abajo por qué la eliges.`
+                : c.recomendada_id === null
+                  ? `Elegiste ${nombreVuelo(elegido)}. Ninguno cumple las condiciones: explica abajo por qué lo eliges.`
+                  : `Elegiste ${nombreVuelo(elegido)}, que no es la recomendada: explica abajo por qué la eliges.`
               : "Elige un vuelo de la lista."}
           </p>
           {formulario.data?.razones.length ? (
@@ -453,7 +462,11 @@ function FormularioDecision({
           <CampoAreaTexto
             id="decision-motivo"
             etiqueta={conMotivo ? "Por qué eliges este vuelo (obligatorio)" : "Por qué eliges este vuelo (opcional)"}
-            ayuda={`Obligatorio si no es la recomendada (${MOTIVO_MINIMO} caracteres o más). Es el dato que más ayuda a mejorar las recomendaciones.`}
+            ayuda={
+              c.recomendada_id === null
+                ? `Obligatorio: ningún vuelo cumple las condiciones (${MOTIVO_MINIMO} caracteres o más). Es el dato que más ayuda a mejorar las recomendaciones.`
+                : `Obligatorio si no es la recomendada (${MOTIVO_MINIMO} caracteres o más). Es el dato que más ayuda a mejorar las recomendaciones.`
+            }
             required={conMotivo}
             maxLength={300}
             value={motivo}
@@ -465,9 +478,14 @@ function FormularioDecision({
             aprobación de administración. El riesgo de cambio y las millas solo sirven para comparar.
           </p>
           <ErrorDecision error={decidir.error} id={c.id} />
+          <p aria-live="polite" className={decidir.isPending ? "text-sm font-semibold text-marca" : "sr-only"}>
+            {decidir.isPending
+              ? "Guardando tu decisión: consultamos el vuelo de regreso y la tarifa para fijar el presupuesto. Puede tardar unos 20 segundos."
+              : ""}
+          </p>
           <div>
             <Boton type="submit" disabled={decidir.isPending} className={PRESION}>
-              {decidir.isPending ? "Guardando…" : "Guardar decisión y enviar a aprobación"}
+              {decidir.isPending ? "Consultando el regreso y la tarifa del vuelo…" : "Guardar decisión y enviar a aprobación"}
             </Boton>
           </div>
         </section>

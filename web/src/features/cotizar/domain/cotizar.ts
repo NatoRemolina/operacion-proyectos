@@ -539,7 +539,10 @@ export function problemaDeDecision(
   if (requiereMotivo(c, vueloId) && motivo.trim().length < MOTIVO_MINIMO) {
     return {
       campo: "motivo",
-      mensaje: "Elegiste un vuelo distinto al recomendado: cuenta por qué (5 caracteres o más).",
+      mensaje:
+        c.recomendada_id === null
+          ? "Ningún vuelo cumple las condiciones: cuenta por qué eliges este (5 caracteres o más)."
+          : "Elegiste un vuelo distinto al recomendado: cuenta por qué (5 caracteres o más).",
     };
   }
   return null;
