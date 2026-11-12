@@ -85,6 +85,20 @@ decisiones = _tabla(
     Column("vuelo_id", Integer), Column("hotel_id", Integer), Column("tarifa", Text),
     Column("desglose", Text), Column("total", Float), Column("motivo", Text),
     Column("aprobado_por", Text), Column("creado", Text), Column("usuario_id", Integer),
+    # Qué recomendó el sistema y por qué eligió la persona: base del acuerdo y del futuro modelo de decisión
+    Column("razones", Text), Column("recomendado_id", Integer), Column("siguio_recomendacion", Integer),
+    Column("posicion_elegida", Integer),
+)
+elecciones = _tabla(
+    "elecciones",  # una fila por opción mostrada al decidir, con la marca de cuál se eligió: conjunto etiquetado
+    Column("decision_id", Integer), Column("solicitud_id", Integer), Column("opcion_id", Integer), Column("tipo", Text),
+    Column("posicion", Integer), Column("elegida", Integer), Column("recomendada", Integer), Column("descartada", Integer),
+    Column("precio", Float), Column("costo_esperado", Float), Column("rasgos", Text), Column("creado", Text),
+)
+errores = _tabla(
+    "errores",
+    Column("momento", Text), Column("peticion", Text), Column("usuario_id", Integer), Column("ruta", Text),
+    Column("tipo", Text), Column("mensaje", Text), Column("traza", Text),
 )
 documentos = _tabla(
     "documentos",
@@ -101,6 +115,7 @@ gastos = _tabla(
     Column("confianza", Float), Column("estado", Text), Column("alertas", Text),
     Column("origen_dato", Text), Column("creado", Text),
     Column("usuario_id", Integer), Column("revisado_por", Integer),
+    Column("motivos", Text),  # códigos de las alertas, para contar por qué se revisa sin buscar en el texto
     Column("extraido", Text),  # lectura original del modelo, intacta, para medir cuánto se corrige
 )
 eventos = _tabla(

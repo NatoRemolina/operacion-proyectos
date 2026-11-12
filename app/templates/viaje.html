@@ -15,12 +15,13 @@
   <p class="eti">El agente explica y recomienda; la decisión la guarda una persona.{% if modo().extraccion != 'en vivo' %} Sin clave del modelo de lenguaje responde el análisis determinista, que no interpreta preguntas libres.{% endif %}</p>
 </div>
 
+{% if aviso_form %}<p class="nota mal">{{ aviso_form }}</p>{% endif %}
 <form method="post" action="/viajes/{{ sol.id }}/decidir">
 <h2>Vuelos, ordenados por costo total esperado</h2>
 <div class="tarjeta tabla"><table>
 <tr><th></th><th>Vuelo</th><th>Horario</th><th>Tarifa recomendada</th><th class="d">Precio buscador</th>{% if hay_modelo %}<th class="d">Frente a lo esperado</th>{% endif %}<th class="d">Costo esperado</th><th>Origen</th></tr>
 {% for o in vuelos %}<tr id="v{{ o.id }}">
-  <td><input type="radio" name="vuelo_id" value="{{ o.id }}" {{ 'checked' if loop.first }}></td>
+  <td><input type="radio" name="vuelo_id" value="{{ o.id }}" required></td>
   <td><b>{{ o.v.aerolinea }}</b> {{ o.v.numeros|join(' + ') }}<br><span class="eti">{{ 'Directo' if o.v.escalas == 0 else o.v.escalas ~ ' escala(s)' }}</span>{% if loop.first %} <span class="chip ok">Recomendado</span>{% endif %}</td>
   <td>{{ o.v.sale[11:] }} → {{ o.v.llega[11:] }}</td>
   <td>{{ o.ev.tarifa.nombre }}{% for a in o.ev.avisos %}<br><span class="eti">⚠ {{ a }}</span>{% endfor %}
@@ -43,7 +44,7 @@
 <div class="tarjeta tabla"><table>
 <tr><th></th><th>Hotel</th><th class="d">Por noche</th><th class="d">Total {{ noches }} noches</th><th>Calificación</th><th>Fidelización</th><th>Origen</th></tr>
 {% for o in hoteles %}<tr>
-  <td><input type="radio" name="hotel_id" value="{{ o.id }}" {{ 'checked' if loop.first }}></td>
+  <td><input type="radio" name="hotel_id" value="{{ o.id }}"></td>
   <td><b>{{ o.h.nombre }}</b>{% if o.h.clase %} <span class="eti">{{ o.h.clase }}★</span>{% endif %}</td>
   <td class="d">{{ '%.0f'|format(o.h.noche or 0) }}</td><td class="d"><b>{{ '%.0f'|format(o.h.total) }}</b></td>
   <td>{{ '%.1f'|format(o.h.calificacion) if o.h.calificacion else '—' }}</td>
@@ -53,7 +54,9 @@
 
 <div class="tarjeta noimp"><h3>Guardar la decisión</h3>
   <p class="eti">Carro de alquiler estimado: {{ carro|dinero }} (supuesto editable en la solicitud). La ficha queda guardada contra el proyecto y su total pasa a ser el presupuesto previsto.</p>
-  <div class="campos"><div><label>Motivo</label><input name="motivo" placeholder="Por qué esta opción"></div><div><label>Decide</label><input value="{{ yo.nombre }}" disabled></div></div>
+  <p class="eti" style="margin-bottom:6px">Ninguna opción viene marcada: la elección es tuya. Marca las razones; si eliges algo distinto a lo recomendado, el porqué es obligatorio.</p>
+  <p class="fila">{% for clave, nombre in razones.items() %}<label style="font-weight:500;color:var(--tinta)"><input type="checkbox" name="razones" value="{{ clave }}"> {{ nombre }}</label>{% endfor %}</p>
+  <div class="campos"><div><label>Por qué esta opción</label><input name="motivo" placeholder="Obligatorio si no es la recomendada"></div><div><label>Decide</label><input value="{{ yo.nombre }}" disabled></div></div>
   <p><button>Guardar ficha de decisión</button></p></div>
 </form>
 {% endblock %}

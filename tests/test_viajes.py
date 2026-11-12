@@ -50,3 +50,20 @@ def test_decidir_sin_hotel_y_ficha(cliente):
 def test_aeropuertos():
     assert resolver("Lisboa (LIS)") == ("LIS", "Lisboa") and resolver("medellin")[0] == "MDE"
     assert resolver("SMF")[0] == "SMF" and resolver("xyz123") is None
+
+
+def test_apartarse_de_la_recomendacion_exige_el_porque_y_deja_datos_etiquetados(cliente):
+    sid = _crear(cliente)
+    vuelos = _comparacion(sid)["vuelos"]
+    otro = vuelos[1]["id"]
+    r = cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": otro}, follow_redirects=False)
+    assert "aviso=" in r.headers["location"]                                   # sin porqué no se guarda
+    assert not db.uno("select id from decisiones where solicitud_id=:s", s=sid)
+    cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": otro, "motivo": "Llega antes de la reunión",
+                                                 "razones": ["horario", "inventada"]})
+    d = db.uno("select * from decisiones where solicitud_id=:s", s=sid)
+    assert d["siguio_recomendacion"] == 0 and d["posicion_elegida"] == 2 and d["recomendado_id"] == vuelos[0]["id"]
+    assert db.de_json(d["razones"], []) == ["horario"]                         # solo razones del catálogo
+    filas = db.todos("select * from elecciones where decision_id=:d and tipo='vuelo'", d=d["id"])
+    assert sum(f["elegida"] for f in filas) == 1 and sum(f["recomendada"] for f in filas) == 1
+    assert len(filas) >= len(vuelos)                                           # se guarda todo lo mostrado, no solo lo elegido

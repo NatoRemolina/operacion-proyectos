@@ -1,6 +1,10 @@
 """Rutas de la aplicación: viajes (reto 1), gastos (reto 2), tablero y flujo de la información."""
+import csv
 import hashlib
+import io
 import re
+import secrets
+import traceback
 from datetime import date
 from pathlib import Path
 from urllib.parse import quote
@@ -13,7 +17,9 @@ from fastapi.templating import Jinja2Templates
 from datos.semilla import sembrar
 
 from . import aeropuertos, config, db
-from .servicios import acceso, agente, almacen, analitica, costo, eventos, extraccion, modelo, precios, validacion
+from .servicios import (acceso, agente, almacen, analitica, costo, eventos, extraccion, inteligencia, metricas, modelo,
+                        precios, validacion)
+from datos.semilla import VISTAS
 
 AQUI = Path(__file__).parent
 app = FastAPI(title="Operación de proyectos")
@@ -34,6 +40,7 @@ async def control_de_acceso(request: Request, call_next):
     """Identifica a quien llama y aplica el nivel de la ruta antes de ejecutar nada."""
     ruta = request.url.path
     necesario = acceso.nivel(ruta)
+    request.state.peticion = secrets.token_hex(6)
     if request.method not in ("GET", "HEAD", "OPTIONS") and not acceso.mismo_origen(request.headers):
         return Response("Petición rechazada: no viene de esta página.", status_code=403)
     usuario = None if necesario == "publica" and ruta != "/entrar" else acceso.usuario_de(request.cookies.get(acceso.COOKIE))
@@ -44,7 +51,31 @@ async def control_de_acceso(request: Request, call_next):
             return Response(status_code=401) if ruta.startswith("/api") else RedirectResponse("/entrar", status_code=303)
         if necesario == "admin" and not acceso.es_admin(usuario):
             return Response("Esta sección es solo para administradores.", status_code=403)
-    return await call_next(request)
+    try:
+        respuesta = await call_next(request)
+    except Exception as e:  # nada se pierde en silencio: queda registrado y quien lo vio recibe un identificador
+        return _error_registrado(request, e)
+    respuesta.headers["X-Peticion"] = request.state.peticion
+    return respuesta
+
+
+def _error_registrado(request: Request, e: Exception) -> Response:
+    pid = request.state.peticion
+    traza = "".join(traceback.format_exception(e))[-4000:]
+    print(f"ERROR peticion={pid} ruta={request.url.path} {type(e).__name__}: {e}\n{traza}", flush=True)
+    try:
+        u = request.state.usuario
+        db.insertar("errores", momento=db.ahora(), peticion=pid, usuario_id=u["id"] if u else None, ruta=request.url.path,
+                    tipo=type(e).__name__, mensaje=str(e)[:500], traza=traza)
+    except Exception:
+        pass  # si la base es la que falla, el registro queda al menos en los logs
+    if request.url.path.startswith("/api"):
+        return JSONResponse({"error": "Error interno", "peticion": pid}, status_code=500, headers={"X-Peticion": pid})
+    return HTMLResponse(f"""<!doctype html><meta charset="utf-8"><title>Error</title>
+<body style="font-family:system-ui;max-width:520px;margin:80px auto;padding:0 16px">
+<h1 style="font-size:20px">Algo falló al procesar la petición</h1>
+<p>El error quedó registrado. Si necesitas ayuda, comparte este identificador: <b><code>{pid}</code></b></p>
+<p><a href="/">Volver al inicio</a></p></body>""", status_code=500, headers={"X-Peticion": pid})
 
 
 @app.get("/salud")
@@ -242,12 +273,12 @@ def _comparacion(sid: int) -> dict | None:
 
 
 @app.get("/viajes/{sid}", response_class=HTMLResponse)
-def viaje(request: Request, sid: int):
+def viaje(request: Request, sid: int, aviso: str = ""):
     c = _comparacion(sid) if _solicitud_propia(sid) else None
     if not c:
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "viaje.html", _ctx(
-        **c, agente=agente.recomendar(c, solo_determinista=True)))
+        **c, agente=agente.recomendar(c, solo_determinista=True), aviso_form=aviso[:200], razones=config.RAZONES))
 
 
 @app.post("/viajes/{sid}/agente", response_class=HTMLResponse)
@@ -260,7 +291,7 @@ def viaje_agente(request: Request, sid: int, pregunta: str = Form("")):
         r = agente.recomendar(c, pregunta.strip()[:400])
     eventos.registrar("solicitud", sid, "recomendación del agente", (pregunta.strip()[:120] or "recomendación general")
                       + " · herramientas: " + (", ".join(r["pasos"]) or "ninguna"), r["modo"], t())
-    return plantillas.TemplateResponse(request, "viaje.html", _ctx(**c, agente=r, pregunta=pregunta))
+    return plantillas.TemplateResponse(request, "viaje.html", _ctx(**c, agente=r, pregunta=pregunta, razones=config.RAZONES))
 
 
 @app.post("/viajes/{sid}/tarifas/{oid}")
@@ -281,7 +312,7 @@ def viaje_tarifas(sid: int, oid: int):
 
 @app.post("/viajes/{sid}/decidir")
 def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), motivo: str = Form(""),
-                  aprobado_por: str = Form("")):
+                  aprobado_por: str = Form(""), razones: list[str] = Form([])):
     c = _comparacion(sid) if _solicitud_propia(sid) else None
     if not c:
         return NO_ENCONTRADO
@@ -289,7 +320,14 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
     vuelo = next((v for v in c["vuelos"] + c["descartados"] if v["id"] == vuelo_id), None)
     hotel = next((h for h in c["hoteles"] if h["id"] == hotel_id), None)  # puede no haber hoteles para la ciudad
     if not vuelo:
-        return RedirectResponse(f"/viajes/{sid}", status_code=303)
+        return RedirectResponse(f"/viajes/{sid}?aviso=Elige+un+vuelo+para+guardar+la+decisi%C3%B3n.", status_code=303)
+    orden = c["vuelos"] + c["descartados"]
+    recomendado = c["vuelos"][0] if c["vuelos"] else None
+    siguio = bool(recomendado and recomendado["id"] == vuelo["id"])
+    razones = [r for r in razones if r in config.RAZONES]
+    if not siguio and len(motivo.strip()) < 5:
+        # Cuando la persona se aparta de la recomendación, el porqué es el dato más valioso
+        return RedirectResponse(f"/viajes/{sid}?aviso=Elegiste+una+opci%C3%B3n+distinta+a+la+recomendada%3A+cu%C3%A9ntanos+por+qu%C3%A9.", status_code=303)
     lineas = [{**l, "grupo": "vuelo"} for l in vuelo["ev"]["lineas"]]
     if hotel:
         lineas.append({"concepto": f"Hotel: {hotel['h']['nombre']} ({c['noches']} noches)", "valor": hotel["h"]["total"],
@@ -306,7 +344,25 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
                                 "aviso": c["aviso"], "baterias": c["baterias"],
                                 # lo que se evita frente a la opción más barata del buscador, por costo esperado
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
-                      total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=_yo()["id"])
+                      total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=_yo()["id"],
+                      razones=razones, recomendado_id=recomendado["id"] if recomendado else None,
+                      siguio_recomendacion=1 if siguio else 0, posicion_elegida=orden.index(vuelo) + 1)
+    # Foto de todo lo que se mostró: las reglas y las tarifas pueden cambiar después
+    db.insertar_varios("elecciones", [
+        {"decision_id": did, "solicitud_id": sid, "opcion_id": o["id"], "tipo": "vuelo", "posicion": i + 1,
+         "elegida": int(o["id"] == vuelo["id"]), "recomendada": int(bool(recomendado) and o["id"] == recomendado["id"]),
+         "descartada": int(bool(o["ev"]["descartada"])), "precio": o["v"]["precio"], "costo_esperado": o["ev"]["total"],
+         "rasgos": {"aerolinea": o["v"]["aerolinea"], "escalas": o["v"]["escalas"], "duracion_min": o["v"]["duracion_min"],
+                    "sale": o["v"]["sale"][11:], "llega": o["v"]["llega"][11:], "tarifa": o["ev"]["tarifa"]["nombre"],
+                    "permite_cambio": o["ev"]["tarifa"]["permite_cambio"], "tarifas_reales": o["ev"]["tarifas_reales"],
+                    "frente_esperado": o.get("frente_esperado"), "prob_cambio": c["sol"]["prob_cambio"],
+                    "baterias": c["sol"]["baterias_n"], "maleta": c["sol"]["maleta"]},
+         "creado": db.ahora()} for i, o in enumerate(orden)] + [
+        {"decision_id": did, "solicitud_id": sid, "opcion_id": h["id"], "tipo": "hotel", "posicion": i + 1,
+         "elegida": int(bool(hotel) and h["id"] == hotel["id"]), "recomendada": int(i == 0), "descartada": 0,
+         "precio": h["h"]["total"], "costo_esperado": h["h"]["total"],
+         "rasgos": {"calificacion": h["h"]["calificacion"], "clase": h["h"]["clase"], "programa": h["programa"]},
+         "creado": db.ahora()} for i, h in enumerate(c["hoteles"])])
     db.actualizar("solicitudes", sid, estado="decidido")
     eventos.registrar("solicitud", sid, "decisión guardada", f"Total previsto {total:.2f} USD (ficha #{did})", aprobado_por or "usuario")
     return RedirectResponse(f"/viajes/{sid}/ficha", status_code=303)
@@ -383,11 +439,12 @@ def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None
     if x.get("error"):
         # Una lectura fallida nunca se aprueba sola
         r["alertas"].insert(0, x["error"])
+        r["motivos"].insert(0, "lectura_fallida")
         r["estado"] = "revision"
     original = {c: x.get(c) for c in extraccion.CAMPOS} | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
     db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c != "ciudad"}, confianza=x["confianza"],
-                  origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], total_usd=r["total_usd"],
-                  extraido=None if x.get("error") else original)
+                  origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"],
+                  total_usd=r["total_usd"], extraido=None if x.get("error") else original)
     eventos.registrar("gasto", gid, "aprobado sin intervención" if r["estado"] == "aprobado_auto" else "enviado a revisión",
                       " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
     return gid
@@ -522,7 +579,7 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
         estado = "aprobado"
         r["alertas"].append(f"Aprobado con excepción: {motivo_excepcion.strip()[:200]}")
     db.actualizar("gastos", gid, **campos, proyecto_id=proyecto_id or None, viajero_id=viajero_id or None,
-                  estado=estado, alertas=r["alertas"], total_usd=r["total_usd"], revisado_por=_yo()["id"])
+                  estado=estado, alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"], revisado_por=_yo()["id"])
     paso = "aprobado con excepción" if excepcion and estado == "aprobado" else \
         "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión"
     eventos.registrar("gasto", gid, paso, " ".join(r["alertas"]), revisor or "revisor")
@@ -626,6 +683,88 @@ def api_observaciones(limite: int = 1000):
 @app.get("/api/eventos", tags=["api"])
 def api_eventos(limite: int = 200):
     return db.todos("select * from eventos order by id desc limit :l", l=min(limite, 1000))
+
+
+# ---------- monitoreo ----------
+PESTANAS = {"gastos": "Gastos", "busquedas": "Búsquedas", "modelo": "Modelo de lenguaje", "cupos": "Cupos",
+            "auditoria": "Auditoría", "calidad": "Calidad"}
+FECHA_DE_VISTA = {"v_h_gasto": "creado", "v_h_busqueda": "creado", "v_h_decision": "creado", "v_h_lectura": "momento",
+                  "v_h_evento": "momento"}
+_ES_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _filtros(proyecto_id: int = 0, desde: str = "", hasta: str = "") -> dict:
+    return {"proyecto_id": proyecto_id or None, "desde": desde if _ES_FECHA.match(desde) else None,
+            "hasta": hasta if _ES_FECHA.match(hasta) else None}
+
+
+def _datos_pestana(pestana: str, f: dict) -> dict:
+    if pestana == "gastos":
+        return metricas.gastos(f)
+    if pestana == "busquedas":
+        _completar_ahorros()
+        return metricas.busquedas(f)
+    if pestana == "modelo":
+        return metricas.uso_modelo(f)
+    if pestana == "cupos":
+        hoy = db.ahora()[:10]
+        return {"buscador": precios.cupo(), "busquedas": metricas.busquedas(f),
+                "modelo_hoy": db.uno("select count(*) n from llamadas_modelo where momento>=:h", h=hoy)["n"],
+                "filas": [(t, db.uno(f"select count(*) n from {t}")["n"]) for t in
+                          ("gastos", "documentos", "solicitudes", "opciones", "decisiones", "elecciones", "observaciones",
+                           "busquedas", "eventos", "llamadas_modelo", "errores")]}
+    if pestana == "auditoria":
+        donde, par = metricas._filtro({**f, "proyecto_id": None}, "momento")
+        return {"eventos": db.todos(f"select * from v_h_evento where {donde} order by id desc limit 150", **par),
+                "por_persona": db.todos(f"""select coalesce(usuario,'sistema') usuario, count(*) n from v_h_evento
+                                            where {donde} group by coalesce(usuario,'sistema') order by n desc""", **par),
+                "por_paso": db.todos(f"select paso, count(*) n from v_h_evento where {donde} group by paso order by n desc", **par),
+                "errores": db.todos("""select e.*, u.nombre usuario from errores e left join usuarios u on u.id=e.usuario_id
+                                       order by e.id desc limit 30""")}
+    g = metricas.gastos(f)
+    return {"pruebas": metricas.calidad_de_datos(), "calibracion": g["calibracion"], "por_campo": g["correccion_por_campo"],
+            "tasa_correccion": g["tasa_correccion"], "evaluados": g["gastos_evaluados"],
+            "umbral": config.UMBRAL_CONFIANZA}
+
+
+@app.get("/admin/monitoreo", response_class=HTMLResponse)
+def monitoreo(request: Request, pestana: str = "gastos", proyecto_id: int = 0, desde: str = "", hasta: str = ""):
+    pestana = pestana if pestana in PESTANAS else "gastos"
+    f = _filtros(proyecto_id, desde, hasta)
+    consulta = "&".join(f"{k}={v}" for k, v in f.items() if v)
+    return plantillas.TemplateResponse(request, "monitoreo.html", _ctx(
+        pestana=pestana, pestanas=PESTANAS, f=f, consulta=consulta, d=_datos_pestana(pestana, f),
+        catalogo=[metricas.valor(n, f) for n in metricas.CATALOGO] if pestana == "calidad" else []))
+
+
+@app.get("/admin/monitoreo/exportar.csv")
+def monitoreo_exportar(vista: str, proyecto_id: int = 0, desde: str = "", hasta: str = ""):
+    """Descarga un hecho de la capa analítica con los mismos filtros de la pantalla."""
+    if vista not in VISTAS:
+        return NO_ENCONTRADO
+    f = _filtros(proyecto_id, desde, hasta)
+    if vista in ("v_h_lectura", "v_h_evento"):
+        f["proyecto_id"] = None
+    donde, par = metricas._filtro(f, FECHA_DE_VISTA[vista])
+    filas = db.todos(f"select * from {vista} where {donde} order by id", **par)
+    salida = io.StringIO()
+    if filas:
+        w = csv.DictWriter(salida, fieldnames=list(filas[0].keys()))
+        w.writeheader()
+        w.writerows(filas)
+    eventos.registrar("monitoreo", None, "exportación", f"{vista}: {len(filas)} filas")
+    return Response("\ufeff" + salida.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{vista}.csv"'})
+
+
+@app.get("/api/metricas", tags=["api"])
+def api_metricas(nombre: str = "", proyecto_id: int = 0, desde: str = "", hasta: str = ""):
+    """Sin `nombre` devuelve el catálogo; con `nombre`, el valor de esa métrica con los filtros dados."""
+    f = _filtros(proyecto_id, desde, hasta)
+    if not nombre:
+        return [{"nombre": n, "titulo": t, "unidad": u, "para_que": p} for n, (t, u, p, _) in metricas.CATALOGO.items()]
+    v = metricas.valor(nombre, f)
+    return v if v else JSONResponse({"error": "Métrica desconocida"}, status_code=404)
 
 
 # ---------- administración de usuarios ----------

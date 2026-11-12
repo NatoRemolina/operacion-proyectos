@@ -83,11 +83,17 @@ CATEGORIAS = {
 }
 
 
+# Razones que una persona puede marcar al decidir un viaje
+RAZONES = {"costo_total": "Menor costo total", "horario": "Mejor horario", "directo": "Vuelo directo",
+           "flexibilidad": "Permite cambios", "equipaje": "Equipaje del equipo", "fidelizacion": "Millas o estatus",
+           "cliente": "Exigencia del cliente o del proyecto", "hotel": "Ubicación del hotel", "otra": "Otra"}
+
+
 def modo() -> dict:
     """Qué servicios externos están activos; se muestra en pantalla."""
     return {
         "precios": "en vivo" if SERPAPI_KEY else "guardado",
         "extraccion": "en vivo" if (MODELO_API_URL and MODELO_API_KEY and MODELO_NOMBRE) else "guardado",
-        "datos": "Supabase" if DATABASE_URL else "SQLite local",
+        "datos": "SQLite local" if ES_SQLITE else "Supabase",
         "archivos": "Supabase" if (SUPABASE_URL and SUPABASE_SERVICE_KEY) else "carpeta local",
     }

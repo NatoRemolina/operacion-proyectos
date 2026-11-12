@@ -1,0 +1,123 @@
+{% extends "base.html" %}{% block titulo %}Monitoreo{% endblock %}{% block cuerpo %}
+{% macro tabla2(titulo, filas, c1, c2, vacio="Sin datos todavía.") %}
+<div class="tarjeta tabla"><h3>{{ titulo }}</h3><table><tr><th>{{ c1 }}</th><th class="d">{{ c2 }}</th></tr>
+{% for a, b in filas %}<tr><td>{{ a }}</td><td class="d">{{ b }}</td></tr>{% else %}<tr><td colspan="2">{{ vacio }}</td></tr>{% endfor %}</table></div>
+{% endmacro %}
+{% macro cifra(eti, valor, pie="", unidad="") %}
+<div class="tarjeta"><div class="eti">{{ eti }}</div><div class="num">{{ '—' if valor is none else valor }}{% if valor is not none and unidad %} <small>{{ unidad }}</small>{% endif %}</div><div class="eti">{{ pie }}</div></div>
+{% endmacro %}
+{% macro bajar(vista, texto) %}<a class="boton peq sec" href="/admin/monitoreo/exportar.csv?vista={{ vista }}{{ '&' ~ consulta if consulta }}">Descargar {{ texto }} (CSV)</a>{% endmacro %}
+
+<h1>Monitoreo</h1>
+<p class="sub">Cada cifra sale del catálogo de métricas, con una sola definición, y se calcula sobre los hechos registrados. Con pocos datos las cifras muestran el método, no conclusiones.</p>
+
+<form method="get" class="tarjeta" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+  <input type="hidden" name="pestana" value="{{ pestana }}">
+  <label>Proyecto<br><select name="proyecto_id"><option value="0">Todos</option>{% for p in proyectos %}<option value="{{ p.id }}" {{ 'selected' if f.proyecto_id == p.id }}>{{ p.nombre }}</option>{% endfor %}</select></label>
+  <label>Desde<br><input type="date" name="desde" value="{{ f.desde or '' }}"></label>
+  <label>Hasta<br><input type="date" name="hasta" value="{{ f.hasta or '' }}"></label>
+  <button class="peq">Aplicar</button>{% if consulta %}<a href="/admin/monitoreo?pestana={{ pestana }}">Quitar filtros</a>{% endif %}
+</form>
+
+<p style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0">{% for clave, nombre in pestanas.items() %}
+  <a class="chip {{ 'azul' if clave == pestana }}" style="padding:6px 14px;font-size:13px;text-decoration:none" href="/admin/monitoreo?pestana={{ clave }}{{ '&' ~ consulta if consulta }}">{{ nombre }}</a>{% endfor %}</p>
+
+{% if pestana == 'gastos' %}
+<div class="rejilla">
+  {{ cifra("Aprobados sin intervención", d.tasa_sin_intervencion, "de " ~ d.recibidos ~ " recibidos", "%") }}
+  {{ cifra("Esperando revisión", d.pendientes, "carga actual de quien revisa") }}
+  {{ cifra("De recibido a aprobado", d.tiempo_mediana_s, "mediana · percentil 90: " ~ (d.tiempo_p90_s if d.tiempo_p90_s is not none else '—') ~ " s", "s") }}
+  {{ cifra("Campos corregidos", d.tasa_correccion, "sobre lo leído en " ~ d.gastos_evaluados ~ " gastos ya cerrados", "%") }}
+  {{ cifra("Gasto real aprobado", d.real_total|dinero, "convertido a USD") }}
+</div>
+<div class="dos">
+  <div class="tarjeta"><h3>Embudo</h3><canvas id="gEmbudo" height="210"></canvas></div>
+  {{ tabla2("Por qué van a revisión", d.motivos, "Motivo", "Gastos", "Ningún gasto ha ido a revisión.") }}
+</div>
+<div class="dos">
+  <div class="tarjeta"><h3>Gasto real por categoría (USD)</h3><canvas id="gCat" height="210"></canvas></div>
+  <div>{{ tabla2("Por dónde llegan", d.por_canal, "Canal", "Gastos") }}{{ tabla2("Por viajero", d.por_viajero, "Viajero", "Gastos") }}</div>
+</div>
+{{ tabla2("Campos que más se corrigen", d.correccion_por_campo, "Campo", "Correcciones", "Ninguna corrección: lo aprobado coincide con lo leído.") }}
+<p>{{ bajar("v_h_gasto", "gastos") }}</p>
+
+{% elif pestana == 'busquedas' %}
+<div class="rejilla">
+  {{ cifra("Consultas de viaje", d.consultas, d.decisiones ~ " con decisión guardada") }}
+  {{ cifra("Siguen la recomendación", d.acuerdo, "de " ~ d.decisiones_con_dato ~ " decisiones con registro", "%") }}
+  {{ cifra("Ahorro identificado", d.ahorro_identificado|dinero, "más barato del buscador − recomendado") }}
+  {{ cifra("Ahorro capturado", d.ahorro_capturado|dinero, "en las decisiones guardadas") }}
+  {{ cifra("Resueltas sin pagar consulta", d.tasa_reutilizacion, d.consultas_reutilizadas ~ " reutilizadas · " ~ d.consultas_en_vivo ~ " en vivo", "%") }}
+</div>
+<div class="dos">
+  {{ tabla2("Rutas más consultadas", d.por_ruta, "Ruta", "Consultas") }}
+  {{ tabla2("Quién consulta", d.por_persona, "Persona", "Consultas") }}
+</div>
+<div class="dos">
+  {{ tabla2("Razones marcadas al decidir", d.razones, "Razón", "Veces", "Aún no hay decisiones con razones.") }}
+  <div class="tarjeta"><h3>Datos para el modelo de decisión</h3>
+    <p><b>{{ d.decisiones_etiquetadas }}</b> de {{ d.minimo_para_entrenar }} decisiones etiquetadas ({{ d.opciones_etiquetadas }} opciones mostradas).</p>
+    <progress max="{{ d.minimo_para_entrenar }}" value="{{ d.decisiones_etiquetadas }}" style="width:100%"></progress>
+    <p class="eti">Cada decisión guarda todas las opciones que se mostraron, en qué orden, cuál se recomendó y cuál se eligió. Con el mínimo reunido se puede entrenar un ordenamiento y compararlo con las reglas actuales.</p></div>
+</div>
+<p>{{ bajar("v_h_busqueda", "consultas") }} {{ bajar("v_h_decision", "decisiones") }}</p>
+
+{% elif pestana == 'modelo' %}
+<div class="rejilla">
+  {{ cifra("Llamadas al modelo", d.llamadas, d.modelos|join(", ") or "sin llamadas registradas") }}
+  {{ cifra("Costo estimado", d.costo_total_usd, "a " ~ d.precio_entrada ~ " / " ~ d.precio_salida ~ " USD por millón (entrada / salida)", "USD") }}
+  {{ cifra("Costo por recibo", d.costo_por_recibo_usd, "promedio por lectura", "USD") }}
+</div>
+<div class="tarjeta tabla"><h3>Por uso</h3><table><tr><th>Uso</th><th class="d">Llamadas</th><th class="d">Fallidas</th><th class="d">Tokens de entrada</th><th class="d">Tokens de salida</th><th class="d">Latencia mediana (ms)</th><th class="d">Costo (USD)</th></tr>
+{% for u, x in d.por_uso.items() %}<tr><td>{{ u }}</td><td class="d">{{ x.llamadas }}</td><td class="d">{{ x.fallidas }}</td><td class="d">{{ x.tokens_entrada }}</td><td class="d">{{ x.tokens_salida }}</td><td class="d">{{ x.latencia_mediana_ms }}</td><td class="d">{{ x.costo_usd }}</td></tr>
+{% else %}<tr><td colspan="7">Sin llamadas en el periodo.</td></tr>{% endfor %}</table>
+<p class="eti">El costo es una estimación: tokens registrados por el precio de referencia, que se edita en la página Reglas.</p></div>
+<div class="tarjeta tabla"><h3>Últimos errores del modelo</h3><table>{% for m, u, e in d.errores %}<tr><td>{{ m }}</td><td>{{ u }}</td><td>{{ e }}</td></tr>{% else %}<tr><td>Sin errores.</td></tr>{% endfor %}</table></div>
+<p>{{ bajar("v_h_lectura", "llamadas") }}</p>
+
+{% elif pestana == 'cupos' %}
+<div class="rejilla">
+  {% if d.buscador %}{{ cifra("Búsquedas restantes", d.buscador.restantes, "plan " ~ (d.buscador.plan or '—') ~ " · " ~ (d.buscador.usadas or 0) ~ " de " ~ (d.buscador.mensual or '—') ~ " usadas este mes") }}
+  {% else %}{{ cifra("Búsquedas restantes", none, "sin clave del buscador o sin respuesta: se trabaja con datos guardados") }}{% endif %}
+  {{ cifra("Consultas en vivo", d.busquedas.consultas_en_vivo, d.busquedas.consultas_fallidas ~ " fallidas") }}
+  {{ cifra("Respuestas reutilizadas", d.busquedas.consultas_reutilizadas, "no gastaron cupo") }}
+  {{ cifra("Llamadas al modelo hoy", d.modelo_hoy, "fecha en UTC") }}
+</div>
+{{ tabla2("Tamaño de los datos", d.filas, "Tabla", "Filas") }}
+
+{% elif pestana == 'auditoria' %}
+<div class="dos">
+  <div class="tarjeta tabla"><h3>Actividad por persona</h3><table><tr><th>Persona</th><th class="d">Acciones</th></tr>{% for x in d.por_persona %}<tr><td>{{ x.usuario }}</td><td class="d">{{ x.n }}</td></tr>{% else %}<tr><td colspan="2">Sin actividad.</td></tr>{% endfor %}</table></div>
+  <div class="tarjeta tabla"><h3>Qué se hizo</h3><table><tr><th>Paso</th><th class="d">Veces</th></tr>{% for x in d.por_paso %}<tr><td>{{ x.paso }}</td><td class="d">{{ x.n }}</td></tr>{% else %}<tr><td colspan="2">Sin actividad.</td></tr>{% endfor %}</table></div>
+</div>
+<div class="tarjeta tabla"><h3>Errores registrados</h3><table><tr><th>Momento (UTC)</th><th>Identificador</th><th>Ruta</th><th>Persona</th><th>Tipo</th><th>Mensaje</th></tr>
+{% for e in d.errores %}<tr><td>{{ e.momento }}</td><td><code>{{ e.peticion }}</code></td><td>{{ e.ruta }}</td><td>{{ e.usuario or '—' }}</td><td>{{ e.tipo }}</td><td>{{ e.mensaje }}</td></tr>
+{% else %}<tr><td colspan="6">Sin errores registrados.</td></tr>{% endfor %}</table></div>
+<div class="tarjeta tabla"><h3>Últimos {{ d.eventos|length }} hechos</h3><table><tr><th>Momento (UTC)</th><th>Persona</th><th>Sobre</th><th>Paso</th><th>Detalle</th><th>Fuente</th><th class="d">ms</th></tr>
+{% for e in d.eventos %}<tr><td>{{ e.momento }}</td><td>{{ e.usuario or 'sistema' }}</td><td>{{ e.entidad }}{% if e.entidad_id %} #{{ e.entidad_id }}{% endif %}</td><td>{{ e.paso }}</td><td>{{ e.detalle }}</td><td>{{ e.fuente }}</td><td class="d">{{ e.duracion_ms or '' }}</td></tr>
+{% else %}<tr><td colspan="7">Sin hechos en el periodo.</td></tr>{% endfor %}</table></div>
+<p>{{ bajar("v_h_evento", "bitácora") }}</p>
+
+{% else %}
+<div class="dos">
+  <div class="tarjeta tabla"><h3>Comprobaciones de los datos</h3><table><tr><th>Debe dar cero</th><th class="d">Casos</th></tr>
+  {% for p in d.pruebas %}<tr><td>{{ p.prueba }}</td><td class="d"><span class="chip {{ 'ok' if p.casos == 0 else 'mal' }}">{{ p.casos }}</span></td></tr>{% endfor %}</table></div>
+  <div class="tarjeta tabla"><h3>¿La confianza del modelo predice las correcciones?</h3><table><tr><th>Confianza declarada</th><th class="d">Gastos</th><th class="d">Corregidos</th><th class="d">Tasa</th></tr>
+  {% for c in d.calibracion %}<tr><td>{{ c.tramo }}</td><td class="d">{{ c.gastos }}</td><td class="d">{{ c.corregidos }}</td><td class="d">{{ c.tasa ~ ' %' if c.tasa is not none else '—' }}</td></tr>{% endfor %}</table>
+  <p class="eti">El umbral para aprobar sin revisión es {{ '%.0f'|format(d.umbral * 100) }} %. Si los tramos por encima del umbral se corrigen poco y los de abajo mucho, el umbral está bien puesto; con {{ d.evaluados }} gastos evaluados esta tabla todavía es orientativa.</p></div>
+</div>
+<div class="tarjeta tabla"><h3>Catálogo de métricas</h3><table><tr><th>Métrica</th><th>Nombre en la API</th><th>Para qué sirve</th><th class="d">Valor</th></tr>
+{% for m in catalogo %}<tr><td>{{ m.titulo }}</td><td><code>{{ m.nombre }}</code></td><td>{{ m.para_que }}</td><td class="d">{{ '—' if m.valor is none else m.valor }} {{ m.unidad if m.valor is not none }}</td></tr>{% endfor %}</table>
+<p class="eti">Las mismas cifras en <code>/api/metricas?nombre=…&amp;proyecto_id=…&amp;desde=…&amp;hasta=…</code>.</p></div>
+{% endif %}
+
+{% if pestana == 'gastos' %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const d = {{ {'embudo': d.embudo, 'cat': d.real_por_categoria}|tojson }};
+if (window.Chart) {
+  new Chart(document.getElementById('gEmbudo'), {type:'bar', data:{labels:d.embudo.map(x=>x[0]), datasets:[{data:d.embudo.map(x=>x[1]), backgroundColor:['#5b6b7c','#12805c','#d98200','#0b5cab','#b3261e']}]}, options:{indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{precision:0}}}}});
+  new Chart(document.getElementById('gCat'), {type:'bar', data:{labels:d.cat.map(x=>x[0]), datasets:[{data:d.cat.map(x=>x[1]), backgroundColor:'#0b5cab'}]}, options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}}}});
+}
+</script>{% endif %}
+{% endblock %}

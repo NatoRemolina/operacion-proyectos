@@ -59,6 +59,44 @@ def sembrar():
     from app.servicios import precios
     precios.cargar_respaldos()
     sembrar_cuentas()
+    asegurar_supuestos()
+    crear_vistas()
+
+
+# Capa analítica: hechos listos para consultar, con sus dimensiones ya unidas.
+# Las usa el catálogo de métricas y sirven tal cual a una herramienta externa de inteligencia de negocio.
+VISTAS = {
+    "v_h_gasto": """select g.*, p.nombre proyecto, p.ciudad ciudad_proyecto, v.nombre viajero, u.nombre usuario,
+                           r.nombre revisor, d.canal, d.mime, d.nombre archivo
+                    from gastos g left join proyectos p on p.id=g.proyecto_id left join viajeros v on v.id=g.viajero_id
+                    left join usuarios u on u.id=g.usuario_id left join usuarios r on r.id=g.revisado_por
+                    left join documentos d on d.id=g.documento_id""",
+    "v_h_busqueda": """select s.*, p.nombre proyecto, v.nombre viajero, u.nombre usuario
+                       from solicitudes s left join proyectos p on p.id=s.proyecto_id
+                       left join viajeros v on v.id=s.viajero_id left join usuarios u on u.id=s.usuario_id""",
+    "v_h_decision": """select d.*, s.origen, s.destino, s.ida, s.viajero_id, u.nombre usuario
+                       from decisiones d left join solicitudes s on s.id=d.solicitud_id left join usuarios u on u.id=d.usuario_id""",
+    "v_h_lectura": "select * from llamadas_modelo",
+    "v_h_evento": "select e.*, u.nombre usuario, u.rol from eventos e left join usuarios u on u.id=e.usuario_id",
+}
+
+SUPUESTOS_NUEVOS = [
+    ("modelo_usd_por_millon_entrada", "0.5", "Precio de referencia del modelo de lenguaje por millón de tokens de entrada (USD). Ajustar al precio vigente."),
+    ("modelo_usd_por_millon_salida", "3", "Precio de referencia del modelo de lenguaje por millón de tokens de salida (USD). Ajustar al precio vigente."),
+]
+
+
+def asegurar_supuestos():
+    for clave, valor, nota in SUPUESTOS_NUEVOS:
+        if not db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
+            db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor, nota=nota,
+                        fuente="Supuesto editable", confianza="supuesto", verificado=HOY)
+
+
+def crear_vistas():
+    for nombre, consulta in VISTAS.items():
+        db.ejecutar(f"drop view if exists {nombre}")
+        db.ejecutar(f"create view {nombre} as {consulta}")
 
 
 # Cuentas de demostración para ejecutar en local sin configurar nada. Nunca se crean en una base compartida.

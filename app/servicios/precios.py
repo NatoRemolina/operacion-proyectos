@@ -16,6 +16,26 @@ from . import eventos
 URL = "https://serpapi.com/search.json"
 
 
+_cupo = {"momento": None, "dato": None}
+
+
+def cupo() -> dict | None:
+    """Búsquedas que quedan en el plan del buscador. Consultarlo no gasta cupo; se recuerda diez minutos."""
+    if not config.SERPAPI_KEY:
+        return None
+    ahora = datetime.now(timezone.utc)
+    if _cupo["momento"] and (ahora - _cupo["momento"]).total_seconds() < 600:
+        return _cupo["dato"]
+    try:
+        d = httpx.get("https://serpapi.com/account.json", params={"api_key": config.SERPAPI_KEY}, timeout=8).json()
+        dato = {"plan": d.get("plan_name"), "mensual": d.get("searches_per_month"), "usadas": d.get("this_month_usage"),
+                "restantes": d.get("total_searches_left")}
+    except (httpx.HTTPError, ValueError):
+        dato = None
+    _cupo.update(momento=ahora, dato=dato)
+    return dato
+
+
 def _slug(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", texto.lower()).strip("-")
 
