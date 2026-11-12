@@ -48,6 +48,12 @@ export function DetalleGasto({
         />
       ) : null}
 
+      {gasto.estado === "rechazado" ? (
+        <Alerta tono="error" titulo="Por qué se rechazó">
+          <p>{gasto.motivo_rechazo || "Quien revisó no dejó el motivo escrito."}</p>
+        </Alerta>
+      ) : null}
+
       {gasto.alertas.length > 0 ? (
         <section aria-labelledby="titulo-alertas">
           <h2 id="titulo-alertas" className="mb-2 text-lg font-bold">

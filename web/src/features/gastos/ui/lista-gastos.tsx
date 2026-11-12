@@ -1,12 +1,12 @@
 import Link from "next/link";
+import { EtiquetaEstado } from "@/shared/ui/etiqueta-estado";
 import { formatearDinero, formatearFecha } from "@/shared/ui/formato";
-import type { GastoResumen } from "../domain/gastos";
-import { InsigniaGasto } from "./estado-gasto";
+import { estadoVisibleGasto, siguientePasoGasto, type GastoResumen } from "../domain/gastos";
 
-/** Tarjetas legibles en celular; toda la tarjeta abre el detalle. */
-export function ListaGastos({ gastos }: { gastos: readonly GastoResumen[] }) {
+/** Tarjetas legibles en celular; toda la tarjeta abre el detalle. Cada una dice su siguiente paso. */
+export function ListaGastos({ gastos, esAdmin = false }: { gastos: readonly GastoResumen[]; esAdmin?: boolean }) {
   return (
-    <ul aria-label="Mis gastos" className="flex flex-col gap-3">
+    <ul aria-label="Gastos" className="flex flex-col gap-3">
       {gastos.map((gasto) => (
         <li key={gasto.id}>
           <article className="relative rounded-tarjeta border border-linea bg-superficie p-4 shadow-sm focus-within:outline-3 focus-within:outline-marca hover:border-borde-campo">
@@ -20,15 +20,13 @@ export function ListaGastos({ gastos }: { gastos: readonly GastoResumen[] }) {
                   {gasto.comercio ?? "Comercio por confirmar"}
                 </Link>
               </h2>
-              <InsigniaGasto estado={gasto.estado} texto={gasto.estado_texto} />
+              <EtiquetaEstado estado={estadoVisibleGasto(gasto.estado)} texto={gasto.estado_texto} />
             </div>
-            <p className="mt-1 text-xl font-bold tabular-nums">
-              {formatearDinero(gasto.total, gasto.moneda)}
-            </p>
+            <p className="mt-1 text-xl font-bold tabular-nums">{formatearDinero(gasto.total, gasto.moneda)}</p>
             <p className="mt-1 text-sm text-texto-secundario">
-              {formatearFecha(gasto.fecha)} ·{" "}
-              {gasto.viaje ? `Viaje ${gasto.viaje.codigo}` : "Sin viaje asignado"}
+              {formatearFecha(gasto.fecha)} · {gasto.viaje ? `Viaje ${gasto.viaje.codigo}` : "Sin viaje asignado"}
             </p>
+            <p className="mt-1 text-sm">{siguientePasoGasto(gasto.estado, esAdmin)}</p>
           </article>
         </li>
       ))}

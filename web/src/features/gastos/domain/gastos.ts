@@ -43,6 +43,8 @@ export interface GastoDetalle extends GastoResumen {
   readonly justificaciones: readonly Justificacion[];
   /** Sube con cada cambio; la revisión la manda de vuelta para no pisar el cambio de otra persona. */
   readonly version?: number;
+  /** Por qué se rechazó, con las palabras de quien revisó. */
+  readonly motivo_rechazo?: string | null;
 }
 
 export interface FiltroGastos extends OpcionesListado {
@@ -112,4 +114,18 @@ export function resultadoDeEnvio(estado: EstadoGasto): ResultadoEnvio {
 export function estadoVisibleGasto(estado: EstadoGasto): EstadoVisible {
   if (estado === "aprobado_auto" || estado === "aprobado") return "aprobado";
   return estado;
+}
+
+/** El siguiente paso de un gasto, en palabras de quien lo mira. */
+export function siguientePasoGasto(estado: EstadoGasto, esAdmin: boolean): string {
+  switch (estado) {
+    case "procesando":
+      return "Estamos leyendo el recibo.";
+    case "revision":
+      return esAdmin ? "Espera tu revisión." : "Administración lo revisa. Si cuentas para qué fue, se resuelve antes.";
+    case "rechazado":
+      return "Rechazado. Mira el motivo en el detalle.";
+    default:
+      return "Cuenta en el presupuesto del viaje.";
+  }
 }

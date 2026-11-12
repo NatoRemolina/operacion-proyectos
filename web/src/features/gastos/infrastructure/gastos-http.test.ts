@@ -187,4 +187,14 @@ describe("adaptador HTTP de sesión", () => {
     const error = await errorDe(auth.entrar("a@b.co", "mala"));
     expect(error.tipo).toBe("credenciales");
   });
+
+  it("lee el motivo del rechazo y la versión del gasto", async () => {
+    const { gastos } = preparar(
+      respuestaJson({ ...gastoDePrueba({ estado: "rechazado", estado_texto: "Rechazado" }), motivo_rechazo: "Es personal", version: 4 }),
+    );
+    const gasto = await gastos.obtener(123);
+    expect(gasto.motivo_rechazo).toBe("Es personal");
+    expect(gasto.version).toBe(4);
+  });
 });
+
