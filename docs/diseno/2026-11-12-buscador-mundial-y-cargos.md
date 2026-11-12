@@ -1,4 +1,4 @@
-# Diseño: buscador mundial de origen y destino, y cargos de la empresa
+# Diseño: buscador mundial de origen y destino, cargos de la empresa y monitoreo del vuelo
 
 Fecha: 12 de noviembre de 2026. Debe quedar funcionando para la entrega del viernes 13 por la mañana.
 
@@ -117,6 +117,22 @@ Los datos se preparan con un script (`datos/geografia.py`) que descarga, filtra 
 - La API v1 añade `cargo` (texto o nulo) a `Persona`; la web Next.js lo muestra bajo el nombre.
 - Las vistas de analítica de viajes y gastos incluyen el cargo, y los KPIs muestran gasto y viajes por cargo.
 
+## Monitoreo del vuelo el día del viaje
+
+Lo pidió la dueña: apenas el viaje tiene número de vuelo, administración lo sigue en pantalla y el viajero recibe avisos por Telegram.
+
+- **Tramos del vuelo.** Al guardar la decisión se registran los tramos del vuelo elegido (aerolínea, número de vuelo, fecha, aeropuertos de salida y llegada, horas programadas), tomados de la respuesta del buscador que ya trae `flight_number` por tramo. Tabla nueva `tramos_vuelo`, ligada al viaje, con el último estado conocido.
+- **Qué se consulta.** El estado del vuelo con el buscador de Google por número de vuelo (`q = "Flight IB5634"`, bloque «flight result» de SerpAPI): estado, retraso de salida y de llegada en minutos, terminal, puerta y horas reales o estimadas. Los nombres exactos de los campos se confirman con la documentación del proveedor y con una respuesta real guardada en `datos/respaldo/`, que también sirve para la demostración y las pruebas sin gastar búsquedas.
+- **Quién lo ve.** Administración, en el tablero de viajes: el día del viaje, cada tramo muestra estado (programado, a tiempo, retrasado, cancelado, aterrizado), minutos de retraso, terminal, puerta y hace cuánto se actualizó. Si la llegada estimada más el traslado supera la hora límite de la grabación, se marca.
+- **Cuándo se consulta** (cuidar el plan del buscador: 250 búsquedas al mes):
+  - solo el día del vuelo, desde 3 horas antes de la salida programada hasta la llegada;
+  - una respuesta se reutiliza 30 minutos;
+  - tope de 6 consultas por tramo;
+  - la consulta ocurre cuando alguien tiene el tablero abierto (el tablero ya se refresca solo cada 15 s con la pestaña visible) o pulsa «Actualizar ahora», siempre dentro del tope;
+  - cada consulta queda en `consultas_buscador` con el tipo `estado_vuelo`.
+- **Avisos al viajero por Telegram**, solo cuando algo cambia y lo afecta: retraso nuevo de 15 minutos o más (o que crece 15 minutos más), cancelación, cambio de terminal o de puerta. Nunca un mensaje por cada consulta. Si el viajero no tiene Telegram vinculado, el aviso queda solo en el tablero.
+- **Fuera de alcance para el viernes:** un proceso que consulte solo, sin nadie mirando. Necesita una tarea programada en la nube y queda anotado para después.
+
 ## Decisiones tomadas al revisar el diseño
 
 Decididas por quien diseña (no por la dueña), para que se puedan revisar:
@@ -144,4 +160,6 @@ Decididas por quien diseña (no por la dueña), para que se puedan revisar:
 - Una cuenta con cargo «Edición de video» cotiza, decide, recibe su viaje y reporta gastos igual que un piloto.
 - Las cuentas «piloto» existentes siguen entrando y viendo lo mismo, ahora como colaborador con su cargo.
 - Una cuenta de gestor cotiza, recibe su viaje y reporta gastos; una de administración también, y no puede aprobar su propio presupuesto ni sus propios gastos.
+- Al guardar una decisión quedan registrados sus tramos con número de vuelo; el día del vuelo, el tablero de administración muestra su estado con la respuesta guardada de ejemplo, y un retraso de 15 minutos o más envía un solo aviso por Telegram (probado con el bot simulado).
+- El monitoreo nunca pasa de 6 consultas por tramo ni consulta fuera del día del vuelo.
 - Linter y todas las pruebas en verde, sin internet.
