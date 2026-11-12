@@ -12,6 +12,7 @@ import {
   segmentosCosto,
   textoBusqueda,
   textoDistancia,
+  textoOrigenDato,
   validarBorrador,
   type LugarSugerido,
 } from "./cotizar";
@@ -94,6 +95,15 @@ describe("borrador de la cotización", () => {
       destino: "No reconozco \"ZZZ\".",
       origen: "x",
     });
+  });
+});
+
+describe("origen del dato", () => {
+  it("dice de dónde salen los precios en palabras claras", () => {
+    expect(textoOrigenDato("en vivo")).toEqual({ texto: "Precios en vivo", enVivo: true });
+    expect(textoOrigenDato("guardado").texto).toBe("Precios guardados");
+    expect(textoOrigenDato("guardado (otras fechas)").texto).toBe("Precios guardados de otras fechas");
+    expect(textoOrigenDato("fallida").texto).toBe("Sin precios para esta búsqueda");
   });
 });
 

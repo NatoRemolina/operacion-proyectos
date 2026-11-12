@@ -128,7 +128,7 @@ function Resumen({ c }: { c: Cotizacion }) {
       <h2 id="titulo-resumen" className="text-xl font-bold tracking-tight">
         La recomendación
       </h2>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <TarjetaResumen titulo="Recomendada por costo total" vuelo={recomendada} destacada />
         {barata && barata.id !== recomendada.id ? (
           <TarjetaResumen titulo="La más barata del buscador" vuelo={barata} />
@@ -249,7 +249,7 @@ function DecisionGuardada({
           </>
         )}
       </h2>
-      <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
         <Dato nombre="Estado del viaje" valor={viaje.estado_texto} />
         <Dato nombre="Presupuesto para aprobar" valor={formatearDinero(viaje.presupuesto_usd)} />
         {vuelo ? <Dato nombre="Vuelo elegido" valor={`${nombreVuelo(vuelo)} (${hora(vuelo.sale)})`} /> : null}
@@ -325,7 +325,7 @@ function FormularioDecision({
 
   return (
     <form noValidate onSubmit={enviar} className="flex flex-col gap-6">
-      <fieldset className="flex flex-col gap-3" aria-describedby={errorVuelo ? errorVueloId : undefined}>
+      <fieldset className="flex min-w-0 flex-col gap-3" aria-describedby={errorVuelo ? errorVueloId : undefined}>
         <legend className="mb-1 text-xl font-bold tracking-tight">Vuelos por costo total esperado</legend>
         <p className="text-sm text-texto-secundario">
           Del menor al mayor costo total: precio + equipaje + riesgo de cambio − millas + traslado.
@@ -401,7 +401,7 @@ function FormularioDecision({
               : "Elige un vuelo de la lista."}
           </p>
           {formulario.data?.razones.length ? (
-            <fieldset className="flex flex-col gap-2">
+            <fieldset className="flex min-w-0 flex-col gap-2">
               <legend className="font-semibold">Razones (opcional)</legend>
               <div className="flex flex-wrap gap-x-5 gap-y-1">
                 {formulario.data.razones.map((r) => (
@@ -501,7 +501,7 @@ function Hoteles({
     );
   }
   return (
-    <fieldset className="flex flex-col gap-2">
+    <fieldset className="flex min-w-0 flex-col gap-2">
       <legend className="mb-1 text-xl font-bold tracking-tight">Hotel (opcional)</legend>
       <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-tarjeta border border-linea bg-superficie p-3">
         <input type="radio" name={nombre} className="size-5 accent-marca" checked={hotelId === null} onChange={() => onElegir(null)} />

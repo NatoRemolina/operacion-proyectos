@@ -524,7 +524,8 @@ export function textoOrigenDato(origen: string | null): { texto: string; enVivo:
   if (origen === "en vivo") return { texto: "Precios en vivo", enVivo: true };
   if (origen === "guardado") return { texto: "Precios guardados", enVivo: false };
   if (origen === "guardado (otras fechas)") return { texto: "Precios guardados de otras fechas", enVivo: false };
-  if (origen === "fallida") return { texto: "El buscador no respondió", enVivo: false };
+  // «fallida»: no hubo respuesta en vivo (sin clave o con error) ni guardada
+  if (origen === "fallida") return { texto: "Sin precios para esta búsqueda", enVivo: false };
   return { texto: "Sin precios del buscador", enVivo: false };
 }
 

@@ -79,7 +79,7 @@ export function PantallaCotizar() {
 
 function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
-    <fieldset className="flex flex-col gap-4 rounded-tarjeta border border-linea bg-superficie p-4 md:p-6">
+    <fieldset className="flex min-w-0 flex-col gap-4 rounded-tarjeta border border-linea bg-superficie p-4 md:p-6">
       <legend className="px-1 text-lg font-bold tracking-tight">{titulo}</legend>
       {children}
     </fieldset>
@@ -193,7 +193,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
       </p>
 
       <Seccion titulo="Quién y para qué">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <CampoSelector
             {...comun("proyectoId")}
             etiqueta="Proyecto"
@@ -245,7 +245,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
       </Seccion>
 
       <Seccion titulo="Ruta y fechas">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <CampoLugar
             id={idCampo("origen")}
             etiqueta="Origen"
@@ -265,7 +265,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
             entradaRef={destinoRef}
           />
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <CampoTexto {...comun("ida")} etiqueta="Ida" type="date" value={efectivo.ida} onChange={(e) => cambiar("ida", e.target.value)} />
           <CampoTexto
             {...comun("regreso")}
@@ -295,7 +295,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
       </Seccion>
 
       <Seccion titulo="Equipo y supuestos">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <CampoTexto {...comun("bateriasN")} etiqueta="Baterías de repuesto" inputMode="numeric" value={efectivo.bateriasN}
             onChange={(e) => cambiar("bateriasN", e.target.value)} />
           <CampoTexto {...comun("bateriasWh")} etiqueta="Capacidad de cada batería (Wh)" inputMode="decimal" value={efectivo.bateriasWh}
