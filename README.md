@@ -89,6 +89,8 @@ Para cuidar el plan del buscador (250 búsquedas al mes), el estado del vuelo so
 .venv/bin/python -m datos.comprobar_supabase   # solo lectura: tablas, columnas y permisos que espera esta versión
 ```
 
+**Respaldo de la base publicada.** El plan gratuito de Supabase no hace respaldos automáticos. `make respaldar` copia la base y los recibos en solo lectura, con conteos y huellas, y `make verificar-respaldo` ensaya la restauración en una base nueva del proyecto de pruebas. Procedimiento, cifrado de la copia y vuelta atrás: `docs/respaldo.md`.
+
 ## Guía de demostración (en local, con Docker)
 
 Todo corre en local con una base PostgreSQL desechable y **sin claves**: no toca la base ni los servicios publicados.
