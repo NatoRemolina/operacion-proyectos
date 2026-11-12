@@ -618,3 +618,94 @@ def test_comprobar_contra_el_postgres_local(capsys):
     assert {"tablas_sin_seguridad_por_filas", "permisos_publicos", "tablas", "columnas"} <= set(informe)
     assert "operacion-local" not in salida
     assert codigo in (0, 1)
+
+
+# ---------- concurrencia contra PostgreSQL de verdad ----------
+_GUION_PG = r'''
+import json, threading
+from concurrent.futures import ThreadPoolExecutor
+
+from app import config, db
+from app.servicios import envios, revision, viajes
+
+assert not config.ES_SQLITE
+db.crear_tablas()
+ahora = db.ahora()
+proyecto = db.insertar("proyectos", nombre="Prueba concurrente")
+viajero = db.insertar("viajeros", nombre="Viajera de prueba")
+colaboradora = db.insertar("usuarios", correo="colaboradora@prueba.local", nombre="Colaboradora", rol="colaborador",
+                           activo=1, viajero_id=viajero, creado=ahora)
+admin = {"id": db.insertar("usuarios", correo="admin@prueba.local", nombre="Admin", rol="admin", activo=1, creado=ahora),
+         "nombre": "Admin", "rol": "admin"}
+# Presupuesto 90,91 + 10 % de tolerancia = tope de 100 USD: cabe un gasto de 70, no dos
+vid = db.insertar("viajes", proyecto_id=proyecto, usuario_id=colaboradora, viajero_id=viajero, ida="2026-12-08",
+                  regreso="2026-12-11", presupuesto_usd=90.91, estado="aprobado", creado=ahora)
+ids = [db.insertar("gastos", viaje_id=vid, proyecto_id=proyecto, viajero_id=viajero, usuario_id=colaboradora,
+                   comercio=f"Sonda concurrente {n}", fecha="2026-12-09", categoria="otros", total=70, moneda="USD",
+                   confianza=1.0, estado="revision", creado=ahora) for n in range(2)]
+
+cruce, leer = threading.Barrier(2), viajes.gastado
+def gastado_lento(*a, **k):
+    valor = leer(*a, **k)
+    try:
+        cruce.wait(timeout=1)   # sin bloqueo del viaje, las dos lecturas se cruzarían aquí
+    except threading.BrokenBarrierError:
+        pass
+    return valor
+viajes.gastado = gastado_lento
+
+salida = threading.Barrier(2)
+def aprobar(gid):
+    salida.wait(5)
+    return revision.guardar(gid, admin, 0, "aprobar")["estado"]
+with ThreadPoolExecutor(max_workers=2) as ejecutor:
+    respuestas = sorted(ejecutor.map(aprobar, ids))
+guardados = sorted(db.uno("select estado from gastos where id=:i", i=i)["estado"] for i in ids)
+
+def reclamar(_):
+    salida.wait(5)
+    try:
+        return "nuevo" if not envios.reclamar(colaboradora, "clave-pg", "huella")[1] else "repetido"
+    except envios.EnvioEnCurso:
+        return "en_curso"
+with ThreadPoolExecutor(max_workers=2) as ejecutor:
+    reclamos = sorted(ejecutor.map(reclamar, range(2)))
+
+try:
+    with db.transaccion():
+        revertido = db.insertar("proyectos", nombre="No debe quedar")
+        raise RuntimeError
+except RuntimeError:
+    pass
+print(json.dumps({"respuestas": respuestas, "guardados": guardados, "reclamos": reclamos,
+                  "revertido": db.uno("select id from proyectos where id=:i", i=revertido) is None}))
+'''
+
+
+@pytest.mark.skipif(not _pg_local_responde(), reason="PostgreSQL local (127.0.0.1:5433) no responde")
+def test_concurrencia_de_presupuesto_y_envios_en_postgres():
+    """Dos aprobaciones a la vez contra un saldo que alcanza para una, en PostgreSQL y en un esquema propio que se borra."""
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from sqlalchemy import create_engine, text
+    esquema = f"prueba_integridad_{os.getpid()}"
+    crudo = create_engine(PG_LOCAL.replace("postgresql://", "postgresql+psycopg://"), isolation_level="AUTOCOMMIT")
+    with crudo.connect() as c:
+        c.execute(text(f"drop schema if exists {esquema} cascade"))
+        c.execute(text(f"create schema {esquema}"))
+    try:
+        entorno = {**os.environ, "ENTORNO": "local", "DATABASE_URL": f"{PG_LOCAL}?options=-csearch_path%3D{esquema}"}
+        r = subprocess.run([sys.executable, "-c", _GUION_PG], cwd=Path(__file__).resolve().parent.parent, env=entorno,  # noqa: S603  guion fijo de esta prueba
+                           capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr[-2000:]
+        resultado = json.loads(r.stdout.strip().splitlines()[-1])
+        assert resultado["respuestas"] == ["aprobado", "revision"] and resultado["guardados"] == ["aprobado", "revision"]
+        assert resultado["reclamos"] == ["en_curso", "nuevo"] and resultado["revertido"]
+    finally:
+        with crudo.connect() as c:
+            c.execute(text(f"drop schema if exists {esquema} cascade"))
+        crudo.dispose()
