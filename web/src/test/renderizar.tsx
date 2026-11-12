@@ -13,6 +13,7 @@ import type { ViajesRepository } from "@/features/viajes/domain/viajes";
 import { ViajesRepositoryProvider } from "@/features/viajes/application/viajes";
 import { crearViajesMemoria } from "@/features/viajes/infrastructure/viajes-memoria";
 import { IdentidadProvider } from "@/shared/application/identidad";
+import type { Permiso } from "@/shared/domain/navegacion";
 import { AvisosProvider } from "@/shared/ui/aviso-emergente";
 
 const authNoUsado: AuthRepository = {
@@ -33,6 +34,7 @@ export function renderizarConFuente(
     auth?: AuthRepository;
     administracion?: AdministracionRepository;
     personaId?: number;
+    permiso?: Permiso;
   } = {},
 ) {
   const queryClient = new QueryClient({
@@ -45,7 +47,7 @@ export function renderizarConFuente(
           <GastosRepositoryProvider repositorio={fuente.gastos ?? crearGastosMemoria({})}>
             <AdministracionRepositoryProvider repositorio={fuente.administracion ?? crearAdministracionMemoria({})}>
               <AvisosProvider>
-                <IdentidadProvider personaId={fuente.personaId ?? 1}>{ui}</IdentidadProvider>
+                <IdentidadProvider personaId={fuente.personaId ?? 1} permiso={fuente.permiso}>{ui}</IdentidadProvider>
               </AvisosProvider>
             </AdministracionRepositoryProvider>
           </GastosRepositoryProvider>

@@ -1,5 +1,5 @@
 import type { EstadoGasto, GastoResumen } from "@/features/gastos/domain/gastos";
-import type { ViajeResumen } from "@/features/viajes/domain/viajes";
+import type { ViajeDetalle, ViajeResumen } from "@/features/viajes/domain/viajes";
 import type { Dinero } from "@/shared/domain/tipos";
 
 /** Un gasto reciente con la persona a la que pertenece. */
@@ -33,7 +33,34 @@ export interface ResumenAdmin {
   readonly datos_demostracion: boolean;
 }
 
+export type AccionViaje = "aprobar" | "rechazar" | "reabrir" | "cerrar";
+
+export interface CambioEstadoViaje {
+  readonly accion: AccionViaje;
+  /** Obligatorio para rechazar. */
+  readonly motivo?: string;
+  /** Aprueba con el precio nuevo del vuelo cuando subió más que la tolerancia. */
+  readonly confirmarPrecio?: boolean;
+}
+
+export interface ResultadoCambioEstado {
+  readonly viaje: ViajeDetalle;
+  /** Lo que pasó, en lenguaje claro (con el aviso de precio si lo hubo). */
+  readonly mensaje: string;
+}
+
 export interface AdministracionRepository {
   /** Solo administración; para otro permiso falla con «prohibido». */
   resumen(signal?: AbortSignal): Promise<ResumenAdmin>;
+  /** Solo administración y nunca sobre lo propio («autoaprobacion»). */
+  cambiarEstadoViaje(id: number, cambio: CambioEstadoViaje): Promise<ResultadoCambioEstado>;
+}
+
+export const MOTIVO_MINIMO = 5;
+
+/** `null` si el motivo sirve; si no, cómo corregirlo. La misma regla que aplica el servidor. */
+export function problemaDeMotivo(texto: string): string | null {
+  return texto.trim().length < MOTIVO_MINIMO
+    ? `Escribe el motivo con al menos ${MOTIVO_MINIMO} caracteres: la persona lo leerá.`
+    : null;
 }

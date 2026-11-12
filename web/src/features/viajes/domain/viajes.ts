@@ -26,6 +26,19 @@ export interface ViajeResumen {
   readonly precio_por_confirmar?: string | null;
 }
 
+export interface LineaPresupuesto {
+  readonly concepto: string;
+  readonly valor: Dinero;
+  readonly grupo: string;
+}
+
+export interface ViajeDetalle extends ViajeResumen {
+  readonly presupuesto_detalle: readonly LineaPresupuesto[];
+  /** Por qué se rechazó o se reabrió, con las palabras de administración. */
+  readonly motivo: string | null;
+  readonly aprobado_en: string | null;
+}
+
 export interface FiltroViajes extends OpcionesListado {
   readonly estado?: EstadoViaje;
 }
@@ -33,6 +46,7 @@ export interface FiltroViajes extends OpcionesListado {
 export interface ViajesRepository {
   /** Viajes visibles para la persona con sesión, el más reciente primero. */
   listar(filtro: FiltroViajes, signal?: AbortSignal): Promise<Pagina<ViajeResumen>>;
+  obtener(id: number, signal?: AbortSignal): Promise<ViajeDetalle>;
 }
 
 /** Viajes a los que la persona puede asignar un recibo: los suyos y aprobados. */

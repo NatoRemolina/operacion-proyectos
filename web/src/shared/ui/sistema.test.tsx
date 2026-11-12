@@ -236,10 +236,10 @@ describe("Esqueleto, vacío, migas y encabezado", () => {
       <EncabezadoPagina
         titulo="Resumen"
         descripcion="Cómo va la operación."
-        accion={<a href="/viajes">Aprobar viajes</a>}
+        accion={<button type="button">Aprobar viajes</button>}
       />,
     );
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "Aprobar viajes" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aprobar viajes" })).toBeInTheDocument();
   });
 });

@@ -69,7 +69,7 @@ export function ZonaPrivada({
       saliendo={salir.isPending}
       onSalir={() => salir.mutate(undefined, { onSettled: () => router.replace("/entrar") })}
     >
-      <IdentidadProvider personaId={sesion.data.id}>{children}</IdentidadProvider>
+      <IdentidadProvider personaId={sesion.data.id} permiso={sesion.data.rol}>{children}</IdentidadProvider>
     </MarcoPrivado>
   );
 }

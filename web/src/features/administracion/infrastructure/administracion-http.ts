@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { gastoResumenSchema } from "@/features/gastos/infrastructure/gastos-http";
-import { viajeResumenSchema } from "@/features/viajes/infrastructure/viajes-http";
+import { viajeDetalleSchema, viajeResumenSchema } from "@/features/viajes/infrastructure/viajes-http";
 import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { ActividadGasto, AdministracionRepository, ResumenAdmin } from "../domain/administracion";
 
@@ -34,10 +34,19 @@ export const resumenSchema = z.object({
   datos_demostracion: z.boolean(),
 }) satisfies z.ZodType<ResumenAdmin>;
 
+const resultadoCambioSchema = z.object({ viaje: viajeDetalleSchema, mensaje: z.string() });
+
 export function crearAdministracionHttp(cliente: ClienteHttp): AdministracionRepository {
   return {
     resumen(signal) {
       return cliente.get("/resumen", resumenSchema, { signal });
+    },
+    cambiarEstadoViaje(id, { accion, motivo, confirmarPrecio }) {
+      return cliente.postJson(
+        `/viajes/${encodeURIComponent(id)}/estado`,
+        { accion, motivo: (motivo ?? "").trim(), confirmar_precio: confirmarPrecio ?? false },
+        resultadoCambioSchema,
+      );
     },
   };
 }
