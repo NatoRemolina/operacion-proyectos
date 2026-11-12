@@ -8,7 +8,7 @@ Cada búsqueda, también la leída de lo guardado o la fallida, deja una fila en
 import json
 import re
 import time
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
@@ -412,6 +412,129 @@ def reconfirmar(decision: dict) -> dict:
     variacion = (ahora - float(antes)) / float(antes)
     return {"estado": "confirmado" if abs(variacion) < 0.005 else "cambio", "antes": float(antes), "ahora": ahora,
             "variacion": round(variacion, 4), "motivo": None}
+
+
+# ---------- estado del vuelo el día del viaje ----------
+_ESTADOS = (("cancel", "cancelado"), ("divert", "desviado"), ("land", "aterrizado"), ("arrived", "aterrizado"),
+            ("delay", "retrasado"), ("late", "retrasado"), ("scheduled", "programado"))
+
+
+def _vacio(valor) -> str | None:
+    """El proveedor escribe «-» cuando no hay dato (puerta o terminal sin asignar)."""
+    valor = (str(valor).strip() if valor is not None else "")
+    return None if valor in ("", "-", "—") else valor
+
+
+def _fecha_bloque(texto: str | None, referencia: date) -> date | None:
+    """«Sun, Dec 13» sin año: el año es el de la fecha del vuelo (o el siguiente si el vuelo cruza el fin de año)."""
+    try:
+        dia = datetime.strptime((texto or "").split(",")[-1].strip(), "%b %d").date()
+    except ValueError:
+        return None
+    candidato = dia.replace(year=referencia.year)
+    return candidato.replace(year=referencia.year + 1) if candidato < referencia - timedelta(days=180) else candidato
+
+
+def _hora_bloque(texto: str | None) -> datetime | None:
+    try:
+        return datetime.strptime(_vacio(texto) or "", "%I:%M %p")
+    except ValueError:
+        return None
+
+
+def _minutos_tarde(lado: dict) -> int | None:
+    plan, real = _hora_bloque(lado.get("planned_time")), _hora_bloque(lado.get("actual_time"))
+    if not plan or not real:
+        return None
+    minutos = int((real - plan).total_seconds() // 60)
+    return minutos + 1440 if minutos < -720 else minutos - 1440 if minutos > 720 else minutos   # cruza la medianoche
+
+
+def _hora_estimada(lado: dict, dia: date | None) -> str | None:
+    hora = _hora_bloque(lado.get("actual_time")) or _hora_bloque(lado.get("planned_time"))
+    if not hora or not dia:
+        return None
+    plan = _hora_bloque(lado.get("planned_time"))
+    if plan and hora - plan < timedelta(hours=-12):   # la hora real pasó la medianoche
+        dia = dia + timedelta(days=1)
+    return f"{dia.isoformat()} {hora:%H:%M}"
+
+
+def _estado_texto(texto: str, retraso: int | None) -> str:
+    bajo = (texto or "").lower()
+    estado = next((e for clave, e in _ESTADOS if clave in bajo), None)
+    if estado:
+        return estado
+    return "retrasado" if (retraso or 0) >= 15 else "a tiempo"
+
+
+def _bloque_estado(datos: dict, numero: str, fecha: str) -> dict | None:
+    """El vuelo pedido dentro del bloque `answer_box` de tipo `flight_status`, si es de esa fecha."""
+    caja = datos.get("answer_box") or {}
+    if not isinstance(caja, dict) or caja.get("type") != "flight_status":
+        return None
+    candidatos = caja.get("flights") if isinstance(caja.get("flights"), list) else [caja]
+    vuelo = next((v for v in candidatos if isinstance(v, dict)
+                  and (v.get("flight_number") or "").replace(" ", "").upper() == numero), None)
+    if not vuelo:
+        return None
+    salida, llegada = vuelo.get("departure") or {}, vuelo.get("arrival") or {}
+    dia = date.fromisoformat(fecha)
+    if _fecha_bloque(salida.get("date"), dia) != dia:
+        return None
+    r_salida, r_llegada = _minutos_tarde(salida), _minutos_tarde(llegada)
+    return {"estado": _estado_texto(vuelo.get("flight_status"), max(r_salida or 0, r_llegada or 0)),
+            "texto_estado": vuelo.get("flight_status"), "retraso_salida": r_salida, "retraso_llegada": r_llegada,
+            "terminal_salida": _vacio(salida.get("terminal")), "puerta_salida": _vacio(salida.get("gate")),
+            "terminal_llegada": _vacio(llegada.get("terminal")), "puerta_llegada": _vacio(llegada.get("gate")),
+            "sale_estimada": _hora_estimada(salida, dia),
+            "llega_estimada": _hora_estimada(llegada, _fecha_bloque(llegada.get("date"), dia) or dia)}
+
+
+SIN_BLOQUE = "La respuesta no trae el bloque del vuelo para esa fecha (número inexistente o fecha fuera de rango)."
+
+
+def estado_vuelo(numero: str, fecha: str, solicitud_id: int | None = None) -> dict | None:
+    """Estado de un vuelo el día del viaje: motor `google` con `q = "Flight IB5634"` (Google Direct Answer Box API).
+
+    Campos que se leen, según la documentación del proveedor (https://serpapi.com/direct-answer-box-api, ejemplos
+    «Flight status answer box» y «Multiple flight statuses answer box», consultada el 12 de noviembre de 2026):
+    `answer_box.type == "flight_status"`; `flight_number`, `flight_status` (texto libre: «Arriving late», «Arrived»,
+    «Runway delay»...) y `departure` / `arrival` con `airport_name`, `planned_time` y `actual_time` («12:15 PM», hora
+    local), `terminal`, `gate` («-» si no hay) y `date` («Tue, Jul 16», sin año). Con varios vuelos el bloque trae la
+    lista `flights`. El proveedor no da los minutos de retraso: se calculan como hora real menos hora programada.
+
+    La respuesta de ejemplo `datos/respaldo/estado_vuelo_IB5634_2026-12-13.json` se construyó a mano con esa forma
+    (sin clave en este entorno no se hizo una consulta real); la respuesta real la obtiene quien integra.
+
+    Con clave siempre se consulta en vivo (el estado cambia) y la respuesta se guarda con la hora en la clave; sin
+    clave, o si la consulta falla, se usa la respuesta guardada de ese vuelo y fecha. Cada consulta deja su fila en
+    `consultas_buscador` con tipo `estado_vuelo`. Devuelve {"estado", "retraso_salida", "retraso_llegada",
+    "terminal_salida", "puerta_salida", "terminal_llegada", "puerta_llegada", "sale_estimada", "llega_estimada"} más
+    "texto_estado" y "origen"; None si no hay respuesta o si no trae el bloque del vuelo para esa fecha."""
+    compacto = numero.replace(" ", "").upper()
+    inicio, fallo = time.perf_counter(), None
+    guardado = f"estado_vuelo_{compacto}_{fecha}.json"
+    datos, origen_dato, clave = None, "guardado", guardado
+    if config.SERPAPI_KEY:
+        nombre = f"estado_vuelo_{compacto}_{fecha}_{datetime.now(UTC):%H%M}.json"
+        try:
+            datos = _consultar({"engine": "google", "q": f"Flight {compacto}", "gl": "us"},
+                               "solicitud", solicitud_id, f"estado del vuelo {numero} {fecha}")
+            _guardar(nombre, datos)
+            origen_dato, clave = "en vivo", nombre
+        except Exception as e:
+            datos, fallo = None, e
+            _anotar("estado_vuelo", nombre, "fallida", solicitud_id, inicio, error=e)
+    if datos is None:
+        datos = _leer(guardado)
+    if datos is None:
+        if not fallo:
+            _anotar("estado_vuelo", guardado, "fallida", solicitud_id, inicio, error=SIN_DATOS)
+        return None
+    r = _bloque_estado(datos, compacto, fecha)
+    _anotar("estado_vuelo", clave, origen_dato, solicitud_id, inicio, error=None if r else SIN_BLOQUE)
+    return {**r, "origen": origen_dato} if r else None
 
 
 def buscar_hoteles(ciudad: str, entrada: str, salida: str, solicitud_id: int | None = None):

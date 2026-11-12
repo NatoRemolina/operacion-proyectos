@@ -3,6 +3,7 @@ ninguna prueba sale a internet."""
 import json
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from conftest import FORM_VIAJE
 
 from app import config, db
@@ -298,3 +299,200 @@ def test_aprobar_sin_datos_aprueba_con_aviso(cliente, monkeypatch, tmp_path):
     assert _eventos(v["id"], "precio no reconfirmado")
     assert "no reconfirmado" in parse_qs(urlparse(destino).query)["aviso"][0]
 
+
+
+# ---------- tarea 11: estado del vuelo el día del viaje ----------
+from datetime import UTC, datetime  # noqa: E402
+
+from app.servicios import monitoreo_vuelos, telegram  # noqa: E402
+
+MAD_LIS = dict(numero="IB 5634", desde="MAD", hasta="LIS", fecha="2026-12-13",
+               sale_programada="2026-12-13 09:05", llega_programada="2026-12-13 09:30")   # horas locales de cada aeropuerto
+
+
+def _estado(flight_status="On time", sale_real="9:05 AM", llega_real="9:30 AM", puerta="J58", terminal="4",
+            fecha_texto="Sun, Dec 13", numero="IB 5634"):
+    """Bloque «flight_status» del Google Direct Answer Box API, con los campos que documenta el proveedor."""
+    return {"search_metadata": {"created_at": "2026-12-13 05:30:00 UTC"},
+            "answer_box": {"type": "flight_status", "title": f"Iberia {numero}", "destination": "Madrid to Lisbon",
+                           "flight_number": numero, "flight_status": flight_status, "latest_update": "Updated 2m ago",
+                           "percentage_of_flight_progress": 0,
+                           "sources": [{"name": "Cirium", "link": "https://www.flightstats.com/"}],
+                           "departure": {"airport_name": "MAD", "planned_time": "9:05 AM", "actual_time": sale_real,
+                                         "terminal": terminal, "gate": puerta, "location": "Madrid", "date": fecha_texto},
+                           "arrival": {"airport_name": "LIS", "planned_time": "9:30 AM", "actual_time": llega_real,
+                                       "terminal": "1", "gate": "-", "location": "Lisbon", "date": fecha_texto}}}
+
+
+@pytest.fixture()
+def tramo(nuevo_viaje):
+    """Un tramo Madrid → Lisboa del 13 de diciembre en un viaje aprobado del piloto de demostración."""
+    v = nuevo_viaje()
+    tid = db.insertar("tramos_vuelo", viaje_id=v["id"], sentido="ida", orden=9, aerolinea="Iberia", estado="programado",
+                      consultas=0, **MAD_LIS)
+    return db.uno("select * from tramos_vuelo where id=:i", i=tid)
+
+
+def _utc(texto):
+    return datetime.fromisoformat(texto).replace(tzinfo=UTC)
+
+
+def test_estado_vuelo_lee_el_bloque_del_proveedor(cliente, monkeypatch, tmp_path):
+    b = _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado("Delayed", "9:25 AM", "9:52 AM")))
+    r = precios.estado_vuelo("IB 5634", "2026-12-13")
+    assert b.llamadas[-1]["engine"] == "google" and b.llamadas[-1]["q"] == "Flight IB5634"
+    assert r["estado"] == "retrasado" and (r["retraso_salida"], r["retraso_llegada"]) == (20, 22)
+    assert (r["terminal_salida"], r["puerta_salida"], r["terminal_llegada"], r["puerta_llegada"]) == ("4", "J58", "1", None)
+    assert (r["sale_estimada"], r["llega_estimada"]) == ("2026-12-13 09:25", "2026-12-13 09:52")
+    fila = db.uno("select * from consultas_buscador where tipo='estado_vuelo' order by id desc limit 1")
+    assert fila["origen"] == "en vivo" and fila["clave"].startswith("estado_vuelo_IB5634_2026-12-13")
+    # otra fecha o un número que no está en la respuesta: no hay bloque para ese vuelo
+    assert precios.estado_vuelo("IB 5634", "2026-12-14") is None
+    assert precios.estado_vuelo("IB 9999", "2026-12-13") is None
+    # varios vuelos en la misma respuesta: se toma el del número pedido
+    varios = {"answer_box": {"type": "flight_status", "flights": [
+        {**_estado(numero="IB 5630")["answer_box"]}, {**_estado("Cancelled", numero="IB 5634")["answer_box"]}]}}
+    b.estado = varios
+    assert precios.estado_vuelo("IB5634", "2026-12-13")["estado"] == "cancelado"
+
+
+def test_ventana_cache_y_tope(cliente, tramo, monkeypatch, tmp_path):
+    b = _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
+    desde_id = db.uno("select coalesce(max(id), 0) n from consultas_buscador")["n"]
+    # Madrid está en UTC+1 en diciembre: la salida de las 09:05 es 08:05 UTC y la ventana abre a las 05:05 UTC
+    fuera = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 04:50"))
+    assert fuera["consultado"] is False and fuera["motivo"] == "fuera de la ventana"
+    assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-12 09:00"))["motivo"] == "fuera de la ventana"
+    primera = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))
+    assert primera["consultado"] is True and primera["estado"] == "a tiempo" and primera["consultas"] == 1
+    segunda = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:40"))
+    assert segunda["consultado"] is False and segunda["motivo"].startswith("consultado hace menos de")
+    assert len(b.de("q")) == 1                                       # dos llamadas en 10 minutos: una consulta
+    for _ in range(5):                                               # «Actualizar ahora» salta la caché, nunca el tope
+        assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:45"), forzar=True)["consultado"]
+    septima = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 06:00"), forzar=True)
+    assert septima["consultado"] is False and septima["motivo"] == "tope de 6 consultas"
+    assert len(b.de("q")) == 6
+    # ya aterrizó (09:30 en Lisboa, UTC+0): fuera de la ventana aunque se fuerce
+    assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 09:45"), forzar=True)["motivo"] == "fuera de la ventana"
+    # trazabilidad: cada consulta hecha queda en consultas_buscador; cada motivo para no consultar, en la bitácora del viaje
+    assert db.uno("select count(*) n from consultas_buscador where tipo='estado_vuelo' and id>:i", i=desde_id)["n"] == 6
+    motivos = [e["detalle"] for e in db.todos("select detalle from eventos where entidad='viaje' and entidad_id=:v "
+                                              "and paso='consulta de estado omitida'", v=tramo["viaje_id"])]
+    assert any("tope de 6 consultas" in m for m in motivos) and any("fuera de la ventana" in m for m in motivos)
+
+
+def test_topes_por_dia_y_cupo_minimo(cliente, tramo, monkeypatch, tmp_path):
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
+    monkeypatch.setattr(precios, "cupo", lambda: {"restantes": 10})
+    r = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))
+    assert r["consultado"] is False and r["motivo"].startswith("cupo del buscador bajo")
+    monkeypatch.setattr(precios, "cupo", lambda: {"restantes": 200})
+    db.ejecutar("update reglas set valor='0' where ambito='supuesto' and clave='monitoreo_tope_dia'")
+    try:
+        assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))["motivo"].startswith("tope de 0 consultas del día")
+    finally:
+        db.ejecutar("update reglas set valor='30' where ambito='supuesto' and clave='monitoreo_tope_dia'")
+
+
+def test_aviso_solo_cuando_cambia_algo(cliente):
+    base = {"numero": "IB 5634", "desde": "MAD", "hasta": "LIS", "fecha": "2026-12-13", "estado": "a tiempo",
+            "retraso_salida": 0, "terminal": "4", "puerta": "J58", "ultimo_aviso": None}
+    a = monitoreo_vuelos.aviso
+    assert "20 min" in a(base, {**base, "estado": "retrasado", "retraso_salida": 20})
+    assert a({**base, "retraso_salida": 20}, {**base, "retraso_salida": 25}) is None
+    assert "40 min" in a({**base, "retraso_salida": 20}, {**base, "retraso_salida": 40})
+    assert "J60" in a(base, {**base, "puerta": "J60"})
+    assert "terminal" in a(base, {**base, "terminal": "4S"}).lower()
+    assert "cancelado" in a(base, {**base, "estado": "cancelado"}).lower()
+    assert a({**base, "estado": "cancelado"}, {**base, "estado": "cancelado"}) is None
+    assert a(base, dict(base)) is None                                       # la misma información, nunca
+    assert a(base, {**base, "puerta": None}) is None                         # una puerta que desaparece no es un cambio
+    # el retraso que crece de a poco se mide contra el último aviso, no contra la consulta anterior
+    avisado = {**base, "retraso_salida": 30, "ultimo_aviso": json.dumps({"retraso": 20})}
+    assert "36 min" in a(avisado, {**base, "retraso_salida": 36})
+    assert a({**base, "retraso_salida": 10}, {**base, "retraso_salida": 12}) is None
+
+
+def test_retraso_avisa_una_vez_por_telegram(cliente, tramo, monkeypatch, tmp_path):
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado("Delayed", "9:25 AM", "9:50 AM")))
+    enviados = []
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+    monkeypatch.setattr(telegram, "_llamar", lambda metodo, **d: enviados.append((metodo, d)) or {})
+    titular = db.uno("select usuario_id from viajes where id=:v", v=tramo["viaje_id"])["usuario_id"]
+    previo = db.uno("select telegram_chat_id from usuarios where id=:u", u=titular)["telegram_chat_id"]
+    db.ejecutar("update usuarios set telegram_chat_id=:c where id=:u", c=previo or 77001122, u=titular)
+    try:
+        monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))
+        monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:50"), forzar=True)
+    finally:
+        db.ejecutar("update usuarios set telegram_chat_id=:c where id=:u", c=previo, u=titular)
+    mensajes = [d["text"] for m, d in enviados if m == "sendMessage"]
+    assert len(mensajes) == 1 and "IB 5634" in mensajes[0] and "20 min" in mensajes[0]
+    ev = db.todos("select detalle from eventos where entidad='viaje' and entidad_id=:v and paso='aviso de vuelo enviado'", v=tramo["viaje_id"])
+    assert len(ev) == 1 and ev[0]["detalle"] == mensajes[0]
+    t = db.uno("select * from tramos_vuelo where id=:i", i=tramo["id"])
+    assert db.de_json(t["ultimo_aviso"])["retraso"] == 20 and t["retraso_salida"] == 20 and t["estado"] == "retrasado"
+
+
+def test_aviso_sin_telegram_queda_en_el_tablero(cliente, tramo, monkeypatch, tmp_path):
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado("Cancelled")))
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "")
+    monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))
+    t = db.uno("select * from tramos_vuelo where id=:i", i=tramo["id"])
+    assert t["estado"] == "cancelado" and db.de_json(t["ultimo_aviso"])["enviado"] is False
+    assert db.uno("select id from eventos where entidad='viaje' and entidad_id=:v and paso='aviso de vuelo sin Telegram'", v=tramo["viaje_id"])
+
+
+def test_respuesta_sin_bloque_queda_sin_datos(cliente, tramo, monkeypatch, tmp_path):
+    """Punto de atención 5: número inexistente o fecha fuera de rango."""
+    _simular(monkeypatch, tmp_path, Buscador({}, estado={"organic_results": [{"title": "Iberia"}]}))
+    enviados = []
+    monkeypatch.setattr(telegram, "avisar", lambda *a: enviados.append(a))
+    r = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))
+    assert r["consultado"] is True and r["estado"] == "sin datos" and r["consultas"] == 1 and enviados == []
+    fila = db.uno("select * from consultas_buscador where tipo='estado_vuelo' order by id desc limit 1")
+    assert fila["resultados"] == 0 and "bloque" in (fila["error"] or "")
+
+
+def test_respaldo_de_ejemplo_sin_clave(cliente, tramo, monkeypatch):
+    """La respuesta de ejemplo guardada sirve para la demostración y las pruebas sin gastar búsquedas."""
+    monkeypatch.setattr(config, "SERPAPI_KEY", "")
+    assert (config.DIR_RESPALDO / "estado_vuelo_IB5634_2026-12-13.json").is_file()
+    r = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 06:00"))
+    assert r["consultado"] and r["estado"] == "retrasado" and r["retraso_salida"] == 20 and r["puerta"] == "J58"
+    assert db.uno("select origen from consultas_buscador where tipo='estado_vuelo' order by id desc limit 1")["origen"] == "guardado"
+
+
+def test_tablero_muestra_el_estado_y_la_hora_limite(cliente, monkeypatch, tmp_path):
+    # viaje a Moab con hora límite 18:30: el vuelo llega a SLC a las 12:00 y el traslado es de unas 6 h
+    _, sid, v = _decidido(cliente, monkeypatch, tmp_path, "2027-10-05", "2027-10-08")
+    db.ejecutar("update solicitudes set llegar_antes='2027-10-05T18:30' where id=:i", i=sid)
+    db.ejecutar("update viajes set estado='aprobado' where id=:v", v=v["id"])
+    ultimo = db.uno("select id from tramos_vuelo where viaje_id=:v and numero='DL 200'", v=v["id"])
+    db.actualizar("tramos_vuelo", ultimo["id"], estado="retrasado", retraso_salida=40, retraso_llegada=40, terminal="S",
+                  puerta="B12", llega_estimada="2027-10-05 12:40", actualizado="2027-10-05 15:00:00")
+    html = cliente.get("/admin/viajes?fecha=2027-10-05").text
+    assert "DL 200" in html and "Retrasado" in html and "40 min" in html and "B12" in html
+    marca = 'title="Llegada estimada más el traslado: 2027-10-05 18:4'   # la marca «No llega a la grabación» de la fila
+    assert marca in html and "No llega a la grabación" in html
+    assert f"/admin/vuelos/{ultimo['id']}/actualizar" in html and "/admin/viajes/vuelos" in html
+    # con la llegada programada sí alcanzaba: la marca sale de la llegada estimada
+    db.actualizar("tramos_vuelo", ultimo["id"], llega_estimada=None, estado="a tiempo", retraso_llegada=0)
+    assert 'title="Llegada estimada más el traslado' not in cliente.get("/admin/viajes?fecha=2027-10-05").text
+    # el JSON del tablero (fuera de la ventana: no consulta) trae lo mismo
+    datos = cliente.get("/admin/viajes/vuelos?fecha=2027-10-05").json()
+    fila = next(f for f in datos if f["numero"] == "DL 200")
+    assert fila["puerta"] == "B12" and fila["no_llega"] is False and fila["codigo"] == v["codigo"]
+
+
+def test_actualizar_ahora(cliente, tramo, monkeypatch, tmp_path):
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
+    r = cliente.post(f"/admin/vuelos/{tramo['id']}/actualizar", follow_redirects=False)
+    assert r.status_code == 303 and "/admin/viajes" in r.headers["location"]
+    assert "fuera+de+la+ventana" in r.headers["location"] or "fuera%20de%20la%20ventana" in r.headers["location"]
+
+
+def test_solo_administracion_ve_el_monitoreo(piloto, tramo):
+    assert piloto.get("/admin/viajes/vuelos").status_code in (401, 403)
+    assert piloto.post(f"/admin/vuelos/{tramo['id']}/actualizar").status_code in (401, 403)
