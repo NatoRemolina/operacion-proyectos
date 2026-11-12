@@ -149,6 +149,8 @@ function ComboLugar({
         onKeyDown={alPresionar}
         onBlur={() => {
           setAbierta(false);
+          // Fuera del campo nadie escribe: un valor que llegue por código (el ejemplo, el borrador) no consulta
+          setEscribiendo(false);
           onSalir?.();
         }}
       />

@@ -237,5 +237,22 @@ describe("Cotizar un viaje", () => {
     await waitFor(() => expect(buscarLugares).toHaveBeenCalled());
     expect(buscarLugares.mock.calls.every(([texto]) => "miami".startsWith(texto.toLowerCase()))).toBe(true);
   });
+
+  it("tras escribir y salir del campo sin elegir, un valor puesto por código tampoco consulta", async () => {
+    const usuario = userEvent.setup();
+    const base = memoria();
+    const buscarLugares = vi.fn<CotizarRepository["buscarLugares"]>(base.buscarLugares);
+    renderizarConFuente(<PantallaCotizar />, { cotizar: { ...base, buscarLugares } });
+    const origen = await screen.findByRole("combobox", { name: "Origen" });
+    await usuario.type(origen, "mi");
+    await usuario.tab();                                    // sale sin elegir
+    await waitFor(() => expect(buscarLugares).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 700));           // deja terminar lo que disparó la escritura
+    buscarLugares.mockClear();
+
+    await usuario.click(screen.getByRole("button", { name: "Usar el caso de ejemplo" }));
+    await new Promise((r) => setTimeout(r, 700));
+    expect(buscarLugares).not.toHaveBeenCalled();
+  });
 });
 
