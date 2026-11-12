@@ -34,12 +34,12 @@ function Fila({ termino, children }: { termino: string; children: ReactNode }) {
 
 /** El recibo tal como llegó. Si no es una imagen (PDF o correo), se ofrece abrirlo aparte. */
 function ImagenRecibo({ url, comercio }: { url: string | null; comercio: string }) {
-  const [noEsImagen, setNoEsImagen] = useState(false);
+  const [noSeMuestra, setNoSeMuestra] = useState(false);
   if (!url) return <p className="text-texto-secundario">El original no está disponible en esta fuente de datos.</p>;
-  if (noEsImagen) {
+  if (noSeMuestra) {
     return (
       <p>
-        Este recibo es un PDF o un correo.{" "}
+        No se puede mostrar aquí: puede ser un PDF o un correo, o el archivo no está disponible.{" "}
         <a href={url} target="_blank" rel="noopener noreferrer">
           Abrir el recibo original en otra pestaña
         </a>
@@ -53,7 +53,7 @@ function ImagenRecibo({ url, comercio }: { url: string | null; comercio: string 
       <img
         src={url}
         alt={`Recibo original de ${comercio}`}
-        onError={() => setNoEsImagen(true)}
+        onError={() => setNoSeMuestra(true)}
         className="max-h-160 w-full rounded-md border border-linea bg-neutro-suave object-contain"
       />
       <figcaption>
@@ -111,6 +111,10 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
         }
         setRechazando(false);
         setError(e);
+        // Si el gasto ya no está en revisión, esta vista se cierra al recargar: el aviso queda.
+        if (e.tipo === "cambio_ajeno") {
+          avisar({ tono: "aviso", texto: "Otra persona cambió este gasto mientras lo revisabas: cargamos lo último." });
+        }
       },
     });
   }
