@@ -1,0 +1,1659 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API v1 · Operación de proyectos",
+    "description": "Recorrido mínimo: ingreso, viajes, gastos y envío de recibos. Ver `contracts/api-v1.md`.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "description": "Pública: no lleva token CSRF. El rol y la persona salen de la cuenta, nunca del cuerpo.",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ingreso"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sesion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiados intentos de ingreso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sesion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gastos": {
+      "get": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Lista",
+        "description": "Mismo alcance que los viajes. Más reciente primero.",
+        "operationId": "lista_api_v1_gastos_get",
+        "parameters": [
+          {
+            "name": "viaje_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Viaje Id"
+            }
+          },
+          {
+            "name": "estado",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "procesando",
+                    "revision",
+                    "aprobado_auto",
+                    "aprobado",
+                    "rechazado"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estado"
+            }
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Cuántos elementos devolver (1 a 100).",
+              "default": 20,
+              "title": "Limite"
+            },
+            "description": "Cuántos elementos devolver (1 a 100)."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "El valor de `siguiente` de la página anterior.",
+              "title": "Cursor"
+            },
+            "description": "El valor de `siguiente` de la página anterior."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListaGastos"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Enviar",
+        "description": "Lee y valida el recibo. Responde con su estado real: `aprobado_auto` o `revision` (que no es un error).\n\nFunción normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor.",
+        "operationId": "enviar_api_v1_gastos_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Un valor único por archivo, que se repite si se reintenta el mismo envío.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Un valor único por archivo, que se repite si se reintenta el mismo envío."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_enviar_api_v1_gastos_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GastoDetalle"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Misma Idempotency-Key con un archivo distinto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Archivo de más de 4,5 MB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "El contenido no es JPG, PNG, WebP, PDF ni correo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gastos/{id}": {
+      "get": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Detalle",
+        "operationId": "detalle_api_v1_gastos__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GastoDetalle"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documentos/{id}/contenido": {
+      "get": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Contenido",
+        "description": "Se entrega aislado: sin adivinar el tipo, sin ejecutar nada y sin quedar en caché.",
+        "operationId": "contenido_api_v1_documentos__id__contenido_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "El archivo original",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {},
+              "application/pdf": {},
+              "text/plain": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viajes": {
+      "get": {
+        "tags": [
+          "viajes"
+        ],
+        "summary": "Lista",
+        "description": "Los suyos; el gestor, además los de sus proyectos; administración, todos. Más reciente primero.",
+        "operationId": "lista_api_v1_viajes_get",
+        "parameters": [
+          {
+            "name": "estado",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pendiente_aprobacion",
+                    "aprobado",
+                    "rechazado",
+                    "cerrado"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estado"
+            }
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Cuántos elementos devolver (1 a 100).",
+              "default": 20,
+              "title": "Limite"
+            },
+            "description": "Cuántos elementos devolver (1 a 100)."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "El valor de `siguiente` de la página anterior.",
+              "title": "Cursor"
+            },
+            "description": "El valor de `siguiente` de la página anterior."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListaViajes"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/viajes/{id}": {
+      "get": {
+        "tags": [
+          "viajes"
+        ],
+        "summary": "Detalle",
+        "operationId": "detalle_api_v1_viajes__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViajeDetalle"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_enviar_api_v1_gastos_post": {
+        "properties": {
+          "archivo": {
+            "type": "string",
+            "format": "binary",
+            "title": "Archivo",
+            "description": "Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."
+          },
+          "viaje_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viaje Id",
+            "description": "Opcional. Sin él, se usa el viaje que corresponde hoy a la persona."
+          }
+        },
+        "type": "object",
+        "required": [
+          "archivo"
+        ],
+        "title": "Body_enviar_api_v1_gastos_post"
+      },
+      "DetalleError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "fields"
+        ],
+        "title": "DetalleError"
+      },
+      "GastoDetalle": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViajeCodigo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "procesando",
+              "revision",
+              "aprobado_auto",
+              "aprobado",
+              "rechazado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          },
+          "subtotal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotal"
+          },
+          "impuesto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impuesto"
+          },
+          "propina": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Propina"
+          },
+          "motivos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Motivos"
+          },
+          "alertas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Alertas"
+          },
+          "canal": {
+            "type": "string",
+            "title": "Canal"
+          },
+          "documento_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documento Id"
+          },
+          "lectura": {
+            "$ref": "#/components/schemas/Lectura"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "viaje",
+          "comercio",
+          "fecha",
+          "categoria",
+          "total",
+          "moneda",
+          "total_usd",
+          "estado",
+          "estado_texto",
+          "creado",
+          "subtotal",
+          "impuesto",
+          "propina",
+          "motivos",
+          "alertas",
+          "canal",
+          "documento_id",
+          "lectura"
+        ],
+        "title": "GastoDetalle"
+      },
+      "GastoResumen": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViajeCodigo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "procesando",
+              "revision",
+              "aprobado_auto",
+              "aprobado",
+              "rechazado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "viaje",
+          "comercio",
+          "fecha",
+          "categoria",
+          "total",
+          "moneda",
+          "total_usd",
+          "estado",
+          "estado_texto",
+          "creado"
+        ],
+        "title": "GastoResumen"
+      },
+      "Ingreso": {
+        "properties": {
+          "correo": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Correo"
+          },
+          "clave": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Clave"
+          }
+        },
+        "type": "object",
+        "required": [
+          "correo",
+          "clave"
+        ],
+        "title": "Ingreso",
+        "description": "Solo correo y contraseña. Cualquier otro campo (rol, usuario_id...) se ignora."
+      },
+      "Lectura": {
+        "properties": {
+          "origen": {
+            "type": "string",
+            "title": "Origen"
+          },
+          "confianza": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confianza"
+          }
+        },
+        "type": "object",
+        "required": [
+          "origen",
+          "confianza"
+        ],
+        "title": "Lectura"
+      },
+      "LineaPresupuesto": {
+        "properties": {
+          "concepto": {
+            "type": "string",
+            "title": "Concepto"
+          },
+          "valor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor"
+          },
+          "grupo": {
+            "type": "string",
+            "title": "Grupo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "concepto",
+          "valor",
+          "grupo"
+        ],
+        "title": "LineaPresupuesto"
+      },
+      "ListaGastos": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GastoResumen"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "siguiente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Siguiente"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "siguiente"
+        ],
+        "title": "ListaGastos"
+      },
+      "ListaViajes": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ViajeResumen"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "siguiente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Siguiente"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "siguiente"
+        ],
+        "title": "ListaViajes"
+      },
+      "Persona": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "rol": {
+            "type": "string",
+            "enum": [
+              "piloto",
+              "gestor",
+              "admin"
+            ],
+            "title": "Rol"
+          },
+          "correo": {
+            "type": "string",
+            "title": "Correo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "nombre",
+          "rol",
+          "correo"
+        ],
+        "title": "Persona"
+      },
+      "Referencia": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre"
+        ],
+        "title": "Referencia"
+      },
+      "RespuestaError": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/DetalleError"
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "request_id"
+        ],
+        "title": "RespuestaError"
+      },
+      "Sesion": {
+        "properties": {
+          "persona": {
+            "$ref": "#/components/schemas/Persona"
+          },
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "persona",
+          "csrf_token"
+        ],
+        "title": "Sesion"
+      },
+      "Titular": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "nombre"
+        ],
+        "title": "Titular"
+      },
+      "ViajeCodigo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo"
+        ],
+        "title": "ViajeCodigo"
+      },
+      "ViajeDetalle": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "pendiente_aprobacion",
+              "aprobado",
+              "rechazado",
+              "cerrado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "en_curso": {
+            "type": "boolean",
+            "title": "En Curso"
+          },
+          "origen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen"
+          },
+          "destino": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destino"
+          },
+          "ida": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ida"
+          },
+          "regreso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regreso"
+          },
+          "proyecto": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Referencia"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "titular": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Titular"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "presupuesto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto Usd"
+          },
+          "gastado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gastado Usd"
+          },
+          "en_revision_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "En Revision Usd"
+          },
+          "ejecucion_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ejecucion Pct"
+          },
+          "gastos": {
+            "type": "integer",
+            "title": "Gastos"
+          },
+          "presupuesto_detalle": {
+            "items": {
+              "$ref": "#/components/schemas/LineaPresupuesto"
+            },
+            "type": "array",
+            "title": "Presupuesto Detalle"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "aprobado_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aprobado En"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "estado",
+          "estado_texto",
+          "en_curso",
+          "origen",
+          "destino",
+          "ida",
+          "regreso",
+          "proyecto",
+          "titular",
+          "presupuesto_usd",
+          "gastado_usd",
+          "en_revision_usd",
+          "ejecucion_pct",
+          "gastos",
+          "presupuesto_detalle",
+          "motivo",
+          "aprobado_en"
+        ],
+        "title": "ViajeDetalle"
+      },
+      "ViajeResumen": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "pendiente_aprobacion",
+              "aprobado",
+              "rechazado",
+              "cerrado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "en_curso": {
+            "type": "boolean",
+            "title": "En Curso"
+          },
+          "origen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen"
+          },
+          "destino": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destino"
+          },
+          "ida": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ida"
+          },
+          "regreso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regreso"
+          },
+          "proyecto": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Referencia"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "titular": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Titular"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "presupuesto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto Usd"
+          },
+          "gastado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gastado Usd"
+          },
+          "en_revision_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "En Revision Usd"
+          },
+          "ejecucion_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ejecucion Pct"
+          },
+          "gastos": {
+            "type": "integer",
+            "title": "Gastos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "estado",
+          "estado_texto",
+          "en_curso",
+          "origen",
+          "destino",
+          "ida",
+          "regreso",
+          "proyecto",
+          "titular",
+          "presupuesto_usd",
+          "gastado_usd",
+          "en_revision_usd",
+          "ejecucion_pct",
+          "gastos"
+        ],
+        "title": "ViajeResumen"
+      }
+    }
+  }
+}
