@@ -107,6 +107,13 @@ SUPUESTOS_NUEVOS = [
     ("modelo_usd_por_millon_salida", "3", "Precio de referencia del modelo de lenguaje por millón de tokens de salida (USD). Ajustar al precio vigente."),
     ("viaticos_dia_usd", "75", "Viáticos por día de viaje que se suman al presupuesto (comidas, transporte local, combustible), en USD."),
     ("tolerancia_presupuesto", "0.10", "Margen sobre el presupuesto del viaje antes de mandar un gasto a revisión (0.10 = 10 %)."),
+    # Buscador de origen y destino
+    ("radio_aeropuertos_km", "400", "Radio para proponer aeropuertos cercanos a un lugar (km en línea recta)."),
+    ("maximo_aeropuertos", "4", "Aeropuertos cercanos que se proponen como máximo para un lugar."),
+    ("factor_carretera", "1.3", "Distancia por carretera = distancia en línea recta x este factor."),
+    ("velocidad_carretera_kmh", "70", "Velocidad media por carretera para estimar el tiempo de traslado (km/h)."),
+    ("tope_autocompletado_mes", "60", "Consultas de autocompletado a Google al mes, de las búsquedas del plan. Alcanzado, solo datos locales."),
+    ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
 ]
 
 
