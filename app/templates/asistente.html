@@ -1,0 +1,58 @@
+{% extends "base.html" %}{% block titulo %}Asistente{% endblock %}
+{% block estilos %}<style>
+.pregunta textarea{width:100%;min-height:70px;resize:vertical;font:inherit;padding:10px;border:1px solid var(--linea);border-radius:8px;box-sizing:border-box}
+.respuesta{white-space:pre-line;line-height:1.55}
+.ejemplos{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.ejemplos button{font-size:13px}
+.fuentes{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.fuentes a.chip{text-decoration:none}
+</style>{% endblock %}
+{% block cuerpo %}
+<h1>Asistente</h1>
+<p class="sub">Pregunta en tus palabras por lo que ha reportado cada persona. Las cifras salen siempre de la base, con su fuente; el índice solo ayuda a encontrar notas y mensajes por lo que dicen.</p>
+{% if aviso %}<div class="nota">{{ aviso }}</div>{% endif %}
+
+<div class="tarjeta pregunta">
+  <form method="post" action="/admin/asistente">
+    <label for="pregunta"><b>Tu pregunta</b></label>
+    <textarea id="pregunta" name="pregunta" maxlength="500" required placeholder="Por ejemplo: ¿qué ha reportado P-0002 en su viaje?">{{ pregunta }}</textarea>
+    <div class="fila"><button>Preguntar</button><span class="eti der">{{ usadas }} de {{ tope }} preguntas hoy</span></div>
+  </form>
+  <form method="post" action="/admin/asistente" class="ejemplos" aria-label="Preguntas de ejemplo">
+    <span class="eti">Prueba con:</span>
+    {% for e in ejemplos %}<button class="sec peq" name="pregunta" value="{{ e }}">{{ e }}</button>{% endfor %}
+  </form>
+</div>
+
+{% if respuesta %}
+<div class="tarjeta">
+  <div class="fila"><h2 style="margin:0">Respuesta</h2>
+    <span class="chip {{ 'ok' if respuesta.modo == 'modelo' else 'azul' if respuesta.modo == 'determinista' else 'aviso' }}">
+      {{ 'Modelo de lenguaje con herramientas' if respuesta.modo == 'modelo' else 'Sin modelo: consultas directas' if respuesta.modo == 'determinista' else respuesta.modo }}</span>
+    {% if respuesta.duracion_ms %}<span class="eti der">{{ '%.1f'|format(respuesta.duracion_ms / 1000) }} s</span>{% endif %}</div>
+  <p class="respuesta">{{ respuesta.texto }}</p>
+  {% if respuesta.fuentes %}<b>Fuentes citadas</b>
+  <div class="fuentes">{% for f in respuesta.fuentes %}
+    {% if f.enlace %}<a class="chip azul" href="{{ f.enlace }}">{{ f.codigo }}</a>{% else %}<span class="chip">{{ f.codigo }}</span>{% endif %}
+  {% endfor %}</div>{% endif %}
+  {% if respuesta.herramientas %}<p class="eti">Consultas hechas: {{ respuesta.herramientas|join(' → ') }}</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="dos">
+  <div class="tarjeta">
+    <h2 style="margin-top:0">Estado del índice</h2>
+    <p><span class="chip {{ 'ok' if indice.adaptador == 'pinecone' else 'azul' }}">{{ indice.descripcion }}</span></p>
+    <p class="num">{{ indice.fichas }} <small>fichas</small></p>
+    <p class="eti">Última actualización: {{ indice.actualizado or 'nunca' }} (UTC).
+      {% if indice.por_tipo %}Por tipo: {% for t in indice.por_tipo %}{{ t.tipo }} {{ t.n }}{{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
+    <form method="post" action="/admin/asistente/indice"><button class="sec">Actualizar índice</button></form>
+    <p class="eti">Solo se envía lo nuevo o cambiado. Antes de cada respuesta también se pone al día una parte.</p>
+  </div>
+  <div class="tarjeta">
+    <h2 style="margin-top:0">Tus últimas preguntas</h2>
+    {% for c in recientes %}<p style="margin:0 0 8px">{{ c.pregunta }}<br><span class="eti">{{ c.momento }} · {{ c.modo }} · {{ c.duracion_ms }} ms</span></p>
+    {% else %}<div class="vacio"><b>Aún no has preguntado nada</b>Usa una pregunta de ejemplo para empezar.</div>{% endfor %}
+  </div>
+</div>
+{% endblock %}
