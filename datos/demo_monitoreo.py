@@ -46,8 +46,11 @@ def _lugar_lisboa() -> dict | None:
 
 def preparar() -> dict:
     """Crea o reutiliza el viaje de la demostración. Devuelve {"hecho", "mensaje", "viaje_id", "creado", "ahora"}."""
-    if not config.LOCAL:
-        return {"hecho": False, "mensaje": "Solo se prepara en local (ENTORNO=local): no se escribió nada."}
+    # Igual que la siembra: en local y solo sobre SQLite o una base marcada como desechable (PREPARAR_BASE_LOCAL=1).
+    # Así nunca escribe en la base publicada aunque .env apunte a ella.
+    if not config.PREPARAR_BASE_LOCAL:
+        return {"hecho": False, "mensaje": "Solo se prepara en local sobre una base desechable "
+                                           "(SQLite o PREPARAR_BASE_LOCAL=1): no se escribió nada."}
     colaborador, admin = _cuentas()
     if not colaborador or not admin:
         return {"hecho": False, "mensaje": "Faltan las cuentas de demostración (CUENTAS_DEMO=1): no se escribió nada."}

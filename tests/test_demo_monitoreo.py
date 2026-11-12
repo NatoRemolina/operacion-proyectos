@@ -8,17 +8,17 @@ def _conteos():
 
 def test_no_escribe_fuera_de_local(cliente, monkeypatch):
     from datos import demo_monitoreo
-    monkeypatch.setattr(config, "LOCAL", False)
+    monkeypatch.setattr(config, "PREPARAR_BASE_LOCAL", False)
     antes = _conteos()
     r = demo_monitoreo.preparar()
-    assert r["hecho"] is False and "Solo se prepara en local" in r["mensaje"]
+    assert r["hecho"] is False and "base desechable" in r["mensaje"]
     assert _conteos() == antes
     assert demo_monitoreo.main() == 1
 
 
 def test_idempotente_un_viaje_y_un_tramo(cliente, monkeypatch):
     from datos import demo_monitoreo
-    monkeypatch.setattr(config, "LOCAL", True)
+    monkeypatch.setattr(config, "PREPARAR_BASE_LOCAL", True)
     monkeypatch.setattr(config, "SERPAPI_KEY", "")
     primera = demo_monitoreo.preparar()
     # el tramo se consulta y queda con estado; al preparar otra vez vuelve a empezar
@@ -41,7 +41,7 @@ def test_idempotente_un_viaje_y_un_tramo(cliente, monkeypatch):
 
 def test_el_tablero_con_ese_ahora_muestra_el_tramo_sin_no_llega(cliente, monkeypatch, capsys):
     from datos import demo_monitoreo
-    monkeypatch.setattr(config, "LOCAL", True)
+    monkeypatch.setattr(config, "PREPARAR_BASE_LOCAL", True)
     monkeypatch.setattr(config, "SERPAPI_KEY", "")
     assert demo_monitoreo.main() == 0
     salida = capsys.readouterr().out
