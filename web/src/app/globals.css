@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/*
+ * Tokens semánticos (C8 del plan). Dirección visual del diseño en Figma (grafito y cian
+ * oscuro) con estados corregidos por contraste en las revisiones de la plataforma actual.
+ * Contrastes medidos: marca/blanco 5,66:1; cian claro/grafito 9,5:1; borde de campo/blanco 3,4:1.
+ * Las pantallas usan estos nombres, nunca colores sueltos.
+ */
+:root {
+  --fondo: #f5f6f8;
+  --superficie: #ffffff;
+  --texto: #111c24;
+  --texto-secundario: #4b5563;
+  --linea: #dde2e7;          /* separadores decorativos */
+  --borde-campo: #7f8c9b;    /* borde de campos: 3:1 sobre blanco */
+  --marca: #00727f;          /* acción primaria, enlaces y foco */
+  --marca-oscura: #005c66;
+  --marca-suave: #e3f4f6;
+  --sobre-marca: #ffffff;
+  --grafito: #111c24;        /* navegación */
+  --sobre-grafito: #ffffff;
+  --sobre-grafito-suave: #c9d3da;
+  --cian-claro: #5fd0dc;     /* acentos y foco sobre grafito */
+  --exito: #0f7653;
+  --exito-suave: #e6f4ee;
+  --aviso: #9a6200;
+  --aviso-suave: #fdf3e0;
+  --error: #b42318;
+  --error-suave: #fdecea;
+  --neutro: #4b5563;
+  --neutro-suave: #eef1f5;
+  --foco: var(--marca);
+  --radio: 0.75rem;
+  --ancho-contenido: 60rem;
+}
+
+@theme inline {
+  --color-fondo: var(--fondo);
+  --color-superficie: var(--superficie);
+  --color-texto: var(--texto);
+  --color-texto-secundario: var(--texto-secundario);
+  --color-linea: var(--linea);
+  --color-borde-campo: var(--borde-campo);
+  --color-marca: var(--marca);
+  --color-marca-oscura: var(--marca-oscura);
+  --color-marca-suave: var(--marca-suave);
+  --color-sobre-marca: var(--sobre-marca);
+  --color-grafito: var(--grafito);
+  --color-sobre-grafito: var(--sobre-grafito);
+  --color-sobre-grafito-suave: var(--sobre-grafito-suave);
+  --color-cian-claro: var(--cian-claro);
+  --color-exito: var(--exito);
+  --color-exito-suave: var(--exito-suave);
+  --color-aviso: var(--aviso);
+  --color-aviso-suave: var(--aviso-suave);
+  --color-error: var(--error);
+  --color-error-suave: var(--error-suave);
+  --color-neutro: var(--neutro);
+  --color-neutro-suave: var(--neutro-suave);
+  --radius-tarjeta: var(--radio);
+  --container-contenido: var(--ancho-contenido);
+  --font-sans: var(--font-mulish), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--fondo);
+    color: var(--texto);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  a {
+    color: var(--marca);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  a:hover {
+    color: var(--marca-oscura);
+  }
+  :focus-visible {
+    outline: 3px solid var(--foco);
+    outline-offset: 2px;
+  }
+  /* Sobre fondos grafito el foco y los enlaces usan el cian claro para conservar contraste. */
+  .zona-oscura {
+    --foco: var(--cian-claro);
+  }
+  .zona-oscura a {
+    color: var(--sobre-grafito);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
