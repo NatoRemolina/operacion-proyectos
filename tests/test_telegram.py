@@ -120,3 +120,8 @@ def test_un_fallo_de_red_no_expone_la_clave_del_bot(monkeypatch):
     with pytest.raises(telegram.ErrorTelegram) as e:
         telegram.enviar(1, "hola")
     assert "clave-muy-secreta" not in str(e.value) and e.value.__cause__ is None
+
+
+def test_un_secreto_con_caracteres_raros_se_rechaza_sin_error(anonimo, bot):
+    r = anonimo.post("/telegram/webhook", json={}, headers={"X-Telegram-Bot-Api-Secret-Token": "contraseña-ñ".encode("latin-1")})
+    assert r.status_code == 403

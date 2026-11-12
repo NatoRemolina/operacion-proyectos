@@ -186,8 +186,8 @@ def resolver_para_gasto(usuario: dict, viaje_id: int | None = None, hoy: date | 
     """
     hoy = hoy or date.today()
     if viaje_id:
-        v = uno(viaje_id)
-        return (v, []) if v and acceso.puede_ver(usuario, v) else (None, [])
+        v = uno(viaje_id)   # cargar un gasto a un viaje es escribir en él: ver no basta
+        return (v, []) if v and acceso.es_propio(usuario, v) else (None, [])
     if usuario.get("viaje_activo_id"):
         v = uno(usuario["viaje_activo_id"])
         if v and v["estado"] == "aprobado" and acceso.puede_ver(usuario, v):

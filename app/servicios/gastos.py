@@ -63,8 +63,13 @@ def _campos_de(gasto: dict) -> dict:
 
 
 def registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, viaje: dict | None = None,
-              proyecto_id: int | None = None, viajero_id: int | None = None, rapido: bool = False) -> int:
-    """Guarda el soporte, lo lee, lo valida contra la regla del viaje y devuelve el identificador del gasto."""
+              proyecto_id: int | None = None, viajero_id: int | None = None, rapido: bool = False,
+              clave_idempotencia: str | None = None) -> int:
+    """Guarda el soporte, lo lee, lo valida contra la regla del viaje y devuelve el identificador del gasto.
+
+    `clave_idempotencia`: la misma clave y el mismo contenido de la misma persona devolverán el mismo gasto.
+    Pendiente de implementar (frente de integridad); hoy se acepta y se ignora.
+    """
     if not contenido:
         raise SoporteRechazado("El archivo está vacío.")
     if len(contenido) > config.MAX_BYTES_SOPORTE:

@@ -24,6 +24,7 @@ NOMBRE_ROL = {"piloto": "piloto", "gestor": "gestor de proyecto", "admin": "admi
 
 # Rutas que no piden sesión, y prefijos reservados al administrador
 PUBLICAS = ("/static", "/entrar", "/salud", "/telegram/webhook")
+API_V1, API_V1_PUBLICAS = "/api/v1", ("/api/v1/auth/login",)
 SOLO_ADMIN = ("/admin", "/analitica", "/flujo", "/reglas", "/proyectos", "/api", "/docs", "/openapi.json", "/gastos/ejemplos")
 
 _hasher = PasswordHasher()
@@ -68,9 +69,14 @@ def es_admin(u: dict | None) -> bool:
 
 
 def nivel(ruta: str) -> str:
-    """Nivel de acceso que exige una ruta: 'publica', 'admin' o 'usuario'."""
-    if ruta.startswith(PUBLICAS):
+    """Nivel de acceso que exige una ruta: 'publica', 'api', 'admin' o 'usuario'.
+
+    'api' es la API v1: exige sesión y responde siempre en JSON; los permisos finos los aplica cada endpoint.
+    """
+    if ruta.startswith(PUBLICAS) or ruta.startswith(API_V1_PUBLICAS):
         return "publica"
+    if ruta == API_V1 or ruta.startswith(API_V1 + "/"):
+        return "api"
     return "admin" if ruta.startswith(SOLO_ADMIN) else "usuario"
 
 
@@ -154,6 +160,17 @@ def mismo_origen(cabeceras) -> bool:
     if origen:
         return origen.split("://", 1)[-1] == cabeceras.get("host", "")
     return True  # sin cabeceras de navegador: no es un formulario enviado desde otra página
+
+
+def origen_permitido(cabeceras) -> bool:
+    """Para la API v1: la misma página, o un origen declarado en `ORIGENES_WEB`. No confía en Host reescrito."""
+    sitio = cabeceras.get("sec-fetch-site")
+    if sitio in ("same-origin", "none"):
+        return True
+    origen = (cabeceras.get("origin") or "").rstrip("/")
+    if origen:
+        return origen in config.ORIGENES_WEB or origen.split("://", 1)[-1] == cabeceras.get("host", "")
+    return sitio is None   # sin cabeceras de navegador (por ejemplo, una prueba o un cliente de consola)
 
 
 def alcance(u: dict, alias: str = "") -> tuple[str, dict]:

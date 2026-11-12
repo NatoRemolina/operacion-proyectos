@@ -121,6 +121,7 @@ def crear_vistas():
 # Cuentas de demostración para ejecutar en local sin configurar nada. Nunca se crean en una base compartida.
 DEMO = [("admin@demo.local", "Administración (demo)", "admin", "demo-admin-2026", None),
         ("piloto@demo.local", "Andrés Molina", "piloto", "demo-piloto-2026", 1),
+        ("piloto2@demo.local", "Laura Pérez", "piloto", "demo-piloto2-2026", 2),
         ("gestor@demo.local", "Gestión de proyecto (demo)", "gestor", "demo-gestor-2026", None)]
 
 
@@ -131,7 +132,8 @@ def sembrar_cuentas():
     from app.servicios import acceso
     if db.uno("select id from usuarios limit 1"):
         return
-    if config.ES_SQLITE and config.LOCAL:
+    # Cuentas de demostración: solo en local, y en PostgreSQL solo si se piden de forma explícita (entorno con Compose)
+    if config.LOCAL and (config.ES_SQLITE or os.getenv("CUENTAS_DEMO") == "1"):
         for correo, nombre, rol, clave, viajero in DEMO:
             uid = acceso.crear_usuario(correo, nombre, rol, clave, viajero)
             if rol == "gestor":   # gestiona el primer proyecto de ejemplo

@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from app import db
-from app.servicios import acceso, asistente, gastos, llm, memoria, viajes
+from app.servicios import asistente, gastos, llm, memoria, viajes
 
 
 def _uid(correo: str) -> int:
@@ -29,10 +29,8 @@ def _gasto(uid: int, viaje: dict, comercio: str, total: float, estado: str = "ap
 def dos_pilotos(nuevo_viaje):
     """Andrés (piloto de demostración) y una segunda piloto, cada uno con un viaje propio de estas pruebas y sus gastos."""
     viaje_andres = nuevo_viaje(viajero_id=1)
-    if not db.uno("select id from usuarios where correo='laura@demo.local'"):
-        acceso.crear_usuario("laura@demo.local", "Laura Pérez", "piloto", "clave-de-laura-1", 2)
-    viaje_laura = nuevo_viaje(viajero_id=2)
-    andres, laura = _uid("piloto@demo.local"), _uid("laura@demo.local")
+    viaje_laura = nuevo_viaje(viajero_id=2)   # Laura Pérez es el segundo piloto de demostración (viajero 2)
+    andres, laura = _uid("piloto@demo.local"), _uid("piloto2@demo.local")
     assert viaje_laura["usuario_id"] == laura and viaje_andres["usuario_id"] == andres
     return {
         "andres": {"id": andres, "viaje": viaje_andres,

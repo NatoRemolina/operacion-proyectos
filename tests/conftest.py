@@ -43,6 +43,12 @@ def piloto():
 
 
 @pytest.fixture(scope="session")
+def piloto2():
+    """Segundo piloto de demostración (viajero 2): sirve para probar que nadie ve lo ajeno."""
+    return _con_sesion("piloto2@demo.local", "demo-piloto2-2026")
+
+
+@pytest.fixture(scope="session")
 def gestor():
     """Gestor de demostración: gestiona el proyecto 1, sin aprobar nada."""
     return _con_sesion("gestor@demo.local", "demo-gestor-2026")

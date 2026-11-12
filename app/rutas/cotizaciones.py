@@ -163,7 +163,7 @@ def viaje_agente(request: Request, sid: int, pregunta: str = Form("")):
 @router.post("/viajes/{sid}/tarifas/{oid}")
 def viaje_tarifas(sid: int, oid: int):
     """Trae las familias tarifarias reales de un vuelo (dos consultas al buscador)."""
-    if not _solicitud_propia(sid):
+    if not _solicitud_propia(sid, para_modificar=True):   # gasta cupo de pago: quien solo puede ver, no
         return NO_ENCONTRADO
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
     o = db.uno("select * from opciones where id=:i and solicitud_id=:s", i=oid, s=sid)

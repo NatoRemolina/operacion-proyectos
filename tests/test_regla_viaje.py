@@ -120,3 +120,14 @@ def test_la_migracion_se_puede_repetir():
     antes = db.uno("select count(*) n from viajes")["n"]
     assert sembrar()["viajes_creados"] == 0 and sembrar()["gastos_enlazados"] == 0
     assert db.uno("select count(*) n from viajes")["n"] == antes
+
+
+def test_ver_un_viaje_no_basta_para_cargarle_gastos(gestor, ejemplos, viaje_aprobado):
+    """El gestor ve los viajes de su proyecto, pero un gasto suyo no puede ir al presupuesto de otra persona."""
+    g = _subir(gestor, ejemplos, "recibo_lisboa.png", viaje_id=viaje_aprobado["id"])
+    assert g["viaje_id"] is None and "sin_viaje" in _motivos(g)
+
+
+def test_ver_una_cotizacion_no_basta_para_gastar_consultas(gestor, viaje_aprobado):
+    oid = db.uno("select id from opciones where solicitud_id=:s and tipo='vuelo' limit 1", s=viaje_aprobado["solicitud_id"])["id"]
+    assert gestor.post(f"/viajes/{viaje_aprobado['solicitud_id']}/tarifas/{oid}").status_code == 404

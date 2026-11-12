@@ -58,6 +58,8 @@ def _asegurar(respuesta: Response) -> Response:
             respuesta.headers[nombre] = valor
     if not config.LOCAL:
         respuesta.headers["Strict-Transport-Security"] = "max-age=31536000"
+    if respuesta.headers.get("content-type", "").startswith("application/json") and "Cache-Control" not in respuesta.headers:
+        respuesta.headers["Cache-Control"] = "no-store"   # datos de una persona: ni el navegador ni un intermediario los guardan
     return respuesta
 
 
@@ -71,6 +73,9 @@ def _error_registrado(request: Request, e: Exception) -> Response:
                     tipo=type(e).__name__, mensaje=str(e)[:500], traza=traza)
     except Exception:  # noqa: S110  si la base es la que falla, el registro ya quedó en los logs (línea anterior)
         pass
+    if request.url.path.startswith("/api/v1"):
+        from .api_v1 import MENSAJE_HTTP, respuesta_error
+        return respuesta_error(request, 500, "INTERNAL_ERROR", MENSAJE_HTTP[500])
     if request.url.path.startswith("/api"):
         return JSONResponse({"error": "Error interno", "peticion": pid}, status_code=500, headers={"X-Peticion": pid})
     return HTMLResponse(f"""<!doctype html><meta charset="utf-8"><title>Error</title>

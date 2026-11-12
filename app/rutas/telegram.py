@@ -19,7 +19,7 @@ async def telegram_webhook(request: Request):
     """Entrada del bot. Solo Telegram conoce la cabecera secreta; todo lo demás se rechaza sin procesar."""
     secreto = config.TELEGRAM_WEBHOOK_SECRETO
     if not telegram.activo() or not secreto or \
-            not secrets.compare_digest(request.headers.get("x-telegram-bot-api-secret-token", ""), secreto):
+            not secrets.compare_digest(request.headers.get("x-telegram-bot-api-secret-token", "").encode(), secreto.encode()):
         return Response(status_code=403)
     try:
         entrega = await request.json()
