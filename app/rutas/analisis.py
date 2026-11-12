@@ -45,7 +45,7 @@ def analitica_pagina(request: Request):
 PESTANAS = {"viajes": "Viajes", "gastos": "Gastos", "busquedas": "Búsquedas", "modelo": "Modelo de lenguaje", "cupos": "Cupos",
             "auditoria": "Auditoría", "calidad": "Calidad"}
 FECHA_DE_VISTA = {"v_h_viaje": "creado", "v_h_gasto": "creado", "v_h_busqueda": "creado", "v_h_decision": "creado", "v_h_lectura": "momento",
-                  "v_h_evento": "momento"}
+                  "v_h_evento": "momento", "v_h_consulta": "momento"}
 _ES_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 

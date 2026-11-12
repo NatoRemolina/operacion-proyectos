@@ -63,3 +63,11 @@ def test_un_error_queda_registrado_con_identificador(cliente, monkeypatch):
     assert r.status_code == 500 and r.json()["peticion"] == r.headers["X-Peticion"]
     fila = db.uno("select * from errores where peticion=:p", p=r.json()["peticion"])
     assert fila["tipo"] == "RuntimeError" and fila["ruta"] == "/api/metricas" and fila["usuario_id"]
+
+
+def test_cada_vista_publicada_se_puede_exportar(cliente):
+    """Toda vista analítica nueva necesita su campo de fecha para los filtros; si falta, la descarga falla."""
+    from datos.semilla import VISTAS
+    for vista in VISTAS:
+        r = cliente.get(f"/admin/monitoreo/exportar.csv?vista={vista}&desde=2026-01-01")
+        assert r.status_code == 200, vista

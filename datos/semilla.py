@@ -59,6 +59,9 @@ def sembrar():
     from app.servicios import precios
     precios.cargar_respaldos()
     asegurar_supuestos()
+    from app.servicios import asistente, kpis  # metas de los indicadores y tope del asistente, visibles en Reglas desde el inicio
+    kpis.asegurar_metas()
+    asistente.asegurar_regla()
     sembrar_cuentas()
     from datos import migracion
     hechos = migracion.migrar()
