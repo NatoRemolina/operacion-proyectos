@@ -12,7 +12,7 @@ Los endpoints viven en `app/rutas/v1_*.py` y usan las dependencias de aquí con 
 import hashlib
 import hmac
 
-from fastapi import Request
+from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 
 from ..servicios import acceso
@@ -83,3 +83,13 @@ def solo_admin(request: Request) -> dict:
     if not acceso.es_admin(usuario):
         raise ErrorApi(403, "FORBIDDEN", "Esta operación es solo para administración.")
     return usuario
+
+
+def pagina(limite: int = Query(20, ge=1, le=100, description="Cuántos elementos devolver (1 a 100)."),
+           cursor: str | None = Query(None, description="El valor de `siguiente` de la página anterior.")) -> tuple[int, int | None]:
+    """Paginación por cursor de los listados: orden por id descendente y el cursor es el último id entregado."""
+    if not cursor:
+        return limite, None
+    if not cursor.isdigit() or int(cursor) < 1:
+        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"cursor": "El cursor no es válido. Usa el valor de `siguiente`."})
+    return limite, int(cursor)
