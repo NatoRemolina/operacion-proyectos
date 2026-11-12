@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import acceso, almacen, eventos, telegram, validacion, viajes
+from ..servicios import acceso, almacen, eventos, justificaciones, telegram, validacion, viajes
 from ..servicios import gastos as soportes
 from ..web import (
     NO_ENCONTRADO,
@@ -60,14 +60,20 @@ def gastos_cargar(request: Request):
 
 @router.post("/gastos/cargar")
 def gastos_cargar_enviar(request: Request, archivos: list[UploadFile], proyecto_id: int = Form(0), viajero_id: int = Form(0),
-                         canal: str = Form("web"), viaje_id: int = Form(0)):
+                         canal: str = Form("web"), viaje_id: int = Form(0), justificacion: str = Form("")):
     """Función normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor."""
     canal = canal if canal in ("web", "celular") else "web"
     hechos, errores = [], []
     for a in archivos[:config.MAX_ARCHIVOS_POR_CARGA]:
         try:
-            hechos.append(_procesar(a.file.read(config.MAX_BYTES_SOPORTE + 1), a.filename or "soporte", canal,
-                                    proyecto_id or None, viajero_id or None, viaje_id))
+            gid = _procesar(a.file.read(config.MAX_BYTES_SOPORTE + 1), a.filename or "soporte", canal,
+                            proyecto_id or None, viajero_id or None, viaje_id)
+            hechos.append(gid)
+            if justificacion.strip() and _yo():
+                try:
+                    justificaciones.registrar(gid, _yo(), canal, justificacion)
+                except justificaciones.JustificacionRechazada:
+                    pass  # demasiado corta: el gasto queda y se puede justificar desde su detalle
         except SoporteRechazado as e:
             errores.append(f"{_nombre_visible(a.filename or '')}: {e}")
     if len(archivos) > config.MAX_ARCHIVOS_POR_CARGA:
@@ -94,13 +100,14 @@ def gastos_ejemplos(nombres: list[str] = Form([]), proyecto_id: int = Form(0), v
 
 
 @router.get("/gastos/{gid}", response_class=HTMLResponse)
-def gasto(request: Request, gid: int):
+def gasto(request: Request, gid: int, aviso: str = ""):
     g = db.uno("""select g.*, d.nombre archivo, d.mime, d.canal from gastos g
                   left join documentos d on d.id=g.documento_id where g.id=:i""", i=gid) if _gasto_propio(gid) else None
     if not g:
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "gasto.html", _ctx(
-        g=g, alertas=db.de_json(g["alertas"], []), el_viaje=viajes.uno(g["viaje_id"]),
+        g=g, alertas=db.de_json(g["alertas"], []), el_viaje=viajes.uno(g["viaje_id"]), aviso=aviso[:300],
+        justifs=justificaciones.de_gasto(gid), puede_justificar=justificaciones.puede_justificar(_yo(), g),
         mis_viajes=viajes.lista("v.estado<>'rechazado'") if acceso.es_admin(_yo()) else [],
         eventos=db.todos("select * from eventos where entidad='gasto' and entidad_id=:i order by id", i=gid)))
 
@@ -118,6 +125,35 @@ def gasto_soporte(gid: int):
     return Response(contenido, media_type=mime, headers={
         "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "Cache-Control": "private, no-store"})
+
+
+@router.post("/gastos/{gid}/justificacion")
+def gasto_justificar(gid: int, texto: str = Form(""), audio: UploadFile | None = None):
+    """La persona explica para qué fue el gasto, por escrito o con una nota de voz."""
+    g = db.uno("select id, usuario_id, viajero_id, proyecto_id from gastos where id=:i", i=gid)
+    if not g or not acceso.puede_ver(_yo(), g):
+        return NO_ENCONTRADO
+    if not justificaciones.puede_justificar(_yo(), g):
+        return RedirectResponse(f"/gastos/{gid}?aviso={quote('Solo quien hizo el gasto puede justificarlo.')}#justificacion", status_code=303)
+    contenido = audio.file.read(config.MAX_BYTES_SOPORTE + 1) if audio and audio.filename else None
+    try:
+        justificaciones.registrar(gid, _yo(), "web", texto, contenido, audio.filename if contenido else "nota_de_voz")
+    except justificaciones.JustificacionRechazada as e:
+        return RedirectResponse(f"/gastos/{gid}?aviso={quote(str(e))}#justificacion", status_code=303)
+    return RedirectResponse(f"/gastos/{gid}#justificacion", status_code=303)
+
+
+@router.get("/gastos/{gid}/justificacion/{jid}/audio")
+def gasto_justificacion_audio(gid: int, jid: int):
+    if not _gasto_propio(gid):
+        return NO_ENCONTRADO
+    d = db.uno("""select d.ruta, d.mime from justificaciones j join documentos d on d.id=j.documento_id
+                  where j.id=:j and j.gasto_id=:g""", j=jid, g=gid)
+    contenido = almacen.leer(d["ruta"]) if d and d["ruta"] else None
+    if contenido is None:
+        return Response("No disponible", status_code=404)
+    return Response(contenido, media_type=d["mime"] if (d["mime"] or "").startswith("audio/") else "application/octet-stream",
+                    headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
 
 
 def _numero(texto: str):

@@ -33,6 +33,23 @@
 <tr><td>Categoría</td><td>{{ categorias.get(g.categoria, '—') }}</td></tr><tr><td>Total</td><td>{{ g.total|dinero(g.moneda or '') }}</td></tr>
 <tr><td>Método de pago</td><td>{{ g.metodo_pago or '—' }}</td></tr></table>
 <p class="eti">Si algo quedó mal leído, administración lo corrige al revisar.</p></div>{% endif %}</div>
+<h2 id="justificacion">Justificación</h2>
+<div class="tarjeta">
+  {% if aviso %}<p class="nota aviso">{{ aviso }}</p>{% endif %}
+  {% if not justifs %}<p class="eti">{% if puede_justificar %}Cuenta para qué fue este gasto. {% if g.estado == 'revision' %}Está en revisión: tu explicación ayuda a resolverlo antes.{% else %}Queda junto al recibo para quien lo revise.{% endif %}{% else %}La persona aún no ha justificado este gasto.{% endif %}</p>{% endif %}
+  {% for j in justifs %}<div style="padding:8px 0;border-bottom:1px solid var(--linea)">
+    <p class="eti" style="margin:0">{{ j.persona or '—' }} · {{ 'nota de voz' if j.tipo == 'audio' else 'por escrito' }} · canal {{ j.canal }} · <span class="mono">{{ j.creado }}</span></p>
+    {% if j.tipo == 'audio' %}<audio controls preload="none" src="/gastos/{{ g.id }}/justificacion/{{ j.id }}/audio" style="width:100%;max-width:420px;margin:6px 0"></audio>
+    <p style="margin:0">{% if j.texto %}{{ j.texto }}{% endif %}{% if j.transcripcion == 'pendiente' %} <span class="eti">(transcripción pendiente)</span>{% elif j.transcripcion == 'fallida' %} <span class="eti">(no se pudo transcribir)</span>{% endif %}</p>
+    {% else %}<p style="margin:4px 0 0">{{ j.texto }}</p>{% endif %}
+  </div>{% endfor %}
+  {% if puede_justificar %}<form method="post" action="/gastos/{{ g.id }}/justificacion" enctype="multipart/form-data" style="margin-top:12px">
+    <label for="texto_j">{{ 'Añadir algo más' if justifs else '¿Para qué fue este gasto?' }}</label>
+    <textarea id="texto_j" name="texto" rows="3" maxlength="2000" placeholder="Por ejemplo: cena con el equipo de grabación después de la jornada en el lago" style="width:100%"></textarea>
+    <p class="eti" style="margin:6px 0"><label for="audio_j" style="font-weight:400">O adjunta una nota de voz (opcional)</label> <input id="audio_j" type="file" name="audio" accept="audio/*"></p>
+    <button>Guardar justificación</button>
+  </form>{% endif %}
+</div>
 <h2>Recorrido de este dato</h2>
 <div class="tarjeta tabla"><table><tr><th>Momento (UTC)</th><th>Paso</th><th>Detalle</th><th>Fuente</th><th class="d">ms</th></tr>
 {% for e in eventos %}<tr><td class="mono">{{ e.momento }}</td><td><b>{{ e.paso }}</b></td><td>{{ e.detalle }}</td><td>{{ e.fuente }}</td><td class="d">{{ e.duracion_ms or '' }}</td></tr>{% endfor %}</table></div>

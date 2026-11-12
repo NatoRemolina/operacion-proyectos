@@ -14,6 +14,9 @@
   <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
   <div><label>Canal</label><select name="canal"><option value="web">Carga web</option><option value="celular">Foto desde celular</option></select></div>
   {% else %}<input type="hidden" name="proyecto_id" value="0"><input type="hidden" name="viajero_id" value="{{ yo.viajero_id or 0 }}"><input type="hidden" name="canal" value="web">{% endif %}</div>
+  <p style="margin-top:12px"><label for="justificacion">¿Para qué fue este gasto?</label>
+  <textarea id="justificacion" name="justificacion" rows="2" maxlength="2000" style="width:100%" placeholder="Por ejemplo: taxi del hotel al set con el equipo del dron"></textarea>
+  <span class="eti">Opcional, pero ayuda a quien revisa. Si envías varios archivos, vale para todos. También puedes justificar después desde el detalle del gasto o con una nota de voz por Telegram.</span></p>
   <p style="margin-top:14px"><button>{{ 'Procesar' if es_admin else 'Enviar gasto' }}</button></p>
   <ul id="avance" class="eti" style="padding-left:18px" aria-live="polite"></ul>
 </form>
@@ -60,7 +63,7 @@ document.getElementById('carga').addEventListener('submit', async (ev) => {
   for (const [i, original] of archivos.entries()) {
     const li = document.createElement('li'); li.textContent = `${i + 1} de ${archivos.length} · ${original.name}: leyendo…`; lista.appendChild(li);
     const datos = new FormData();
-    for (const campo of ['viaje_id', 'proyecto_id', 'viajero_id', 'canal']) datos.append(campo, f.elements[campo].value);
+    for (const campo of ['viaje_id', 'proyecto_id', 'viajero_id', 'canal', 'justificacion']) datos.append(campo, f.elements[campo].value);
     datos.append('archivos', await reducir(original));
     try {
       const r = await fetch('/gastos/cargar', {method: 'POST', body: datos, headers: {'X-Envio': 'pagina'}});

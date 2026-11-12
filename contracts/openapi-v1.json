@@ -431,6 +431,89 @@
         }
       }
     },
+    "/api/v1/gastos/{id}/justificaciones": {
+      "post": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Justificar",
+        "description": "Añade por escrito para qué fue el gasto. Solo quien lo hizo o quien viaja puede justificarlo.",
+        "operationId": "justificar_api_v1_gastos__id__justificaciones_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuevaJustificacion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GastoDetalle"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/documentos/{id}/contenido": {
       "get": {
         "tags": [
@@ -676,6 +759,19 @@
             ],
             "title": "Viaje Id",
             "description": "Opcional. Sin él, se usa el viaje que corresponde hoy a la persona."
+          },
+          "justificacion": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Justificacion",
+            "description": "Opcional. Para qué fue el gasto, con las palabras de la persona."
           }
         },
         "type": "object",
@@ -875,6 +971,13 @@
           },
           "lectura": {
             "$ref": "#/components/schemas/Lectura"
+          },
+          "justificaciones": {
+            "items": {
+              "$ref": "#/components/schemas/Justificacion"
+            },
+            "type": "array",
+            "title": "Justificaciones"
           }
         },
         "type": "object",
@@ -897,7 +1000,8 @@
           "alertas",
           "canal",
           "documento_id",
-          "lectura"
+          "lectura",
+          "justificaciones"
         ],
         "title": "GastoDetalle"
       },
@@ -1042,6 +1146,62 @@
         "title": "Ingreso",
         "description": "Solo correo y contraseña. Cualquier otro campo (rol, usuario_id...) se ignora."
       },
+      "Justificacion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "texto",
+              "audio"
+            ],
+            "title": "Tipo"
+          },
+          "canal": {
+            "type": "string",
+            "title": "Canal"
+          },
+          "texto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto",
+            "description": "Lo escrito, o la transcripción de la nota de voz si ya existe."
+          },
+          "transcripcion": {
+            "type": "string",
+            "enum": [
+              "no_aplica",
+              "pendiente",
+              "hecha",
+              "fallida"
+            ],
+            "title": "Transcripcion"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tipo",
+          "canal",
+          "texto",
+          "transcripcion",
+          "creado"
+        ],
+        "title": "Justificacion"
+      },
       "Lectura": {
         "properties": {
           "origen": {
@@ -1152,6 +1312,22 @@
           "siguiente"
         ],
         "title": "ListaViajes"
+      },
+      "NuevaJustificacion": {
+        "properties": {
+          "texto": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Texto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "texto"
+        ],
+        "title": "NuevaJustificacion",
+        "description": "Para qué fue el gasto, con las palabras de la persona."
       },
       "Persona": {
         "properties": {

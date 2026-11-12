@@ -146,7 +146,8 @@ def fichas_de_decisiones(vs: dict, codigos: dict) -> list[dict]:
 def fichas_de_evidencias(vs: dict, codigos: dict) -> list[dict]:
     """Notas y audios: su texto, nunca el contenido binario ni la ruta del archivo."""
     salida = []
-    for d in db.todos("select id, tipo, texto, canal, creado, usuario_id, viaje_id from documentos where tipo in ('nota','audio')"):
+    for d in db.todos("select id, tipo, texto, canal, creado, usuario_id, viaje_id from documentos where tipo in ('nota','audio') "
+                        "and id not in (select documento_id from justificaciones where documento_id is not null)"):
         if d["tipo"] == "nota" and not d["texto"]:
             continue
         cuerpo = d["texto"] or "(sin transcripción)"
@@ -162,7 +163,7 @@ def fichas_de_mensajes(vs: dict, codigos: dict) -> list[dict]:
     ni las notas que ya quedaron como evidencia."""
     salida = []
     for m in db.todos("""select id, tipo, texto, usuario_id, viaje_id, gasto_id, momento from telegram_mensajes
-                         where texto is not null and usuario_id is not null and coalesce(tipo,'') not in ('vinculo','comando','boton')
+                         where texto is not null and usuario_id is not null and coalesce(tipo,'') not in ('vinculo','comando','boton','justificacion')
                          and not (tipo='nota' and documento_id is not null)"""):
         if m["texto"].lstrip().startswith("/"):
             continue
@@ -170,6 +171,19 @@ def fichas_de_mensajes(vs: dict, codigos: dict) -> list[dict]:
                  + (f" (acompaña al gasto #{m['gasto_id']})" if m["gasto_id"] else "") + f": {m['texto']}")
         proyecto = (vs.get(m["viaje_id"]) or {}).get("proyecto_id")
         salida.append(_ficha("mensaje", "telegram_mensajes", m["id"], texto, m["usuario_id"], m["viaje_id"], codigos, proyecto, m["momento"], "telegram"))
+    return salida
+
+
+def fichas_de_justificaciones(vs: dict, codigos: dict) -> list[dict]:
+    """Para qué fue cada gasto, con las palabras de la persona (escritas o transcritas de su nota de voz)."""
+    salida = []
+    for j in db.todos("""select j.id, j.gasto_id, j.tipo, j.texto, j.canal, j.creado, j.usuario_id, g.viaje_id, g.proyecto_id,
+                         g.comercio from justificaciones j join gastos g on g.id=j.gasto_id where j.texto is not null"""):
+        texto = (f"Justificación del gasto #{j['gasto_id']} ({j['comercio'] or 'comercio sin leer'}) de "
+                 f"{viajes.codigo_persona(j['usuario_id']) if j['usuario_id'] else '—'} en el viaje {codigos.get(j['viaje_id'], 'sin viaje')}, "
+                 f"{'por nota de voz' if j['tipo'] == 'audio' else 'por escrito'}: {j['texto']}")
+        salida.append(_ficha("justificacion", "justificaciones", j["id"], texto, j["usuario_id"], j["viaje_id"], codigos,
+                             j["proyecto_id"], j["creado"], j["canal"]))
     return salida
 
 
@@ -195,7 +209,7 @@ def todas_las_fichas() -> list[dict]:
     vs = _viajes_base()
     codigos = {i: v["codigo"] for i, v in vs.items()}
     salida = []
-    for fuente in (fichas_de_viajes, fichas_de_gastos, fichas_de_decisiones, fichas_de_evidencias, fichas_de_mensajes, fichas_de_eventos):
+    for fuente in (fichas_de_viajes, fichas_de_gastos, fichas_de_decisiones, fichas_de_evidencias, fichas_de_justificaciones, fichas_de_mensajes, fichas_de_eventos):
         salida.extend(fuente(vs, codigos))
     return salida
 

@@ -2,10 +2,10 @@
 from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
 from fastapi.responses import Response
 
-from .. import config
+from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
-from ..api_v1.esquemas import EstadoGasto, GastoDetalle, ListaGastos, errores
-from ..servicios import consultas, viajes
+from ..api_v1.esquemas import EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, errores
+from ..servicios import consultas, justificaciones, viajes
 from ..servicios import gastos as soportes
 
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
@@ -34,6 +34,8 @@ def detalle(id: int, yo: dict = Depends(persona)):
 @router.post("/gastos", status_code=201, response_model=GastoDetalle, responses=errores(401, 403, 409, 413, 415, 422))
 def enviar(archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."),
            viaje_id: int | None = Form(None, description="Opcional. Sin él, se usa el viaje que corresponde hoy a la persona."),
+           justificacion: str | None = Form(None, max_length=2000,
+                                            description="Opcional. Para qué fue el gasto, con las palabras de la persona."),
            clave: str | None = Header(None, alias="Idempotency-Key", max_length=200,
                                       description="Un valor único por archivo, que se repite si se reintenta el mismo envío."),
            yo: dict = Depends(escritura)):
@@ -55,7 +57,25 @@ def enviar(archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), P
         gid = soportes.registrar(contenido, nombre, "web", yo, viaje, viajero_id=yo.get("viajero_id"), clave_idempotencia=clave)
     except soportes.SoporteRechazado as e:
         raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"archivo": str(e)}) from e
+    if justificacion and len(justificacion.strip()) >= justificaciones.MINIMO:
+        justificaciones.registrar(gid, yo, "api", justificacion)
     return consultas.gasto(yo, gid)
+
+
+@router.post("/gastos/{id}/justificaciones", status_code=201, response_model=GastoDetalle, responses=errores(401, 403, 404, 422))
+def justificar(id: int, cuerpo: NuevaJustificacion, yo: dict = Depends(escritura)):
+    """Añade por escrito para qué fue el gasto. Solo quien lo hizo o quien viaja puede justificarlo."""
+    g = consultas.gasto(yo, id)
+    if not g:
+        raise _no_encontrado()
+    fila = db.uno("select usuario_id, viajero_id from gastos where id=:i", i=id)
+    if not justificaciones.puede_justificar(yo, fila):
+        raise ErrorApi(403, "FORBIDDEN", "Solo quien hizo el gasto o quien viaja puede justificarlo.")
+    try:
+        justificaciones.registrar(id, yo, "api", cuerpo.texto)
+    except justificaciones.JustificacionRechazada as e:
+        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"texto": str(e)}) from e
+    return consultas.gasto(yo, id)
 
 
 @router.get("/documentos/{id}/contenido", response_class=Response, responses={

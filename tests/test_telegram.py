@@ -95,9 +95,16 @@ def test_comando_viaje_y_evidencias(anonimo, bot, viaje_aprobado):
     assert db.uno("select viaje_activo_id v from usuarios where id=:i", i=uid)["v"] == viaje_aprobado["id"]
     assert viaje_aprobado["codigo"] in _ultimo(bot) and "USD" in _ultimo(bot)
     antes = db.uno("select count(*) n from gastos")["n"]
+    # Justo después de un recibo, el bot toma el siguiente texto o audio como su justificación (test_justificaciones).
+    # Aquí el último recibo ya está justificado, así que lo que llega es evidencia del viaje.
+    from app.servicios import justificaciones
+    pendiente = justificaciones.gasto_por_justificar(uid)
+    if pendiente:
+        justificaciones.registrar(pendiente, {"id": uid}, "telegram", "Factura del hotel del viaje")
     _entrega(anonimo, 777002, voice={"file_id": "voz", "file_size": 68})
     _entrega(anonimo, 777002, text="El parqueadero del hotel no dio recibo")
-    tipos = [d["tipo"] for d in db.todos("select tipo from documentos where viaje_id=:v and usuario_id=:u and tipo<>'soporte' order by id",
+    tipos = [d["tipo"] for d in db.todos("select tipo from documentos where viaje_id=:v and usuario_id=:u and tipo<>'soporte' "
+                                         "and id not in (select documento_id from justificaciones where documento_id is not null) order by id",
                                          v=viaje_aprobado["id"], u=uid)]
     assert tipos == ["audio", "nota"]
     assert db.uno("select count(*) n from gastos")["n"] == antes             # las evidencias no crean gastos

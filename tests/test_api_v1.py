@@ -285,5 +285,6 @@ def test_el_openapi_versionado_coincide_con_la_api():
     assert exportar_contrato.DESTINO.read_text(encoding="utf-8") == exportar_contrato.texto()
     rutas = exportar_contrato.contrato()["paths"]
     esperadas = {("post", "/auth/login"), ("get", "/auth/me"), ("post", "/auth/logout"), ("get", "/viajes"), ("get", "/viajes/{id}"),
-                 ("get", "/gastos"), ("get", "/gastos/{id}"), ("post", "/gastos"), ("get", "/documentos/{id}/contenido")}
+                 ("get", "/gastos"), ("get", "/gastos/{id}"), ("post", "/gastos"), ("post", "/gastos/{id}/justificaciones"),
+                 ("get", "/documentos/{id}/contenido")}
     assert {(m, r.removeprefix(V1)) for r, ops in rutas.items() for m in ops} == esperadas

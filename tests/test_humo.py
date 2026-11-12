@@ -22,9 +22,10 @@ def ids(cliente, viaje_aprobado, ejemplos):
     cliente.post("/gastos/cargar", data={"canal": "web", "viaje_id": viaje_aprobado["id"]}, headers={"X-Envio": "pagina"},
                  files={"archivos": ("r.png", (ejemplos / "recibo_gasolina.png").read_bytes(), "image/png")})
     gasto = db.uno("select id from gastos where viaje_id=:v order by id desc", v=viaje_aprobado["id"])
+    cliente.post(f"/gastos/{gasto['id']}/justificacion", data={"texto": "Gasolina del carro de alquiler para llegar al set"})
     piloto = db.uno("select id from usuarios where correo='piloto@demo.local'")
     return {"sid": viaje_aprobado["solicitud_id"], "vid": viaje_aprobado["id"], "gid": gasto["id"], "pid": 1,
-            "uid": piloto["id"], "doc": 999999}
+            "uid": piloto["id"], "doc": 999999, "jid": 999999}
 
 
 @pytest.mark.parametrize("rol", ["cliente", "piloto", "gestor"])

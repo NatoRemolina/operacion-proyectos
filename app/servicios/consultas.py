@@ -8,7 +8,7 @@ import re
 from decimal import ROUND_HALF_UP, Decimal
 
 from .. import db
-from . import acceso, almacen, viajes
+from . import acceso, almacen, justificaciones, viajes
 
 ESTADO_GASTO = {"procesando": "Procesando", "revision": "En revisión", "aprobado_auto": "Aprobado automático",
                 "aprobado": "Aprobado", "rechazado": "Rechazado"}
@@ -110,7 +110,9 @@ def gasto(u: dict, gasto_id: int) -> dict | None:
             "subtotal": dinero(g["subtotal"]), "impuesto": dinero(g["impuesto"]), "propina": dinero(g["propina"]),
             "motivos": db.de_json(g["motivos"], []) or [], "alertas": db.de_json(g["alertas"], []) or [],
             "canal": g["canal"] or "web", "documento_id": g["documento_id"],
-            "lectura": {"origen": g["origen_dato"] or "sin datos", "confianza": g["confianza"]}}
+            "lectura": {"origen": g["origen_dato"] or "sin datos", "confianza": g["confianza"]},
+            "justificaciones": [{k: j[k] for k in ("id", "tipo", "canal", "texto", "transcripcion", "creado")}
+                                for j in justificaciones.de_gasto(gasto_id)]}
 
 
 # ---------- soportes ----------

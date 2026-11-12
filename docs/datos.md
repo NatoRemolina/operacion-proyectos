@@ -33,6 +33,9 @@ erDiagram
   USUARIOS ||--o{ GASTOS : reporta
   PROYECTOS ||--o{ GASTOS : imputa
   USUARIOS ||--o{ VINCULOS_TELEGRAM : solicita
+  GASTOS ||--o{ JUSTIFICACIONES : "para qué fue"
+  USUARIOS ||--o{ JUSTIFICACIONES : escribe
+  DOCUMENTOS ||--o| JUSTIFICACIONES : "nota de voz"
   USUARIOS {
     int id PK "se muestra como P-0007"
     text correo UK
@@ -61,6 +64,16 @@ erDiagram
     float total_usd
     text estado
     text motivos "códigos de alerta"
+  }
+  JUSTIFICACIONES {
+    int id PK
+    int gasto_id FK
+    int usuario_id FK "quien hizo el gasto o quien viaja"
+    int documento_id FK "audio original, si lo hay"
+    text tipo "texto o audio"
+    text canal "web, celular, telegram, api"
+    text texto "escrito o transcrito"
+    text transcripcion "no_aplica, pendiente, hecha, fallida"
   }
   DOCUMENTOS {
     int id PK

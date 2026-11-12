@@ -87,6 +87,16 @@ interface GastoDetalle extends GastoResumen {
   canal: string;                              // "web" | "celular" | "correo" | "telegram"
   documento_id: number | null;
   lectura: { origen: string; confianza: number | null };
+  justificaciones: Justificacion[];           // en orden de llegada
+}
+
+interface Justificacion {
+  id: number;
+  tipo: "texto" | "audio";
+  canal: string;                              // "web" | "celular" | "telegram" | "api"
+  texto: string | null;                       // lo escrito o la transcripción de la nota de voz
+  transcripcion: "no_aplica" | "pendiente" | "hecha" | "fallida";
+  creado: string;
 }
 ```
 
@@ -114,12 +124,15 @@ Parámetros: `viaje_id`, `estado` (opcionales), `limite`, `cursor`. Mismo alcanc
 200 `GastoDetalle`. 404 si no existe o no es visible.
 
 ### `POST /gastos`
-`multipart/form-data`: `archivo` (obligatorio), `viaje_id` (opcional). Cabeceras: `X-CSRF-Token` y `Idempotency-Key` (recomendada: un valor único por archivo, que se repite si se reintenta el mismo envío).
+`multipart/form-data`: `archivo` (obligatorio), `viaje_id` (opcional), `justificacion` (opcional, hasta 2.000 caracteres: para qué fue el gasto). Cabeceras: `X-CSRF-Token` y `Idempotency-Key` (recomendada: un valor único por archivo, que se repite si se reintenta el mismo envío).
 
 - Sin `viaje_id`, la plataforma resuelve el viaje que corresponde a la persona hoy (`viajes.resolver_para_gasto`). Con `viaje_id`, solo se acepta un viaje propio; si no lo es, el gasto queda sin viaje y en revisión.
 - 201 `GastoDetalle` con su estado real tras leer y validar: `aprobado_auto` o `revision`. La web muestra ese estado, no «aprobado» por haber recibido 201.
 - Misma clave y mismo archivo: 200 con el mismo gasto. Misma clave y otro archivo: 409.
 - Errores: 413, 415, 422.
+
+### `POST /gastos/{id}/justificaciones`
+Cuerpo JSON `{"texto": string}` (3 a 2.000 caracteres) y `X-CSRF-Token`. Añade para qué fue el gasto, con las palabras de la persona. 201 `GastoDetalle` con la justificación nueva al final. Solo justifica quien hizo el gasto o quien viaja: un gasto que la persona ve pero no es suyo (el gestor, administración) responde 403 `FORBIDDEN`; uno que no ve, 404. Texto vacío o muy corto: 422. Las notas de voz entran por la web o por Telegram; ver `docs/justificaciones.md`.
 
 ### `GET /documentos/{id}/contenido`
 El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `application/pdf`; un correo se entrega como `text/plain`), `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto al que pertenece no es visible.

@@ -3,6 +3,7 @@
 El chat nunca decide permisos: solo identifica a la persona. Qué viaje, qué proyecto y qué reglas
 aplican lo resuelve la plataforma, igual que en la web.
 """
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -10,14 +11,15 @@ import httpx
 from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
-from . import acceso, eventos, gastos, viajes
+from . import acceso, eventos, gastos, justificaciones, viajes
 
 API = "https://api.telegram.org"
 VIDA_VINCULO = timedelta(minutes=15)
 AYUDA = ("Envíame la foto o el PDF de un recibo y lo registro en tu viaje.\n"
          "/viaje — ver a qué viaje van tus gastos\n"
          "/viaje V-2026-0001 — fijar otro viaje\n"
-         "También puedes escribir el código del viaje en el pie de la foto, o mandar una nota de voz como evidencia.")
+         "También puedes escribir el código del viaje en el pie de la foto, o mandar una nota de voz como evidencia.\n"
+         "Después de cada recibo te pregunto para qué fue: respóndeme con un mensaje o una nota de voz.")
 
 
 class ErrorTelegram(RuntimeError):
@@ -206,6 +208,9 @@ def _mensaje(m: dict, registro: dict):
 
     viaje, candidatos = viajes.resolver_para_gasto(u, viajes.id_en_texto(texto))
     registro["viaje_id"] = viaje["id"] if viaje else None
+    pendiente = justificaciones.gasto_por_justificar(u["id"]) if not m.get("photo") and not m.get("document") else None
+    if pendiente and (texto or (archivo and archivo[2] == "audio")):
+        return _justificar(u, pendiente, texto, archivo, registro)
     if not archivo:
         if not texto:
             registro["estado"] = "ignorado"
@@ -224,10 +229,34 @@ def _mensaje(m: dict, registro: dict):
     registro["tipo"] = "soporte"
     gid = gastos.registrar(contenido, nombre, "telegram", u, viaje, viajero_id=u["viajero_id"], rapido=True)
     registro["gasto_id"] = gid
+    motivo = " ".join(re.sub(r"\bV-\d{4}-\d{4}\b", " ", texto, flags=re.IGNORECASE).split())
+    justificado = False
+    if len(motivo) >= justificaciones.MINIMO:   # el pie de la foto ya dice para qué fue
+        try:
+            justificaciones.registrar(gid, u, "telegram", motivo)
+            justificado = True
+        except justificaciones.JustificacionRechazada:
+            pass
     botones = [(f"{c['codigo']} · {c['origen']} → {c['destino']} · {c['ida']}", f"v:{gid}:{c['id']}") for c in candidatos[:6]] if not viaje else None
     pie = "\n\n¿A qué viaje pertenece?" if botones else \
         ("\n\nNo tienes un viaje asignado: el gasto quedó en revisión." if not viaje else "")
+    if not justificado:
+        pie += "\n\n" + justificaciones.PREGUNTA
     _responder(registro, _resumen_gasto(gid, viaje) + pie, botones)
+
+
+def _justificar(u: dict, gid: int, texto: str, archivo: tuple | None, registro: dict):
+    """La respuesta a la pregunta del bot: un texto o una nota de voz que justifica el último gasto."""
+    registro.update(tipo="justificacion", gasto_id=gid)
+    audio = descargar(archivo[0]) if archivo else None
+    try:
+        jid = justificaciones.registrar(gid, u, "telegram", texto, audio, archivo[1] if archivo else "nota_de_voz")
+    except justificaciones.JustificacionRechazada as e:
+        registro["estado"] = "rechazado"
+        return _responder(registro, f"No pude guardar la justificación: {e}")
+    j = db.uno("select tipo, texto, transcripcion from justificaciones where id=:i", i=jid)
+    eco = f"\n«{j['texto'][:300]}»" if j["tipo"] == "audio" and j["transcripcion"] == "hecha" and j["texto"] else ""
+    _responder(registro, f"Gracias. Quedó como justificación del gasto #{gid}.{eco}")
 
 
 def _comando_viaje(u: dict, argumento: str, registro: dict):

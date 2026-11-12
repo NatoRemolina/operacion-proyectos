@@ -19,6 +19,11 @@ class Ingreso(BaseModel):
     clave: str = Field(min_length=1, max_length=200)
 
 
+class NuevaJustificacion(BaseModel):
+    """Para qué fue el gasto, con las palabras de la persona."""
+    texto: str = Field(min_length=3, max_length=2000)
+
+
 # ---------- salida ----------
 class Persona(BaseModel):
     id: int
@@ -99,6 +104,15 @@ class Lectura(BaseModel):
     confianza: float | None
 
 
+class Justificacion(BaseModel):
+    id: int
+    tipo: Literal["texto", "audio"]
+    canal: str
+    texto: str | None = Field(description="Lo escrito, o la transcripción de la nota de voz si ya existe.")
+    transcripcion: Literal["no_aplica", "pendiente", "hecha", "fallida"]
+    creado: str
+
+
 class GastoDetalle(GastoResumen):
     subtotal: Dinero
     impuesto: Dinero
@@ -108,6 +122,7 @@ class GastoDetalle(GastoResumen):
     canal: str
     documento_id: int | None
     lectura: Lectura
+    justificaciones: list[Justificacion]
 
 
 class ListaViajes(BaseModel):
