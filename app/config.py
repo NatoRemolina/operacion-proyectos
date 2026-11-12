@@ -52,6 +52,11 @@ TELEGRAM_BOT_TOKEN = _txt("TELEGRAM_BOT_TOKEN")
 TELEGRAM_WEBHOOK_SECRETO = _txt("TELEGRAM_WEBHOOK_SECRETO")
 TELEGRAM_BOT_NOMBRE = _txt("TELEGRAM_BOT_NOMBRE").lstrip("@")
 
+# Índice del asistente en Pinecone (opcional). Sin clave y dirección se usa el índice local por palabras
+PINECONE_API_KEY = _txt("PINECONE_API_KEY")
+PINECONE_INDICE = _txt("PINECONE_INDICE") or "asistente-fichas"
+PINECONE_HOST = _txt("PINECONE_HOST").removeprefix("https://").removeprefix("http://").rstrip("/")
+
 # "local" es el equipo de quien desarrolla o evalúa; cualquier otro valor es un despliegue.
 ENTORNO = _txt("ENTORNO") or ("nube" if os.getenv("SECRETO_ARN") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") else "local")
 LOCAL = ENTORNO == "local"
