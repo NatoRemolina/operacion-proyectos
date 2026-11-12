@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -84,6 +84,27 @@ describe("Tabla", () => {
     expect(within(primera).getByRole("link", { name: "Café del centro" })).toHaveAttribute("href", "/gastos/1");
     expect(within(primera).getByText("Importe")).toBeInTheDocument();
     expect(within(primera).getByRole("button", { name: "Revisar Café del centro" })).toBeInTheDocument();
+  });
+});
+
+describe("Tabla de dos columnas (concepto e importe)", () => {
+  it("en celular es una lista limpia: concepto a la izquierda, importe a la derecha, sin repetir la etiqueta", () => {
+    render(
+      <Tabla
+        titulo="Desglose"
+        filas={[{ id: 1, concepto: "Hotel", valor: "USD 390,00" }]}
+        claveFila={(f) => f.id}
+        columnas={[
+          { clave: "concepto", encabezado: "Concepto", celda: (f) => f.concepto, principal: true },
+          { clave: "valor", encabezado: "Importe", celda: (f) => f.valor, alinear: "fin" },
+        ]}
+      />,
+    );
+    const lista = screen.getByRole("list", { name: "Desglose" });
+    const fila = within(lista).getByRole("listitem");
+    expect(within(fila).getByText("Hotel")).toBeInTheDocument();
+    expect(within(fila).getByText("USD 390,00")).toBeInTheDocument();
+    expect(within(fila).queryByText("Importe")).not.toBeInTheDocument();
   });
 });
 
@@ -236,7 +257,7 @@ describe("Aviso emergente", () => {
     }
   });
 
-  it("se puede cerrar antes", async () => {
+  it("se puede cerrar antes y sale por el mismo camino por el que entró", async () => {
     const usuario = userEvent.setup();
     render(
       <AvisosProvider>
@@ -245,7 +266,12 @@ describe("Aviso emergente", () => {
     );
     await usuario.click(screen.getByRole("button", { name: "Aprobar" }));
     await usuario.click(screen.getByRole("button", { name: "Cerrar aviso" }));
-    expect(screen.queryByText("Presupuesto aprobado.")).not.toBeInTheDocument();
+    // Mientras sale, baja y se desvanece (lo inverso de la entrada); después se quita
+    const aviso = screen.getByText("Presupuesto aprobado.").closest("[data-saliendo]");
+    expect(aviso).not.toBeNull();
+    expect(aviso!.className).toMatch(/translate-y-2/);
+    expect(aviso!.className).toMatch(/opacity-0/);
+    await waitFor(() => expect(screen.queryByText("Presupuesto aprobado.")).not.toBeInTheDocument());
   });
 });
 

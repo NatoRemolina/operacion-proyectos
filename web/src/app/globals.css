@@ -33,6 +33,7 @@
   --neutro-suave: #eef1f5;
   --foco: var(--marca);
   --velo: rgb(17 28 36 / 0.6); /* fondo atenuado tras un diálogo: grafito al 60 % */
+  --material: rgb(255 255 255 / 0.82); /* barra flotante clara sobre el contenido */
   --radio: 0.75rem;
   --ancho-contenido: 60rem;
 }
@@ -47,10 +48,11 @@
   }
 }
 
-/* Transparencia reducida: el velo de los diálogos pasa a casi sólido. */
+/* Transparencia reducida: el velo de los diálogos pasa a casi sólido y los materiales, a sólidos. */
 @media (prefers-reduced-transparency: reduce) {
   :root {
     --velo: rgb(17 28 36 / 0.92);
+    --material: var(--superficie);
   }
 }
 
@@ -110,6 +112,33 @@
   --text-xs--letter-spacing: 0.02em;
   /* Movimiento: entradas y salidas cortas con curva de salida. */
   --ease-salida: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/*
+ * Material de una barra flotante (la de atajos del celular): translúcido y desenfocado, el contenido pasa por
+ * debajo. En vez de una línea dura arriba, un borde claro (la luz sobre el material) y una sombra suave. Con
+ * transparencia reducida queda sólido; con más contraste, un borde definido.
+ */
+@layer components {
+  .material-barra {
+    background: var(--material);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    backdrop-filter: blur(16px) saturate(180%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 -1px 12px rgb(17 28 36 / 0.06);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .material-barra {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+  @media (prefers-contrast: more) {
+    .material-barra {
+      background: var(--superficie);
+      border-top: 1px solid var(--borde-campo);
+      box-shadow: none;
+    }
+  }
 }
 
 @layer base {

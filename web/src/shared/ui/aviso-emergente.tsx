@@ -10,6 +10,8 @@ export interface Aviso {
 }
 
 const DURACION_MS = 6000;
+/** Lo que tarda en salir: el mismo camino que la entrada, al revés (baja y se desvanece). */
+const SALIDA_MS = 200;
 
 const SIMBOLO: Record<Aviso["tono"], string> = { exito: "✓", aviso: "!", error: "✕", info: "i" };
 const BORDE: Record<Aviso["tono"], string> = {
@@ -32,13 +34,17 @@ const AvisosContexto = createContext<(aviso: Aviso) => void>(() => {});
 
 /** Avisos emergentes tras una acción: se anuncian en una región viva y se cierran solos. */
 export function AvisosProvider({ children }: { children: ReactNode }) {
-  const [avisos, setAvisos] = useState<(Aviso & { id: number })[]>([]);
+  const [avisos, setAvisos] = useState<(Aviso & { id: number; saliendo?: boolean })[]>([]);
   const siguiente = useRef(1);
 
   // La región vive sobre el body, fuera de lo que un diálogo deja inerte, para que se anuncie siempre.
   // En el servidor no hay body: el portal se monta solo en el navegador.
   const montado = useSyncExternalStore(sinSuscripcion, () => true, () => false);
-  const cerrar = useCallback((id: number) => setAvisos((actuales) => actuales.filter((a) => a.id !== id)), []);
+  // Cerrar no lo quita de golpe: primero sale por donde entró y después se retira del árbol.
+  const cerrar = useCallback((id: number) => {
+    setAvisos((actuales) => actuales.map((a) => (a.id === id ? { ...a, saliendo: true } : a)));
+    setTimeout(() => setAvisos((actuales) => actuales.filter((a) => a.id !== id)), SALIDA_MS);
+  }, []);
   const avisar = useCallback(
     (aviso: Aviso) => {
       const id = siguiente.current++;
@@ -63,7 +69,10 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
               {avisos.map((a) => (
                 <div
                   key={a.id}
-                  className={`se-mueve pointer-events-auto flex items-start gap-3 rounded-tarjeta border-l-4 bg-superficie p-4 shadow-flotante transition-[translate,opacity] duration-200 ease-salida starting:translate-y-2 starting:opacity-0 contrast-more:border-2 ${BORDE[a.tono]}`}
+                  data-saliendo={a.saliendo ? "" : undefined}
+                  className={`se-mueve pointer-events-auto flex items-start gap-3 rounded-tarjeta border-l-4 bg-superficie p-4 shadow-flotante transition-[translate,opacity] duration-200 ease-salida starting:translate-y-2 starting:opacity-0 contrast-more:border-2 ${
+                    a.saliendo ? "translate-y-2 opacity-0" : ""
+                  } ${BORDE[a.tono]}`}
                 >
                   <span aria-hidden="true" className={`font-bold ${COLOR[a.tono]}`}>
                     {SIMBOLO[a.tono]}

@@ -172,7 +172,8 @@ export function MarcoPrivado({
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="md:hidden" onKeyDown={alTeclear}>
+          {/* Como una barra de navegación: queda arriba al desplazar, sólida en grafito. */}
+          <div className="sticky top-0 z-20 md:hidden" onKeyDown={alTeclear}>
           <header className="zona-oscura flex items-center justify-between gap-3 bg-grafito px-4 py-3 text-sobre-grafito">
             <Marca tamano="pequena" />
             <button
@@ -224,7 +225,7 @@ export function MarcoPrivado({
         <nav
           aria-label="Atajos"
           inert={abierto}
-          className="fixed inset-x-0 bottom-0 z-20 border-t border-linea bg-superficie pb-[env(safe-area-inset-bottom)] md:hidden"
+          className="material-barra fixed inset-x-0 bottom-0 z-20 pb-[env(safe-area-inset-bottom)] md:hidden"
         >
           <ul className="grid" style={{ gridTemplateColumns: `repeat(${Math.max(atajos.length, 1)}, minmax(0, 1fr))` }}>
             {atajos.map((enlace) => {
