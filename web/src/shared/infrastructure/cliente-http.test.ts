@@ -37,6 +37,11 @@ describe("cliente HTTP: códigos de administración", () => {
     expect(error.campos.precio).toBe("antes 410.00 USD, ahora 451.00 USD");
   });
 
+  it("un envío que todavía se procesa pide reintentar con la misma clave: no es un conflicto", async () => {
+    const error = await errorDe(errorApi(409, "REQUEST_IN_PROGRESS"));
+    expect(error.tipo).toBe("en_curso");
+  });
+
   it("un estado que ya no admite la acción y un cambio ajeno tienen su propio tipo", async () => {
     expect((await errorDe(errorApi(409, "INVALID_STATE"))).tipo).toBe("estado_invalido");
     expect((await errorDe(errorApi(409, "EDIT_CONFLICT"))).tipo).toBe("cambio_ajeno");

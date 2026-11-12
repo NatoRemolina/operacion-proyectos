@@ -73,6 +73,9 @@ export function useEnvioRecibo() {
         throw comoErrorDeAplicacion(error);
       }
     },
+    // Si el primer envío con esta clave todavía se procesa, se reintenta solo con la misma clave.
+    retry: (intentos, error) => error.tipo === "en_curso" && intentos < 3,
+    retryDelay: 1200,
     onSuccess: (gasto) => {
       queryClient.setQueryData(claveDePersona(personaId, "gastos", "detalle", gasto.id), gasto);
       // La lista de gastos y la ejecución de los viajes cambian con el nuevo gasto.

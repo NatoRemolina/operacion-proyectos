@@ -16,6 +16,7 @@ export type TipoError =
   | "estado_invalido"
   | "precio_por_confirmar"
   | "cambio_ajeno"
+  | "en_curso"
   | "red"
   | "contrato"
   | "servidor";
@@ -34,6 +35,7 @@ const MENSAJES: Record<TipoError, string> = {
   estado_invalido: "El estado cambió y esa acción ya no aplica. Recarga para ver cómo está.",
   precio_por_confirmar: "El precio del vuelo cambió: confírmalo para aprobar.",
   cambio_ajeno: "Otra persona lo cambió mientras lo veías. Cargamos lo último para que lo revises de nuevo.",
+  en_curso: "El envío anterior todavía se está procesando.",
   red: "No hubo conexión con el servidor.",
   contrato: "El servidor respondió algo inesperado.",
   servidor: "Algo falló en el servidor. Ya quedó registrado.",

@@ -31,6 +31,8 @@ const POR_CODIGO: Record<string, TipoError> = {
   INVALID_STATE: "estado_invalido",
   PRICE_CONFIRMATION_REQUIRED: "precio_por_confirmar",
   EDIT_CONFLICT: "cambio_ajeno",
+  // El primer envío con esa clave aún no creó su gasto: se reintenta con la misma clave, no es un conflicto.
+  REQUEST_IN_PROGRESS: "en_curso",
   INTERNAL_ERROR: "servidor",
 };
 
