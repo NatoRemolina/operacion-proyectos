@@ -8,11 +8,17 @@
 <div class="dos">
   <div class="tarjeta"><h3>Opción elegida</h3>
     <p><b>{{ d.vuelo.aerolinea }} {{ d.vuelo.numeros|join(' + ') }}</b> · {{ decision.tarifa }}<br>{{ d.vuelo.sale }} → {{ d.vuelo.llega }} · {{ 'directo' if d.vuelo.escalas == 0 else d.vuelo.escalas ~ ' escala(s)' }} {{ m.origen(d.origen_vuelo) }}</p>
+    {% if d.regreso %}<p>Regreso: <b>{{ d.regreso.aerolinea }} {{ d.regreso.numeros|join(' + ') }}</b><br>{{ d.regreso.sale }} → {{ d.regreso.llega }} {{ m.origen(d.regreso.origen_dato) }}</p>
+    {% elif d.vuelo.token is defined %}<p class="eti">Sin datos del vuelo de regreso: solo se siguen los tramos de ida.</p>{% endif %}
     {% if d.hotel %}<p><b>{{ d.hotel.nombre }}</b> · {{ noches }} noches {{ m.origen(d.origen_hotel) }}</p>{% else %}<p class="eti">Sin hotel en esta decisión.</p>{% endif %}
     <p class="eti">Consulta de: {{ sol.solicitado_por or '—' }}<br>Motivo: {{ decision.motivo or '—' }}<br>Aprueba: {{ decision.aprobado_por or '—' }}</p></div>
   <div class="tarjeta"><h3>Costo total esperado</h3><div class="num">{{ decision.total|dinero }}</div>
     <p class="eti">Sirve para comparar opciones: incluye el riesgo de cambio y descuenta el valor de las millas. El <b>presupuesto</b> que aprueba administración{% if el_viaje %} ({{ el_viaje.presupuesto_usd|dinero }}){% endif %} es otra cifra: solo lo que se espera pagar, más viáticos.</p></div>
 </div>
+{% set tramos = (d.vuelo.tramos or []) + ((d.regreso or {}).tramos or []) %}{% if tramos %}
+<div class="tarjeta tabla"><h3>Tramos del vuelo</h3><table><tr><th>Vuelo</th><th>Desde</th><th>Hasta</th><th>Sale</th><th>Llega</th></tr>
+{% for t in tramos %}<tr><td><b>{{ t.numero }}</b> <span class="eti">{{ t.aerolinea or '' }}</span></td><td>{{ t.desde or '—' }}</td><td>{{ t.hasta or '—' }}</td><td class="mono">{{ t.sale or '—' }}</td><td class="mono">{{ t.llega or '—' }}</td></tr>{% endfor %}</table>
+<p class="eti">El día del viaje, administración sigue cada tramo en el tablero de viajes.</p></div>{% endif %}
 <div class="tarjeta"><h3>Desglose</h3>{{ m.desglose(d.lineas, decision.total) }}</div>
 <div class="tarjeta"><h3>Por qué</h3><ul>
   <li>{{ d.baterias.texto }}</li>{% if d.aviso %}<li>{{ d.aviso }}</li>{% endif %}{% for a in d.avisos %}<li>{{ a }}</li>{% endfor %}

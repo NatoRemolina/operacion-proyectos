@@ -169,10 +169,51 @@ def impedir_autoaprobacion(entidad: str, entidad_id: int, quien: dict, que: str)
     eventos.registrar(entidad, entidad_id, "autoaprobación impedida", f"{quien['nombre']} intentó {que}", quien["nombre"])
 
 
-def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict) -> tuple[bool, str]:
+SUPERA_TOLERANCIA = "supera la tolerancia"
+
+
+def precio_por_confirmar(viaje_id: int) -> str | None:
+    """El cambio de precio que espera confirmación: el último hecho de precio del viaje es una subida sobre la tolerancia."""
+    e = db.uno("""select paso, detalle from eventos where entidad='viaje' and entidad_id=:v
+                  and paso in ('precio cambió', 'precio nuevo confirmado', 'precio confirmado', 'tramos registrados', 'presupuesto actualizado')
+                  order by id desc limit 1""", v=viaje_id)
+    return e["detalle"] if e and e["paso"] == "precio cambió" and SUPERA_TOLERANCIA in e["detalle"] else None
+
+
+def _reconfirmar_precio(v: dict, quien: dict, confirmado: bool) -> tuple[bool, str]:
+    """Al aprobar se consulta de nuevo el itinerario fijo (una búsqueda). Devuelve (se puede aprobar, texto para el mensaje).
+
+    Si el precio subió más que la tolerancia, administración ve la diferencia y la confirma; al confirmar no se vuelve
+    a pagar la consulta. Sin clave o si la consulta falla, se aprueba con el aviso «precio no reconfirmado»."""
+    from . import precios
+    pendiente = precio_por_confirmar(v["id"])
+    if confirmado and pendiente:
+        eventos.registrar("viaje", v["id"], "precio nuevo confirmado", pendiente, quien["nombre"])
+        return True, ""
+    d = db.uno("select * from decisiones where id=:i", i=v.get("decision_id") or 0)
+    if not d:
+        return True, ""
+    r = precios.reconfirmar(d)
+    if r["estado"] == "sin datos":
+        eventos.registrar("viaje", v["id"], "precio no reconfirmado", r["motivo"] or "", "SerpApi")
+        return True, f" Precio no reconfirmado ({r['motivo']})."
+    if r["estado"] == "confirmado":
+        eventos.registrar("viaje", v["id"], "precio confirmado", f"{r['ahora']:.2f} USD", "SerpApi (en vivo)")
+        return True, f" Precio confirmado: {r['ahora']:.0f} USD."
+    texto = f"antes {r['antes']:.0f} USD, ahora {r['ahora']:.0f} USD ({r['variacion']:+.1%})"
+    tolerancia = costo.supuesto(costo.catalogo(), "tolerancia_precio_aprobacion", 0.05)
+    if r["variacion"] > tolerancia:
+        eventos.registrar("viaje", v["id"], "precio cambió", f"{texto}; {SUPERA_TOLERANCIA} de {tolerancia:.0%}", "SerpApi (en vivo)")
+        return False, (f"El precio del vuelo de {v['codigo']} cambió: {texto}. Supera la tolerancia de {tolerancia:.0%}: "
+                       "confirma el precio nuevo para aprobar.")
+    eventos.registrar("viaje", v["id"], "precio cambió", texto, "SerpApi (en vivo)")
+    return True, f" El precio cambió: {texto}."
+
+
+def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict, confirmar_precio: bool = False) -> tuple[bool, str]:
     """Solo administración mueve el estado, y nadie aprueba ni rechaza su propio presupuesto.
 
-    Devuelve (hecho, mensaje para mostrar).
+    Al aprobar se reconfirma el precio del vuelo. Devuelve (hecho, mensaje para mostrar).
     """
     v = uno(viaje_id)
     if not v or accion not in TRANSICIONES:
@@ -188,7 +229,11 @@ def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict) -> tupl
     motivo = (motivo or "").strip()[:300]
     if accion == "rechazar" and len(motivo) < 5:
         return False, "Para rechazar un presupuesto hay que escribir el motivo."
-    aprobado = hacia == "aprobado"
+    aprobado, aviso_precio = hacia == "aprobado", ""
+    if aprobado:
+        se_puede, aviso_precio = _reconfirmar_precio(v, quien, confirmar_precio)
+        if not se_puede:
+            return False, aviso_precio
     db.actualizar("viajes", viaje_id, estado=hacia, motivo=motivo or None,
                   aprobado_por=quien["id"] if aprobado else None, aprobado_en=db.ahora() if aprobado else None)
     eventos.registrar("viaje", viaje_id, paso, f"{v['codigo']}" + (f" · {motivo}" if motivo else ""), quien["nombre"])
@@ -196,7 +241,7 @@ def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict) -> tupl
     telegram.avisar(v["usuario_id"], f"Viaje {v['codigo']} ({v['origen']} → {v['destino']}, {v['ida']}): {paso}."
                     + (f"\nMotivo: {motivo}" if motivo else "")
                     + (f"\nPresupuesto: {v['presupuesto_usd']:.2f} USD. Ya puedes enviar tus recibos por aquí." if aprobado else ""))
-    return True, f"{v['codigo']}: {paso}."
+    return True, f"{v['codigo']}: {paso}.{aviso_precio}"
 
 
 # ---------- a qué viaje pertenece un gasto ----------

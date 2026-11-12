@@ -53,6 +53,7 @@ def viajes_admin(request: Request, aviso: str = ""):
     todos_ = viajes.lista()
     for v in todos_:   # lo propio no se aprueba aquí: lo hace otra persona de administración
         v["propio"] = viajes.es_propio_de(v, _yo())
+        v["precio_por_confirmar"] = viajes.precio_por_confirmar(v["id"]) if v["estado"] == "pendiente_aprobacion" else None
     return plantillas.TemplateResponse(request, "viajes_admin.html", _ctx(
         hay_otro_admin=viajes.hay_otro_admin(_yo()),
         aviso=aviso[:300], pendientes=[v for v in todos_ if v["estado"] == "pendiente_aprobacion"],
@@ -61,8 +62,9 @@ def viajes_admin(request: Request, aviso: str = ""):
 
 
 @router.post("/admin/viajes/{vid}")
-def viaje_estado(vid: int, accion: str = Form(...), motivo: str = Form(""), volver: str = Form("")):
-    _, mensaje = viajes.cambiar_estado(vid, accion, motivo, _yo())
+def viaje_estado(vid: int, accion: str = Form(...), motivo: str = Form(""), volver: str = Form(""),
+                 confirmar_precio: str = Form("")):
+    _, mensaje = viajes.cambiar_estado(vid, accion, motivo, _yo(), confirmar_precio == "1")
     destino = f"/viaje/{vid}" if volver == "detalle" else "/admin/viajes"
     return RedirectResponse(f"{destino}?aviso={quote(mensaje)}", status_code=303)
 

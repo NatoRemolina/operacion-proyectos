@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import aeropuertos, config, db
-from ..servicios import acceso, agente, costo, eventos, geografia, modelo, precios, viajes
+from ..servicios import acceso, agente, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -275,6 +275,21 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
     if not siguio and len(motivo.strip()) < 5:
         # Cuando la persona se aparta de la recomendación, el porqué es el dato más valioso
         return RedirectResponse(f"/viajes/{sid}?aviso=Elegiste+una+opci%C3%B3n+distinta+a+la+recomendada%3A+cu%C3%A9ntanos+por+qu%C3%A9.", status_code=303)
+    posicion = orden.index(vuelo) + 1
+    # La opción elegida se carga completa: el regreso real y sus opciones de reserva (dos búsquedas; lo ya guardado no se paga)
+    sol = c["sol"]
+    desde_todos, hacia_todos = _codigos(sol, "origen"), _codigos(sol, "destino")
+    regreso = precios.vuelo_regreso(vuelo["v"], desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
+    if regreso:
+        tarifas, origen_t, _ = precios.opciones_reserva(vuelo["v"], regreso, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
+        if tarifas:   # el presupuesto usa la tarifa real; sin ella queda la estimada, que ya dice «(supuesta)»
+            db.actualizar("opciones", vuelo["id"], tarifas={"lista": tarifas, "origen": origen_t})
+            vuelo = {**vuelo, "origen_tarifas": origen_t, "tarifas_lista": tarifas,
+                     "ev": costo.mejor_tarifa(vuelo["v"], tarifas, sol, c["membresias"], costo.catalogo())}
+            orden[posicion - 1] = vuelo
+    else:
+        eventos.registrar("solicitud", sid, "regreso sin datos",
+                          f"{' + '.join(vuelo['v']['numeros'])}: sin vuelo de regreso; se registran solo los tramos de ida", "SerpApi")
     # Las líneas del vuelo van al grupo «vuelo»; las de traslado conservan el suyo (traslados o combustible)
     lineas = [{**l, "grupo": l.get("grupo") or "vuelo"} for l in vuelo["ev"]["lineas"]]
     if hotel:
@@ -286,7 +301,8 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
     total = round(sum(l["valor"] for l in lineas), 2)
     did = db.insertar("decisiones", solicitud_id=sid, proyecto_id=c["sol"]["proyecto_id"], vuelo_id=vuelo_id,
                       hotel_id=hotel["id"] if hotel else None, tarifa=vuelo["ev"]["tarifa"]["nombre"],
-                      desglose={"lineas": lineas, "avisos": vuelo["ev"]["avisos"], "vuelo": vuelo["v"],
+                      desglose={"lineas": lineas, "avisos": vuelo["ev"]["avisos"], "vuelo": vuelo["v"], "regreso": regreso,
+                                "precio_tarifa": vuelo["ev"]["tarifa"]["precio"], "origen_tarifas": vuelo.get("origen_tarifas"),
                                 "hotel": hotel["h"] if hotel else None,
                                 "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
                                 "aviso": c["aviso"], "baterias": c["baterias"],
@@ -294,7 +310,7 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
                       total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=_yo()["id"],
                       razones=razones, recomendado_id=recomendado["id"] if recomendado else None,
-                      siguio_recomendacion=1 if siguio else 0, posicion_elegida=orden.index(vuelo) + 1)
+                      siguio_recomendacion=1 if siguio else 0, posicion_elegida=posicion)
     # Foto de todo lo que se mostró: las reglas y las tarifas pueden cambiar después
     db.insertar_varios("elecciones", [
         {"decision_id": did, "solicitud_id": sid, "opcion_id": o["id"], "tipo": "vuelo", "posicion": i + 1,
@@ -311,7 +327,9 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
          "precio": h["h"]["total"], "costo_esperado": h["h"]["total"],
          "rasgos": {"calificacion": h["h"]["calificacion"], "clase": h["h"]["clase"], "programa": h["programa"]},
          "creado": db.ahora()} for i, h in enumerate(c["hoteles"])])
-    db.actualizar("solicitudes", sid, estado="decidido")
+    # Origen y destino pasan a los aeropuertos reales del vuelo elegido
+    reales = {k: vuelo["v"][campo] for k, campo in (("origen", "desde"), ("destino", "hasta")) if vuelo["v"].get(campo)}
+    db.actualizar("solicitudes", sid, estado="decidido", **reales)
     eventos.registrar("solicitud", sid, "decisión guardada", f"Total previsto {total:.2f} USD (ficha #{did})", aprobado_por or "usuario")
     for l in lineas:
         if l.get("calculo"):   # cada traslado que entra al presupuesto deja su cuenta en la bitácora
@@ -321,7 +339,8 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
                               f"a {k['usd_km']} USD/km ida y vuelta = {l['valor']:.2f} USD; {k['horas']} h a {k['velocidad_kmh']:g} km/h",
                               "reglas editables (supuesto)")
     # La decisión asigna el viaje a la persona: nace con su código y queda a la espera de que administración apruebe el presupuesto
-    viajes.crear_desde_decision(did)
+    el_viaje = viajes.crear_desde_decision(did)
+    monitoreo_vuelos.registrar_tramos(el_viaje["id"], vuelo["v"], regreso)
     return RedirectResponse(f"/viajes/{sid}/ficha", status_code=303)
 
 

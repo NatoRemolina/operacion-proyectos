@@ -51,9 +51,19 @@ def _leer(nombre: str):
     return json.loads(fila["cuerpo"]) if fila else None
 
 
+def _sin_reserva(datos):
+    """La respuesta sin `booking_request` (URL y `post_data`): la plataforma nunca ejecuta una reserva y no lo guarda."""
+    if isinstance(datos, dict):
+        return {k: _sin_reserva(v) for k, v in datos.items() if k != "booking_request"}
+    if isinstance(datos, list):
+        return [_sin_reserva(v) for v in datos]
+    return datos
+
+
 def _guardar(nombre: str, datos: dict):
-    """Una respuesta pagada no se pierde: va a la tabla compartida. El archivo es una copia de conveniencia."""
-    cuerpo = json.dumps(datos, ensure_ascii=False)
+    """Una respuesta pagada no se pierde: va a la tabla compartida. El archivo es una copia de conveniencia.
+    Antes de guardarla se quita lo que serviría para ejecutar una reserva."""
+    cuerpo = json.dumps(_sin_reserva(datos), ensure_ascii=False)
     db.insertar("busquedas", clave=nombre, cuerpo=cuerpo, creado=db.ahora())
     try:
         config.DIR_RESPALDO_ESCRITURA.mkdir(parents=True, exist_ok=True)
@@ -106,6 +116,12 @@ def _vuelo(f: dict) -> dict | None:
         "precio": f.get("price"),
         "notas": f.get("extensions") or [],
         "token": f.get("departure_token"),
+        "booking": f.get("booking_token"),
+        # Cada tramo con su número: el monitoreo del día del viaje los sigue uno por uno
+        "tramos": [{"aerolinea": s.get("airline"), "numero": s.get("flight_number"),
+                    "desde": (s.get("departure_airport") or {}).get("id"), "hasta": (s.get("arrival_airport") or {}).get("id"),
+                    "sale": (s.get("departure_airport") or {}).get("time"), "llega": (s.get("arrival_airport") or {}).get("time")}
+                   for s in tramos],
         # Sin costo de búsquedas: lo que ya trae la respuesta sobre retrasos y escalas
         "a_menudo_retrasado": any(s.get("often_delayed_by_over_30_min") for s in tramos),
         "escalas_detalle": [{"aeropuerto": e.get("id"), "minutos": e.get("duration"), "nocturna": bool(e.get("overnight"))}
@@ -250,38 +266,152 @@ def _tarifa(opcion: dict) -> dict | None:
     }
 
 
+def _clave_vuelo(vuelo: dict) -> str:
+    return "".join(n.replace(" ", "") for n in vuelo.get("numeros") or [])
+
+
+def _guardada(nombre: str, patron: str) -> tuple:
+    """(datos, origen del dato, clave) de una respuesta ya pagada: la misma consulta o, si no, la de otras fechas."""
+    datos = _leer(nombre)
+    if datos is not None:
+        return datos, "guardado", nombre
+    otros = sorted(config.DIR_RESPALDO.glob(patron))
+    if otros:
+        return json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
+    return None, None, None
+
+
+def vuelo_regreso(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str, regreso: str,
+                  solicitud_id: int | None = None) -> dict | None:
+    """El vuelo de regreso real de una opción de ida: una consulta con su `departure_token`.
+
+    Se envían los mismos códigos que la búsqueda original, para aprovechar la caché del proveedor. De los regresos se
+    toman los que salen del aeropuerto real de llegada de la ida y se elige el más barato. Antes de pagar se busca la
+    respuesta guardada (también la de «Traer tarifas» de antes, que guardaba regreso y reserva juntos).
+    None sin token, sin clave ni respuesta guardada, si la consulta falla o si ningún regreso sale de ese aeropuerto."""
+    origen, destino, n_origen, n_destino = ruta(origenes, destinos)
+    clave = _clave_vuelo(vuelo_ida)
+    inicio, nombre = time.perf_counter(), f"regreso_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
+    datos, origen_dato, usada = _guardada(nombre, f"regreso_{n_origen}_{n_destino}_*_{clave}.json")
+    if datos is None:
+        antiguo, origen_dato, usada = _guardada(f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json",
+                                                f"tarifas_{n_origen}_{n_destino}_*_{clave}.json")
+        datos = (antiguo or {}).get("regreso")
+    if datos is None:
+        if not (config.SERPAPI_KEY and vuelo_ida.get("token")):
+            return None
+        try:
+            datos = _consultar({"engine": "google_flights", "departure_id": origen, "arrival_id": destino,
+                                "outbound_date": ida, "return_date": regreso, "departure_token": vuelo_ida["token"]},
+                               "solicitud", solicitud_id, f"regreso para {clave}")
+            _guardar(nombre, datos)
+            origen_dato, usada = "en vivo", nombre
+        except Exception as e:
+            _anotar("regreso", nombre, "fallida", solicitud_id, inicio, error=e)
+            return None
+    candidatos = [v for v in _vuelos(datos) if not vuelo_ida.get("hasta") or v["desde"] == vuelo_ida["hasta"]]
+    _anotar("regreso", usada, origen_dato, solicitud_id, inicio, [v["precio"] for v in candidatos])
+    if not candidatos:
+        return None
+    elegido = min(candidatos, key=lambda v: v["precio"])
+    elegido["origen_dato"] = origen_dato
+    return elegido
+
+
+def opciones_reserva(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
+                     regreso: str, solicitud_id: int | None = None):
+    """Opciones de reserva reales del itinerario (ida más regreso): una consulta con el `booking_token` del regreso.
+    Devuelve (tarifas, origen del dato, precios de equipaje)."""
+    origen, destino, n_origen, n_destino = ruta(origenes, destinos)
+    clave = _clave_vuelo(vuelo_ida)
+    inicio, nombre = time.perf_counter(), f"reserva_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
+    datos, origen_dato, usada = _guardada(nombre, f"reserva_{n_origen}_{n_destino}_*_{clave}.json")
+    if datos is None:
+        antiguo, origen_dato, usada = _guardada(f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json",
+                                                f"tarifas_{n_origen}_{n_destino}_*_{clave}.json")
+        datos = (antiguo or {}).get("reserva")
+    if datos is None:
+        if not (config.SERPAPI_KEY and (vuelo_regreso_ or {}).get("booking")):
+            return [], "sin datos", {}
+        try:
+            datos = _consultar({"engine": "google_flights", "departure_id": origen, "arrival_id": destino,
+                                "outbound_date": ida, "return_date": regreso, "booking_token": vuelo_regreso_["booking"]},
+                               "solicitud", solicitud_id, f"opciones de reserva de {clave}")
+            _guardar(nombre, datos)
+            origen_dato, usada = "en vivo", nombre
+        except Exception as e:
+            _anotar("tarifas", nombre, "fallida", solicitud_id, inicio, error=e)
+            return [], "sin datos", {}
+    tarifas = [t for t in (_tarifa(o) for o in datos.get("booking_options", [])) if t]
+    _anotar("tarifas", usada, origen_dato, solicitud_id, inicio, [t["precio"] for t in tarifas])
+    return tarifas, origen_dato, datos.get("baggage_prices") or {}
+
+
 def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, vuelo: dict,
                      solicitud_id: int | None = None, permitir_en_vivo: bool = False):
-    """Familias tarifarias de un vuelo (dos consultas en vivo). Devuelve (tarifas, origen del dato).
+    """Familias tarifarias de un vuelo. Devuelve (tarifas, origen del dato).
 
-    El regreso se pide con los mismos códigos que la búsqueda original, para aprovechar la caché del proveedor."""
-    origen, destino, n_origen, n_destino = ruta(origen, destino)
-    clave = "".join(n.replace(" ", "") for n in vuelo["numeros"])
-    inicio, nombre = time.perf_counter(), f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
-    datos, origen_dato, usada = _leer(nombre), "guardado", nombre
-    if datos is None:
-        otros = sorted(config.DIR_RESPALDO.glob(f"tarifas_{n_origen}_{n_destino}_*_{clave}.json"))
-        if otros:
-            datos, origen_dato, usada = json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
-    if datos is None and permitir_en_vivo and config.SERPAPI_KEY and vuelo.get("token"):
-        base = {"engine": "google_flights", "departure_id": origen, "arrival_id": destino,
-                "outbound_date": ida, "return_date": regreso}
-        try:
-            vuelta = _consultar({**base, "departure_token": vuelo["token"]}, "solicitud", solicitud_id, f"regreso para {clave}")
-            candidatos = vuelta.get("best_flights", []) + vuelta.get("other_flights", [])
-            reserva = _consultar({**base, "booking_token": candidatos[0]["booking_token"]},
-                                 "solicitud", solicitud_id, f"tarifas de {clave}")
-            datos, origen_dato = {"regreso": vuelta, "reserva": reserva}, "en vivo"
-            _guardar(nombre, datos)
-        except Exception as e:
-            datos = None
-            _anotar("tarifas", nombre, "fallida", solicitud_id, inicio, error=e)
-    if datos is None:
-        # Sin tarifas guardadas y sin permiso para consultar no se buscó nada: se supone la tarifa básica y no hay rastro que dejar
+    Sin permiso para consultar solo se leen las respuestas guardadas (y sin ellas no se buscó nada: no hay rastro que
+    dejar). Con permiso son dos consultas, cada una con su fila en `consultas_buscador`: el regreso y las opciones de reserva."""
+    if not permitir_en_vivo:
+        _, _, n_origen, n_destino = ruta(origen, destino)
+        clave = _clave_vuelo(vuelo)
+        guardadas = [f"{p}_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json" for p in ("reserva", "tarifas")]
+        hay = any(_leer(n) is not None for n in guardadas) or any(
+            next(config.DIR_RESPALDO.glob(f"{p}_{n_origen}_{n_destino}_*_{clave}.json"), None) for p in ("reserva", "tarifas"))
+        if not hay:
+            return [], "sin datos"
+        tarifas, origen_dato, _ = opciones_reserva(vuelo, None, origen, destino, ida, regreso, solicitud_id)
+        return tarifas, origen_dato
+    vuelta = vuelo_regreso(vuelo, origen, destino, ida, regreso, solicitud_id)
+    if not vuelta:
         return [], "sin datos"
-    tarifas = [t for t in (_tarifa(o) for o in datos["reserva"].get("booking_options", [])) if t]
-    _anotar("tarifas", usada, origen_dato, solicitud_id, inicio, [t["precio"] for t in tarifas])
+    tarifas, origen_dato, _ = opciones_reserva(vuelo, vuelta, origen, destino, ida, regreso, solicitud_id)
     return tarifas, origen_dato
+
+
+def _segmentos(vuelo: dict | None) -> list[dict]:
+    """Los tramos de un vuelo como los pide `selected_flights_json`: número sin espacios, aeropuertos y fecha de cada uno."""
+    return [{"flight_number": (s.get("numero") or "").replace(" ", ""), "departure_id": s.get("desde"),
+             "arrival_id": s.get("hasta"), "date": (s.get("sale") or "")[:10]}
+            for s in (vuelo or {}).get("tramos") or [] if s.get("numero") and s.get("desde") and s.get("hasta")]
+
+
+def reconfirmar(decision: dict) -> dict:
+    """Precio vigente del itinerario elegido, fijado tramo por tramo con `selected_flights_json` (una consulta).
+
+    Siempre en vivo: una respuesta guardada no dice el precio de hoy. Compara con la tarifa que usó la decisión (la de
+    mismo nombre, si el proveedor la ofrece; si no, la más barata). Devuelve {"estado": "confirmado" | "cambio" |
+    "sin datos", "antes", "ahora", "variacion" (fracción), "motivo"}."""
+    d = db.de_json(decision.get("desglose"), {}) if isinstance(decision.get("desglose"), str) else decision.get("desglose") or {}
+    antes = d.get("precio_tarifa") or (d.get("vuelo") or {}).get("precio")
+    ida, vuelta = _segmentos(d.get("vuelo")), _segmentos(d.get("regreso"))
+    sin = {"estado": "sin datos", "antes": antes, "ahora": None, "variacion": None}
+    if not config.SERPAPI_KEY:
+        return {**sin, "motivo": "sin clave del buscador"}
+    if not ida:
+        return {**sin, "motivo": "la decisión no tiene los tramos del vuelo"}
+    fijado = {"outbound": ida, **({"return": vuelta} if vuelta else {})}
+    clave = "".join(s["flight_number"] for s in ida + vuelta)
+    inicio = time.perf_counter()
+    nombre = f"reconfirmacion_{clave}_{datetime.now(UTC):%Y%m%d%H%M}.json"
+    try:
+        datos = _consultar({"engine": "google_flights", "type": 1 if vuelta else 2,
+                            "selected_flights_json": json.dumps(fijado, separators=(",", ":"))},
+                           "solicitud", decision.get("solicitud_id"), f"reconfirmación del precio de {clave}")
+        _guardar(nombre, datos)
+    except Exception as e:
+        _anotar("reconfirmacion", nombre, "fallida", decision.get("solicitud_id"), inicio, error=e)
+        return {**sin, "motivo": f"la consulta falló ({str(e)[:80]})"}
+    tarifas = [t for t in (_tarifa(o) for o in datos.get("booking_options", [])) if t]
+    _anotar("reconfirmacion", nombre, "en vivo", decision.get("solicitud_id"), inicio, [t["precio"] for t in tarifas])
+    if not tarifas or not antes:
+        return {**sin, "motivo": "la respuesta no trae opciones de reserva"}
+    misma = [t for t in tarifas if t["nombre"] == decision.get("tarifa")]
+    ahora = min(t["precio"] for t in misma or tarifas)
+    variacion = (ahora - float(antes)) / float(antes)
+    return {"estado": "confirmado" if abs(variacion) < 0.005 else "cambio", "antes": float(antes), "ahora": ahora,
+            "variacion": round(variacion, 4), "motivo": None}
 
 
 def buscar_hoteles(ciudad: str, entrada: str, salida: str, solicitud_id: int | None = None):

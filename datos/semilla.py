@@ -117,6 +117,7 @@ SUPUESTOS_NUEVOS = [
     ("traslado_usd_km", "0.35", "Traslado por carretera sin carro de alquiler (taxi o transfer), ida y vuelta (USD por km)."),
     ("combustible_usd_km", "0.12", "Con carro de alquiler el traslado solo suma combustible y peajes, ida y vuelta (USD por km)."),
     ("costo_cambio_usd", "75", "Cargo por cambiar la fecha cuando el buscador dice «Ticket changes for a fee» (USD)."),
+    ("tolerancia_precio_aprobacion", "0.05", "Si al aprobar el precio reconfirmado del vuelo sube más que esto (0.05 = 5 %), administración lo confirma antes de aprobar."),
     ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
 ]
 
