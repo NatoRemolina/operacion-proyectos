@@ -91,6 +91,10 @@ def test_homonimos_se_distinguen_por_pais(cliente):
     assert jordania and jordania[0] > 0          # el de Jordania aparece, después del de Utah
     assert r[jordania[0]]["region"] == "Ma’an" and r[jordania[0]]["nombre"] == "Qīr Moāv"
     assert r[jordania[0]]["tambien"] == "kir moab"   # por qué coincide: su nombre alterno
+    # San José: el de California y el de Costa Rica, cada uno con su región, su país y sus aeropuertos
+    sanjose = [x for x in _buscar("san jose") if x["tipo"] == "lugar"]
+    assert [(x["region"], x["pais"]) for x in sanjose] == [("California", "Estados Unidos"), ("San José", "Costa Rica")]
+    assert sanjose[0]["aeropuertos"][0]["iata"] == "SJC" and sanjose[1]["aeropuertos"][0]["iata"] == "SJO"
 
 
 def test_codigo_iata_y_pais(cliente):
@@ -236,3 +240,35 @@ def test_sin_pausa_no_se_consulta_google(piloto, monkeypatch):
     piloto.get("/lugares/buscar?q=gimhae")        # búsqueda inmediata: solo local
     piloto.get("/lugares/buscar?q=gi&google=1")   # menos de 3 letras
     assert llamadas == []
+
+
+# ---------- ronda de arreglos 1 ----------
+def test_dos_peticiones_con_el_mismo_aeropuerto_nuevo_no_fallan(piloto, monkeypatch):
+    """Dos pausas casi simultáneas con el mismo aeropuerto que solo trae Google: la segunda no rompe con 500."""
+    from app.servicios import geografia
+    datos = {"suggestions": [{"type": "city", "name": "Jeju", "id": "/g/121z6l6y",
+                              "airports": [{"name": "Jeju International Airport", "id": "CJU", "city": "Jeju"}]}]}
+    real = db.insertar
+    def insertar_tras_otro(tabla, **valores):   # simula que otra petición insertó la misma fila un instante antes
+        if tabla == "aeropuertos_google" and valores.get("iata") == "CJU" and not db.uno("select id from aeropuertos_google where iata='CJU'"):
+            real(tabla, **valores)
+        return real(tabla, **valores)
+    monkeypatch.setattr(db, "insertar", insertar_tras_otro)
+    geografia._anotar_aeropuertos_nuevos(datos, "jeju")
+    assert db.uno("select count(*) n from aeropuertos_google where iata='CJU'")["n"] == 1
+
+
+def test_el_autocompletado_no_cuenta_en_los_indicadores_del_buscador(cliente):
+    from app.servicios import metricas
+    antes = metricas.buscador({})
+    for _ in range(3):
+        db.insertar("consultas_buscador", momento=db.ahora(), tipo="autocompletado", origen="en vivo",
+                    clave="autocompletado_prueba-indicadores", duracion_ms=99999, resultados=0)
+    despues = metricas.buscador({})
+    for clave in ("consultas", "en_vivo", "reutilizadas", "fallidas", "tasa_reutilizacion", "tasa_fallidas", "latencia_mediana_ms"):
+        assert despues[clave] == antes[clave], clave
+    assert all(t != "autocompletado" for t, _ in despues["por_tipo"])
+    # su propio dato: consultas del mes frente al tope
+    auto = despues["autocompletado"]
+    assert auto["mes"] == antes["autocompletado"]["mes"] + 3 and auto["tope_mes"] == 60 and auto["tope_persona_dia"] == 15
+    assert "Autocompletado de Google" in cliente.get("/admin/monitoreo?pestana=cupos").text

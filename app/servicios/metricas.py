@@ -173,9 +173,13 @@ def gastos(f: dict) -> dict:
 
 # ---------- consultas al buscador de precios ----------
 def buscador(f: dict) -> dict:
-    """Cada consulta al buscador deja una fila: en vivo, guardada, guardada de otras fechas o fallida."""
+    """Cada consulta al buscador deja una fila: en vivo, guardada, guardada de otras fechas o fallida.
+
+    El autocompletado de lugares va aparte: sus reutilizaciones no se registran (son pulsaciones), así que mezclado
+    bajaría la tasa de reutilización y movería la latencia. Se muestra como su propio dato, frente a su tope."""
+    from . import geografia
     donde, par = _filtro(f, "momento", vista="v_h_consulta")
-    filas = db.todos(f"select * from v_h_consulta where {donde} order by id", **par)
+    filas = db.todos(f"select * from v_h_consulta where {donde} and tipo<>'autocompletado' order by id", **par)
     origen = Counter(c["origen"] for c in filas)
     vivo, reutilizadas = origen["en vivo"], origen["guardado"] + origen["guardado (otras fechas)"]
     latencias = [c["duracion_ms"] for c in filas if c["origen"] == "en vivo" and c["duracion_ms"] is not None]
@@ -190,6 +194,7 @@ def buscador(f: dict) -> dict:
         "por_ruta": Counter(f"{c['ruta_origen']} → {c['ruta_destino']}" if c["ruta_origen"] else "sin cotización"
                             for c in filas).most_common(8),
         "errores": [(c["momento"], c["tipo"], c["error"]) for c in filas if c["error"]][-10:],
+        "autocompletado": geografia.uso_autocompletado(),
     }
 
 
@@ -229,7 +234,7 @@ def busquedas(f: dict) -> dict:
         "por_ruta": Counter(f"{s['origen']} → {s['destino']}" for s in sols).most_common(8),
         "por_persona": Counter(s["usuario"] or s["solicitado_por"] or "—" for s in sols).most_common(8),
         "consultas_en_vivo": b["en_vivo"], "consultas_reutilizadas": b["reutilizadas"], "consultas_fallidas": b["fallidas"],
-        "tasa_reutilizacion": b["tasa_reutilizacion"],
+        "tasa_reutilizacion": b["tasa_reutilizacion"], "autocompletado": b["autocompletado"],
         "acuerdo": _pct(sum(1 for d in con_dato if d["siguio_recomendacion"]), len(con_dato)),
         "decisiones_con_dato": len(con_dato),
         "razones": [(config.RAZONES.get(r, r), n) for r, n in razones.most_common()],

@@ -46,7 +46,10 @@
   }
 
   // Lista de sugerencias con el patrón «combobox» de ARIA: flechas para moverse, Enter para elegir, Escape para cerrar.
-  function Combo(entrada, alElegir, alEscribir) {
+  // Enter nunca envía el formulario mientras haya sugerencias en camino o a la vista: si la lista aún no llegó, se elige
+  // la primera en cuanto llegue. Con `siempreEnter` (campo de agregar aeropuerto), Enter no envía el formulario nunca.
+  function Combo(entrada, alElegir, alEscribir, opciones) {
+    opciones = opciones || {};
     var lista = nodo('ul');
     lista.id = entrada.id + '-lista';
     lista.setAttribute('role', 'listbox');
@@ -54,6 +57,7 @@
     entrada.setAttribute('aria-controls', lista.id);
     entrada.insertAdjacentElement('afterend', lista);
     var resultados = [], activo = -1, pedidas = 0, pintada = 0, tLocal = null, tGoogle = null;
+    var pendiente = false, elegirAlLlegar = false;
 
     function cerrar() {
       lista.hidden = true;
@@ -122,10 +126,12 @@
           // Una respuesta vieja o de un texto que ya cambió no pisa la lista actual
           if (!d || n < pintada || entrada.value.trim() !== q) return;
           pintada = n;
+          pendiente = false;
           if (d.carretera) carretera = d.carretera;
           pintar(d.resultados || [], d.aviso_google);
+          if (elegirAlLlegar) { elegirAlLlegar = false; if (resultados.length) elegir(0); }
         })
-        .catch(function () { /* sin red: el campo sigue aceptando texto libre */ });
+        .catch(function () { pendiente = false; elegirAlLlegar = false; /* sin red: el campo sigue aceptando texto libre */ });
     }
 
     entrada.addEventListener('input', function () {
@@ -133,6 +139,8 @@
       clearTimeout(tLocal);
       clearTimeout(tGoogle);
       var q = entrada.value.trim();
+      elegirAlLlegar = false;
+      pendiente = q.length >= 2;
       if (q.length < 2) { cerrar(); return; }
       tLocal = setTimeout(function () { pedir(q, false); }, ESPERA_LOCAL);
       if (q.length >= LETRAS_GOOGLE) tGoogle = setTimeout(function () { pedir(q, true); }, ESPERA_GOOGLE);
@@ -142,7 +150,19 @@
       var abierta = !lista.hidden && resultados.length;
       if (e.key === 'ArrowDown' && abierta) { e.preventDefault(); marcar(Math.min(activo + 1, resultados.length - 1)); }
       else if (e.key === 'ArrowUp' && abierta) { e.preventDefault(); marcar(Math.max(activo - 1, 0)); }
-      else if (e.key === 'Enter' && abierta) { e.preventDefault(); elegir(activo >= 0 ? activo : 0); }   // nunca envía el formulario a medias
+      else if (e.key === 'Enter') {
+        if (abierta) { e.preventDefault(); elegir(activo >= 0 ? activo : 0); }   // nunca envía el formulario a medias
+        else if (pendiente) { e.preventDefault(); elegirAlLlegar = true; }      // la lista aún no llega: se elige al llegar
+        else if (!lista.hidden || opciones.siempreEnter) {
+          e.preventDefault();
+          var q = entrada.value.trim();
+          if (opciones.siempreEnter && q.length >= 2) {   // p. ej. «SLC» y Enter con la lista cerrada: se busca y se agrega
+            clearTimeout(tLocal); clearTimeout(tGoogle);
+            pendiente = true; elegirAlLlegar = true;
+            pedir(q, false);
+          }
+        }
+      }
       else if (e.key === 'Escape' && !lista.hidden) { e.preventDefault(); cerrar(); }
     });
     entrada.addEventListener('blur', function () { setTimeout(cerrar, 150); });
@@ -192,6 +212,7 @@
       var etiqueta = nodo('label', null, 'Agregar otro aeropuerto (nombre o código)');
       var campo = nodo('input');
       campo.id = nombre + '-agregar';
+      campo.name = nombre + '_agregar';   // si el formulario se envía con texto aquí, el servidor no cotiza
       etiqueta.htmlFor = campo.id;
       campo.setAttribute('autocomplete', 'off');
       campo.setAttribute('role', 'combobox');
@@ -200,7 +221,7 @@
       otro.appendChild(etiqueta);
       otro.appendChild(campo);
       panel.appendChild(otro);
-      Combo(campo, agregar);
+      Combo(campo, agregar, null, {siempreEnter: true});
       panel.hidden = false;
       actualizar();
     }
@@ -243,7 +264,14 @@
 
     Combo(entrada, elegir, olvidar);
     return {
-      valido: function () { return panel.hidden || ocultoAeros.value !== ''; },
+      valido: function () {
+        var aMedias = panel.querySelector('#' + nombre + '-agregar');
+        if (aMedias && aMedias.value.trim()) {
+          ayuda.textContent = 'Termina de agregar el aeropuerto (elígelo de la lista) o borra ese texto.';
+          return false;
+        }
+        return panel.hidden || ocultoAeros.value !== '';
+      },
       campo: entrada,
     };
   }

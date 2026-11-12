@@ -98,6 +98,7 @@
   {% else %}{{ cifra("Búsquedas restantes", none, "sin clave del buscador o sin respuesta: se trabaja con datos guardados") }}{% endif %}
   {{ cifra("Consultas en vivo", d.busquedas.consultas_en_vivo, d.busquedas.consultas_fallidas ~ " fallidas") }}
   {{ cifra("Respuestas reutilizadas", d.busquedas.consultas_reutilizadas, "no gastaron cupo") }}
+  {% set ac = d.busquedas.autocompletado %}{% if ac %}{{ cifra("Autocompletado de Google este mes", ac.mes, "de " ~ ac.tope_mes ~ " del tope mensual · " ~ ac.tope_persona_dia ~ " por persona y día" ~ (" · apagado (solo datos locales)" if ac.proveedor == "local" else "")) }}{% endif %}
   {{ cifra("Llamadas al modelo hoy", d.modelo_hoy, "fecha en UTC") }}
 </div>
 {{ tabla2("Tamaño de los datos", d.filas, "Tabla", "Filas") }}

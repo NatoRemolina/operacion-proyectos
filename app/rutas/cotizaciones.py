@@ -81,7 +81,12 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen:
                 maleta: str = Form(""), prob_cambio: float = Form(0), carro_dia: float = Form(0),
                 solicitado_por: str = Form(""), viajero_nuevo: str = Form(""), para_otra_persona: str = Form(""),
                 origen_aeropuertos: str = Form(""), destino_aeropuertos: str = Form(""),
-                origen_lugar: str = Form(""), destino_lugar: str = Form("")):
+                origen_lugar: str = Form(""), destino_lugar: str = Form(""),
+                origen_agregar: str = Form(""), destino_agregar: str = Form("")):
+    a_medias = (origen_agregar or destino_agregar).strip()
+    if a_medias:   # quedó texto en «Agregar otro aeropuerto»: no se gasta una búsqueda con una lista que la persona no terminó
+        return RedirectResponse(f"/viajes/nuevo?error=Qued%C3%B3+a+medio+agregar+el+aeropuerto+%22{quote(a_medias[:40])}%22."
+                                "+El%C3%ADgelo+de+la+lista+o+borra+ese+texto+antes+de+buscar.", status_code=303)
     sale, llega = _lado(origen, origen_aeropuertos, origen_lugar), _lado(destino, destino_aeropuertos, destino_lugar)
     if "malo" in sale or "malo" in llega:
         malo = sale.get("malo") if "malo" in sale else llega["malo"]

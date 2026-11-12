@@ -361,3 +361,21 @@ def test_demostracion_miami_a_moab_sin_clave(cliente):
     assert c["vuelos"][0]["v"]["hasta"] == "CNY"
     assert any((v["ev"]["descartada"] or "").startswith("Con el traslado llega a las") for v in c["descartados"])
     assert "Combustible y peajes desde SLC" in cliente.get(f"/viajes/{sid}").text   # el formulario trae carro de alquiler
+
+
+# ---------- ronda de arreglos 1: un aeropuerto a medio agregar no lanza la cotización ----------
+def test_un_aeropuerto_a_medio_agregar_no_cotiza(cliente, monkeypatch, tmp_path):
+    """Respaldo en el servidor: si el formulario llega con texto en «Agregar otro aeropuerto», no se busca nada y
+    se vuelve al formulario (el navegador ya cancela ese Enter; esto cubre un envío que se escape)."""
+    llamadas = _buscador(monkeypatch, tmp_path)
+    antes = db.uno("select count(*) n from solicitudes")["n"]
+    r, _ = _cotizar(cliente, destino="Moab", destino_aeropuertos="CNY,GJT", destino_lugar=json.dumps(MOAB),
+                    destino_agregar="SLC", ida="2027-06-01", regreso="2027-06-04")
+    assert r.status_code == 303 and r.headers["location"].startswith("/viajes/nuevo?error=")
+    assert "SLC" in r.headers["location"]
+    assert llamadas == [] and db.uno("select count(*) n from solicitudes")["n"] == antes
+
+
+def test_el_campo_de_agregar_se_envia_con_nombre(cliente):
+    js = cliente.get("/static/buscador_lugares.js").text
+    assert "'_agregar'" in js and "siempreEnter" in js

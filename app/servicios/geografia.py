@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import Column, Float, Index, Integer, Text
+from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
 from . import eventos
@@ -325,6 +326,15 @@ def proveedor() -> str:
     return (os.getenv("PROVEEDOR_LUGARES") or "local+google").strip().lower()
 
 
+def uso_autocompletado() -> dict:
+    """Consultas de autocompletado que gastaron búsquedas este mes, frente a los topes."""
+    mes = datetime.now(UTC).strftime("%Y-%m-01")
+    n = db.uno("select count(*) n from consultas_buscador where tipo='autocompletado' and origen in ('en vivo', 'fallida') "
+               "and momento>=:m", m=mes)["n"]
+    return {"mes": n, "tope_mes": int(_regla("tope_autocompletado_mes", 60)),
+            "tope_persona_dia": int(_regla("tope_autocompletado_persona_dia", 15)), "proveedor": proveedor()}
+
+
 def _tope_alcanzado(usuario: dict | None) -> bool:
     gastadas = "tipo='autocompletado' and origen in ('en vivo', 'fallida')"
     mes = datetime.now(UTC).strftime("%Y-%m-01")
@@ -352,8 +362,11 @@ def _anotar_aeropuertos_nuevos(datos: dict, q: str):
             iata = (a.get("id") or "").upper()
             if not re.fullmatch(r"[A-Z]{3}", iata) or iata in conocidos or db.uno("select id from aeropuertos_google where iata=:i", i=iata):
                 continue
-            db.insertar("aeropuertos_google", iata=iata, nombre=a.get("name"), ciudad=a.get("city"), kgmid=a.get("city_id"),
-                        consulta=q, visto=db.ahora())
+            try:
+                db.insertar("aeropuertos_google", iata=iata, nombre=a.get("name"), ciudad=a.get("city"), kgmid=a.get("city_id"),
+                            consulta=q, visto=db.ahora())
+            except IntegrityError:
+                continue   # otra petición lo registró un instante antes: ya está, con su evento
             eventos.registrar("aeropuerto", None, "aeropuerto conocido por Google", f"{iata} {a.get('name') or ''} ({a.get('city') or ''})",
                               "SerpApi (autocompletado)")
 
