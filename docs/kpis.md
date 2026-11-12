@@ -57,6 +57,8 @@ Reto 1 es la cotización de viajes; reto 2, los gastos con la mirada de Finanzas
 
 Además del semáforo, el tablero muestra los desgloses que piden los retos: consultas al buscador por origen, tipo, persona y ruta; cotizaciones por persona y por ruta; ejecución del presupuesto por viaje, por proyecto y por grupo de compra (vuelo, hotel, carro, viáticos); gasto aprobado por moneda con su equivalente en USD; y los gastos que más tiempo llevan en revisión.
 
+El gasto por cargo sale en `kpis.por_cargo` (y en la clave `por_cargo` de `/api/kpis`): por cada cargo, los viajes, el gasto aprobado y el gasto en revisión, en USD. El cargo de un viaje es el de su titular; el de un gasto, el del titular de su viaje o, si no tiene viaje, el de quien lo cargó. Las cuentas sin cargo salen como «Sin cargo». Aplica los filtros de proyecto y fechas; el filtro por persona no, porque el desglose es de toda la empresa.
+
 Todos los indicadores aceptan los filtros de proyecto y fechas. Hay dos que no dependen de ellos: el cupo, que es de la cuenta del buscador, y el costo por recibo, que no se reparte por proyecto (igual que en Monitoreo).
 
 ## Tendencia semanal
@@ -72,7 +74,7 @@ Cada consulta al buscador de precios (vuelos, hoteles o tarifas de un vuelo) dej
 | `momento` | Cuándo se hizo (UTC) |
 | `solicitud_id` | Cotización que la pidió; vacío si la pidió el recolector |
 | `usuario_id` | Cuenta que estaba usando la plataforma |
-| `tipo` | `vuelos`, `hoteles` o `tarifas` |
+| `tipo` | `vuelos`, `hoteles`, `tarifas` o `autocompletado` |
 | `origen` | `en vivo`, `guardado`, `guardado (otras fechas)` o `fallida` |
 | `clave` | Nombre de la búsqueda, el mismo de `busquedas.clave` y del archivo en `datos/respaldo/`. Si se usaron otras fechas, el archivo que de verdad se usó |
 | `duracion_ms` | Lo que tardó, incluida la lectura de lo guardado |
@@ -89,9 +91,17 @@ Casos a tener en cuenta al leer las cifras:
 - Una consulta de tarifas en vivo hace dos llamadas al buscador (regreso y reserva) y deja una sola fila; el cupo descuenta dos.
 - Las consultas anteriores a esta tabla solo están en la bitácora (`eventos`, pasos «consulta externa» y «lectura de respaldo»). Desde ahora Monitoreo cuenta las consultas en vivo, reutilizadas y fallidas desde esta tabla, con los mismos filtros de proyecto y fechas.
 
+### Consultas de autocompletado
+
+Las consultas al autocompletado de Google (`tipo = 'autocompletado'`) se muestran aparte y **no entran** en la tasa de reutilización, en la tasa de consultas fallidas ni en la latencia del buscador. Las que se sirven de lo guardado no dejan fila (serían una por pulsación) y, mezcladas, bajarían la tasa de reutilización y moverían la latencia. El tablero las muestra como su propio dato (`autocompletado` en el resumen del buscador): las búsquedas que gastaron este mes (en vivo o fallidas) frente a los topes `tope_autocompletado_mes` (60 por defecto) y `tope_autocompletado_persona_dia` (15), y el proveedor activo (`local` o `local+google`). Cuentan para el cupo mensual del buscador.
+
+### Consultas del estado del vuelo
+
+Se documenta al integrar el monitoreo del vuelo.
+
 ## Ficha por persona
 
-`/admin/kpis/persona/{id}` muestra todo lo de una persona por su código (`P-0007`): rol, sus cotizaciones con las fechas estimadas, sus viajes (`V-2026-0012`) con presupuesto, gastado y en revisión, sus gastos por estado y por canal, sus evidencias, la línea de tiempo de los hechos sobre lo suyo y sus indicadores con el mismo semáforo. La misma información sale de `kpis.ficha_persona(usuario_id)`, para que otras partes de la plataforma la reutilicen.
+`/admin/kpis/persona/{id}` muestra todo lo de una persona por su código (`P-0007`): permiso, cargo, sus cotizaciones con las fechas estimadas, sus viajes (`V-2026-0012`) con presupuesto, gastado y en revisión, sus gastos por estado y por canal, sus evidencias, la línea de tiempo de los hechos sobre lo suyo y sus indicadores con el mismo semáforo. La misma información sale de `kpis.ficha_persona(usuario_id)`, para que otras partes de la plataforma la reutilicen.
 
 A una persona le pertenece lo que la tiene como titular, con la misma regla de `viajes.titular_de`:
 
@@ -102,7 +112,7 @@ A una persona le pertenece lo que la tiene como titular, con la misma regla de `
 | Gasto y evidencia | El titular de su viaje; si no tiene viaje, quien lo cargó |
 | Hecho de la bitácora | La persona dueña de la cotización, viaje o gasto al que se refiere, aunque lo haya registrado otra (por ejemplo, la aprobación) |
 
-Así, si administración cotiza para un piloto, la cotización aparece en la ficha del piloto y no en la de administración. Si se pide un indicador filtrado por persona sobre un hecho sin regla de pertenencia, la consulta falla en lugar de devolver los datos de todos. Ver una ficha deja el evento «ficha consultada».
+Así, si administración cotiza para un colaborador, la cotización aparece en la ficha del colaborador y no en la de administración. Si se pide un indicador filtrado por persona sobre un hecho sin regla de pertenencia, la consulta falla en lugar de devolver los datos de todos. Ver una ficha deja el evento «ficha consultada».
 
 ## Límites
 

@@ -1,0 +1,36 @@
+{
+  "_nota": "Respuesta de ejemplo construida a mano con la forma documentada por el proveedor (https://serpapi.com/direct-answer-box-api, «Flight status answer box»). No es una consulta real: sirve para la demostración y las pruebas sin gastar búsquedas.",
+  "search_metadata": {"status": "Success", "created_at": "2026-12-13 06:00:00 UTC"},
+  "search_parameters": {"engine": "google", "q": "Flight IB5634", "gl": "us", "hl": "en"},
+  "answer_box": {
+    "type": "flight_status",
+    "title": "Iberia IB 5634",
+    "destination": "Madrid to Lisbon",
+    "flight_number": "IB 5634",
+    "flight_status": "Delayed",
+    "latest_update": "Updated 4m ago",
+    "percentage_of_flight_progress": 0,
+    "sources": [
+      {"name": "Cirium", "link": "https://www.flightstats.com/v2/flight-tracker/IB/5634?year=2026&month=12&date=13"},
+      {"name": "FlightAware", "link": "https://flightaware.com/live/flight/IBE5634"}
+    ],
+    "departure": {
+      "airport_name": "MAD",
+      "planned_time": "9:05 AM",
+      "actual_time": "9:25 AM",
+      "terminal": "4",
+      "gate": "J58",
+      "location": "Madrid",
+      "date": "Sun, Dec 13"
+    },
+    "arrival": {
+      "airport_name": "LIS",
+      "planned_time": "9:30 AM",
+      "actual_time": "9:48 AM",
+      "terminal": "1",
+      "gate": "-",
+      "location": "Lisbon",
+      "date": "Sun, Dec 13"
+    }
+  }
+}

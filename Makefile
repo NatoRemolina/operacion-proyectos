@@ -1,9 +1,9 @@
 # Tareas habituales. `make` sin argumentos las lista.
 PY := .venv/bin/python
 
-.PHONY: ayuda instalar ejecutar probar revisar comprobar migrar geografia entorno entorno-web entorno-abajo
+.PHONY: ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo
 ayuda:            ## Lista las tareas
-	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
 
 instalar:         ## Crea el entorno e instala dependencias de desarrollo
 	python3 -m venv .venv && $(PY) -m pip install -r requirements-dev.txt
@@ -13,6 +13,10 @@ ejecutar:         ## Arranca la plataforma en http://localhost:8000
 
 probar:           ## Corre las pruebas (no usan claves ni la base real)
 	$(PY) -m pytest -q
+
+probar-postgres:  ## Las mismas pruebas contra una base nueva en el PostgreSQL de Docker (make entorno antes)
+	docker compose exec -T db psql -U operacion -d operacion -q -c "drop database if exists pruebas_pg" -c "create database pruebas_pg"
+	PRUEBAS_DATABASE_URL=postgresql://operacion:operacion-local@127.0.0.1:5433/pruebas_pg $(PY) -m pytest -q -p no:cacheprovider
 
 revisar:          ## Revisión estática del código
 	$(PY) -m ruff check .
@@ -33,3 +37,6 @@ entorno-web:      ## Además la web nueva y el gateway (http://127.0.0.1:8088)
 
 entorno-abajo:    ## Detiene el entorno local; los datos de demostración se conservan
 	docker compose --profile web down
+
+demo-monitoreo:   ## Prepara en el entorno local el viaje IB 5634 del 13 dic para ver el monitoreo (fijar MONITOREO_AHORA)
+	docker compose exec app python -m datos.demo_monitoreo

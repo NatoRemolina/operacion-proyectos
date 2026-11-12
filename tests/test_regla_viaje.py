@@ -56,7 +56,9 @@ def test_solo_administracion_mueve_el_estado(cliente, piloto, nuevo_viaje):
     aprobado = viajes.uno(v["id"])
     assert aprobado["estado"] == "aprobado" and aprobado["aprobado_por"] and aprobado["aprobado_en"]
     pasos = [e["paso"] for e in db.todos("select paso from eventos where entidad='viaje' and entidad_id=:i order by id", i=v["id"])]
-    assert pasos == ["viaje creado", "presupuesto rechazado", "viaje reabierto", "presupuesto aprobado"]
+    # al decidir se registran los tramos; al aprobar sin clave del buscador el precio queda sin reconfirmar, y se dice
+    assert pasos == ["viaje creado", "tramos registrados", "presupuesto rechazado", "viaje reabierto", "precio no reconfirmado",
+                     "presupuesto aprobado"]
 
 
 def test_cada_gasto_responde_al_estado_de_su_viaje(cliente, ejemplos, nuevo_viaje):

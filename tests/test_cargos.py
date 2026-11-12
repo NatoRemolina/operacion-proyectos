@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from starlette.testclient import TestClient
 
-from app import db
+from app import config, db
 from app.main import app
 from app.servicios import acceso
 from datos import migracion
@@ -28,7 +28,12 @@ def _formulario_de_creacion(html: str) -> str:
 
 def test_la_migracion_pasa_piloto_a_colaborador_con_su_cargo():
     # Se simula una base anterior: la restricción solo admite «piloto», sin cargos y sin perfil para gestión y administración
-    migracion._rehacer_usuarios_sqlite(("piloto", "gestor", "admin"), {"colaborador": "piloto"})
+    if config.ES_SQLITE:
+        migracion._rehacer_usuarios_sqlite(("piloto", "gestor", "admin"), {"colaborador": "piloto"})
+    else:   # PostgreSQL (PRUEBAS_DATABASE_URL): la restricción de antes y los permisos de antes
+        db.ejecutar("alter table usuarios drop constraint ck_usuarios_rol")
+        db.ejecutar("update usuarios set rol='piloto' where rol='colaborador'")
+        db.ejecutar("alter table usuarios add constraint ck_usuarios_rol check (rol in ('piloto','gestor','admin'))")
     db.ejecutar("update usuarios set cargo_id=null where correo in ('piloto@demo.local','piloto2@demo.local')")
     assert db.uno("select rol from usuarios where correo='piloto@demo.local'")["rol"] == "piloto"
     antes = db.uno("select count(*) n from eventos where paso='permiso migrado'")["n"]

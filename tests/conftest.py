@@ -8,8 +8,12 @@ import tempfile
 from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp(prefix="pruebas_"))
+# PRUEBAS_DATABASE_URL apunta a un PostgreSQL desechable y vacío (por ejemplo, una base nueva en el
+# contenedor de docker-compose.yml) para correr las mismas pruebas con el motor de producción.
+_pg = os.getenv("PRUEBAS_DATABASE_URL", "")
 os.environ.update({
-    "ENTORNO": "local", "DATABASE_URL": f"sqlite:///{_tmp / 'pruebas.db'}",
+    "ENTORNO": "local", "DATABASE_URL": _pg or f"sqlite:///{_tmp / 'pruebas.db'}",
+    "PREPARAR_BASE_LOCAL": "1" if _pg else "", "CUENTAS_DEMO": "1" if _pg else "",
     "SERPAPI_KEY": "", "MODELO_API_URL": "", "MODELO_API_KEY": "", "MODELO_NOMBRE": "",
     "SUPABASE_URL": "", "SUPABASE_SERVICE_KEY": "", "APP_CLAVE": "", "SECRETO_ARN": "",
     # La semilla carga un subconjunto pequeño de los datos geográficos, no el mundo entero

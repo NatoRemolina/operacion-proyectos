@@ -83,7 +83,9 @@ def _por_nombre(f: dict) -> dict:
 def test_una_cotizacion_deja_rastro_de_cada_consulta(nuevo_viaje):
     sid = nuevo_viaje(aprobar=False)["solicitud_id"]   # caso Miami–Las Vegas con las respuestas guardadas
     filas = db.todos("select * from consultas_buscador where solicitud_id=:s order by id", s=sid)
-    assert {(c["tipo"], c["origen"]) for c in filas} == {("vuelos", "guardado"), ("tarifas", "guardado"), ("hoteles", "guardado")}
+    # al decidir, el regreso de la opción elegida también deja su fila (leído de la respuesta guardada)
+    assert {(c["tipo"], c["origen"]) for c in filas} == {("vuelos", "guardado"), ("tarifas", "guardado"), ("hoteles", "guardado"),
+                                                         ("regreso", "guardado")}
     vuelos = next(c for c in filas if c["tipo"] == "vuelos")
     assert vuelos["clave"] == "vuelos_MIA_LAS_2026-12-08_2026-12-11.json" and (config.DIR_RESPALDO / vuelos["clave"]).is_file()
     assert vuelos["resultados"] > 0 and vuelos["precio_min"] <= vuelos["precio_mediana"] and vuelos["error"] is None

@@ -46,6 +46,10 @@ services:
       SECRETO_ARN: ""
       TELEGRAM_BOT_TOKEN: ""
       PINECONE_API_KEY: ""
+      # Demostración del monitoreo del vuelo: fija el «ahora» (UTC) dentro de la ventana del vuelo IB 5634 del 13 de
+      # diciembre de 2026 que prepara `make demo-monitoreo`. Solo se respeta con ENTORNO=local; sin ella, la hora real.
+      # Para usarla, quitar el comentario y recrear el servicio: docker compose up -d app
+      # MONITOREO_AHORA: "2026-12-13T06:00"
     ports: ["127.0.0.1:8000:8080"]
     volumes: [soportes:/srv/datos/archivos]   # los recibos cargados sobreviven a un reinicio
     healthcheck:

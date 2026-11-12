@@ -15,8 +15,8 @@ def test_carga_idempotente_del_subconjunto(cliente):
     # dos cargas, dos filas por archivo: ninguna carga pasa sin registro
     filas = db.todos("select resultado from cargas_datos where id>:i and archivo='aeropuertos.csv' order by id", i=antes)
     assert [f["resultado"] for f in filas] == ["sin cambios", "sin cambios"]   # la semilla ya lo había cargado
-    assert primera == segunda == {"aeropuertos": 18, "lugares": 16, "paises": 7}
-    for tabla, n in (("aeropuertos_mundo", 18), ("lugares", 16), ("paises", 7)):
+    assert primera == segunda == {"aeropuertos": 22, "lugares": 20, "paises": 8}
+    for tabla, n in (("aeropuertos_mundo", 22), ("lugares", 20), ("paises", 8)):
         assert db.uno(f"select count(*) n from {tabla}")["n"] == n  # noqa: S608
     assert db.uno("select nombre_es from paises where codigo='US'")["nombre_es"] == "Estados Unidos"
     moab = db.uno("select * from lugares where id=5543307")
@@ -36,7 +36,7 @@ def test_cada_carga_queda_registrada_aunque_no_cambie_nada(cliente):
     assert {f["quien"] for f in nuevas} == {"Pruebas"}
     lugares = next(f for f in nuevas if f["archivo"] == "lugares.csv.gz")
     assert lugares["url"].endswith("cities1000.zip") and "GeoNames" in lugares["fuente"]
-    assert len(lugares["huella"]) == 64 and lugares["filas"] == 16
+    assert len(lugares["huella"]) == 64 and lugares["filas"] == 20
     # la primera carga de cada archivo quedó como «cargada», con la misma huella
     primera = db.uno("select huella from cargas_datos where archivo='lugares.csv.gz' and resultado='cargada' order by id limit 1")
     assert primera["huella"] == lugares["huella"]
@@ -53,11 +53,11 @@ def test_un_archivo_que_cambia_se_vuelve_a_cargar(cliente, tmp_path):
     texto = (tmp_path / "aeropuertos.csv").read_text()
     (tmp_path / "aeropuertos.csv").write_text("\n".join(l for l in texto.splitlines() if not l.startswith("NDJ,")) + "\n")
     try:
-        assert geografia.cargar(tmp_path)["aeropuertos"] == 17
+        assert geografia.cargar(tmp_path)["aeropuertos"] == 21
         ultima = db.uno("select * from cargas_datos where archivo='aeropuertos.csv' order by id desc limit 1")
-        assert (ultima["resultado"], ultima["filas"]) == ("cargada", 17)
+        assert (ultima["resultado"], ultima["filas"]) == ("cargada", 21)
     finally:
-        assert geografia.cargar(MINI)["aeropuertos"] == 18
+        assert geografia.cargar(MINI)["aeropuertos"] == 22
 
 
 def test_normalizar():

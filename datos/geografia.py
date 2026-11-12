@@ -5,6 +5,8 @@ Uso:
     python -m datos.geografia --desde CARPETA    usa archivos ya descargados (airports.csv, countries.csv,
                                                  cities1000.zip, admin1CodesASCII.txt)
     python -m datos.geografia --mini             rehace el subconjunto de pruebas desde datos/geografia/
+    python -m datos.geografia --zonas ZIP        añade la zona horaria de GeoNames a datos/geografia/lugares.csv.gz
+                                                 desde un cities1000.zip descargado, sin cambiar las demás columnas
 
 Los archivos resultantes se versionan: la demostración y la carga inicial no dependen de internet.
 Fuentes: OurAirports (dominio público) y GeoNames (CC BY 4.0). Los nombres de países en español salen del
@@ -38,7 +40,7 @@ DESCARGAS = {
 TIPOS = {"large_airport", "medium_airport", "small_airport"}
 
 # Columnas de cities1000.txt (formato de GeoNames, separado por tabuladores)
-G_ID, G_NOMBRE, G_ASCII, G_ALTERNOS, G_LAT, G_LON, G_PAIS, G_ADMIN1, G_POBLACION = 0, 1, 2, 3, 4, 5, 8, 10, 14
+G_ID, G_NOMBRE, G_ASCII, G_ALTERNOS, G_LAT, G_LON, G_PAIS, G_ADMIN1, G_POBLACION, G_ZONA = 0, 1, 2, 3, 4, 5, 8, 10, 14, 17
 
 
 def huella(archivo: Path) -> str:
@@ -112,17 +114,32 @@ def preparar(origen: Path, destino: Path) -> dict:
     filas.sort(key=lambda r: int(r[G_ID]))
     buffer = io.StringIO()
     w = csv.writer(buffer)
-    w.writerow(["id", "nombre", "buscable", "pais", "region", "lat", "lon", "poblacion"])
+    w.writerow(["id", "nombre", "buscable", "pais", "region", "lat", "lon", "poblacion", "zona"])
     for r in filas:
         w.writerow([r[G_ID], r[G_NOMBRE], _alternos(r[G_NOMBRE], r[G_ASCII], r[G_ALTERNOS]), r[G_PAIS],
                     f"{r[G_PAIS]}.{r[G_ADMIN1]}" if r[G_ADMIN1] else "", round(float(r[G_LAT]), 5),
-                    round(float(r[G_LON]), 5), int(r[G_POBLACION] or 0)])
+                    round(float(r[G_LON]), 5), int(r[G_POBLACION] or 0), r[G_ZONA]])
     # mtime=0: el mismo contenido produce el mismo archivo y la misma huella
     (destino / "lugares.csv.gz").write_bytes(gzip.compress(buffer.getvalue().encode("utf-8"), mtime=0))
 
     conteo = {"aeropuertos": len(aeropuertos), "lugares": len(filas), "paises": len(paises), "regiones": len(regiones)}
     _fuentes(origen, destino, conteo)
     return conteo
+
+
+def zonas(cities1000: Path, archivo: Path = DESTINO / "lugares.csv.gz") -> int:
+    """Añade (o rehace) la columna `zona` (zona horaria IANA de GeoNames) a un lugares.csv.gz ya preparado, por el id de
+    cada lugar. Las demás columnas no cambian. Devuelve cuántos lugares quedaron sin zona."""
+    with zipfile.ZipFile(cities1000) as z, z.open("cities1000.txt") as crudo:
+        zona = {int(r[G_ID]): r[G_ZONA] for r in (linea.rstrip("\n").split("\t") for linea in io.TextIOWrapper(crudo, encoding="utf-8"))}
+    with gzip.open(archivo, "rt", encoding="utf-8") as f:
+        filas = list(csv.reader(f))
+    cabecera = filas[0][:8] + ["zona"]
+    cuerpo = [r[:8] + [zona.get(int(r[0]), "")] for r in filas[1:]]
+    buffer = io.StringIO()
+    csv.writer(buffer).writerows([cabecera] + cuerpo)
+    archivo.write_bytes(gzip.compress(buffer.getvalue().encode("utf-8"), mtime=0))
+    return sum(1 for r in cuerpo if not r[8])
 
 
 def _fuentes(origen: Path, destino: Path, conteo: dict) -> None:
@@ -137,7 +154,7 @@ def _fuentes(origen: Path, destino: Path, conteo: dict) -> None:
         "- **Lugares y regiones:** [GeoNames](https://www.geonames.org/), licencia "
         "[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Ciudades y pueblos de más de 1.000 habitantes "
         "(`cities1000`). Cambios: se conservan nombre, nombres alternativos en alfabeto latino (de 3 a 40 letras), "
-        "país, región, coordenadas y población.",
+        "país, región, coordenadas, población y zona horaria.",
         "- **Nombres de países en español:** estándar ICU, con `Intl.DisplayNames` de Node.",
         "",
         "## Archivos descargados",
@@ -156,12 +173,13 @@ def _fuentes(origen: Path, destino: Path, conteo: dict) -> None:
 
 # Subconjunto de pruebas: lo justo para los casos del buscador (homónimos, lugar aislado, país, pueblo sin aeropuerto)
 MINI_AEROPUERTOS = {"CNY", "GJT", "SLC", "LIS", "OPO", "FAO", "BOG", "MDE", "MIA", "LAS", "MAD", "BIO", "AMM", "AQJ", "JFK",
-                    "SJO", "SJC", "NDJ"}
+                    "SJO", "SJC", "NDJ", "MOB", "PNS", "ELP", "IGU"}
 # Moab (Utah), Qīr Moāv y Ar Rabbah (Jordania, con «Moab» entre sus nombres), Three Rivers (Míchigan, alterno «Moab»),
 # Lisboa, Oporto, Villa de Leyva, Bogotá, Miami, Las Vegas, San José (Costa Rica y California), Madrid, Nueva York,
-# Portugalete y Am Timan (Chad: sin aeropuertos con vuelos regulares a menos de 400 km)
+# Portugalete y Am Timan (Chad: sin aeropuertos con vuelos regulares a menos de 400 km); para las zonas horarias cerca
+# de una frontera horaria: Mobile y Pensacola (hora central), El Paso (montaña) y Foz do Iguaçu (Brasil)
 MINI_LUGARES = {5543307, 250624, 250345, 5012194, 2267057, 2735943, 3666003, 3688689, 4164138, 5506956, 3621849, 5392171,
-                3117735, 5128581, 3113082, 245338}
+                3117735, 5128581, 3113082, 245338, 4076598, 4168228, 5520993, 3463030}
 
 
 def mini(completo: Path = DESTINO, destino: Path = MINI) -> None:
@@ -189,8 +207,11 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--desde", type=Path, help="carpeta con los archivos ya descargados")
     p.add_argument("--mini", action="store_true", help="rehace el subconjunto de pruebas")
+    p.add_argument("--zonas", type=Path, help="cities1000.zip descargado: añade la zona horaria a lugares.csv.gz")
     a = p.parse_args()
-    if a.mini:
+    if a.zonas:
+        print(f"Lugares sin zona: {zonas(a.zonas)}")
+    elif a.mini:
         mini()
         print(f"Subconjunto escrito en {MINI}")
     elif a.desde:
