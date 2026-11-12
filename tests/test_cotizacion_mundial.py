@@ -200,3 +200,144 @@ def test_parametros_estables_para_la_cache_del_proveedor(cliente, monkeypatch, t
     assert primera == segunda and primera["arrival_id"] == "CNY,GJT,SLC"
     assert all("no_cache" not in p for p in llamadas)
     assert (tmp_path / nombre).is_file()
+
+
+# ---------- tarea 9: el traslado por carretera en el costo ----------
+def _aeropuerto(iata):
+    from app.servicios import geografia
+    return geografia.aeropuerto(iata)
+
+
+def _sol(**cambios):
+    base = {"baterias_n": 0, "baterias_wh": 0, "maleta": 0, "prob_cambio": 0, "llegar_antes": None, "carro_dia": 0,
+            "origen_lugar": None, "destino_lugar": json.dumps(MOAB)}
+    return {**base, **cambios}
+
+
+def _vuelo_simple(hasta="SLC", llega="2027-01-12 15:10", **extra):
+    return {"aerolinea": "Delta", "numeros": ["DL 9"], "sale": "2027-01-12 08:00", "llega": llega, "desde": "MIA",
+            "hasta": hasta, "escalas": 0, "duracion_min": 430, "precio": 400.0, "notas": [], **extra}
+
+
+def test_traslado_suma_y_cambia_el_orden(cliente, monkeypatch, tmp_path):
+    from app.main import _comparacion
+    _buscador(monkeypatch, tmp_path)   # SLC 120 USD más barato que CNY
+    _, sid = _cotizar(cliente, destino="Moab, Utah, Estados Unidos", destino_aeropuertos="CNY,GJT,SLC",
+                      destino_lugar=json.dumps(MOAB), ida="2027-04-06", regreso="2027-04-09", llegar_antes="",
+                      carro_dia=0, prob_cambio=0, baterias_n=0, maleta="")
+    c = _comparacion(sid)
+    assert [v["v"]["hasta"] for v in c["vuelos"]] == ["CNY", "SLC"]
+    assert c["mas_barato"]["v"]["hasta"] == "SLC"
+    slc = c["vuelos"][1]["ev"]["lineas"]
+    linea = next(l for l in slc if l["concepto"].startswith("Traslado por carretera desde SLC"))
+    assert linea["origen"] == "supuesto" and linea["grupo"] == "traslados"
+    assert 410 < linea["calculo"]["km_carretera"] < 430 and 280 < linea["valor"] < 300   # unos 420 km x 0,35 x 2
+    assert "(419 km, unas 6 h)" in linea["concepto"]
+    # trazabilidad: de dónde sale la línea
+    assert linea["calculo"]["factor"] == 1.3 and linea["calculo"]["usd_km"] == 0.35 and linea["calculo"]["velocidad_kmh"] == 70
+    assert linea["calculo"]["ida_y_vuelta"] is True and 315 < linea["calculo"]["km_linea_recta"] < 330
+    # CNY está a menos de 30 km de Moab: sin línea de traslado
+    assert not any("Traslado" in l["concepto"] for l in c["vuelos"][0]["ev"]["lineas"])
+    pagina = cliente.get(f"/viajes/{sid}").text
+    assert "Traslado por carretera desde SLC" in pagina
+
+
+def test_con_carro_solo_combustible(cliente):
+    from app.servicios import costo
+    t = costo.traslado(_aeropuerto("SLC"), MOAB, True, costo.catalogo())
+    assert t["concepto"].startswith("Combustible y peajes desde SLC (") and t["grupo"] == "combustible"
+    assert t["valor"] == round(t["calculo"]["km_carretera"] * 0.12 * 2, 2) and t["calculo"]["usd_km"] == 0.12
+    # y al evaluar con carro_dia > 0, la línea de llegada es la de combustible
+    ev = costo.evaluar(_vuelo_simple(), costo.tarifa_supuesta(_vuelo_simple(), costo.catalogo()), _sol(carro_dia=60), [], costo.catalogo())
+    assert any(l["concepto"].startswith("Combustible y peajes desde SLC") and l["grupo"] == "combustible" for l in ev["lineas"])
+    assert not any(l["concepto"].startswith("Traslado") for l in ev["lineas"])
+
+
+def test_bajo_30_km_no_hay_linea(cliente):
+    from app.servicios import costo
+    cerca = {"iata": "XXX", "lat": MOAB["lat"] + 0.18, "lon": MOAB["lon"]}   # unos 20 km
+    assert costo.traslado(cerca, MOAB, False, costo.catalogo()) is None
+    assert costo.traslado(_aeropuerto("SLC"), None, False, costo.catalogo()) is None     # sin lugar no hay traslado
+    assert costo.traslado(None, MOAB, False, costo.catalogo()) is None                   # aeropuerto sin coordenadas
+
+
+def test_traslado_y_hora_limite_con_cambio_de_dia(cliente):
+    """Punto de atención 4: llegada 22:40 + 3 h de traslado frente a la hora límite del día siguiente."""
+    from app.servicios import costo
+    slc = _aeropuerto("SLC")
+    lugar = {"nombre": "A tres horas", "region": "", "pais": "", "lat": slc["lat"] + 1.452, "lon": slc["lon"]}
+    cat = costo.catalogo()
+    assert costo.traslado(slc, lugar, False, cat)["horas"] == 3.0
+    vuelo = _vuelo_simple(llega="2027-01-12 22:40")
+    tarifa = costo.tarifa_supuesta(vuelo, cat)
+    llega_bien = costo.evaluar(vuelo, tarifa, _sol(destino_lugar=lugar, llegar_antes="2027-01-13T16:00"), [], cat)
+    assert llega_bien["descartada"] is None
+    tarde = costo.evaluar(vuelo, tarifa, _sol(destino_lugar=lugar, llegar_antes="2027-01-13T01:00"), [], cat)
+    assert tarde["descartada"] == "Con el traslado llega a las 01:40, después de la hora límite."
+    # sin traslado, la misma llegada cumple ese límite: lo que la descarta es el traslado
+    assert costo.evaluar(vuelo, tarifa, _sol(destino_lugar=None, llegar_antes="2027-01-13T01:00"), [], cat)["descartada"] is None
+
+
+def test_el_presupuesto_incluye_el_traslado(cliente, monkeypatch, tmp_path):
+    from app.main import _comparacion
+    from app.servicios import viajes
+    _buscador(monkeypatch, tmp_path)
+    _, sid = _cotizar(cliente, destino="Moab, Utah, Estados Unidos", destino_aeropuertos="CNY,GJT,SLC",
+                      destino_lugar=json.dumps(MOAB), ida="2027-05-04", regreso="2027-05-07", llegar_antes="",
+                      carro_dia=0, prob_cambio=0, baterias_n=0, maleta="")
+    slc = next(v for v in _comparacion(sid)["vuelos"] if v["v"]["hasta"] == "SLC")
+    cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": slc["id"], "motivo": "Prueba del traslado desde Salt Lake City",
+                                                 "razones": ["horario"]})
+    v = viajes.de_solicitud(sid)
+    detalle = db.de_json(v["presupuesto_detalle"]) if isinstance(v["presupuesto_detalle"], str) else v["presupuesto_detalle"]
+    traslado = [l for l in detalle if l["grupo"] == "traslados"]
+    assert len(traslado) == 1 and traslado[0]["concepto"].startswith("Traslado por carretera desde SLC")
+    assert v["presupuesto_usd"] == round(sum(l["valor"] for l in detalle), 2)
+    # la decisión guarda el cálculo completo y deja su evento
+    d = db.de_json(db.uno("select desglose from decisiones where solicitud_id=:i order by id desc", i=sid)["desglose"])
+    linea = next(l for l in d["lineas"] if l["grupo"] == "traslados")
+    assert linea["calculo"]["factor"] == 1.3 and linea["origen"] == "supuesto"
+    ev = db.uno("select detalle from eventos where entidad='solicitud' and entidad_id=:i and paso='traslado calculado'", i=sid)
+    assert ev and "SLC" in ev["detalle"] and "x 1.3" in ev["detalle"] and "0.35 USD/km" in ev["detalle"]
+
+
+# ---------- sin costo de búsquedas: lo que ya traen las respuestas ----------
+def test_las_condiciones_del_itinerario_corrigen_la_tarifa_supuesta(cliente):
+    from app.servicios import costo
+    cat = costo.catalogo()
+    t = costo.tarifa_supuesta(_vuelo_simple(notas=["Free change, possible fare difference", "1 checked bag included",
+                                                   "Full refund for cancellations"]), cat)
+    assert t["permite_cambio"] and t["reembolsable"] and t["maleta"] == 0 and t["cargo_cambio"] == 0
+    ev = costo.evaluar(_vuelo_simple(), t, _sol(maleta=1, prob_cambio=0.25), [], cat)
+    maleta = next(l for l in ev["lineas"] if l["concepto"].startswith("Maleta facturada"))
+    assert maleta["valor"] == 0 and maleta["origen"] == "buscador"
+    con_cargo = costo.tarifa_supuesta(_vuelo_simple(notas=["Ticket changes for a fee"]), cat)
+    assert con_cargo["permite_cambio"] and con_cargo["cargo_cambio"] == 75
+    riesgo = next(l for l in costo.evaluar(_vuelo_simple(), con_cargo, _sol(prob_cambio=0.25), [], cat)["lineas"]
+                  if l["concepto"].startswith("Riesgo de cambio"))
+    assert riesgo["valor"] == round(0.25 * (60 + 75), 2) and "cargo" in riesgo["concepto"]
+    sin_cambios = costo.tarifa_supuesta(_vuelo_simple(notas=["No ticket changes"]), cat)
+    assert not sin_cambios["permite_cambio"]
+
+
+def test_avisos_de_retraso_habitual_y_escalas(cliente):
+    from app.servicios import costo
+    cat = costo.catalogo()
+    retrasado = _vuelo_simple(llega="2027-01-12 17:40", a_menudo_retrasado=True)
+    ev = costo.evaluar(retrasado, costo.tarifa_supuesta(retrasado, cat), _sol(destino_lugar=None, llegar_antes="2027-01-12T18:00"), [], cat)
+    assert ev["descartada"] is None and any("suele retrasarse" in a for a in ev["avisos"])
+    holgado = costo.evaluar(retrasado, costo.tarifa_supuesta(retrasado, cat), _sol(destino_lugar=None, llegar_antes="2027-01-12T20:00"), [], cat)
+    assert not any("suele retrasarse" in a for a in holgado["avisos"])
+    con_escalas = _vuelo_simple(escalas_detalle=[{"aeropuerto": "DEN", "minutos": 44, "nocturna": False},
+                                                 {"aeropuerto": "SFO", "minutos": 600, "nocturna": True}])
+    avisos = costo.evaluar(con_escalas, costo.tarifa_supuesta(con_escalas, cat), _sol(destino_lugar=None), [], cat)["avisos"]
+    assert any("Escala corta en DEN (44 min)" in a for a in avisos) and any("Escala nocturna en SFO" in a for a in avisos)
+
+
+def test_un_vuelo_incompleto_no_rompe_la_lectura(cliente):
+    from app.servicios import precios
+    v = precios._vuelo({"flights": [{"departure_airport": {"id": "MIA", "time": "2027-01-12 08:00"},
+                                     "arrival_airport": {"id": "SLC", "time": "2027-01-12 12:00"}}], "price": 300,
+                        "layovers": [{"duration": 40, "id": "DEN", "overnight": True}]})
+    assert v["numeros"] == ["s/n"] and v["aerolinea"] and v["escalas_detalle"][0] == {"aeropuerto": "DEN", "minutos": 40, "nocturna": True}
+    assert precios._vuelo({"price": 300}) is None   # sin tramos no es un vuelo que se pueda comparar

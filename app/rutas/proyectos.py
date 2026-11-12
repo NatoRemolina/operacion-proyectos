@@ -90,8 +90,10 @@ def proyecto(request: Request, pid: int):
     filas = [{"clave": c, "nombre": config.CATEGORIAS[c], "previsto": round(previsto.get(c, 0), 2), "real": round(real.get(c) or 0, 2)}
              for c in compras if previsto.get(c) or real.get(c)]
     en_destino = round(sum(t or 0 for c, t in real.items() if c not in compras), 2)
-    if previsto.get("viaticos") or en_destino:
-        filas.append({"clave": "viaticos", "nombre": "Viáticos y gastos en destino", "previsto": round(previsto.get("viaticos", 0), 2),
+    # Viáticos, traslados por carretera y combustible se pagan en el viaje: se comparan con los gastos en destino
+    previsto_destino = round(sum(v for g, v in previsto.items() if g not in compras), 2)
+    if previsto_destino or en_destino:
+        filas.append({"clave": "viaticos", "nombre": "Viáticos y gastos en destino", "previsto": previsto_destino,
                       "real": en_destino})
     faltantes = [f["nombre"] for f in filas if f["previsto"] and not f["real"]]
     return plantillas.TemplateResponse(request, "proyecto.html", _ctx(

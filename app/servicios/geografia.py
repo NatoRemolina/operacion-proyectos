@@ -182,6 +182,14 @@ def _aeropuertos_por_latitud() -> tuple[list[float], list[dict]]:
     return _en_memoria("aeropuertos", cargar_)
 
 
+def aeropuerto(iata: str | None) -> dict | None:
+    """Un aeropuerto de los datos locales por su código (con coordenadas), o None."""
+    if not iata:
+        return None
+    indice = _en_memoria("aeropuertos_por_codigo", lambda: {a["iata"]: a for a in _aeropuertos_por_latitud()[1]})
+    return indice.get(iata.upper())
+
+
 def _nombres_pais() -> dict:
     return _en_memoria("paises", lambda: {p["codigo"]: p for p in db.todos("select * from paises")})
 

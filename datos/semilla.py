@@ -113,6 +113,10 @@ SUPUESTOS_NUEVOS = [
     ("factor_carretera", "1.3", "Distancia por carretera = distancia en línea recta x este factor."),
     ("velocidad_carretera_kmh", "70", "Velocidad media por carretera para estimar el tiempo de traslado (km/h)."),
     ("tope_autocompletado_mes", "60", "Consultas de autocompletado a Google al mes, de las búsquedas del plan. Alcanzado, solo datos locales."),
+    ("traslado_minimo_km", "30", "Bajo esta distancia en línea recta entre el aeropuerto y el lugar no se suma traslado (km)."),
+    ("traslado_usd_km", "0.35", "Traslado por carretera sin carro de alquiler (taxi o transfer), ida y vuelta (USD por km)."),
+    ("combustible_usd_km", "0.12", "Con carro de alquiler el traslado solo suma combustible y peajes, ida y vuelta (USD por km)."),
+    ("costo_cambio_usd", "75", "Cargo por cambiar la fecha cuando el buscador dice «Ticket changes for a fee» (USD)."),
     ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
 ]
 

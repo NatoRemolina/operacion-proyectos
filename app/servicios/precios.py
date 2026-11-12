@@ -84,22 +84,38 @@ def _consultar(parametros: dict, entidad: str, entidad_id: int | None, que: str)
     return datos
 
 
-def _vuelo(f: dict) -> dict:
-    tramos = f["flights"]
+def _vuelo(f: dict) -> dict | None:
+    """Un itinerario de la respuesta, leído campo por campo con valor por defecto: un dato que falte en vivo no rompe
+    la cotización. Sin tramos con horas de salida y llegada no hay vuelo que comparar (None)."""
+    tramos = [t for t in f.get("flights") or [] if isinstance(t, dict)]
+    if not tramos:
+        return None
+    sale, llega = tramos[0].get("departure_airport") or {}, tramos[-1].get("arrival_airport") or {}
+    if len(sale.get("time") or "") < 16 or len(llega.get("time") or "") < 16:
+        return None
     return {
-        "aerolinea": tramos[0]["airline"],
-        "aerolineas": sorted({s["airline"] for s in tramos}),
-        "numeros": [s["flight_number"] for s in tramos],
-        "sale": tramos[0]["departure_airport"]["time"],
-        "llega": tramos[-1]["arrival_airport"]["time"],
-        "desde": tramos[0]["departure_airport"]["id"],
-        "hasta": tramos[-1]["arrival_airport"]["id"],
+        "aerolinea": tramos[0].get("airline") or "Aerolínea sin nombre",
+        "aerolineas": sorted({s.get("airline") for s in tramos if s.get("airline")}),
+        "numeros": [s.get("flight_number") or "s/n" for s in tramos],
+        "sale": sale["time"],
+        "llega": llega["time"],
+        "desde": sale.get("id"),
+        "hasta": llega.get("id"),
         "escalas": len(tramos) - 1,
         "duracion_min": f.get("total_duration"),
         "precio": f.get("price"),
-        "notas": f.get("extensions", []),
+        "notas": f.get("extensions") or [],
         "token": f.get("departure_token"),
+        # Sin costo de búsquedas: lo que ya trae la respuesta sobre retrasos y escalas
+        "a_menudo_retrasado": any(s.get("often_delayed_by_over_30_min") for s in tramos),
+        "escalas_detalle": [{"aeropuerto": e.get("id"), "minutos": e.get("duration"), "nocturna": bool(e.get("overnight"))}
+                            for e in f.get("layovers") or [] if isinstance(e, dict)],
     }
+
+
+def _vuelos(datos: dict) -> list[dict]:
+    """Los itinerarios con precio que se pueden comparar, de mejores y otros."""
+    return [v for v in (_vuelo(f) for f in datos.get("best_flights", []) + datos.get("other_flights", []) if f.get("price")) if v]
 
 
 def codigos(valor: str | list[str]) -> list[str]:
@@ -142,10 +158,7 @@ def registrar_observaciones(datos: dict, origen: str, destino: str, ida: str, re
     tipico = info.get("typical_price_range") or [None, None]
     f_ida = date.fromisoformat(ida)
     filas = []
-    for f in datos.get("best_flights", []) + datos.get("other_flights", []):
-        if not f.get("price"):
-            continue
-        v = _vuelo(f)
+    for v in _vuelos(datos):
         filas.append({
             "busqueda": clave, "origen": v["desde"] or origen, "destino": v["hasta"] or destino, "ida": ida, "regreso": regreso,
             "aerolinea": v["aerolinea"], "escalas": v["escalas"], "duracion_min": v["duracion_min"],
@@ -204,7 +217,7 @@ def buscar_vuelos(origen: str | list[str], destino: str | list[str], ida: str, r
         eventos.registrar("solicitud", solicitud_id, "lectura de respaldo", f"vuelos {origen}-{destino}", origen_dato)
     if origen_dato in ("en vivo", "guardado"):
         registrar_observaciones(datos, n_origen, n_destino, ida, regreso, "formulario" if solicitud_id else "recolector")
-    vuelos = [_vuelo(f) for f in datos.get("best_flights", []) + datos.get("other_flights", []) if f.get("price")]
+    vuelos = _vuelos(datos)
     _anotar("vuelos", clave, origen_dato, solicitud_id, inicio, [v["precio"] for v in vuelos])
     return vuelos, origen_dato, datos.get("price_insights", {})
 

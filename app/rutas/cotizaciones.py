@@ -270,7 +270,8 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
     if not siguio and len(motivo.strip()) < 5:
         # Cuando la persona se aparta de la recomendación, el porqué es el dato más valioso
         return RedirectResponse(f"/viajes/{sid}?aviso=Elegiste+una+opci%C3%B3n+distinta+a+la+recomendada%3A+cu%C3%A9ntanos+por+qu%C3%A9.", status_code=303)
-    lineas = [{**l, "grupo": "vuelo"} for l in vuelo["ev"]["lineas"]]
+    # Las líneas del vuelo van al grupo «vuelo»; las de traslado conservan el suyo (traslados o combustible)
+    lineas = [{**l, "grupo": l.get("grupo") or "vuelo"} for l in vuelo["ev"]["lineas"]]
     if hotel:
         lineas.append({"concepto": f"Hotel: {hotel['h']['nombre']} ({c['noches']} noches)", "valor": hotel["h"]["total"],
                        "origen": "buscador", "grupo": "hotel"})
@@ -307,6 +308,13 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
          "creado": db.ahora()} for i, h in enumerate(c["hoteles"])])
     db.actualizar("solicitudes", sid, estado="decidido")
     eventos.registrar("solicitud", sid, "decisión guardada", f"Total previsto {total:.2f} USD (ficha #{did})", aprobado_por or "usuario")
+    for l in lineas:
+        if l.get("calculo"):   # cada traslado que entra al presupuesto deja su cuenta en la bitácora
+            k = l["calculo"]
+            eventos.registrar("solicitud", sid, "traslado calculado",
+                              f"{l['concepto']}: {k['km_linea_recta']} km en línea recta x {k['factor']} = {k['km_carretera']} km "
+                              f"a {k['usd_km']} USD/km ida y vuelta = {l['valor']:.2f} USD; {k['horas']} h a {k['velocidad_kmh']:g} km/h",
+                              "reglas editables (supuesto)")
     # La decisión asigna el viaje a la persona: nace con su código y queda a la espera de que administración apruebe el presupuesto
     viajes.crear_desde_decision(did)
     return RedirectResponse(f"/viajes/{sid}/ficha", status_code=303)
