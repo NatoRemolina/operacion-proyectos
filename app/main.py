@@ -32,7 +32,7 @@ for _nombre in sorted(m.name for m in pkgutil.iter_modules(rutas.__path__)):
     web.MENU.extend(getattr(_modulo, "MENU", []))
 
 # En local la base se prepara sola; en un despliegue la migración es un paso aparte (python -m datos.semilla)
-if config.LOCAL:
+if config.PREPARAR_BASE_LOCAL:
     sembrar()
 
 

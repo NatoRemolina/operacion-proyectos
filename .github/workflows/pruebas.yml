@@ -26,3 +26,27 @@ jobs:
       - name: Pruebas
         # Sin claves: base SQLite temporal y servicios externos apagados (ver tests/conftest.py)
         run: pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Tipos
+        run: npm run typecheck
+      - name: Revisión estática
+        run: npm run lint -- .
+      - name: Pruebas
+        run: npm test
+      - name: Compilación
+        run: npm run build

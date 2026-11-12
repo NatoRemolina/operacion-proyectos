@@ -5,6 +5,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  // No generar archivos de instrucciones para herramientas de terceros dentro del proyecto.
+  agentRules: false,
   turbopack: {
     rules: {
       "*.css": {

@@ -33,6 +33,7 @@ services:
     environment:
       ENTORNO: local                      # cookie «sesion» sin Secure, que funciona sobre http
       DATABASE_URL: postgresql://operacion:operacion-local@db:5432/operacion
+      PREPARAR_BASE_LOCAL: "1"            # esta base es desechable: se migra y se siembra al arrancar
       CUENTAS_DEMO: "1"                   # crea las cuentas de demostración en esta base local
       ORIGENES_WEB: http://localhost:8088,http://127.0.0.1:8088
       # Servicios externos apagados: se trabaja con los datos guardados del repositorio

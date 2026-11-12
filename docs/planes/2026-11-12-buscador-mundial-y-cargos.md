@@ -27,7 +27,7 @@
 - Referencia de las APIs: `docs/referencias/serpapi-google-flights/` (léase `uso-en-el-proyecto.md`).
 - La opción elegida se carga completa: 2 búsquedas al decidir y 1 al aprobar; `booking_request` nunca se guarda.
 - Trazabilidad: todo dato que entra queda registrado (quién, cuándo, de dónde, qué) en `eventos`, `consultas_buscador` o la tabla nueva `cargas_datos` de la tarea 5; cada tarea lo prueba.
-- Sin push ni despliegue. Voz neutra; sin menciones a asistentes en lo versionado. Antes de cada commit: `git grep -i -E "claude|anthropic"` sin resultados nuevos.
+- Sin push ni despliegue. Voz neutra; sin menciones a asistentes en lo versionado. Antes de cada commit se revisa que lo versionado no nombre herramientas de asistencia.
 - Verificación de cada tarea: `.venv/bin/ruff check .` y `.venv/bin/python -m pytest -q`; en `web/`: `npm run typecheck` (genera los tipos de Next antes de `tsc`), `npx eslint --max-warnings=0 .`, `npx vitest run`.
 
 ## Puntos de atención

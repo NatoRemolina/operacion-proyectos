@@ -65,6 +65,9 @@ PINECONE_HOST = _txt("PINECONE_HOST").removeprefix("https://").removeprefix("htt
 ENTORNO = _txt("ENTORNO") or ("nube" if os.getenv("SECRETO_ARN") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") else "local")
 LOCAL = ENTORNO == "local"
 ES_SQLITE = not DATABASE_URL or DATABASE_URL.startswith("sqlite")
+# Conectar un PostgreSQL existente (por ejemplo, la base publicada desde .env) no autoriza a
+# migrarlo ni sembrarlo al arrancar: hace falta PREPARAR_BASE_LOCAL=1, como en docker-compose.yml.
+PREPARAR_BASE_LOCAL = LOCAL and (ES_SQLITE or _txt("PREPARAR_BASE_LOCAL") == "1")
 
 # Falla cerrado: un despliegue sin base, almacenamiento o control de acceso no arranca.
 if not LOCAL:
@@ -79,7 +82,7 @@ MAX_ARCHIVOS_POR_CARGA = 6
 
 DIR_RESPALDO = RAIZ / "datos" / "respaldo"
 DIR_EJEMPLOS = RAIZ / "datos" / "ejemplos"
-DIR_ARCHIVOS = RAIZ / "datos" / "archivos"
+DIR_ARCHIVOS = Path(_txt("DIRECTORIO_ARCHIVOS")) if _txt("DIRECTORIO_ARCHIVOS") else RAIZ / "datos" / "archivos"
 # Fuera de local el disco del contenedor es de solo lectura salvo /tmp
 DIR_RESPALDO_ESCRITURA = DIR_RESPALDO if not (os.getenv("SECRETO_ARN") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")) else Path("/tmp/respaldo")  # noqa: S108  único directorio escribible en la función
 
