@@ -4,12 +4,12 @@
 <p class="sub">Esto es lo que espera una decisión tuya y cómo va la operación.</p>
 <div class="dos">
   <div class="tarjeta"><h3>Pendiente de ti</h3>
-    <div class="pendiente"><span class="n" style="color:{{ 'var(--aviso)' if pendientes.viajes else 'var(--ok)' }}">{{ pendientes.viajes }}</span>
+    <div class="pendiente"><span class="n" style="color:{{ 'var(--aviso)' if por_atender.viajes else 'var(--ok)' }}">{{ por_atender.viajes }}</span>
       <div style="flex:1"><b>Presupuestos de viaje por aprobar</b><div class="eti">Sin aprobación, los gastos de ese viaje no se aprueban solos.</div></div>
-      <a class="boton {{ '' if pendientes.viajes else 'sec' }}" href="/admin/viajes">{{ 'Revisar' if pendientes.viajes else 'Ver viajes' }}</a></div>
-    <div class="pendiente"><span class="n" style="color:{{ 'var(--aviso)' if pendientes.gastos else 'var(--ok)' }}">{{ pendientes.gastos }}</span>
+      <a class="boton {{ '' if por_atender.viajes else 'sec' }}" href="/admin/viajes">{{ 'Revisar' if por_atender.viajes else 'Ver viajes' }}</a></div>
+    <div class="pendiente"><span class="n" style="color:{{ 'var(--aviso)' if por_atender.gastos else 'var(--ok)' }}">{{ por_atender.gastos }}</span>
       <div style="flex:1"><b>Gastos en revisión</b><div class="eti">Solo llegan aquí los que las reglas no pudieron aprobar.</div></div>
-      <a class="boton {{ '' if pendientes.gastos else 'sec' }}" href="/gastos?estado=revision">{{ 'Abrir bandeja' if pendientes.gastos else 'Ver gastos' }}</a></div>
+      <a class="boton {{ '' if por_atender.gastos else 'sec' }}" href="/gastos?estado=revision">{{ 'Abrir bandeja' if por_atender.gastos else 'Ver gastos' }}</a></div>
   </div>
   <div class="tarjeta"><h3>Viajes aprobados: presupuesto frente a gasto</h3>
     {% for v in en_curso %}<div class="pendiente"><div style="flex:1"><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a> · {{ v.titular or '—' }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }}{% if v.en_curso %} <span class="chip ok">en curso</span>{% endif %}

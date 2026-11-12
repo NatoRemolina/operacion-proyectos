@@ -204,7 +204,8 @@ llamadas_modelo = _tabla(
     Column("estado_http", Integer), Column("motivo_parada", Text), Column("error", Text),
 )
 
-TABLAS = {t.name: t for t in meta.sorted_tables}
+# Vista viva del registro: una tabla declarada en el módulo de su servicio con `_tabla(...)` aparece aquí al importarse
+TABLAS = meta.tables
 
 
 def ahora() -> str:
@@ -213,6 +214,12 @@ def ahora() -> str:
 
 def crear_tablas():
     """Crea las tablas que falten y añade las columnas nuevas a las que ya existen."""
+    import importlib
+    import pkgutil
+
+    from . import servicios
+    for m in pkgutil.iter_modules(servicios.__path__):   # cada servicio puede declarar sus propias tablas
+        importlib.import_module(f"{servicios.__name__}.{m.name}")
     meta.create_all(motor)
     existentes = inspect(motor)
     with motor.begin() as c:
