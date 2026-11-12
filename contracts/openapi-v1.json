@@ -4224,7 +4224,7 @@
               }
             ],
             "title": "Precio Por Confirmar",
-            "description": "Pendiente de aprobación cuyo precio de vuelo subió más que la tolerancia: hay que confirmarlo al aprobar."
+            "description": "Solo para administración: pendiente de aprobación cuyo precio de vuelo subió más que la tolerancia; hay que confirmarlo al aprobar."
           },
           "presupuesto_detalle": {
             "items": {
@@ -4436,7 +4436,7 @@
               }
             ],
             "title": "Precio Por Confirmar",
-            "description": "Pendiente de aprobación cuyo precio de vuelo subió más que la tolerancia: hay que confirmarlo al aprobar."
+            "description": "Solo para administración: pendiente de aprobación cuyo precio de vuelo subió más que la tolerancia; hay que confirmarlo al aprobar."
           }
         },
         "type": "object",

@@ -13,11 +13,14 @@ def con_decision(items: list[dict], yo: dict) -> list[dict]:
     """Añade lo que la web necesita para decidir: si el viaje es de quien mira y si su precio espera confirmación."""
     if not items:
         return items
+    admin = acceso.es_admin(yo)
     filas = {f["id"]: f for f in db.todos(
         f"select id, usuario_id, viajero_id from viajes where id in ({','.join(str(int(v['id'])) for v in items)})")}
     for v in items:
         v["propio"] = viajes.es_propio_de(filas.get(v["id"]), yo)
-        v["precio_por_confirmar"] = viajes.precio_por_confirmar(v["id"]) if v["estado"] == "pendiente_aprobacion" else None
+        # Solo lo usa quien aprueba: a los demás no se les consulta la bitácora por cada viaje
+        v["precio_por_confirmar"] = (viajes.precio_por_confirmar(v["id"])
+                                     if admin and v["estado"] == "pendiente_aprobacion" else None)
     return items
 
 

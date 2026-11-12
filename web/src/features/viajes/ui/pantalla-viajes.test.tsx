@@ -97,5 +97,25 @@ describe("Viajes", () => {
     await usuario.click(within(porAprobar).getByRole("button", { name: "Aprobar presupuesto" }));
     expect(await screen.findByText("No hay viajes esperando aprobación.")).toBeInTheDocument();
   });
+
+  it("la bandeja «Por aprobar» deja ver más cuando hay muchos pendientes", async () => {
+    const usuario = userEvent.setup();
+    const muchos = Array.from({ length: 25 }, (_, i) =>
+      viajeDePrueba({
+        id: 100 + i,
+        codigo: `V-2026-${String(100 + i).padStart(4, "0")}`,
+        estado: "pendiente_aprobacion",
+        estado_texto: "Pendiente de aprobación",
+        en_curso: false,
+        ida: `2026-12-${String((i % 28) + 1).padStart(2, "0")}`,
+        titular: { id: 7, codigo: "P-0007", nombre: "Alex Rivera" },
+      }),
+    );
+    montar({ viajes: muchos, estado: "pendiente_aprobacion" });
+    const lista = await screen.findByRole("list", { name: "Viajes por aprobar" });
+    expect(within(lista).getAllByRole("listitem")).toHaveLength(20);
+    await usuario.click(screen.getByRole("button", { name: "Ver más viajes por aprobar" }));
+    expect(await within(lista).findAllByRole("listitem")).toHaveLength(25);
+  });
 });
 

@@ -90,11 +90,22 @@ function PorAprobar() {
           No hay viajes esperando aprobación.
         </p>
       ) : (
-        <ul aria-label="Viajes por aprobar" className="flex flex-col gap-3">
-          {consulta.viajes.map((v) => (
-            <TarjetaPorAprobar key={v.id} viaje={v} />
-          ))}
-        </ul>
+        <>
+          <ul aria-label="Viajes por aprobar" className="flex flex-col gap-3">
+            {consulta.viajes.map((v) => (
+              <TarjetaPorAprobar key={v.id} viaje={v} />
+            ))}
+          </ul>
+          {consulta.hasNextPage ? (
+            <Boton
+              variante="secundario"
+              onClick={() => void consulta.fetchNextPage()}
+              disabled={consulta.isFetchingNextPage}
+            >
+              {consulta.isFetchingNextPage ? "Cargando…" : "Ver más viajes por aprobar"}
+            </Boton>
+          ) : null}
+        </>
       )}
     </section>
   );
