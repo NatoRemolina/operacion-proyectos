@@ -102,8 +102,38 @@ def _vuelo(f: dict) -> dict:
     }
 
 
+def codigos(valor: str | list[str]) -> list[str]:
+    """Códigos de aeropuerto ordenados y sin repetir. Acepta un código, una lista o una cadena separada por comas."""
+    partes = valor.split(",") if isinstance(valor, str) else valor
+    return sorted({c.strip().upper() for c in partes if c and c.strip()})
+
+
+def ruta(origen: str | list[str], destino: str | list[str]) -> tuple[str, str, str, str]:
+    """Parámetros (códigos unidos por coma) y partes del nombre de archivo (unidos por guion) de una ruta.
+
+    Siempre en el mismo orden y formato: un reintento envía exactamente los mismos parámetros y el proveedor lo sirve
+    de su caché sin cobrarlo. Con un solo código, todo queda idéntico a como era antes de comparar varios aeropuertos."""
+    o, d = codigos(origen), codigos(destino)
+    return ",".join(o), ",".join(d), "-".join(o), "-".join(d)
+
+
+def _avisar_ignorados(datos: dict, origen: str, destino: str, solicitud_id: int | None):
+    """El bloque `airports` dice qué códigos usó la búsqueda; si ignoró alguno de los pedidos, queda registrado."""
+    tramos = datos.get("airports") or []
+    if not tramos:
+        return
+    usados = {lado: {(a.get("airport") or {}).get("id") for a in tramos[0].get(lado) or []} for lado in ("departure", "arrival")}
+    faltan = [c for c in codigos(origen) if c not in usados["departure"]] + [c for c in codigos(destino) if c not in usados["arrival"]]
+    if faltan:
+        eventos.registrar("solicitud", solicitud_id, "aeropuertos ignorados por el buscador",
+                          f"{', '.join(faltan)}: sin resultados en la búsqueda {origen} → {destino}", "SerpApi (en vivo)")
+
+
 def registrar_observaciones(datos: dict, origen: str, destino: str, ida: str, regreso: str, fuente: str) -> int:
-    """Guarda cada vuelo de una respuesta del buscador como fila tabular. No duplica una búsqueda ya registrada."""
+    """Guarda cada vuelo de una respuesta del buscador como fila tabular. No duplica una búsqueda ya registrada.
+
+    `origen` y `destino` identifican la búsqueda (con varios aeropuertos, unidos por guion); cada fila lleva los
+    aeropuertos reales de su vuelo."""
     clave = f"{origen}_{destino}_{ida}_{regreso}"
     if db.uno("select id from observaciones where busqueda=:b limit 1", b=clave):
         return 0
@@ -117,7 +147,7 @@ def registrar_observaciones(datos: dict, origen: str, destino: str, ida: str, re
             continue
         v = _vuelo(f)
         filas.append({
-            "busqueda": clave, "origen": origen, "destino": destino, "ida": ida, "regreso": regreso,
+            "busqueda": clave, "origen": v["desde"] or origen, "destino": v["hasta"] or destino, "ida": ida, "regreso": regreso,
             "aerolinea": v["aerolinea"], "escalas": v["escalas"], "duracion_min": v["duracion_min"],
             "hora_salida": int(v["sale"][11:13]) + int(v["sale"][14:16]) / 60, "dia_semana": f_ida.weekday(),
             "anticipacion": (f_ida - date.fromisoformat(capturado)).days,
@@ -144,9 +174,12 @@ def cargar_respaldos() -> int:
     return total
 
 
-def buscar_vuelos(origen: str, destino: str, ida: str, regreso: str, solicitud_id: int | None = None):
-    """Devuelve (lista de vuelos, origen del dato, información de precios de la ruta)."""
-    inicio, nombre, fallo = time.perf_counter(), f"vuelos_{origen}_{destino}_{ida}_{regreso}.json", None
+def buscar_vuelos(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, solicitud_id: int | None = None):
+    """Devuelve (lista de vuelos, origen del dato, información de precios de la ruta).
+
+    Con varios aeropuertos de origen o de destino hace una sola consulta con los códigos unidos por coma."""
+    origen, destino, n_origen, n_destino = ruta(origen, destino)
+    inicio, nombre, fallo = time.perf_counter(), f"vuelos_{n_origen}_{n_destino}_{ida}_{regreso}.json", None
     datos, origen_dato, clave = _leer(nombre), "guardado", nombre
     if datos is None and config.SERPAPI_KEY:
         try:
@@ -155,11 +188,12 @@ def buscar_vuelos(origen: str, destino: str, ida: str, regreso: str, solicitud_i
                                "solicitud", solicitud_id, f"vuelos {origen}-{destino} {ida}")
             _guardar(nombre, datos)
             origen_dato = "en vivo"
+            _avisar_ignorados(datos, origen, destino, solicitud_id)
         except Exception as e:
             datos, fallo = None, e
             _anotar("vuelos", nombre, "fallida", solicitud_id, inicio, error=e)
     if datos is None:
-        otros = sorted(config.DIR_RESPALDO.glob(f"vuelos_{origen}_{destino}_*.json"))
+        otros = sorted(config.DIR_RESPALDO.glob(f"vuelos_{n_origen}_{n_destino}_*.json"))
         if otros:
             datos, origen_dato, clave = json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
     if datos is None:
@@ -169,7 +203,7 @@ def buscar_vuelos(origen: str, destino: str, ida: str, regreso: str, solicitud_i
     if origen_dato != "en vivo":
         eventos.registrar("solicitud", solicitud_id, "lectura de respaldo", f"vuelos {origen}-{destino}", origen_dato)
     if origen_dato in ("en vivo", "guardado"):
-        registrar_observaciones(datos, origen, destino, ida, regreso, "formulario" if solicitud_id else "recolector")
+        registrar_observaciones(datos, n_origen, n_destino, ida, regreso, "formulario" if solicitud_id else "recolector")
     vuelos = [_vuelo(f) for f in datos.get("best_flights", []) + datos.get("other_flights", []) if f.get("price")]
     _anotar("vuelos", clave, origen_dato, solicitud_id, inicio, [v["precio"] for v in vuelos])
     return vuelos, origen_dato, datos.get("price_insights", {})
@@ -203,14 +237,17 @@ def _tarifa(opcion: dict) -> dict | None:
     }
 
 
-def tarifas_de_vuelo(origen: str, destino: str, ida: str, regreso: str, vuelo: dict,
+def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, vuelo: dict,
                      solicitud_id: int | None = None, permitir_en_vivo: bool = False):
-    """Familias tarifarias de un vuelo (dos consultas en vivo). Devuelve (tarifas, origen del dato)."""
+    """Familias tarifarias de un vuelo (dos consultas en vivo). Devuelve (tarifas, origen del dato).
+
+    El regreso se pide con los mismos códigos que la búsqueda original, para aprovechar la caché del proveedor."""
+    origen, destino, n_origen, n_destino = ruta(origen, destino)
     clave = "".join(n.replace(" ", "") for n in vuelo["numeros"])
-    inicio, nombre = time.perf_counter(), f"tarifas_{origen}_{destino}_{ida}_{regreso}_{clave}.json"
+    inicio, nombre = time.perf_counter(), f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
     datos, origen_dato, usada = _leer(nombre), "guardado", nombre
     if datos is None:
-        otros = sorted(config.DIR_RESPALDO.glob(f"tarifas_{origen}_{destino}_*_{clave}.json"))
+        otros = sorted(config.DIR_RESPALDO.glob(f"tarifas_{n_origen}_{n_destino}_*_{clave}.json"))
         if otros:
             datos, origen_dato, usada = json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
     if datos is None and permitir_en_vivo and config.SERPAPI_KEY and vuelo.get("token"):

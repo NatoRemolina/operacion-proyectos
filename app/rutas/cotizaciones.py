@@ -122,9 +122,10 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen:
     eventos.registrar("solicitud", sid, "solicitud recibida", f"{origen}-{destino} {ida} a {regreso} · "
                       f"origen: {_texto_lado(sale)} · destino: {_texto_lado(llega)}", f"formulario · {solicitado_por}")
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
-    vuelos, origen_v, _ = precios.buscar_vuelos(sol["origen"], sol["destino"], ida, regreso, sid)
+    desde_todos, hacia_todos = _codigos(sol, "origen"), _codigos(sol, "destino")
+    vuelos, origen_v, _ = precios.buscar_vuelos(desde_todos, hacia_todos, ida, regreso, sid)   # una consulta, todos los marcados
     for v in vuelos:
-        tarifas, origen_t = precios.tarifas_de_vuelo(sol["origen"], sol["destino"], ida, regreso, v, sid)
+        tarifas, origen_t = precios.tarifas_de_vuelo(desde_todos, hacia_todos, ida, regreso, v, sid)
         db.insertar("opciones", solicitud_id=sid, tipo="vuelo", titulo=" + ".join(v["numeros"]), precio=v["precio"],
                     moneda="USD", datos=v, tarifas={"lista": tarifas, "origen": origen_t}, origen_dato=origen_v, capturado=db.ahora())
     hoteles, origen_h = precios.buscar_hoteles(sol["ciudad"], ida, regreso, sid)
@@ -135,6 +136,11 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen:
     eventos.registrar("solicitud", sid, "opciones guardadas", f"{len(vuelos)} vuelos y {min(len(hoteles), 12)} hoteles", "aplicación")
     _registrar_ahorro(sid)
     return RedirectResponse(f"/viajes/{sid}", status_code=303)
+
+
+def _codigos(sol: dict, lado: str) -> list[str]:
+    """Los aeropuertos marcados de un lado de la cotización; las cotizaciones de antes tienen solo uno."""
+    return precios.codigos(sol.get(f"{lado}_aeropuertos") or sol[lado])
 
 
 def _registrar_ahorro(sid: int, c: dict | None = None):
@@ -168,10 +174,12 @@ def _comparacion(sid: int) -> dict | None:
             hoteles.append({"id": o["id"], "h": datos, "origen_dato": o["origen_dato"],
                             "programa": costo.programa_hotel(datos["nombre"], cat)})
     # Precio esperado según el modelo (solo si hay un modelo utilizable)
+    _, _, n_origen, n_destino = precios.ruta(_codigos(sol, "origen"), _codigos(sol, "destino"))
     ref = db.uno("select tipico_min, tipico_max from observaciones where busqueda=:b limit 1",
-                 b=f"{sol['origen']}_{sol['destino']}_{sol['ida']}_{sol['regreso']}") or {}
+                 b=f"{n_origen}_{n_destino}_{sol['ida']}_{sol['regreso']}") or {}
     f_ida = date.fromisoformat(sol["ida"])
-    filas = [{"ruta": f"{sol['origen']}-{sol['destino']}", "aerolinea": v["v"]["aerolinea"], "escalas": v["v"]["escalas"],
+    # La ruta del modelo es la del vuelo real: con varios aeropuertos, cada opción llega a uno distinto
+    filas = [{"ruta": f"{v['v'].get('desde') or sol['origen']}-{v['v'].get('hasta') or sol['destino']}", "aerolinea": v["v"]["aerolinea"], "escalas": v["v"]["escalas"],
               "duracion_min": v["v"]["duracion_min"], "hora_salida": int(v["v"]["sale"][11:13]) + int(v["v"]["sale"][14:16]) / 60,
               "dia_semana": f_ida.weekday(), "anticipacion": (f_ida - date.fromisoformat(sol["creado"][:10])).days,
               "noches": costo.noches(sol["ida"], sol["regreso"]), "tipico_min": ref.get("tipico_min"), "tipico_max": ref.get("tipico_max")}
@@ -230,7 +238,7 @@ def viaje_tarifas(sid: int, oid: int):
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
     o = db.uno("select * from opciones where id=:i and solicitud_id=:s", i=oid, s=sid)
     if sol and o:
-        tarifas, origen = precios.tarifas_de_vuelo(sol["origen"], sol["destino"], sol["ida"], sol["regreso"],
+        tarifas, origen = precios.tarifas_de_vuelo(_codigos(sol, "origen"), _codigos(sol, "destino"), sol["ida"], sol["regreso"],
                                                    db.de_json(o["datos"], {}), sid, permitir_en_vivo=True)
         if tarifas:
             db.actualizar("opciones", oid, tarifas={"lista": tarifas, "origen": origen})
