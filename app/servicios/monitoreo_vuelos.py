@@ -5,13 +5,13 @@ reutiliza un rato y hay topes por tramo, por viaje y por día. Al viajero solo s
 """
 import json
 import math
-from datetime import UTC, datetime, timedelta, timezone
-from pathlib import Path
+import os
+from datetime import UTC, date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import Column, Integer, Text
+from sqlalchemy import Column, Integer, Text, text
 
-from .. import db
+from .. import config, db
 from . import costo, eventos, geografia, precios, telegram, viajes
 
 tramos_vuelo = db._tabla(
@@ -23,6 +23,7 @@ tramos_vuelo = db._tabla(
     Column("llega_estimada", Text), Column("actualizado", Text), Column("consultas", Integer, default=0),
     Column("ultimo_aviso", Text),
     Column("omitida", Text),   # último motivo para no consultar: se registra una vez, no en cada refresco del tablero
+    Column("ultima_consulta", Text),   # «con datos» o «sin datos»: una respuesta sin el bloque no borra el estado conocido
 )
 
 
@@ -63,61 +64,58 @@ def de_viaje(viaje_id: int) -> list[dict]:
                     v=viaje_id)
 
 
+# ---------- reglas y momento ----------
+REGLAS = {"monitoreo_horas_antes": 3, "monitoreo_cache_min": 60, "monitoreo_tope_tramo": 6, "monitoreo_tope_viaje": 12,
+          "monitoreo_tope_dia": 30, "monitoreo_retraso_aviso_min": 15, "cupo_minimo_monitoreo": 25}
+MINIMO_FORZADO = timedelta(minutes=1)   # «Actualizar ahora» una vez por minuto: absorbe el doble clic
+
+
+def reglas() -> dict:
+    """Las reglas editables del monitoreo, leídas una vez por petición."""
+    cat = costo.catalogo()
+    return {clave: costo.supuesto(cat, clave, defecto) for clave, defecto in REGLAS.items()}
+
+
+def momento_actual() -> datetime:
+    """Ahora, en UTC. Solo en local, `MONITOREO_AHORA` (fecha y hora ISO en UTC, por ejemplo 2026-12-13T06:00) fija el
+    momento para demostrar el monitoreo de un vuelo futuro; fuera de local se ignora."""
+    fijo = (os.getenv("MONITOREO_AHORA") or "").strip()
+    if fijo and config.LOCAL:
+        try:
+            d = datetime.fromisoformat(fijo)
+            return d if d.tzinfo else d.replace(tzinfo=UTC)
+        except ValueError:
+            pass
+    return datetime.now(UTC)
+
+
+def _texto(momento: datetime) -> str:
+    return momento.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _momento(texto: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(texto).replace(tzinfo=UTC)
+    except (TypeError, ValueError):
+        return None
+
+
 # ---------- zona horaria de cada aeropuerto ----------
 _zonas_cache: dict = {}
 
 
-def _coordenada(texto: str, grados: int) -> float:
-    signo = -1 if texto[0] == "-" else 1
-    cifras = texto[1:]
-    g, m, s = int(cifras[:grados]), int(cifras[grados:grados + 2]), int(cifras[grados + 2:grados + 4] or 0)
-    return signo * (g + m / 60 + s / 3600)
-
-
-def _zonas() -> list[tuple[set, float, float, str]]:
-    """Zonas de la base de datos de zonas horarias (IANA), con el país y las coordenadas de su ciudad principal."""
-    if "lista" in _zonas_cache:
-        return _zonas_cache["lista"]
-    rutas = [Path("/usr/share/zoneinfo/zone1970.tab"), Path("/usr/share/zoneinfo/zone.tab")]
-    try:
-        import tzdata
-        rutas = [Path(tzdata.__file__).parent / "zoneinfo" / n for n in ("zone1970.tab", "zone.tab")] + rutas
-    except ImportError:
-        pass
-    lista = []
-    for ruta in rutas:
-        if not ruta.is_file():
-            continue
-        for linea in ruta.read_text().splitlines():
-            if linea.startswith("#") or not linea.strip():
-                continue
-            partes = linea.split("\t")
-            coord = partes[1]
-            corte = max(coord.rfind("+"), coord.rfind("-"))
-            lat = _coordenada(coord[:corte], 2)
-            lon = _coordenada(coord[corte:], 3)
-            lista.append((set(partes[0].split(",")), lat, lon, partes[2]))
-        break
-    _zonas_cache["lista"] = lista
-    return lista
-
-
 def zona(iata: str | None):
-    """Zona horaria de un aeropuerto: la de la ciudad principal más cercana del mismo país en la base de zonas horarias.
-    Sin datos del aeropuerto, UTC; sin la base de zonas, la hora solar aproximada por la longitud."""
+    """Zona horaria de un aeropuerto: la de GeoNames del lugar más cercano (su ciudad o pueblo). Sin datos del aeropuerto,
+    UTC; sin lugar cercano con zona, o si el sistema no conoce esa zona, la hora solar aproximada por la longitud."""
     if iata in _zonas_cache:
         return _zonas_cache[iata]
     a = geografia.aeropuerto(iata)
     resultado = UTC
     if a and a.get("lat") is not None:
-        candidatas = [z for z in _zonas() if a.get("pais") in z[0]] or _zonas()
-        if candidatas:
-            nombre = min(candidatas, key=lambda z: geografia.distancia_km(a["lat"], a["lon"], z[1], z[2]))[3]
-            try:
-                resultado = ZoneInfo(nombre)
-            except ZoneInfoNotFoundError:
-                resultado = timezone(timedelta(hours=round(a["lon"] / 15)))
-        else:
+        nombre = geografia.zona_horaria(a["lat"], a["lon"])
+        try:
+            resultado = ZoneInfo(nombre) if nombre else timezone(timedelta(hours=round(a["lon"] / 15)))
+        except (ZoneInfoNotFoundError, ValueError):
             resultado = timezone(timedelta(hours=round(a["lon"] / 15)))
     _zonas_cache[iata] = resultado
     return resultado
@@ -131,49 +129,58 @@ def _en_utc(local: str | None, iata: str | None) -> datetime | None:
         return None
 
 
-# ---------- cuándo se consulta ----------
-def _regla(clave: str, defecto: float) -> float:
-    return costo.supuesto(costo.catalogo(), clave, defecto)
-
-
-def _momento(texto: str | None) -> datetime | None:
-    try:
-        return datetime.fromisoformat(texto).replace(tzinfo=UTC)
-    except (TypeError, ValueError):
-        return None
-
-
-def _motivo(t: dict, ahora: datetime, forzar: bool) -> str | None:
-    """Por qué no se consulta ahora, o None si se puede. La ventana y los topes nunca se saltan; la caché, al forzar."""
+def ventana(t: dict, horas_antes: float = 3) -> tuple[datetime, datetime] | None:
+    """Desde unas horas antes de la salida programada hasta la llegada (programada o estimada, la más tarde), en UTC."""
     sale = _en_utc(t["sale_programada"], t["desde"])
-    llegadas = [x for x in (_en_utc(t["llega_programada"], t["hasta"]), _en_utc(t["llega_estimada"], t["hasta"])) if x]
+    llegadas = [x for x in (_en_utc(t["llega_programada"], t["hasta"]), _en_utc(t.get("llega_estimada"), t["hasta"])) if x]
     if not sale or not llegadas:
+        return None
+    return sale - timedelta(hours=horas_antes), max(llegadas)
+
+
+# ---------- cuándo se consulta ----------
+def _motivo(t: dict, ahora: datetime, forzar: bool, r: dict) -> str | None:
+    """Por qué no se consulta ahora, o None si se puede. La ventana y los topes nunca se saltan; la caché, al forzar."""
+    v = ventana(t, r["monitoreo_horas_antes"])
+    if not v:
         return "sin hora programada"
-    if not (sale - timedelta(hours=_regla("monitoreo_horas_antes", 3)) <= ahora <= max(llegadas)):
+    if not (v[0] <= ahora <= v[1]):
         return "fuera de la ventana"
-    tope = int(_regla("monitoreo_tope_tramo", 6))
+    tope = int(r["monitoreo_tope_tramo"])
     if (t["consultas"] or 0) >= tope:
         return f"tope de {tope} consultas"
-    tope = int(_regla("monitoreo_tope_viaje", 12))
-    if db.uno("select coalesce(sum(consultas), 0) n from tramos_vuelo where viaje_id=:v", v=t["viaje_id"])["n"] >= tope:
-        return f"tope de {tope} consultas del viaje"
-    tope = int(_regla("monitoreo_tope_dia", 30))
-    hoy = datetime.now(UTC).strftime("%Y-%m-%d")
-    if db.uno("select count(*) n from consultas_buscador where tipo='estado_vuelo' and origen='en vivo' and momento>=:d",
-              d=hoy)["n"] >= tope:
+    # El tope del viaje se aplica a cada sentido: agotarlo en la ida no deja sin monitoreo el regreso
+    tope = int(r["monitoreo_tope_viaje"])
+    if db.uno("select coalesce(sum(consultas), 0) n from tramos_vuelo where viaje_id=:v and sentido=:s",
+              v=t["viaje_id"], s=t["sentido"])["n"] >= tope:
+        return f"tope de {tope} consultas del {'regreso' if t['sentido'] == 'regreso' else 'viaje de ida'}"
+    tope = int(r["monitoreo_tope_dia"])
+    if db.uno("select count(*) n from consultas_buscador where tipo='estado_vuelo' and origen='en vivo' and momento>=:d and momento<:h",
+              d=ahora.strftime("%Y-%m-%d"), h=(ahora + timedelta(days=1)).strftime("%Y-%m-%d"))["n"] >= tope:
         return f"tope de {tope} consultas del día"
-    minimo = _regla("cupo_minimo_monitoreo", 25)
     try:
         cupo = precios.cupo()
     except Exception:
         cupo = None
-    if cupo and cupo.get("restantes") is not None and cupo["restantes"] < minimo:
+    if cupo and cupo.get("restantes") is not None and cupo["restantes"] < r["cupo_minimo_monitoreo"]:
         return f"cupo del buscador bajo ({cupo['restantes']} búsquedas restantes)"
-    cache = _regla("monitoreo_cache_min", 60)
     previo = _momento(t["actualizado"])
-    if not forzar and previo and ahora - previo < timedelta(minutes=cache):
-        return f"consultado hace menos de {cache:g} min"
+    espera = MINIMO_FORZADO if forzar else timedelta(minutes=r["monitoreo_cache_min"])
+    if previo and ahora - previo < espera:
+        return f"consultado hace menos de {espera.total_seconds() / 60:g} min"
     return None
+
+
+def _reservar(t: dict, ahora: datetime, forzar: bool, r: dict) -> bool:
+    """Toma el turno de consultar con una sola escritura condicional: si dos peticiones llegan a la vez (dos pestañas,
+    un doble clic), solo una paga la consulta. Cuenta la consulta antes de hacerla."""
+    espera = MINIMO_FORZADO if forzar else timedelta(minutes=r["monitoreo_cache_min"])
+    with db.motor.begin() as c:
+        hecho = c.execute(text("""update tramos_vuelo set actualizado=:a, consultas=coalesce(consultas, 0)+1, omitida=null
+                                  where id=:i and coalesce(consultas, 0)<:tope and (actualizado is null or actualizado<=:limite)"""),
+                          {"a": _texto(ahora), "i": t["id"], "tope": int(r["monitoreo_tope_tramo"]),
+                           "limite": _texto(ahora - espera)})
+        return hecho.rowcount == 1
 
 
 # ---------- avisos ----------
@@ -181,102 +188,172 @@ def _retraso(t: dict) -> int:
     return max(t.get("retraso_salida") or 0, t.get("retraso_llegada") or 0)
 
 
+def _ultimo(t: dict) -> dict:
+    valor = t.get("ultimo_aviso")
+    return (db.de_json(valor, None) if isinstance(valor, str) else valor) or {}
+
+
 def aviso(antes: dict, despues: dict, umbral: int = 15) -> str | None:
-    """Texto del aviso al viajero, o None si nada cambió que lo afecte. Avisa: cancelación, retraso nuevo de `umbral`
-    minutos o más (o que crece `umbral` minutos más desde el último aviso), cambio de terminal o de puerta."""
+    """Texto del aviso al viajero, o None si nada cambió que lo afecte. Avisa: cancelación (una sola vez), retraso nuevo
+    de `umbral` minutos o más (o que crece `umbral` minutos más desde el último aviso), cambio de terminal o de puerta."""
+    ultimo = _ultimo(antes)
     if despues.get("estado") == "cancelado":
-        partes = [] if antes.get("estado") == "cancelado" else ["el vuelo fue CANCELADO. Administración te ayudará a reprogramarlo"]
+        ya = antes.get("estado") == "cancelado" or ultimo.get("cancelado")
+        partes = [] if ya else ["el vuelo fue CANCELADO. Administración te ayudará a reprogramarlo"]
     else:
         partes = []
-        ultimo = db.de_json(antes.get("ultimo_aviso"), None) if isinstance(antes.get("ultimo_aviso"), str) else antes.get("ultimo_aviso")
-        base = (ultimo or {}).get("retraso", _retraso(antes))
+        base = ultimo.get("retraso", _retraso(antes))
         nuevo = _retraso(despues)
         if nuevo >= umbral and (base < umbral or nuevo - base >= umbral):
             hora = (despues.get("sale_estimada") or "")[11:16]
             partes.append(f"retraso de {nuevo} min" + (f" (sale hacia las {hora})" if hora else ""))
-        for campo, nombre in (("terminal", "terminal"), ("puerta", "puerta")):
+        for campo in ("terminal", "puerta"):
             if antes.get(campo) and despues.get(campo) and antes[campo] != despues[campo]:
-                partes.append(f"cambio de {nombre}: ahora {despues[campo]} (antes {antes[campo]})")
+                partes.append(f"cambio de {campo}: ahora {despues[campo]} (antes {antes[campo]})")
     if not partes:
         return None
     t = {**antes, **{k: v for k, v in despues.items() if v is not None}}
     return f"Vuelo {t.get('numero')} ({t.get('desde') or '?'} → {t.get('hasta') or '?'}, {t.get('fecha')}): " + "; ".join(partes) + "."
 
 
-def _avisar(t: dict, texto: str, retraso: int, ahora: datetime) -> dict:
-    """Envía el aviso al titular por Telegram si lo tiene vinculado; si no, queda solo en el tablero. Siempre deja rastro."""
+def _avisar(t: dict, texto: str, despues: dict, ahora: datetime) -> None:
+    """Marca el aviso de forma condicional (dos consultas no avisan dos veces) y lo envía al titular por Telegram si lo
+    tiene vinculado; si no, queda en el tablero. «aviso de vuelo enviado» solo si Telegram respondió bien."""
+    marca = {"texto": texto, "momento": _texto(ahora), "retraso": _retraso(despues),
+             "cancelado": despues.get("estado") == "cancelado" or bool(_ultimo(t).get("cancelado")), "enviado": False}
+    with db.motor.begin() as c:
+        tomado = c.execute(text("update tramos_vuelo set ultimo_aviso=:n where id=:i and coalesce(ultimo_aviso, '')=:p"),
+                           {"n": json.dumps(marca, ensure_ascii=False), "i": t["id"], "p": t["ultimo_aviso"] or ""}).rowcount == 1
+    if not tomado:
+        return
     v = db.uno("select usuario_id from viajes where id=:v", v=t["viaje_id"]) or {}
     u = db.uno("select telegram_chat_id from usuarios where id=:u and activo=1", u=v.get("usuario_id") or 0) or {}
-    enviado = telegram.activo() and bool(u.get("telegram_chat_id"))
-    if enviado:
-        telegram.avisar(v["usuario_id"], texto)
-    eventos.registrar("viaje", t["viaje_id"], "aviso de vuelo enviado" if enviado else "aviso de vuelo sin Telegram", texto,
-                      "Telegram" if enviado else "tablero")
-    return {"texto": texto, "momento": ahora.strftime("%Y-%m-%d %H:%M:%S"), "retraso": retraso, "enviado": enviado}
+    error = None
+    if telegram.activo() and u.get("telegram_chat_id"):
+        try:
+            telegram.enviar(u["telegram_chat_id"], texto)
+            marca["enviado"] = True
+        except telegram.ErrorTelegram as e:
+            error = str(e)
+    paso = "aviso de vuelo enviado" if marca["enviado"] else "aviso de vuelo fallido" if error else "aviso de vuelo sin Telegram"
+    eventos.registrar("viaje", t["viaje_id"], paso, texto + (f" · error: {error}" if error else ""),
+                      "Telegram" if marca["enviado"] or error else "tablero")
+    db.actualizar("tramos_vuelo", t["id"], ultimo_aviso={**marca, "error": error})
 
 
-def consultar(tramo_id: int, ahora: datetime | None = None, forzar: bool = False) -> dict:
+def consultar(tramo_id: int, ahora: datetime | None = None, forzar: bool = False, reglas_: dict | None = None) -> dict:
     """Consulta el estado de un tramo si corresponde y avisa al viajero si algo cambió. Devuelve el tramo actualizado más
-    "consultado" y, si no consultó, "motivo". `forzar` («Actualizar ahora») salta la caché, nunca el tope ni la ventana."""
-    ahora = ahora or datetime.now(UTC)
+    "consultado" y, si no consultó, "motivo". `forzar` («Actualizar ahora») salta la caché, nunca el tope ni la ventana.
+
+    Demostración con la respuesta guardada de ejemplo (IB 5634, Madrid → Lisboa, 13 de diciembre de 2026, retrasado
+    20 min, puerta J58), en local y sin clave del buscador:
+      1. en `.env`, `MONITOREO_AHORA=2026-12-13T06:00` (UTC; la ventana de ese vuelo va de 05:05 a 09:48 UTC);
+      2. un viaje aprobado con ese tramo, por ejemplo:
+         insert into tramos_vuelo (viaje_id, sentido, orden, aerolinea, numero, fecha, desde, hasta, sale_programada,
+         llega_programada, estado, consultas) values (<id del viaje>, 'ida', 1, 'Iberia', 'IB 5634', '2026-12-13', 'MAD',
+         'LIS', '2026-12-13 09:05', '2026-12-13 09:30', 'programado', 0);
+      3. abrir «Viajes» en administración: el tablero consulta el tramo (lee el ejemplo, no gasta búsquedas), lo muestra
+         retrasado con terminal 4 y puerta J58 y deja el aviso al viajero (por Telegram si tiene el chat vinculado).
+    """
+    ahora = ahora or momento_actual()
     ahora = ahora if ahora.tzinfo else ahora.replace(tzinfo=UTC)
+    r_ = reglas_ or reglas()
     t = db.uno("select * from tramos_vuelo where id=:i", i=tramo_id)
     if not t:
         return {"consultado": False, "motivo": "tramo inexistente"}
-    motivo = _motivo(t, ahora, forzar)
+    motivo = _motivo(t, ahora, forzar, r_)
+    if not motivo and not _reservar(t, ahora, forzar, r_):
+        motivo = "otra consulta de este vuelo acaba de hacerse"
     if motivo:
         if motivo != t["omitida"]:   # cada motivo una vez: el tablero pregunta cada 15 s
             db.actualizar("tramos_vuelo", tramo_id, omitida=motivo)
             eventos.registrar("viaje", t["viaje_id"], "consulta de estado omitida", f"{t['numero']}: {motivo}", "monitoreo")
-        return {**t, "omitida": motivo, "consultado": False, "motivo": motivo}
+        return {**db.uno("select * from tramos_vuelo where id=:i", i=tramo_id), "consultado": False, "motivo": motivo}
     solicitud = db.uno("select solicitud_id from viajes where id=:v", v=t["viaje_id"]) or {}
     r = precios.estado_vuelo(t["numero"], t["fecha"], solicitud.get("solicitud_id"))
-    cambios = {"consultas": (t["consultas"] or 0) + 1, "actualizado": ahora.strftime("%Y-%m-%d %H:%M:%S"), "omitida": None}
-    if r:
+    cambios = {"ultima_consulta": "con datos" if r else "sin datos"}
+    if r:   # el proveedor escribe «-» cuando no sabe la terminal o la puerta: se conserva la última conocida
         cambios.update(estado=r["estado"], retraso_salida=r["retraso_salida"], retraso_llegada=r["retraso_llegada"],
-                       terminal=r["terminal_salida"], puerta=r["puerta_salida"], llega_estimada=r["llega_estimada"])
-    else:
+                       terminal=r["terminal_salida"] or t["terminal"], puerta=r["puerta_salida"] or t["puerta"],
+                       llega_estimada=r["llega_estimada"] or t["llega_estimada"])
+    elif t["estado"] in (None, "programado", "sin datos"):
         cambios["estado"] = "sin datos"
-    despues = {**t, **cambios, "sale_estimada": (r or {}).get("sale_estimada")}
-    texto = aviso(t, despues, int(_regla("monitoreo_retraso_aviso_min", 15))) if r else None
-    if texto:
-        cambios["ultimo_aviso"] = json.dumps(_avisar(t, texto, _retraso(despues), ahora), ensure_ascii=False)
     db.actualizar("tramos_vuelo", tramo_id, **cambios)
+    if r:
+        despues = {**t, **cambios, "sale_estimada": r.get("sale_estimada")}
+        texto = aviso(t, despues, int(r_["monitoreo_retraso_aviso_min"]))
+        if texto:
+            _avisar(t, texto, despues, ahora)
     return {**db.uno("select * from tramos_vuelo where id=:i", i=tramo_id), "consultado": True}
 
 
-# ---------- tablero del día ----------
+# ---------- tablero ----------
 ESTADOS = {"programado": "Programado", "a tiempo": "A tiempo", "retrasado": "Retrasado", "cancelado": "Cancelado",
            "aterrizado": "Aterrizado", "desviado": "Desviado", "sin datos": "Sin datos"}
 
 
-def del_dia(fecha: str) -> list[dict]:
-    """Tramos que vuelan ese día, con su viaje y su persona. En el último tramo de ida se compara la llegada estimada
-    (o la programada) más el traslado con la hora límite de la grabación."""
-    filas = db.todos("""select t.*, v.creado viaje_creado, v.estado viaje_estado, v.solicitud_id, u.nombre titular,
+def _filas(fechas: list[str]) -> list[dict]:
+    marcas = {f"f{i}": f for i, f in enumerate(fechas)}
+    return db.todos(f"""select t.*, v.creado viaje_creado, v.estado viaje_estado, v.solicitud_id, u.nombre titular,
                                s.llegar_antes, s.destino_lugar, s.carro_dia,
                                (select max(o.orden) from tramos_vuelo o where o.viaje_id=t.viaje_id and o.sentido='ida') ultimo_ida
                         from tramos_vuelo t join viajes v on v.id=t.viaje_id left join usuarios u on u.id=v.usuario_id
                         left join solicitudes s on s.id=v.solicitud_id
-                        where t.fecha=:f and v.estado in ('aprobado', 'pendiente_aprobacion')
-                        order by t.sale_programada, t.id""", f=fecha)
+                        where t.fecha in ({", ".join(":" + k for k in marcas)}) and v.estado in ('aprobado', 'pendiente_aprobacion')
+                        order by t.sale_programada, t.id""", **marcas)  # noqa: S608  solo marcadores fijos
+
+
+def completar(f: dict, ahora: datetime, cat: dict | None = None) -> dict:
+    """Lo que el tablero muestra de un tramo: código del viaje, estado en palabras, retraso, hace cuánto se consultó, el
+    último aviso y, en el último tramo de ida, si la llegada estimada (o la programada) más el traslado supera la hora límite."""
+    f["codigo"] = viajes.codigo_viaje({"id": f["viaje_id"], "creado": f["viaje_creado"]})
+    f["estado_texto"] = ESTADOS.get(f["estado"], f["estado"] or "Programado")
+    f["retraso"] = _retraso(f)
+    previo = _momento(f["actualizado"])
+    f["hace_min"] = max(math.floor((ahora - previo).total_seconds() / 60), 0) if previo else None
+    f["aviso"] = _ultimo(f) or None
+    f["no_llega"], f["en_destino"] = False, None
+    if f["sentido"] == "ida" and f["orden"] == f["ultimo_ida"] and f["llegar_antes"]:
+        try:
+            llegada = datetime.fromisoformat((f["llega_estimada"] or f["llega_programada"]).replace(" ", "T"))
+            lugar = db.de_json(f["destino_lugar"], None) if isinstance(f["destino_lugar"], str) else f["destino_lugar"]
+            tr = costo.traslado(geografia.aeropuerto(f["hasta"]), lugar, (f["carro_dia"] or 0) > 0, cat or costo.catalogo())
+            en_destino = llegada + timedelta(hours=tr["horas"] if tr else 0)
+            f["en_destino"] = en_destino.strftime("%Y-%m-%d %H:%M")
+            f["no_llega"] = en_destino > datetime.fromisoformat(f["llegar_antes"])
+        except (AttributeError, TypeError, ValueError):
+            pass
+    return f
+
+
+def tablero(fecha: str | None = None, ahora: datetime | None = None, reglas_: dict | None = None) -> list[dict]:
+    """Tramos para el tablero. Con fecha, los de ese día. Sin ella, los de hoy (UTC) más los de ayer y mañana cuya
+    ventana contiene este momento: un vuelo nocturno en América cambia de día en UTC y no debe desaparecer."""
+    ahora = ahora or momento_actual()
     cat = costo.catalogo()
-    ahora = datetime.now(UTC)
-    for f in filas:
-        f["codigo"] = viajes.codigo_viaje({"id": f["viaje_id"], "creado": f["viaje_creado"]})
-        f["estado_texto"] = ESTADOS.get(f["estado"], f["estado"] or "Programado")
-        f["retraso"] = _retraso(f)
-        previo = _momento(f["actualizado"])
-        f["hace_min"] = math.floor((ahora - previo).total_seconds() / 60) if previo else None
-        f["no_llega"], f["en_destino"] = False, None
-        if f["sentido"] == "ida" and f["orden"] == f["ultimo_ida"] and f["llegar_antes"]:
-            try:
-                llegada = datetime.fromisoformat((f["llega_estimada"] or f["llega_programada"]).replace(" ", "T"))
-                lugar = db.de_json(f["destino_lugar"], None) if isinstance(f["destino_lugar"], str) else f["destino_lugar"]
-                tr = costo.traslado(geografia.aeropuerto(f["hasta"]), lugar, (f["carro_dia"] or 0) > 0, cat)
-                en_destino = llegada + timedelta(hours=tr["horas"] if tr else 0)
-                f["en_destino"] = en_destino.strftime("%Y-%m-%d %H:%M")
-                f["no_llega"] = en_destino > datetime.fromisoformat(f["llegar_antes"])
-            except (AttributeError, TypeError, ValueError):
-                pass
-    return filas
+    if fecha:
+        filas = _filas([fecha])
+    else:
+        r_ = reglas_ or reglas()
+        hoy = ahora.astimezone(UTC).date()
+        filas = []
+        for f in _filas([(hoy + timedelta(days=d)).isoformat() for d in (-1, 0, 1)]):
+            v = ventana(f, r_["monitoreo_horas_antes"])
+            if f["fecha"] == hoy.isoformat() or (v and v[0] <= ahora <= v[1]):
+                filas.append(f)
+    return [completar(f, ahora, cat) for f in filas]
+
+
+def del_dia(fecha: str) -> list[dict]:
+    return tablero(fecha)
+
+
+def hoy() -> str:
+    return momento_actual().astimezone(UTC).date().isoformat()
+
+
+def fecha_valida(texto: str | None) -> str | None:
+    try:
+        return date.fromisoformat(texto or "").isoformat()
+    except ValueError:
+        return None

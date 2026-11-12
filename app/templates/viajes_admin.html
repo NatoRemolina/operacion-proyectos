@@ -17,9 +17,9 @@
 {% else %}<tr><td colspan="8">Ningún viaje aprobado todavía.</td></tr>{% endfor %}</table>
 <p class="eti">Se actualiza solo cada 15 segundos mientras esta pestaña esté a la vista.</p></div>
 
-<h2 id="vuelos">Vuelos del {{ fecha }} <span class="eti" id="reloj-vuelos"></span></h2>
+<h2 id="vuelos">{{ 'Vuelos del ' ~ fecha if fecha else 'Vuelos de hoy (' ~ hoy ~ ', UTC)' }} <span class="eti" id="reloj-vuelos"></span></h2>
 <p class="sub">Estado de cada tramo el día del viaje. Se consulta desde 3 horas antes de la salida hasta la llegada, con caché y topes para cuidar las búsquedas del plan; el viajero recibe un aviso por Telegram solo si algo cambia.</p>
-<form method="get" action="/admin/viajes" class="fila noimp"><label>Día <input type="date" name="fecha" value="{{ fecha }}"></label><button class="peq sec">Ver</button></form>
+<form method="get" action="/admin/viajes" class="fila noimp"><label>Día <input type="date" name="fecha" value="{{ fecha or '' }}"></label><button class="peq sec">Ver</button>{% if fecha %} <a class="eti" href="/admin/viajes#vuelos">volver a hoy</a>{% endif %}</form>
 <div class="tarjeta tabla"><table id="vuelos-tabla"><tr><th>Viaje</th><th>Vuelo</th><th>Ruta</th><th>Sale (local)</th><th>Estado</th><th class="d">Retraso</th><th>Terminal · puerta</th><th>Llega (local)</th><th>Actualizado</th><th></th></tr>
 {% for t in vuelos %}<tr data-tramo="{{ t.id }}"><td><a href="/viaje/{{ t.viaje_id }}"><b>{{ t.codigo }}</b></a><br><span class="eti">{{ t.titular or '—' }}</span></td>
 <td><b>{{ t.numero }}</b><br><span class="eti">{{ t.aerolinea or '' }} · {{ t.sentido }}</span></td><td>{{ t.desde or '?' }} → {{ t.hasta or '?' }}</td>
@@ -27,9 +27,10 @@
 <td class="estado"><span class="chip {{ 'mal' if t.estado == 'cancelado' else 'aviso' if t.estado in ('retrasado', 'desviado', 'sin datos') else 'ok' if t.estado in ('a tiempo', 'aterrizado') else '' }}">{{ t.estado_texto }}</span>{% if t.no_llega %} <span class="chip mal" title="Llegada estimada más el traslado: {{ t.en_destino }}; hora límite {{ t.llegar_antes }}">No llega a la grabación</span>{% endif %}</td>
 <td class="d retraso">{{ (t.retraso ~ ' min') if t.retraso else '—' }}</td><td class="puerta">{{ t.terminal or '—' }} · {{ t.puerta or '—' }}</td>
 <td class="mono llega">{{ (t.llega_estimada or t.llega_programada or '—')[11:] }}{% if t.llega_estimada and t.llega_estimada != t.llega_programada %} <span class="eti">(prog. {{ (t.llega_programada or '')[11:] }})</span>{% endif %}</td>
-<td class="eti actualizado">{{ ('hace ' ~ t.hace_min ~ ' min') if t.hace_min is not none else 'sin consultar' }} · {{ t.consultas or 0 }} consultas{% if t.omitida %}<br>{{ t.omitida }}{% endif %}</td>
-<td><form method="post" action="/admin/vuelos/{{ t.id }}/actualizar"><button class="peq sec">Actualizar ahora</button></form></td></tr>
-{% else %}<tr><td colspan="10">No hay vuelos registrados para este día.</td></tr>{% endfor %}</table></div>
+<td class="eti actualizado">{{ ('hace ' ~ t.hace_min ~ ' min') if t.hace_min is not none else 'sin consultar' }} · {{ t.consultas or 0 }} consultas{% if t.ultima_consulta == 'sin datos' and t.estado != 'sin datos' %}<br>la última consulta no trajo datos{% endif %}{% if t.omitida %}<br>{{ t.omitida }}{% endif %}</td>
+<td><form method="post" action="/admin/vuelos/{{ t.id }}/actualizar"><input type="hidden" name="fecha" value="{{ fecha or '' }}"><button class="peq sec">Actualizar ahora</button></form></td></tr>
+<tr data-aviso="{{ t.id }}"{% if not t.aviso %} hidden{% endif %}><td></td><td colspan="9" class="eti aviso-texto">{% if t.aviso %}Último aviso al viajero ({{ t.aviso.momento }} UTC, {{ 'enviado por Telegram' if t.aviso.enviado else 'no se pudo enviar por Telegram: ' ~ t.aviso.error if t.aviso.error else 'solo en este tablero: no tiene Telegram vinculado' }}): {{ t.aviso.texto }}{% endif %}</td></tr>
+{% else %}<tr><td colspan="10">No hay vuelos {{ 'registrados para este día' if fecha else 'hoy ni en curso' }}.</td></tr>{% endfor %}</table></div>
 
 {% if otros %}<h2>Cerrados y rechazados</h2>
 <div class="tarjeta tabla"><table><tr><th>Viaje</th><th>Titular</th><th>Ruta</th><th>Fechas</th><th>Estado</th><th class="d">Presupuesto</th><th class="d">Gastado</th></tr>
@@ -61,10 +62,12 @@ async function refrescar() {
 const textoEstado = {'programado': 'Programado', 'a tiempo': 'A tiempo', 'retrasado': 'Retrasado', 'cancelado': 'Cancelado',
                      'aterrizado': 'Aterrizado', 'desviado': 'Desviado', 'sin datos': 'Sin datos'};
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+let pidiendoVuelos = false;   // un refresco a la vez: si el anterior no ha vuelto, este se salta
 async function refrescarVuelos() {
-  if (document.hidden || !document.querySelector('#vuelos-tabla tr[data-tramo]')) return;
+  if (document.hidden || pidiendoVuelos || !document.querySelector('#vuelos-tabla tr[data-tramo]')) return;
+  pidiendoVuelos = true;
   try {
-    const r = await fetch('/admin/viajes/vuelos?fecha={{ fecha }}');
+    const r = await fetch('/admin/viajes/vuelos?fecha={{ fecha or '' }}');
     if (!r.ok) return;
     for (const t of await r.json()) {
       const fila = document.querySelector(`#vuelos-tabla tr[data-tramo="${t.id}"]`); if (!fila) continue;
@@ -75,10 +78,20 @@ async function refrescarVuelos() {
       fila.querySelector('.puerta').textContent = `${t.terminal || '—'} · ${t.puerta || '—'}`;
       fila.querySelector('.llega').textContent = (t.llega_estimada || t.llega_programada || '—').slice(11);
       fila.querySelector('.actualizado').innerHTML = esc(t.hace_min !== null ? `hace ${t.hace_min} min` : 'sin consultar')
-        + ` · ${t.consultas || 0} consultas` + (t.omitida ? '<br>' + esc(t.omitida) : '');
+        + ` · ${t.consultas || 0} consultas` + (t.ultima_consulta === 'sin datos' && t.estado !== 'sin datos' ? '<br>la última consulta no trajo datos' : '')
+        + (t.omitida ? '<br>' + esc(t.omitida) : '');
+      const aviso = document.querySelector(`#vuelos-tabla tr[data-aviso="${t.id}"]`);
+      if (aviso && t.aviso) {
+        const como = t.aviso.enviado ? 'enviado por Telegram' : t.aviso.error ? 'no se pudo enviar por Telegram: ' + t.aviso.error : 'solo en este tablero: no tiene Telegram vinculado';
+        aviso.hidden = false;
+        aviso.querySelector('.aviso-texto').textContent = `Último aviso al viajero (${t.aviso.momento} UTC, ${como}): ${t.aviso.texto}`;
+      }
     }
     document.getElementById('reloj-vuelos').textContent = '· actualizado ' + new Date().toLocaleTimeString();
-  } catch (e) {}
+  } catch (e) {
+  } finally {
+    pidiendoVuelos = false;
+  }
 }
 setInterval(refrescar, 15000);
 setInterval(refrescarVuelos, 15000);

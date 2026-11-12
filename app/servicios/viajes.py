@@ -173,9 +173,11 @@ SUPERA_TOLERANCIA = "supera la tolerancia"
 
 
 def precio_por_confirmar(viaje_id: int) -> str | None:
-    """El cambio de precio que espera confirmación: el último hecho de precio del viaje es una subida sobre la tolerancia."""
+    """El cambio de precio que espera confirmación: el último hecho de precio del viaje es una subida sobre la tolerancia.
+    Caduca si el viaje se rechaza, se reabre o cambia su decisión: entonces hay que volver a reconfirmar."""
     e = db.uno("""select paso, detalle from eventos where entidad='viaje' and entidad_id=:v
-                  and paso in ('precio cambió', 'precio nuevo confirmado', 'precio confirmado', 'tramos registrados', 'presupuesto actualizado')
+                  and paso in ('precio cambió', 'precio nuevo confirmado', 'precio confirmado', 'tramos registrados',
+                               'presupuesto actualizado', 'presupuesto rechazado', 'viaje reabierto')
                   order by id desc limit 1""", v=viaje_id)
     return e["detalle"] if e and e["paso"] == "precio cambió" and SUPERA_TOLERANCIA in e["detalle"] else None
 
@@ -189,7 +191,7 @@ def _reconfirmar_precio(v: dict, quien: dict, confirmado: bool) -> tuple[bool, s
     pendiente = precio_por_confirmar(v["id"])
     if confirmado and pendiente:
         eventos.registrar("viaje", v["id"], "precio nuevo confirmado", pendiente, quien["nombre"])
-        return True, ""
+        return True, _ajustar_presupuesto(v, pendiente, quien)
     d = db.uno("select * from decisiones where id=:i", i=v.get("decision_id") or 0)
     if not d:
         return True, ""
@@ -197,10 +199,11 @@ def _reconfirmar_precio(v: dict, quien: dict, confirmado: bool) -> tuple[bool, s
     if r["estado"] == "sin datos":
         eventos.registrar("viaje", v["id"], "precio no reconfirmado", r["motivo"] or "", "SerpApi")
         return True, f" Precio no reconfirmado ({r['motivo']})."
+    texto = f"antes {r['antes']:.2f} USD, ahora {r['ahora']:.2f} USD"
     if r["estado"] == "confirmado":
-        eventos.registrar("viaje", v["id"], "precio confirmado", f"{r['ahora']:.2f} USD", "SerpApi (en vivo)")
-        return True, f" Precio confirmado: {r['ahora']:.0f} USD."
-    texto = f"antes {r['antes']:.0f} USD, ahora {r['ahora']:.0f} USD ({r['variacion']:+.1%})"
+        eventos.registrar("viaje", v["id"], "precio confirmado", f"{texto} (sin cambio)", "SerpApi (en vivo)")
+        return True, f" Precio confirmado: {r['ahora']:.2f} USD."
+    texto += f" ({r['variacion']:+.1%})"
     tolerancia = costo.supuesto(costo.catalogo(), "tolerancia_precio_aprobacion", 0.05)
     if r["variacion"] > tolerancia:
         eventos.registrar("viaje", v["id"], "precio cambió", f"{texto}; {SUPERA_TOLERANCIA} de {tolerancia:.0%}", "SerpApi (en vivo)")
@@ -208,6 +211,24 @@ def _reconfirmar_precio(v: dict, quien: dict, confirmado: bool) -> tuple[bool, s
                        "confirma el precio nuevo para aprobar.")
     eventos.registrar("viaje", v["id"], "precio cambió", texto, "SerpApi (en vivo)")
     return True, f" El precio cambió: {texto}."
+
+
+def _ajustar_presupuesto(v: dict, cambio: str, quien: dict) -> str:
+    """Al confirmar un precio nuevo, el presupuesto del viaje pasa a ese precio (la línea del tiquete) y queda el evento."""
+    precios_ = re.findall(r"(?:antes|ahora) ([\d.]+) USD", cambio)
+    lineas = db.de_json(v.get("presupuesto_detalle"), []) if isinstance(v.get("presupuesto_detalle"), str) else v.get("presupuesto_detalle") or []
+    linea = next((l for l in lineas if l.get("grupo") == "vuelo" and l["concepto"].startswith("Precio")), None)
+    if len(precios_) != 2 or not linea:
+        return ""
+    antes, ahora = float(precios_[0]), float(precios_[1])
+    linea["valor"], linea["concepto"] = round(ahora, 2), f"{linea['concepto']} · precio reconfirmado al aprobar"
+    total = round(sum(l["valor"] for l in lineas), 2)
+    db.actualizar("viajes", v["id"], presupuesto_usd=total, presupuesto_detalle=lineas)
+    eventos.registrar("viaje", v["id"], "presupuesto ajustado al precio confirmado",
+                      f"{v['codigo']} · tiquete {antes:.2f} → {ahora:.2f} USD · presupuesto {v['presupuesto_usd']:.2f} → {total:.2f} USD",
+                      quien["nombre"])
+    v["presupuesto_usd"] = total
+    return f" Presupuesto ajustado al precio nuevo: {total:.2f} USD."
 
 
 def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict, confirmar_precio: bool = False) -> tuple[bool, str]:

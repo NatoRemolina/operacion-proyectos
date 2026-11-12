@@ -122,7 +122,7 @@ SUPUESTOS_NUEVOS = [
     ("monitoreo_horas_antes", "3", "El estado del vuelo se consulta desde estas horas antes de la salida programada hasta la llegada."),
     ("monitoreo_cache_min", "60", "Minutos que se reutiliza una consulta del estado del vuelo antes de pagar otra («Actualizar ahora» la salta)."),
     ("monitoreo_tope_tramo", "6", "Consultas del estado del vuelo como máximo por tramo."),
-    ("monitoreo_tope_viaje", "12", "Consultas del estado del vuelo como máximo por viaje (todos sus tramos)."),
+    ("monitoreo_tope_viaje", "12", "Consultas del estado del vuelo como máximo por viaje en cada sentido (ida o regreso, todos sus tramos)."),
     ("monitoreo_tope_dia", "30", "Consultas en vivo del estado del vuelo como máximo por día, para toda la plataforma."),
     ("monitoreo_retraso_aviso_min", "15", "Retraso que se avisa al viajero (o que crece estos minutos más desde el último aviso)."),
     ("cupo_minimo_monitoreo", "25", "Si al plan del buscador le quedan menos búsquedas que esto, el monitoreo del vuelo se suspende."),

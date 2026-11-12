@@ -38,6 +38,7 @@ class Buscador:
         self.llamadas = []
 
     def get(self, url, params=None, **k):
+        assert "account" not in url, "el cupo se simula aparte (precios.cupo)"
         self.llamadas.append(dict(params))
         p = params
         if p["engine"] == "google_hotels":
@@ -60,6 +61,7 @@ def _simular(monkeypatch, tmp_path, buscador, clave="clave-de-prueba"):
     monkeypatch.setattr(config, "SERPAPI_KEY", clave)
     monkeypatch.setattr(config, "DIR_RESPALDO_ESCRITURA", tmp_path)   # nada simulado queda en el repositorio
     monkeypatch.setattr(precios.httpx, "get", buscador.get)
+    monkeypatch.setattr(precios, "cupo", lambda: {"restantes": 200})
     return buscador
 
 
@@ -261,7 +263,9 @@ def test_aprobar_reconfirma_el_precio_igual(cliente, monkeypatch, tmp_path):
     assert fijado["outbound"][1] == {"flight_number": "DL200", "departure_id": "ATL", "arrival_id": "SLC", "date": "2027-09-07"}
     assert [s["flight_number"] for s in fijado["return"]] == ["DL300"]
     assert viajes.de_solicitud(sid)["estado"] == "aprobado"
-    assert _eventos(v["id"], "precio confirmado")
+    # el evento lleva el precio anterior y el nuevo, siempre
+    assert "antes 410.00 USD, ahora 410.00 USD (sin cambio)" in _eventos(v["id"], "precio confirmado")[0]["detalle"]
+    assert not list(tmp_path.glob("reconfirmacion_*"))      # la reconfirmación solo va a la tabla, no a la carpeta versionada
     assert db.uno("select origen from consultas_buscador where solicitud_id=:i and tipo='reconfirmacion'", i=sid)["origen"] == "en vivo"
 
 
@@ -276,17 +280,23 @@ def test_aprobar_con_precio_mayor_que_la_tolerancia_pide_confirmar(cliente, monk
     # la página ofrece confirmar; al confirmar no se vuelve a pagar la consulta
     assert "confirmar_precio" in cliente.get("/admin/viajes").text
     antes = len(b.llamadas)
+    presupuesto = viajes.de_solicitud(sid)["presupuesto_usd"]
     _aprobar(cliente, v["id"], confirmar_precio="1")
     assert len(b.llamadas) == antes and viajes.de_solicitud(sid)["estado"] == "aprobado"
     assert _eventos(v["id"], "precio nuevo confirmado")
+    # el presupuesto pasa al precio nuevo, con su evento
+    assert viajes.de_solicitud(sid)["presupuesto_usd"] == round(presupuesto + 41, 2)
+    ajuste = _eventos(v["id"], "presupuesto ajustado al precio confirmado")
+    assert ajuste and "410.00 → 451.00" in ajuste[0]["detalle"]
 
 
 def test_aprobar_dentro_de_la_tolerancia_no_pide_confirmar(cliente, monkeypatch, tmp_path):
     from app.servicios import viajes
-    _, sid, v = _decidido(cliente, monkeypatch, tmp_path, "2027-09-21", "2027-09-24", reconfirmacion=_reserva(420))
+    _, sid, v = _decidido(cliente, monkeypatch, tmp_path, "2027-09-21", "2027-09-24", reconfirmacion=_reserva(410.5))
     _aprobar(cliente, v["id"])
     assert viajes.de_solicitud(sid)["estado"] == "aprobado"
-    assert "antes 410" in _eventos(v["id"], "precio cambió")[0]["detalle"]
+    # aunque cambie poco, el texto lo dice
+    assert "antes 410.00 USD, ahora 410.50 USD" in _eventos(v["id"], "precio cambió")[0]["detalle"]
 
 
 def test_aprobar_sin_datos_aprueba_con_aviso(cliente, monkeypatch, tmp_path):
@@ -368,8 +378,8 @@ def test_ventana_cache_y_tope(cliente, tramo, monkeypatch, tmp_path):
     segunda = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:40"))
     assert segunda["consultado"] is False and segunda["motivo"].startswith("consultado hace menos de")
     assert len(b.de("q")) == 1                                       # dos llamadas en 10 minutos: una consulta
-    for _ in range(5):                                               # «Actualizar ahora» salta la caché, nunca el tope
-        assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:45"), forzar=True)["consultado"]
+    for minuto in range(45, 50):                                     # «Actualizar ahora» salta la caché, nunca el tope
+        assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc(f"2026-12-13 05:{minuto}"), forzar=True)["consultado"]
     septima = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 06:00"), forzar=True)
     assert septima["consultado"] is False and septima["motivo"] == "tope de 6 consultas"
     assert len(b.de("q")) == 6
@@ -487,12 +497,213 @@ def test_tablero_muestra_el_estado_y_la_hora_limite(cliente, monkeypatch, tmp_pa
 
 
 def test_actualizar_ahora(cliente, tramo, monkeypatch, tmp_path):
-    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
+    b = _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
     r = cliente.post(f"/admin/vuelos/{tramo['id']}/actualizar", follow_redirects=False)
     assert r.status_code == 303 and "/admin/viajes" in r.headers["location"]
-    assert "fuera+de+la+ventana" in r.headers["location"] or "fuera%20de%20la%20ventana" in r.headers["location"]
+    assert "fuera%20de%20la%20ventana" in r.headers["location"]
+    # dentro de la ventana, forzar consulta
+    monkeypatch.setenv("MONITOREO_AHORA", "2026-12-13T06:00")
+    monkeypatch.setattr(config, "LOCAL", True)
+    r = cliente.post(f"/admin/vuelos/{tramo['id']}/actualizar", data={"fecha": "2026-12-13"}, follow_redirects=False)
+    assert "estado%20actualizado" in r.headers["location"] and "fecha=2026-12-13" in r.headers["location"]
+    assert len(b.de("q")) == 1
 
 
 def test_solo_administracion_ve_el_monitoreo(piloto, tramo):
     assert piloto.get("/admin/viajes/vuelos").status_code in (401, 403)
     assert piloto.post(f"/admin/vuelos/{tramo['id']}/actualizar").status_code in (401, 403)
+
+
+# ---------- ronda de arreglos 1 ----------
+def test_regreso_y_reserva_no_usan_otras_fechas(cliente):
+    """Punto 1: el regreso y las tarifas guardados del 8 al 11 de diciembre no sirven para un viaje del 1 al 5 de marzo."""
+    aa = {"numeros": ["AA 1851"], "desde": "MIA", "hasta": "LAS", "token": None}
+    assert precios.vuelo_regreso(aa, "MIA", "LAS", "2027-03-01", "2027-03-05") is None
+    assert precios.opciones_reserva(aa, None, "MIA", "LAS", "2027-03-01", "2027-03-05")[:2] == ([], "sin datos")
+    assert precios.tarifas_de_vuelo("MIA", "LAS", "2027-03-01", "2027-03-05", aa) == ([], "sin datos")
+    # las de las mismas fechas sí
+    assert precios.vuelo_regreso(aa, "MIA", "LAS", "2026-12-08", "2026-12-11")["numeros"] == ["AA 1851"]
+
+
+def test_reconfirmar_sin_regreso_no_consulta_solo_ida(cliente, monkeypatch, tmp_path):
+    """Punto 2."""
+    b = _simular(monkeypatch, tmp_path, Buscador({}, reconfirmacion=_reserva(410)))
+    ida = {"tramos": [{"numero": "DL 100", "desde": "MIA", "hasta": "ATL", "sale": "2027-07-06 07:00"}], "precio": 410}
+    r = precios.reconfirmar({"solicitud_id": None, "tarifa": "Main Cabin", "desglose": {"vuelo": ida, "regreso": None}})
+    assert (r["estado"], r["motivo"]) == ("sin datos", "sin tramos del regreso") and b.llamadas == []
+
+
+def test_dos_consultas_a_la_vez_pagan_una(cliente, tramo, monkeypatch, tmp_path):
+    """Punto 3: mientras una consulta espera al proveedor, otra petición del mismo tramo no paga otra."""
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado("Delayed", "9:25 AM", "9:50 AM")))
+    real, segundas = precios.estado_vuelo, []
+
+    def lento(*a, **k):
+        segundas.append(monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"), forzar=True))
+        return real(*a, **k)
+    monkeypatch.setattr(precios, "estado_vuelo", lento)
+    assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))["consultado"]
+    assert segundas[0]["consultado"] is False
+    assert db.uno("select consultas from tramos_vuelo where id=:i", i=tramo["id"])["consultas"] == 1
+    # dos avisos sobre el mismo tramo leído antes: solo uno se registra
+    antes = db.uno("select * from tramos_vuelo where id=:i", i=tramo["id"])   # los dos leen el mismo tramo
+    despues = {**antes, "estado": "cancelado"}
+    monitoreo_vuelos._avisar(antes, "texto 1", despues, _utc("2026-12-13 05:31"))
+    monitoreo_vuelos._avisar(antes, "texto 2", despues, _utc("2026-12-13 05:31"))
+    pasos = db.todos("select detalle from eventos where entidad='viaje' and entidad_id=:v and detalle like 'texto %'", v=tramo["viaje_id"])
+    assert [p["detalle"] for p in pasos] == ["texto 1"]
+    assert "pidiendoVuelos" in cliente.get("/admin/viajes").text      # el tablero no lanza un refresco si hay otro en curso
+
+
+def test_cancelacion_no_se_repite_y_sin_datos_no_borra_lo_conocido(cliente, tramo, monkeypatch, tmp_path):
+    """Punto 4."""
+    b = _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado("Cancelled")))
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "")
+    pasos = ("2026-12-13 05:30", "2026-12-13 05:40", "2026-12-13 05:50")
+    monitoreo_vuelos.consultar(tramo["id"], ahora=_utc(pasos[0]))
+    b.estado = {"organic_results": []}                                # el proveedor deja de traer el bloque
+    r = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc(pasos[1]), forzar=True)
+    assert r["estado"] == "cancelado" and r["ultima_consulta"] == "sin datos"
+    b.estado = _estado("Cancelled")
+    monitoreo_vuelos.consultar(tramo["id"], ahora=_utc(pasos[2]), forzar=True)
+    avisos = db.todos("select detalle from eventos where entidad='viaje' and entidad_id=:v and paso like 'aviso de vuelo%'", v=tramo["viaje_id"])
+    assert len(avisos) == 1 and "CANCELADO" in avisos[0]["detalle"]
+
+
+def test_terminal_y_puerta_conservan_el_ultimo_valor(cliente, tramo, monkeypatch, tmp_path):
+    """Punto 4: el proveedor manda «-» cuando no sabe la puerta."""
+    b = _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
+    monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))
+    b.estado = _estado(puerta="-", terminal="-")
+    r = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:40"), forzar=True)
+    assert (r["terminal"], r["puerta"]) == ("4", "J58")
+
+
+def test_zona_horaria_por_el_lugar_mas_cercano(cliente):
+    """Punto 5: la zona de GeoNames del lugar más cercano respeta las fronteras horarias dentro de un país."""
+    from app.servicios import geografia
+    monitoreo_vuelos._zonas_cache.clear()
+    casos = {"MOB": "America/Chicago", "PNS": "America/Chicago", "ELP": "America/Denver", "IGU": "America/Sao_Paulo",
+             "MIA": "America/New_York", "SLC": "America/Denver", "MAD": "Europe/Madrid", "LIS": "Europe/Lisbon"}
+    assert {c: str(monitoreo_vuelos.zona(c)) for c in casos} == casos
+    assert db.uno("select zona from lugares where nombre='Pensacola'")["zona"] == "America/Chicago"
+    assert geografia.zona_horaria(0.0, -140.0) is None                 # en medio del océano no hay lugar cercano
+    # Pensacola está en hora central: las 09:00 del 13 de diciembre son las 15:00 UTC (no las 14:00 de Miami)
+    assert monitoreo_vuelos._en_utc("2026-12-13 09:00", "PNS") == _utc("2026-12-13 15:00")
+
+
+def test_el_tope_del_viaje_no_deja_sin_monitoreo_el_regreso(cliente, tramo, monkeypatch, tmp_path):
+    """Punto 6: el tope del viaje se aplica a cada sentido."""
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
+    db.insertar("tramos_vuelo", viaje_id=tramo["viaje_id"], sentido="ida", orden=8, numero="IB 5600", estado="programado",
+                consultas=12, **{k: v for k, v in MAD_LIS.items() if k != "numero"})
+    regreso = db.insertar("tramos_vuelo", viaje_id=tramo["viaje_id"], sentido="regreso", orden=9, numero="IB 5634",
+                          estado="programado", consultas=0, **{k: v for k, v in MAD_LIS.items() if k != "numero"})
+    assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))["motivo"] == "tope de 12 consultas del viaje de ida"
+    assert monitoreo_vuelos.consultar(regreso, ahora=_utc("2026-12-13 05:30"))["consultado"] is True
+
+
+def test_el_tablero_sin_fecha_incluye_vuelos_en_curso_de_ayer(cliente, nuevo_viaje):
+    """Punto 7: un vuelo nocturno de Las Vegas del 12 sigue en el aire el 13 en UTC."""
+    v = nuevo_viaje()
+    nocturno = db.insertar("tramos_vuelo", viaje_id=v["id"], sentido="regreso", orden=7, numero="AA 9", desde="LAS", hasta="MIA",
+                           fecha="2026-12-12", sale_programada="2026-12-12 23:30", llega_programada="2026-12-13 07:20",
+                           estado="programado", consultas=0)
+    de_dia = db.insertar("tramos_vuelo", viaje_id=v["id"], sentido="regreso", orden=8, numero="AA 10", desde="LAS", hasta="MIA",
+                         fecha="2026-12-12", sale_programada="2026-12-12 10:00", llega_programada="2026-12-12 17:50",
+                         estado="programado", consultas=0)
+    ids = {f["id"] for f in monitoreo_vuelos.tablero(None, _utc("2026-12-13 06:00"))}
+    assert nocturno in ids and de_dia not in ids
+    assert {nocturno, de_dia} <= {f["id"] for f in monitoreo_vuelos.tablero("2026-12-12", _utc("2026-12-13 06:00"))}
+
+
+def test_el_tope_del_dia_cuenta_el_dia_de_ahora(cliente, tramo, monkeypatch, tmp_path):
+    """Punto 8: el tope por día se cuenta con `ahora`, no con el reloj."""
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
+    db.insertar("consultas_buscador", momento=db.ahora(), tipo="estado_vuelo", origen="en vivo", clave="hoy", resultados=0)
+    db.ejecutar("update reglas set valor='1' where ambito='supuesto' and clave='monitoreo_tope_dia'")
+    try:
+        assert monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))["consultado"] is True
+        db.insertar("consultas_buscador", momento="2026-12-13 05:31:00", tipo="estado_vuelo", origen="en vivo", clave="ese día", resultados=0)
+        r = monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:40"), forzar=True)
+        assert r["motivo"] == "tope de 1 consultas del día"
+    finally:
+        db.ejecutar("update reglas set valor='30' where ambito='supuesto' and clave='monitoreo_tope_dia'")
+
+
+def test_el_estado_del_vuelo_no_se_escribe_en_la_carpeta_de_respaldos(cliente, monkeypatch, tmp_path):
+    """Punto 9: solo la tabla `busquedas`; el ejemplo versionado se queda."""
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado()))
+    assert precios.estado_vuelo("IB 5634", "2026-12-13")
+    assert not list(tmp_path.glob("*.json"))
+    clave = db.uno("select clave from consultas_buscador where tipo='estado_vuelo' order by id desc limit 1")["clave"]
+    assert db.uno("select id from busquedas where clave=:c", c=clave)
+    assert (config.DIR_RESPALDO / "estado_vuelo_IB5634_2026-12-13.json").is_file()
+
+
+def test_aviso_fallido_y_ultimo_aviso_en_el_tablero(cliente, tramo, monkeypatch, tmp_path):
+    """Punto 11: «aviso de vuelo enviado» solo si Telegram respondió bien; el último aviso se ve en el tablero."""
+    _simular(monkeypatch, tmp_path, Buscador({}, estado=_estado("Delayed", "9:25 AM", "9:50 AM")))
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+
+    def caido(metodo, **d):
+        raise telegram.ErrorTelegram("sendMessage: Bad Gateway")
+    monkeypatch.setattr(telegram, "_llamar", caido)
+    titular = db.uno("select usuario_id from viajes where id=:v", v=tramo["viaje_id"])["usuario_id"]
+    previo = db.uno("select telegram_chat_id from usuarios where id=:u", u=titular)["telegram_chat_id"]
+    db.ejecutar("update usuarios set telegram_chat_id=:c where id=:u", c=previo or 77001133, u=titular)
+    try:
+        monitoreo_vuelos.consultar(tramo["id"], ahora=_utc("2026-12-13 05:30"))
+    finally:
+        db.ejecutar("update usuarios set telegram_chat_id=:c where id=:u", c=previo, u=titular)
+    pasos = [e["paso"] for e in db.todos("select paso from eventos where entidad='viaje' and entidad_id=:v and paso like 'aviso de vuelo%'",
+                                         v=tramo["viaje_id"])]
+    assert pasos == ["aviso de vuelo fallido"]
+    ultimo = db.de_json(db.uno("select ultimo_aviso from tramos_vuelo where id=:i", i=tramo["id"])["ultimo_aviso"])
+    assert ultimo["enviado"] is False and "Bad Gateway" in ultimo["error"]
+    html = cliente.get("/admin/viajes?fecha=2026-12-13").text
+    assert "Último aviso al viajero" in html and "Bad Gateway" in html
+    fila = next(f for f in cliente.get("/admin/viajes/vuelos?fecha=2026-12-13").json() if f["id"] == tramo["id"])
+    assert fila["aviso"]["texto"].startswith("Vuelo IB 5634")
+
+
+def test_la_confirmacion_de_precio_caduca_al_rechazar_o_reabrir(cliente, monkeypatch, tmp_path):
+    """Punto 13."""
+    from app.servicios import viajes
+    b, sid, v = _decidido(cliente, monkeypatch, tmp_path, "2027-11-02", "2027-11-05", reconfirmacion=_reserva(451))
+    _aprobar(cliente, v["id"])
+    assert viajes.precio_por_confirmar(v["id"])
+    cliente.post(f"/admin/viajes/{v['id']}", data={"accion": "rechazar", "motivo": "Revisar fechas con el cliente"})
+    cliente.post(f"/admin/viajes/{v['id']}", data={"accion": "reabrir"})
+    assert viajes.precio_por_confirmar(v["id"]) is None
+    antes = len(b.llamadas)
+    _aprobar(cliente, v["id"], confirmar_precio="1")                 # la confirmación vieja ya no vale: se reconfirma
+    assert len(b.llamadas) == antes + 1 and viajes.de_solicitud(sid)["estado"] == "pendiente_aprobacion"
+
+
+def test_el_json_del_tablero_lee_una_vez(cliente, tramo, monkeypatch):
+    """Punto 14: una lectura del tablero y de las reglas por petición."""
+    llamadas = {"tablero": 0, "reglas": 0}
+    tablero, reglas = monitoreo_vuelos.tablero, monitoreo_vuelos.reglas
+
+    def contar(nombre, funcion):
+        def envoltura(*a, **k):
+            llamadas[nombre] += 1
+            return funcion(*a, **k)
+        return envoltura
+    monkeypatch.setattr(monitoreo_vuelos, "tablero", contar("tablero", tablero))
+    monkeypatch.setattr(monitoreo_vuelos, "reglas", contar("reglas", reglas))
+    assert any(f["id"] == tramo["id"] for f in cliente.get("/admin/viajes/vuelos?fecha=2026-12-13").json())
+    assert llamadas == {"tablero": 1, "reglas": 1}
+
+
+def test_monitoreo_ahora_solo_en_local(monkeypatch):
+    """Punto 15: el momento fijado para la demostración solo vale en local."""
+    monkeypatch.setenv("MONITOREO_AHORA", "2026-12-13T06:00")
+    monkeypatch.setattr(config, "LOCAL", True)
+    assert monitoreo_vuelos.momento_actual() == _utc("2026-12-13 06:00")
+    monkeypatch.setattr(config, "LOCAL", False)
+    assert abs((monitoreo_vuelos.momento_actual() - datetime.now(UTC)).total_seconds()) < 5
+    monkeypatch.setattr(config, "LOCAL", True)
+    monkeypatch.setenv("MONITOREO_AHORA", "no es una fecha")
+    assert abs((monitoreo_vuelos.momento_actual() - datetime.now(UTC)).total_seconds()) < 5

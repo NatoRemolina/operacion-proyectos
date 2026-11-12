@@ -60,11 +60,14 @@ def _sin_reserva(datos):
     return datos
 
 
-def _guardar(nombre: str, datos: dict):
-    """Una respuesta pagada no se pierde: va a la tabla compartida. El archivo es una copia de conveniencia.
-    Antes de guardarla se quita lo que serviría para ejecutar una reserva."""
+def _guardar(nombre: str, datos: dict, archivo: bool = True):
+    """Una respuesta pagada no se pierde: va a la tabla compartida. El archivo es una copia de conveniencia; las
+    respuestas que solo valen en su momento (estado del vuelo, reconfirmación) no lo llevan, para no llenar la carpeta
+    versionada de respaldos. Antes de guardarla se quita lo que serviría para ejecutar una reserva."""
     cuerpo = json.dumps(_sin_reserva(datos), ensure_ascii=False)
     db.insertar("busquedas", clave=nombre, cuerpo=cuerpo, creado=db.ahora())
+    if not archivo:
+        return
     try:
         config.DIR_RESPALDO_ESCRITURA.mkdir(parents=True, exist_ok=True)
         (config.DIR_RESPALDO_ESCRITURA / nombre).write_text(cuerpo)
@@ -270,15 +273,11 @@ def _clave_vuelo(vuelo: dict) -> str:
     return "".join(n.replace(" ", "") for n in vuelo.get("numeros") or [])
 
 
-def _guardada(nombre: str, patron: str) -> tuple:
-    """(datos, origen del dato, clave) de una respuesta ya pagada: la misma consulta o, si no, la de otras fechas."""
+def _guardada(nombre: str) -> tuple:
+    """(datos, origen del dato, clave) de la misma consulta ya pagada. Nunca la de otras fechas: el regreso y las
+    opciones de reserva de otro día no describen el vuelo que se va a tomar."""
     datos = _leer(nombre)
-    if datos is not None:
-        return datos, "guardado", nombre
-    otros = sorted(config.DIR_RESPALDO.glob(patron))
-    if otros:
-        return json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
-    return None, None, None
+    return (datos, "guardado", nombre) if datos is not None else (None, None, None)
 
 
 def vuelo_regreso(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str, regreso: str,
@@ -286,16 +285,16 @@ def vuelo_regreso(vuelo_ida: dict, origenes: str | list[str], destinos: str | li
     """El vuelo de regreso real de una opción de ida: una consulta con su `departure_token`.
 
     Se envían los mismos códigos que la búsqueda original, para aprovechar la caché del proveedor. De los regresos se
-    toman los que salen del aeropuerto real de llegada de la ida y se elige el más barato. Antes de pagar se busca la
-    respuesta guardada (también la de «Traer tarifas» de antes, que guardaba regreso y reserva juntos).
-    None sin token, sin clave ni respuesta guardada, si la consulta falla o si ningún regreso sale de ese aeropuerto."""
+    toman los que salen del aeropuerto real de llegada de la ida y se elige el más barato. Orden: la misma consulta
+    guardada (también la de «Traer tarifas» de antes, que guardaba regreso y reserva juntos, de las mismas fechas) →
+    en vivo → nada. None sin token, sin clave ni respuesta guardada, si la consulta falla o si ningún regreso sale de
+    ese aeropuerto."""
     origen, destino, n_origen, n_destino = ruta(origenes, destinos)
     clave = _clave_vuelo(vuelo_ida)
     inicio, nombre = time.perf_counter(), f"regreso_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
-    datos, origen_dato, usada = _guardada(nombre, f"regreso_{n_origen}_{n_destino}_*_{clave}.json")
+    datos, origen_dato, usada = _guardada(nombre)
     if datos is None:
-        antiguo, origen_dato, usada = _guardada(f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json",
-                                                f"tarifas_{n_origen}_{n_destino}_*_{clave}.json")
+        antiguo, origen_dato, usada = _guardada(f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json")
         datos = (antiguo or {}).get("regreso")
     if datos is None:
         if not (config.SERPAPI_KEY and vuelo_ida.get("token")):
@@ -325,10 +324,9 @@ def opciones_reserva(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list
     origen, destino, n_origen, n_destino = ruta(origenes, destinos)
     clave = _clave_vuelo(vuelo_ida)
     inicio, nombre = time.perf_counter(), f"reserva_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
-    datos, origen_dato, usada = _guardada(nombre, f"reserva_{n_origen}_{n_destino}_*_{clave}.json")
+    datos, origen_dato, usada = _guardada(nombre)
     if datos is None:
-        antiguo, origen_dato, usada = _guardada(f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json",
-                                                f"tarifas_{n_origen}_{n_destino}_*_{clave}.json")
+        antiguo, origen_dato, usada = _guardada(f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json")
         datos = (antiguo or {}).get("reserva")
     if datos is None:
         if not (config.SERPAPI_KEY and (vuelo_regreso_ or {}).get("booking")):
@@ -357,9 +355,7 @@ def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str
         _, _, n_origen, n_destino = ruta(origen, destino)
         clave = _clave_vuelo(vuelo)
         guardadas = [f"{p}_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json" for p in ("reserva", "tarifas")]
-        hay = any(_leer(n) is not None for n in guardadas) or any(
-            next(config.DIR_RESPALDO.glob(f"{p}_{n_origen}_{n_destino}_*_{clave}.json"), None) for p in ("reserva", "tarifas"))
-        if not hay:
+        if not any(_leer(n) is not None for n in guardadas):
             return [], "sin datos"
         tarifas, origen_dato, _ = opciones_reserva(vuelo, None, origen, destino, ida, regreso, solicitud_id)
         return tarifas, origen_dato
@@ -391,15 +387,17 @@ def reconfirmar(decision: dict) -> dict:
         return {**sin, "motivo": "sin clave del buscador"}
     if not ida:
         return {**sin, "motivo": "la decisión no tiene los tramos del vuelo"}
-    fijado = {"outbound": ida, **({"return": vuelta} if vuelta else {})}
+    if not vuelta:   # solo la ida sería el precio de otro itinerario (solo ida), no el del viaje decidido
+        return {**sin, "motivo": "sin tramos del regreso"}
+    fijado = {"outbound": ida, "return": vuelta}
     clave = "".join(s["flight_number"] for s in ida + vuelta)
     inicio = time.perf_counter()
     nombre = f"reconfirmacion_{clave}_{datetime.now(UTC):%Y%m%d%H%M}.json"
     try:
-        datos = _consultar({"engine": "google_flights", "type": 1 if vuelta else 2,
+        datos = _consultar({"engine": "google_flights", "type": 1,
                             "selected_flights_json": json.dumps(fijado, separators=(",", ":"))},
                            "solicitud", decision.get("solicitud_id"), f"reconfirmación del precio de {clave}")
-        _guardar(nombre, datos)
+        _guardar(nombre, datos, archivo=False)
     except Exception as e:
         _anotar("reconfirmacion", nombre, "fallida", decision.get("solicitud_id"), inicio, error=e)
         return {**sin, "motivo": f"la consulta falló ({str(e)[:80]})"}
@@ -410,7 +408,7 @@ def reconfirmar(decision: dict) -> dict:
     misma = [t for t in tarifas if t["nombre"] == decision.get("tarifa")]
     ahora = min(t["precio"] for t in misma or tarifas)
     variacion = (ahora - float(antes)) / float(antes)
-    return {"estado": "confirmado" if abs(variacion) < 0.005 else "cambio", "antes": float(antes), "ahora": ahora,
+    return {"estado": "confirmado" if abs(ahora - float(antes)) < 0.005 else "cambio", "antes": float(antes), "ahora": ahora,
             "variacion": round(variacion, 4), "motivo": None}
 
 
@@ -521,7 +519,7 @@ def estado_vuelo(numero: str, fecha: str, solicitud_id: int | None = None) -> di
         try:
             datos = _consultar({"engine": "google", "q": f"Flight {compacto}", "gl": "us"},
                                "solicitud", solicitud_id, f"estado del vuelo {numero} {fecha}")
-            _guardar(nombre, datos)
+            _guardar(nombre, datos, archivo=False)
             origen_dato, clave = "en vivo", nombre
         except Exception as e:
             datos, fallo = None, e

@@ -1,5 +1,4 @@
 """El viaje: detalle, evidencias, aprobación de presupuesto y tablero."""
-from datetime import UTC, date, datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
@@ -49,39 +48,35 @@ def viaje_evidencia(vid: int, doc: int):
     return Response(contenido, media_type=d["mime"], headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
 
 
-def _fecha(texto: str) -> str:
-    """El día del tablero de vuelos: el pedido si es una fecha válida; si no, hoy (UTC)."""
-    try:
-        return date.fromisoformat(texto).isoformat()
-    except ValueError:
-        return datetime.now(UTC).date().isoformat()
-
-
-CAMPOS_VUELO = ("id", "viaje_id", "codigo", "titular", "sentido", "orden", "aerolinea", "numero", "desde", "hasta",
+CAMPOS_VUELO = ("id", "viaje_id", "codigo", "titular", "sentido", "orden", "aerolinea", "numero", "fecha", "desde", "hasta",
                 "sale_programada", "llega_programada", "llega_estimada", "estado", "estado_texto", "retraso", "retraso_salida",
                 "retraso_llegada", "terminal", "puerta", "consultas", "actualizado", "hace_min", "llegar_antes", "en_destino",
-                "no_llega", "omitida")
+                "no_llega", "omitida", "ultima_consulta", "aviso")
 
 
 @router.get("/admin/viajes/vuelos", tags=["api"])
 def viajes_vuelos(fecha: str = ""):
-    """Tramos del día para el tablero. Lo pide el tablero cada 15 s: cada tramo se consulta solo si está en su ventana,
-    fuera de la caché y dentro de los topes (`monitoreo_vuelos.consultar`)."""
-    fecha = _fecha(fecha)
-    for t in monitoreo_vuelos.del_dia(fecha):
-        monitoreo_vuelos.consultar(t["id"])
-    return [{c: t.get(c) for c in CAMPOS_VUELO} for t in monitoreo_vuelos.del_dia(fecha)]
+    """Tramos para el tablero (los de ese día; sin fecha, los de hoy y los de ayer o mañana que están en su ventana).
+    Lo pide el tablero cada 15 s: cada tramo se consulta solo dentro de su ventana, fuera de la caché y de los topes."""
+    ahora, reglas = monitoreo_vuelos.momento_actual(), monitoreo_vuelos.reglas()
+    salida = []
+    for t in monitoreo_vuelos.tablero(monitoreo_vuelos.fecha_valida(fecha), ahora, reglas):
+        nuevo = monitoreo_vuelos.consultar(t["id"], ahora, reglas_=reglas)
+        t = monitoreo_vuelos.completar({**t, **{k: v for k, v in nuevo.items() if k in t}}, ahora)
+        salida.append({c: t.get(c) for c in CAMPOS_VUELO})
+    return salida
 
 
 @router.post("/admin/vuelos/{tramo_id}/actualizar")
-def vuelo_actualizar(tramo_id: int):
+def vuelo_actualizar(tramo_id: int, fecha: str = Form("")):
     """«Actualizar ahora»: salta la caché, nunca la ventana ni los topes."""
     t = db.uno("select fecha, numero from tramos_vuelo where id=:i", i=tramo_id)
     if not t:
         return NO_ENCONTRADO
     r = monitoreo_vuelos.consultar(tramo_id, forzar=True)
     mensaje = f"{t['numero']}: estado actualizado." if r["consultado"] else f"{t['numero']}: no se consultó ({r['motivo']})."
-    return RedirectResponse(f"/admin/viajes?fecha={t['fecha']}&aviso={quote(mensaje)}#vuelos", status_code=303)
+    dia = monitoreo_vuelos.fecha_valida(fecha)
+    return RedirectResponse(f"/admin/viajes?{'fecha=' + dia + '&' if dia else ''}aviso={quote(mensaje)}#vuelos", status_code=303)
 
 
 @router.get("/admin/viajes", response_class=HTMLResponse)
@@ -90,9 +85,10 @@ def viajes_admin(request: Request, aviso: str = "", fecha: str = ""):
     for v in todos_:   # lo propio no se aprueba aquí: lo hace otra persona de administración
         v["propio"] = viajes.es_propio_de(v, _yo())
         v["precio_por_confirmar"] = viajes.precio_por_confirmar(v["id"]) if v["estado"] == "pendiente_aprobacion" else None
-    fecha = _fecha(fecha)
+    fecha = monitoreo_vuelos.fecha_valida(fecha)
     return plantillas.TemplateResponse(request, "viajes_admin.html", _ctx(
-        hay_otro_admin=viajes.hay_otro_admin(_yo()), fecha=fecha, vuelos=monitoreo_vuelos.del_dia(fecha),
+        hay_otro_admin=viajes.hay_otro_admin(_yo()), fecha=fecha, hoy=monitoreo_vuelos.hoy(),
+        vuelos=monitoreo_vuelos.tablero(fecha),
         aviso=aviso[:300], pendientes=[v for v in todos_ if v["estado"] == "pendiente_aprobacion"],
         abiertos=[v for v in todos_ if v["estado"] == "aprobado"],
         otros=[v for v in todos_ if v["estado"] in ("rechazado", "cerrado")]))
