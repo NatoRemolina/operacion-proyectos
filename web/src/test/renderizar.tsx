@@ -1,6 +1,9 @@
 import type { ReactElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
+import type { AdministracionRepository } from "@/features/administracion/domain/administracion";
+import { AdministracionRepositoryProvider } from "@/features/administracion/application/administracion";
+import { crearAdministracionMemoria } from "@/features/administracion/infrastructure/administracion-memoria";
 import type { AuthRepository } from "@/features/auth/domain/auth";
 import { AuthRepositoryProvider } from "@/features/auth/application/sesion";
 import type { GastosRepository } from "@/features/gastos/domain/gastos";
@@ -14,6 +17,8 @@ import type { CotizarRepository } from "@/features/cotizar/domain/cotizar";
 import { CotizarRepositoryProvider } from "@/features/cotizar/application/cotizar";
 import { crearCotizarMemoria } from "@/features/cotizar/infrastructure/cotizar-memoria";
 import { FORMULARIO_EJEMPLO } from "@/features/cotizar/infrastructure/ejemplo-moab";
+import type { Permiso } from "@/shared/domain/navegacion";
+import { AvisosProvider } from "@/shared/ui/aviso-emergente";
 
 const authNoUsado: AuthRepository = {
   entrar: () => Promise.reject(new Error("no usado")),
@@ -32,7 +37,9 @@ export function renderizarConFuente(
     viajes?: ViajesRepository;
     auth?: AuthRepository;
     cotizar?: CotizarRepository;
+    administracion?: AdministracionRepository;
     personaId?: number;
+    permiso?: Permiso;
   } = {},
 ) {
   const queryClient = new QueryClient({
@@ -46,7 +53,11 @@ export function renderizarConFuente(
             <CotizarRepositoryProvider
               repositorio={fuente.cotizar ?? crearCotizarMemoria({ formulario: FORMULARIO_EJEMPLO })}
             >
-              <IdentidadProvider personaId={fuente.personaId ?? 1}>{ui}</IdentidadProvider>
+              <AdministracionRepositoryProvider repositorio={fuente.administracion ?? crearAdministracionMemoria({})}>
+                <AvisosProvider>
+                  <IdentidadProvider personaId={fuente.personaId ?? 1} permiso={fuente.permiso}>{ui}</IdentidadProvider>
+                </AvisosProvider>
+              </AdministracionRepositoryProvider>
             </CotizarRepositoryProvider>
           </GastosRepositoryProvider>
         </ViajesRepositoryProvider>

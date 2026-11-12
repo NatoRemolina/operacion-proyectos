@@ -288,5 +288,6 @@ def test_el_openapi_versionado_coincide_con_la_api():
                  ("get", "/gastos"), ("get", "/gastos/{id}"), ("post", "/gastos"), ("post", "/gastos/{id}/justificaciones"),
                  ("post", "/gastos/{id}/revision"),
                  ("get", "/lugares"), ("get", "/cotizaciones/formulario"), ("post", "/cotizaciones"), ("get", "/cotizaciones/{id}"), ("post", "/cotizaciones/{id}/decision"),
+                 ("get", "/resumen"), ("post", "/viajes/{id}/estado"),
                  ("get", "/documentos/{id}/contenido")}
     assert {(m, r.removeprefix(V1)) for r, ops in rutas.items() for m in ops} == esperadas

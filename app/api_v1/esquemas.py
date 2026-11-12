@@ -4,7 +4,7 @@ Las salidas se validan contra estos modelos: un campo que no está aquí (por ej
 """
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 Rol = Literal["colaborador", "gestor", "admin"]
 EstadoViaje = Literal["pendiente_aprobacion", "aprobado", "rechazado", "cerrado"]
@@ -17,6 +17,15 @@ class Ingreso(BaseModel):
     """Solo correo y contraseña. Cualquier otro campo (rol, usuario_id...) se ignora."""
     correo: str = Field(min_length=3, max_length=200)
     clave: str = Field(min_length=1, max_length=200)
+
+
+class CambioEstadoViaje(BaseModel):
+    """Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."""
+    model_config = ConfigDict(extra="forbid")
+    accion: Literal["aprobar", "rechazar", "reabrir", "cerrar"] = Field(
+        description="`aprobar` y `rechazar` solo desde pendiente; `reabrir` desde aprobado, rechazado o cerrado; `cerrar` desde aprobado.")
+    motivo: str = Field("", max_length=300, description="Obligatorio para rechazar (5 caracteres o más). La persona lo verá.")
+    confirmar_precio: bool = Field(False, description="Aprueba con el precio nuevo cuando el del vuelo subió más que la tolerancia.")
 
 
 class NuevaJustificacion(BaseModel):
@@ -67,6 +76,9 @@ class ViajeResumen(BaseModel):
     en_revision_usd: Dinero
     ejecucion_pct: int | None
     gastos: int
+    propio: bool = Field(False, description="Es de la persona de la sesión (titular o viajero): nadie aprueba lo suyo.")
+    precio_por_confirmar: str | None = Field(
+        None, description="Pendiente de aprobación cuyo precio de vuelo subió más que la tolerancia: hay que confirmarlo al aprobar.")
 
 
 class LineaPresupuesto(BaseModel):
@@ -126,6 +138,39 @@ class GastoDetalle(GastoResumen):
     justificaciones: list[Justificacion]
 
 
+class ResultadoCambioEstado(BaseModel):
+    viaje: ViajeDetalle
+    mensaje: str = Field(description="Lo que pasó, en lenguaje claro (incluye el aviso de precio si lo hubo).")
+
+
+class ActividadGasto(BaseModel):
+    gasto_id: int
+    comercio: str | None
+    persona: Titular | None = Field(description="De quién es el gasto: el titular de su viaje o, sin viaje, quien lo cargó.")
+    viaje: ViajeCodigo | None
+    total: Dinero
+    moneda: str | None
+    total_usd: Dinero
+    estado: EstadoGasto
+    estado_texto: str
+    creado: str
+
+
+class ResumenAdmin(BaseModel):
+    presupuesto_aprobado_usd: Dinero = Field(description="Presupuesto de los viajes aprobados y cerrados.")
+    gastado_usd: Dinero = Field(description="Gastos aprobados de esos viajes.")
+    disponible_usd: Dinero = Field(description="Aprobado menos gastado.")
+    en_revision_usd: Dinero = Field(description="Total en dólares de los gastos que esperan revisión.")
+    ejecucion_pct: int | None
+    viajes_por_aprobar: int
+    gastos_en_revision: int
+    pendientes: list[ViajeResumen] = Field(description="Hasta 5 viajes pendientes de aprobación, el más reciente primero.")
+    revision: list[GastoResumen] = Field(description="Hasta 5 gastos en revisión, el más reciente primero.")
+    actividad: list[ActividadGasto] = Field(description="Los 10 gastos más recientes.")
+    nota: str
+    datos_demostracion: bool = Field(description="La plataforma corre en local con las cuentas de demostración.")
+
+
 class ListaViajes(BaseModel):
     items: list[ViajeResumen]
     siguiente: str | None
@@ -149,8 +194,10 @@ class RespuestaError(BaseModel):
 
 
 DESCRIPCION_ERROR = {
-    401: "Sin sesión, sesión vencida o credenciales incorrectas", 403: "Token CSRF ausente o inválido, u origen no permitido",
-    404: "No existe o no es visible para la persona", 409: "Misma Idempotency-Key con un archivo distinto",
+    401: "Sin sesión, sesión vencida o credenciales incorrectas",
+    403: "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+    404: "No existe o no es visible para la persona",
+    409: "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
     413: "Archivo de más de 4,5 MB", 415: "El contenido no es JPG, PNG, WebP, PDF ni correo",
     422: "Campos inválidos; detalle por campo en `fields`", 429: "Demasiados intentos de ingreso",
 }

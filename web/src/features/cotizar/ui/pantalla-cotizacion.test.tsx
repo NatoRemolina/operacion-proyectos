@@ -30,7 +30,7 @@ const OTRA = COTIZACION_MOAB.vuelos[1]!;
 describe("Comparación de una cotización", () => {
   it("mientras carga muestra un esqueleto", () => {
     renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { obtener: () => new Promise(() => {}) }) });
-    expect(screen.getByRole("status")).toHaveTextContent("Cargando la cotización…");
+    expect(screen.getAllByText("Cargando la cotización…").length).toBeGreaterThan(0);
   });
 
   it("si falla, lo dice con su referencia y deja reintentar", async () => {

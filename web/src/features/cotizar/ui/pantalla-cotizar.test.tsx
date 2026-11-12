@@ -50,7 +50,7 @@ describe("Cotizar un viaje", () => {
   it("mientras carga muestra un esqueleto y luego el formulario con quien viaja", async () => {
     renderizarConFuente(<PantallaCotizar />, { cotizar: memoria() });
     expect(screen.getByRole("heading", { level: 1, name: "Cotizar un viaje" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Preparando el formulario…");
+    expect(screen.getAllByText("Preparando el formulario…").length).toBeGreaterThan(0);
     expect(await screen.findByText("Andrés Molina (tú)")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Proyecto" })).toBeInTheDocument();
   });

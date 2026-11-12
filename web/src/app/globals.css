@@ -30,8 +30,26 @@
   --neutro: #4b5563;
   --neutro-suave: #eef1f5;
   --foco: var(--marca);
+  --velo: rgb(17 28 36 / 0.6); /* fondo atenuado tras un diálogo: grafito al 60 % */
   --radio: 0.75rem;
   --ancho-contenido: 60rem;
+}
+
+/* Contraste preferido: separadores y textos secundarios más definidos. */
+@media (prefers-contrast: more) {
+  :root {
+    --linea: #7f8c9b;
+    --borde-campo: #4b5563;
+    --texto-secundario: #2f3a45;
+    --sobre-grafito-suave: #e6ecf0;
+  }
+}
+
+/* Transparencia reducida: el velo de los diálogos pasa a casi sólido. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --velo: rgb(17 28 36 / 0.92);
+  }
 }
 
 @theme inline {
@@ -57,9 +75,29 @@
   --color-error-suave: var(--error-suave);
   --color-neutro: var(--neutro);
   --color-neutro-suave: var(--neutro-suave);
+  --color-velo: var(--velo);
   --radius-tarjeta: var(--radio);
   --container-contenido: var(--ancho-contenido);
   --font-sans: var(--font-mulish), ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+ * Tipografía por tamaño: los títulos grandes con interletrado negativo e interlineado ajustado;
+ * el cuerpo con interletrado 0 e interlineado 1,5; lo pequeño, un poco más abierto.
+ */
+@theme {
+  --text-3xl--line-height: 1.15;
+  --text-3xl--letter-spacing: -0.02em;
+  --text-2xl--line-height: 1.2;
+  --text-2xl--letter-spacing: -0.02em;
+  --text-xl--line-height: 1.3;
+  --text-xl--letter-spacing: -0.01em;
+  --text-lg--letter-spacing: -0.005em;
+  --text-base--line-height: 1.5;
+  --text-sm--letter-spacing: 0.005em;
+  --text-xs--letter-spacing: 0.02em;
+  /* Movimiento: entradas y salidas cortas con curva de salida. */
+  --ease-salida: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @layer base {
@@ -92,12 +130,21 @@
   .zona-oscura a {
     color: var(--sobre-grafito);
   }
+  /*
+   * Movimiento reducido: sin animaciones que se repiten y, en lo que se desplaza o escala
+   * (clase `se-mueve`: menú, diálogo, avisos, botones), un fundido corto en lugar del movimiento.
+   */
   @media (prefers-reduced-motion: reduce) {
     *,
     ::before,
     ::after {
       animation-duration: 0.01ms !important;
-      transition-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+    }
+    .se-mueve {
+      translate: none !important;
+      scale: none !important;
     }
   }
 }

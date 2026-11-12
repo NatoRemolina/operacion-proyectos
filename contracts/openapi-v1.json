@@ -46,7 +46,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
             "content": {
               "application/json": {
                 "schema": {
@@ -131,7 +131,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
             "content": {
               "application/json": {
                 "schema": {
@@ -692,7 +692,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
             "content": {
               "application/json": {
                 "schema": {
@@ -702,7 +702,7 @@
             }
           },
           "409": {
-            "description": "Misma Idempotency-Key con un archivo distinto",
+            "description": "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
             "content": {
               "application/json": {
                 "schema": {
@@ -857,7 +857,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
             "content": {
               "application/json": {
                 "schema": {
@@ -877,7 +877,7 @@
             }
           },
           "409": {
-            "description": "Misma Idempotency-Key con un archivo distinto",
+            "description": "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
             "content": {
               "application/json": {
                 "schema": {
@@ -950,7 +950,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, u origen no permitido",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
             "content": {
               "application/json": {
                 "schema": {
@@ -1034,6 +1034,48 @@
           },
           "422": {
             "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resumen": {
+      "get": {
+        "tags": [
+          "administracion"
+        ],
+        "summary": "Resumen",
+        "description": "Solo administración. Indicadores del momento, lo que espera decisión y la actividad reciente.",
+        "operationId": "resumen_api_v1_resumen_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumenAdmin"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
             "content": {
               "application/json": {
                 "schema": {
@@ -1204,10 +1246,209 @@
           }
         }
       }
+    },
+    "/api/v1/viajes/{id}/estado": {
+      "post": {
+        "tags": [
+          "viajes"
+        ],
+        "summary": "Cambiar Estado",
+        "description": "Aprobar, rechazar (con motivo), reabrir o cerrar. Solo administración, y nadie aprueba ni rechaza lo suyo:\nel intento responde 403 `SELF_APPROVAL` y queda en la bitácora. Si el precio del vuelo subió más que la\ntolerancia, aprobar responde 409 `PRICE_CONFIRMATION_REQUIRED` hasta que se mande `confirmar_precio`.",
+        "operationId": "cambiar_estado_api_v1_viajes__id__estado_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioEstadoViaje"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoCambioEstado"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActividadGasto": {
+        "properties": {
+          "gasto_id": {
+            "type": "integer",
+            "title": "Gasto Id"
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "persona": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Titular"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "De quién es el gasto: el titular de su viaje o, sin viaje, quien lo cargó."
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViajeCodigo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "procesando",
+              "revision",
+              "aprobado_auto",
+              "aprobado",
+              "rechazado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gasto_id",
+          "comercio",
+          "persona",
+          "viaje",
+          "total",
+          "moneda",
+          "total_usd",
+          "estado",
+          "estado_texto",
+          "creado"
+        ],
+        "title": "ActividadGasto"
+      },
       "AeropuertoSugerido": {
         "properties": {
           "iata": {
@@ -1316,6 +1557,41 @@
           "archivo"
         ],
         "title": "Body_enviar_api_v1_gastos_post"
+      },
+      "CambioEstadoViaje": {
+        "properties": {
+          "accion": {
+            "type": "string",
+            "enum": [
+              "aprobar",
+              "rechazar",
+              "reabrir",
+              "cerrar"
+            ],
+            "title": "Accion",
+            "description": "`aprobar` y `rechazar` solo desde pendiente; `reabrir` desde aprobado, rechazado o cerrado; `cerrar` desde aprobado."
+          },
+          "motivo": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Motivo",
+            "description": "Obligatorio para rechazar (5 caracteres o más). La persona lo verá.",
+            "default": ""
+          },
+          "confirmar_precio": {
+            "type": "boolean",
+            "title": "Confirmar Precio",
+            "description": "Aprueba con el precio nuevo cuando el del vuelo subió más que la tolerancia.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "accion"
+        ],
+        "title": "CambioEstadoViaje",
+        "description": "Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."
       },
       "Cotizacion": {
         "properties": {
@@ -3328,6 +3604,144 @@
         ],
         "title": "RespuestaError"
       },
+      "ResultadoCambioEstado": {
+        "properties": {
+          "viaje": {
+            "$ref": "#/components/schemas/ViajeDetalle"
+          },
+          "mensaje": {
+            "type": "string",
+            "title": "Mensaje",
+            "description": "Lo que pasó, en lenguaje claro (incluye el aviso de precio si lo hubo)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "viaje",
+          "mensaje"
+        ],
+        "title": "ResultadoCambioEstado"
+      },
+      "ResumenAdmin": {
+        "properties": {
+          "presupuesto_aprobado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto Aprobado Usd",
+            "description": "Presupuesto de los viajes aprobados y cerrados."
+          },
+          "gastado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gastado Usd",
+            "description": "Gastos aprobados de esos viajes."
+          },
+          "disponible_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disponible Usd",
+            "description": "Aprobado menos gastado."
+          },
+          "en_revision_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "En Revision Usd",
+            "description": "Total en dólares de los gastos que esperan revisión."
+          },
+          "ejecucion_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ejecucion Pct"
+          },
+          "viajes_por_aprobar": {
+            "type": "integer",
+            "title": "Viajes Por Aprobar"
+          },
+          "gastos_en_revision": {
+            "type": "integer",
+            "title": "Gastos En Revision"
+          },
+          "pendientes": {
+            "items": {
+              "$ref": "#/components/schemas/ViajeResumen"
+            },
+            "type": "array",
+            "title": "Pendientes",
+            "description": "Hasta 5 viajes pendientes de aprobación, el más reciente primero."
+          },
+          "revision": {
+            "items": {
+              "$ref": "#/components/schemas/GastoResumen"
+            },
+            "type": "array",
+            "title": "Revision",
+            "description": "Hasta 5 gastos en revisión, el más reciente primero."
+          },
+          "actividad": {
+            "items": {
+              "$ref": "#/components/schemas/ActividadGasto"
+            },
+            "type": "array",
+            "title": "Actividad",
+            "description": "Los 10 gastos más recientes."
+          },
+          "nota": {
+            "type": "string",
+            "title": "Nota"
+          },
+          "datos_demostracion": {
+            "type": "boolean",
+            "title": "Datos Demostracion",
+            "description": "La plataforma corre en local con las cuentas de demostración."
+          }
+        },
+        "type": "object",
+        "required": [
+          "presupuesto_aprobado_usd",
+          "gastado_usd",
+          "disponible_usd",
+          "en_revision_usd",
+          "ejecucion_pct",
+          "viajes_por_aprobar",
+          "gastos_en_revision",
+          "pendientes",
+          "revision",
+          "actividad",
+          "nota",
+          "datos_demostracion"
+        ],
+        "title": "ResumenAdmin"
+      },
       "RevisionGasto": {
         "properties": {
           "version": {
@@ -3770,6 +4184,24 @@
             "type": "integer",
             "title": "Gastos"
           },
+          "propio": {
+            "type": "boolean",
+            "title": "Propio",
+            "description": "Es de la persona de la sesión (titular o viajero): nadie aprueba lo suyo.",
+            "default": false
+          },
+          "precio_por_confirmar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Por Confirmar",
+            "description": "Pendiente de aprobación cuyo precio de vuelo subió más que la tolerancia: hay que confirmarlo al aprobar."
+          },
           "presupuesto_detalle": {
             "items": {
               "$ref": "#/components/schemas/LineaPresupuesto"
@@ -3963,6 +4395,24 @@
           "gastos": {
             "type": "integer",
             "title": "Gastos"
+          },
+          "propio": {
+            "type": "boolean",
+            "title": "Propio",
+            "description": "Es de la persona de la sesión (titular o viajero): nadie aprueba lo suyo.",
+            "default": false
+          },
+          "precio_por_confirmar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Por Confirmar",
+            "description": "Pendiente de aprobación cuyo precio de vuelo subió más que la tolerancia: hay que confirmarlo al aprobar."
           }
         },
         "type": "object",

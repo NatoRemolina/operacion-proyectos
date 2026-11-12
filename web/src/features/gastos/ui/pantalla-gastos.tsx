@@ -1,35 +1,107 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { useViajes } from "@/features/viajes/application/viajes";
+import { usePermiso } from "@/shared/application/identidad";
 import { Boton, clasesBoton } from "@/shared/ui/boton";
-import { Cargando } from "@/shared/ui/estado";
+import { CampoSelector } from "@/shared/ui/campo";
+import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
+import { EsqueletoLista } from "@/shared/ui/esqueleto";
+import { EstadoVacio } from "@/shared/ui/estado-vacio";
 import { useGastos } from "../application/gastos";
+import type { EstadoGasto } from "../domain/gastos";
 import { ListaGastos } from "./lista-gastos";
 
-export function PantallaGastos() {
-  const consulta = useGastos();
+const FILTROS: readonly { estado?: EstadoGasto; texto: string }[] = [
+  { texto: "Todos" },
+  { estado: "revision", texto: "En revisión" },
+  { estado: "aprobado_auto", texto: "Aprobados al cargar" },
+  { estado: "aprobado", texto: "Aprobados en revisión" },
+  { estado: "rechazado", texto: "Rechazados" },
+];
+
+export function PantallaGastos({ estado: estadoInicial, viajeId: viajeInicial }: { estado?: EstadoGasto; viajeId?: number } = {}) {
+  const permiso = usePermiso();
+  const esAdmin = permiso === "admin";
+  const [estado, setEstado] = useState<EstadoGasto | undefined>(estadoInicial);
+  const [viajeId, setViajeId] = useState<number | undefined>(viajeInicial);
+  const consulta = useGastos({ ...(estado ? { estado } : {}), ...(viajeId ? { viajeId } : {}) });
+  const viajes = useViajes();
+  const filtrando = Boolean(estado || viajeId);
+
   return (
-    <section aria-labelledby="titulo-gastos" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 id="titulo-gastos" className="text-3xl font-bold">
-          Mis gastos
-        </h1>
-        <Link href="/gastos/nuevo" className={clasesBoton("primario")}>
-          Cargar un gasto
-        </Link>
+    <div className="flex flex-col gap-6">
+      <EncabezadoPagina
+        titulo={permiso === "colaborador" ? "Mis gastos" : "Gastos"}
+        descripcion={
+          esAdmin
+            ? "Todos los gastos. Los que están en revisión esperan tu decisión."
+            : permiso === "gestor"
+              ? "Los tuyos y los de los proyectos que gestionas."
+              : "Tus recibos con su estado y lo que sigue en cada uno."
+        }
+        accion={
+          <Link href="/gastos/nuevo" className={clasesBoton("primario")}>
+            Cargar recibo
+          </Link>
+        }
+      />
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap gap-2">
+          {FILTROS.map((f) => {
+            const activo = f.estado === estado;
+            return (
+              <button
+                key={f.texto}
+                type="button"
+                aria-pressed={activo}
+                onClick={() => setEstado(f.estado)}
+                className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold ${
+                  activo ? "border-marca bg-marca-suave text-marca" : "border-linea bg-superficie text-texto"
+                }`}
+              >
+                {f.texto}
+              </button>
+            );
+          })}
+        </div>
+        <div className="sm:w-64">
+          <CampoSelector
+            id="filtro-viaje"
+            etiqueta="Viaje"
+            value={viajeId ? String(viajeId) : ""}
+            onChange={(e) => setViajeId(e.target.value ? Number(e.target.value) : undefined)}
+          >
+            <option value="">Todos los viajes</option>
+            {viajes.viajes.map((v) => (
+              <option key={v.id} value={String(v.id)}>
+                {v.codigo} · {v.origen} → {v.destino}
+              </option>
+            ))}
+          </CampoSelector>
+        </div>
       </div>
+
       {consulta.isPending ? (
-        <Cargando texto="Cargando tus gastos…" />
+        <EsqueletoLista texto="Cargando los gastos…" />
       ) : consulta.error && consulta.gastos.length === 0 ? (
         <ErrorConsulta error={consulta.error} onReintentar={() => void consulta.refetch()} />
       ) : consulta.gastos.length === 0 ? (
-        <p className="rounded-tarjeta border border-linea bg-superficie p-4">
-          Aún no tienes gastos. <Link href="/gastos/nuevo">Envía tu primer recibo</Link>.
-        </p>
+        filtrando ? (
+          <p className="rounded-tarjeta border border-linea bg-superficie p-4 text-texto-secundario">
+            No hay gastos con ese filtro.
+          </p>
+        ) : (
+          <EstadoVacio titulo="Aún no tienes gastos" accion={{ href: "/gastos/nuevo", texto: "Cargar mi primer recibo" }}>
+            Toma una foto del recibo o súbelo en PDF: lo leemos y lo asociamos a tu viaje.
+          </EstadoVacio>
+        )
       ) : (
         <>
-          <ListaGastos gastos={consulta.gastos} />
+          <ListaGastos gastos={consulta.gastos} esAdmin={esAdmin} />
           {consulta.hasNextPage ? (
             <Boton
               variante="secundario"
@@ -41,6 +113,6 @@ export function PantallaGastos() {
           ) : null}
         </>
       )}
-    </section>
+    </div>
   );
 }

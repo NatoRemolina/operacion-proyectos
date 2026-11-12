@@ -39,3 +39,13 @@ export function useViajesParaRecibo() {
     },
   });
 }
+
+export function useViaje(id: number) {
+  const repositorio = useViajesRepository();
+  const personaId = usePersonaId();
+  const consulta = useQuery({
+    queryKey: claveDePersona(personaId, "viajes", "detalle", id),
+    queryFn: ({ signal }) => repositorio.obtener(id, signal),
+  });
+  return { ...consulta, error: consulta.error as ErrorDeAplicacion | null };
+}

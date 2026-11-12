@@ -32,11 +32,14 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 403 | `CSRF_INVALID` | Falta o no coincide `X-CSRF-Token` |
 | 403 | `ORIGIN_NOT_ALLOWED` | Escritura desde un origen no permitido |
 | 403 | `FORBIDDEN` | Operación reservada a otro rol |
+| 403 | `SELF_APPROVAL` | Administración intenta aprobar o rechazar el presupuesto de su propio viaje; el intento queda en la auditoría |
 | 404 | `NOT_FOUND` | No existe o no es visible para la persona |
 | 409 | `IDEMPOTENCY_CONFLICT` | Misma `Idempotency-Key` con un archivo distinto o con otro `viaje_id`; al cotizar, con otro pedido |
 | 409 | `EDIT_CONFLICT` | La revisión trae una `version` que ya no es la del gasto, o el recibo todavía se está leyendo |
 | 409 | `REQUEST_IN_PROGRESS` | El primer envío con esa clave todavía no creó su gasto (o su cotización): reintentar con la misma clave |
 | 409 | `DECISION_LOCKED` | El viaje de la cotización ya está aprobado o cerrado: la decisión no cambia sin que administración lo reabra |
+| 409 | `INVALID_STATE` | El estado del viaje no admite esa acción (por ejemplo, cerrar uno pendiente) |
+| 409 | `PRICE_CONFIRMATION_REQUIRED` | Al aprobar, el precio del vuelo subió más que la tolerancia: se repite con `confirmar_precio: true`; el cambio va en `fields.precio` |
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF ni correo |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
@@ -68,6 +71,8 @@ interface ViajeResumen {
   presupuesto_usd: Dinero; gastado_usd: Dinero; en_revision_usd: Dinero;
   ejecucion_pct: number | null;               // gastado ÷ presupuesto, entero
   gastos: number;
+  propio: boolean;                            // es de la persona de la sesión (titular o viajero)
+  precio_por_confirmar: string | null;        // pendiente cuyo precio subió más que la tolerancia: "antes … ahora …"
 }
 
 interface ViajeDetalle extends ViajeResumen {
@@ -105,6 +110,26 @@ interface Justificacion {
   transcripcion: "no_aplica" | "pendiente" | "hecha" | "fallida";
   creado: string;
 }
+
+interface ResumenAdmin {
+  presupuesto_aprobado_usd: Dinero;           // viajes aprobados y cerrados
+  gastado_usd: Dinero;                        // gastos aprobados de esos viajes
+  disponible_usd: Dinero;                     // aprobado − gastado
+  en_revision_usd: Dinero;                    // gastos que esperan revisión, en USD
+  ejecucion_pct: number | null;
+  viajes_por_aprobar: number; gastos_en_revision: number;
+  pendientes: ViajeResumen[];                 // hasta 5
+  revision: GastoResumen[];                   // hasta 5
+  actividad: {                                // los 10 gastos más recientes
+    gasto_id: number; comercio: string | null;
+    persona: { id: number; codigo: string; nombre: string } | null;   // titular del viaje o, sin viaje, quien lo cargó
+    viaje: { id: number; codigo: string } | null;
+    total: Dinero; moneda: string | null; total_usd: Dinero;
+    estado: EstadoGasto; estado_texto: string; creado: string;
+  }[];
+  nota: string;                               // cómo se calcula el disponible
+  datos_demostracion: boolean;                // local con cuentas de demostración
+}
 ```
 
 ## Endpoints
@@ -123,6 +148,19 @@ Parámetros: `estado` (opcional), `limite`, `cursor`. Devuelve los viajes visibl
 
 ### `GET /viajes/{id}`
 200 `ViajeDetalle`. 404 si no existe o no es visible.
+
+### `POST /viajes/{id}/estado`
+Solo administración. Cuerpo JSON `{"accion": "aprobar|rechazar|reabrir|cerrar", "motivo": "...", "confirmar_precio": false}` y `X-CSRF-Token`. Llama a `viajes.cambiar_estado`, la misma regla que la pantalla de administración:
+
+- Colaborador y gestor: 403 `FORBIDDEN`.
+- Nadie aprueba ni rechaza su propio presupuesto, tampoco un administrador: 403 `SELF_APPROVAL` y el intento queda en la auditoría (`autoaprobación impedida`).
+- `aprobar` y `rechazar` solo desde pendiente; `reabrir` desde aprobado, rechazado o cerrado; `cerrar` desde aprobado. Otra combinación: 409 `INVALID_STATE`.
+- `rechazar` exige `motivo` de 5 caracteres o más (422 con `fields.motivo`); la persona lo ve en su viaje.
+- Al aprobar se reconfirma el precio del vuelo. Si subió más que la tolerancia: 409 `PRICE_CONFIRMATION_REQUIRED` con el cambio en `fields.precio`; con `confirmar_precio: true` se aprueba y el presupuesto pasa al precio nuevo. Sin clave del buscador se aprueba con el aviso «Precio no reconfirmado».
+- 200 `{"viaje": ViajeDetalle, "mensaje": string}`: el mensaje dice lo que pasó, con el aviso de precio si lo hubo. 404 si el viaje no existe.
+
+### `GET /resumen`
+Solo administración (403 `FORBIDDEN` para colaborador y gestor). 200 `ResumenAdmin`: las cifras salen del catálogo de métricas (`metricas.viajes`, `pendientes_revision`), la misma definición que los tableros. Disponible = aprobado − gastos aprobados; las reservas de tiquetes se sumarán cuando existan.
 
 ### `GET /gastos`
 Parámetros: `viaje_id`, `estado` (opcionales), `limite`, `cursor`. Mismo alcance que los viajes. `{"items": GastoResumen[], "siguiente"}`.
@@ -275,4 +313,4 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 
 ## Fuera de este contrato (siguientes fases)
 
-Transiciones del viaje, reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Ver la sección 9 del plan fullstack.
+Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Ver la sección 9 del plan fullstack.

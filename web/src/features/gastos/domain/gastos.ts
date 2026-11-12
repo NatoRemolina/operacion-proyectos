@@ -1,4 +1,5 @@
 import type { TipoError } from "@/shared/domain/errores";
+import type { EstadoVisible } from "@/shared/domain/estados";
 import type { Dinero, FechaISO, OpcionesListado, Pagina } from "@/shared/domain/tipos";
 
 export type EstadoGasto = "procesando" | "revision" | "aprobado_auto" | "aprobado" | "rechazado";
@@ -40,6 +41,10 @@ export interface GastoDetalle extends GastoResumen {
   readonly documento_id: number | null;
   readonly lectura: { readonly origen: string; readonly confianza: number | null };
   readonly justificaciones: readonly Justificacion[];
+  /** Sube con cada cambio; la revisión la manda de vuelta para no pisar el cambio de otra persona. */
+  readonly version?: number;
+  /** Por qué se rechazó, con las palabras de quien revisó. */
+  readonly motivo_rechazo?: string | null;
 }
 
 export interface FiltroGastos extends OpcionesListado {
@@ -103,4 +108,24 @@ export function resultadoDeEnvio(estado: EstadoGasto): ResultadoEnvio {
   if (estado === "aprobado_auto" || estado === "aprobado") return "aprobado";
   if (estado === "revision") return "revision";
   return "otro";
+}
+
+/** Cómo se muestra el estado de un gasto: lo aprobado solo y lo aprobado por una persona se ven igual. */
+export function estadoVisibleGasto(estado: EstadoGasto): EstadoVisible {
+  if (estado === "aprobado_auto" || estado === "aprobado") return "aprobado";
+  return estado;
+}
+
+/** El siguiente paso de un gasto, en palabras de quien lo mira. */
+export function siguientePasoGasto(estado: EstadoGasto, esAdmin: boolean): string {
+  switch (estado) {
+    case "procesando":
+      return "Estamos leyendo el recibo.";
+    case "revision":
+      return esAdmin ? "Espera tu revisión." : "Administración lo revisa. Si cuentas para qué fue, se resuelve antes.";
+    case "rechazado":
+      return "Rechazado. Mira el motivo en el detalle.";
+    default:
+      return "Cuenta en el presupuesto del viaje.";
+  }
 }

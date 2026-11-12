@@ -1,3 +1,4 @@
+import type { ResumenAdmin } from "@/features/administracion/domain/administracion";
 import type { Persona } from "@/features/auth/domain/auth";
 import type { GastoDetalle } from "@/features/gastos/domain/gastos";
 import type { ViajeResumen } from "@/features/viajes/domain/viajes";
@@ -38,6 +39,7 @@ export function gastoDePrueba(datos: Partial<GastoDetalle> = {}): GastoDetalle {
     documento_id: 55,
     lectura: { origen: "modelo", confianza: 0.9 },
     justificaciones: [],
+    version: 0,
     ...datos,
   };
 }
@@ -60,6 +62,49 @@ export function viajeDePrueba(datos: Partial<ViajeResumen> = {}): ViajeResumen {
     en_revision_usd: "54.00",
     ejecucion_pct: 45,
     gastos: 2,
+    ...datos,
+  };
+}
+
+export function resumenDePrueba(datos: Partial<ResumenAdmin> = {}): ResumenAdmin {
+  return {
+    presupuesto_aprobado_usd: "15000.00",
+    gastado_usd: "4200.50",
+    disponible_usd: "10799.50",
+    en_revision_usd: "54.00",
+    ejecucion_pct: 28,
+    viajes_por_aprobar: 1,
+    gastos_en_revision: 1,
+    pendientes: [viajeDePrueba({ id: 12, codigo: "V-2026-0012", estado: "pendiente_aprobacion", estado_texto: "Pendiente de aprobación", en_curso: false })],
+    revision: [gastoDePrueba({ id: 123 })],
+    actividad: [
+      {
+        gasto_id: 123,
+        comercio: "Café del centro",
+        persona: { id: 7, codigo: "P-0007", nombre: "Alex Rivera" },
+        viaje: { id: 12, codigo: "V-2026-0012" },
+        total: "54.00",
+        moneda: "USD",
+        total_usd: "54.00",
+        estado: "revision",
+        estado_texto: "En revisión",
+        creado: "2026-11-12T04:13:13Z",
+      },
+      {
+        gasto_id: 122,
+        comercio: "Hotel de ejemplo",
+        persona: { id: 7, codigo: "P-0007", nombre: "Alex Rivera" },
+        viaje: { id: 12, codigo: "V-2026-0012" },
+        total: "780.00",
+        moneda: "USD",
+        total_usd: "780.00",
+        estado: "aprobado_auto",
+        estado_texto: "Aprobado automático",
+        creado: "2026-11-11T04:13:13Z",
+      },
+    ],
+    nota: "Presupuesto disponible = aprobado − gastos aprobados. Las reservas de tiquetes se sumarán cuando existan.",
+    datos_demostracion: false,
     ...datos,
   };
 }

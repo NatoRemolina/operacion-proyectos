@@ -29,6 +29,19 @@ def _datos(**cambios) -> dict:
 
 
 # ---------- pieza 1: el servicio que comparten las pantallas y la API ----------
+@pytest.fixture(autouse=True, scope="module")
+def _tope_amplio():
+    """La base es de toda la sesión de pruebas y otras suites también cotizan con estas cuentas: aquí el tope del día
+    no debe depender de cuántas llevan. La prueba del tope fija el suyo."""
+    from app import db
+    fila = db.uno("select id, valor from reglas where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
+    if fila:
+        db.ejecutar("update reglas set valor='100000' where id=:i", i=fila["id"])
+    yield
+    if fila:
+        db.ejecutar("update reglas set valor=:v where id=:i", v=fila["valor"], i=fila["id"])
+
+
 def test_el_servicio_crea_busca_compara_y_decide(cliente):
     admin = _cuenta("admin@demo.local")
     sid = cotizacion.crear(admin, **_datos())
@@ -329,7 +342,7 @@ def test_hay_tope_de_cotizaciones_por_persona_y_dia(piloto2):
     yo = _cuenta("piloto2@demo.local")
     hoy = db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=yo["id"], h=db.ahora()[:10])["n"]
     previo = _regla("tope_cotizaciones_persona_dia")
-    assert previo == "20"                                              # editable: viene de la semilla
+    assert previo.isdigit()                                            # editable: es una regla de la base
     _fijar_regla("tope_cotizaciones_persona_dia", str(hoy + 1))
     try:
         assert _cotizar(piloto2, {"Idempotency-Key": "tope-1"}).status_code == 201

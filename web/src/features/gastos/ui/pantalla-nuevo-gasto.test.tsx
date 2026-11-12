@@ -35,6 +35,11 @@ function foto(nombre = "recibo.jpg") {
   return new File(["contenido de la foto"], nombre, { type: "image/jpeg" });
 }
 
+/** La región viva de la pantalla (la de avisos emergentes lleva el nombre «Avisos»). */
+function progreso(): HTMLElement {
+  return screen.getAllByRole("status").find((e) => e.getAttribute("aria-label") !== "Avisos")!;
+}
+
 describe("Cargar un gasto", () => {
   it("con un archivo elegido muestra el estado real «Aprobado» que devuelve la API", async () => {
     const usuario = userEvent.setup();
@@ -47,12 +52,12 @@ describe("Cargar un gasto", () => {
     expect(await screen.findByText("BOG → MIA")).toBeInTheDocument();
     await usuario.upload(screen.getByLabelText("Elegir archivo"), foto());
     expect(screen.getByText("recibo.jpg")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Archivo elegido: recibo.jpg");
+    expect(progreso()).toHaveTextContent("Archivo elegido: recibo.jpg");
 
     await usuario.click(screen.getByRole("button", { name: "Enviar recibo" }));
 
     expect(await screen.findByText("Aprobado", { selector: "span" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Recibo enviado. Estado: Aprobado.");
+    expect(progreso()).toHaveTextContent("Recibo enviado. Estado: Aprobado.");
     expect(screen.getByRole("link", { name: "Ver el detalle" })).toHaveAttribute("href", "/gastos/77");
     expect(enviar).toHaveBeenCalledTimes(1);
     expect(enviar.mock.calls[0]![0]).toMatchObject({ viajeId: null });
@@ -171,4 +176,30 @@ describe("Cargar un gasto", () => {
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0].justificacion).toBe("Taxi del hotel al set");
   });
+
+  it("si el envío anterior todavía se procesa, reintenta solo con la misma clave", async () => {
+    const usuario = userEvent.setup();
+    const { repositorio, enviar } = repositorioQueResponde(
+      new ErrorDeAplicacion("en_curso"),
+      gastoDePrueba({ id: 78, estado: "aprobado_auto", estado_texto: "Aprobado" }),
+    );
+    renderizarConFuente(<PantallaNuevoGasto />, { gastos: repositorio, viajes });
+    await usuario.upload(screen.getByLabelText("Elegir archivo"), foto());
+    await usuario.click(screen.getByRole("button", { name: "Enviar recibo" }));
+    await waitFor(() => expect(progreso()).toHaveTextContent("Recibo enviado. Estado: Aprobado."), { timeout: 4000 });
+    expect(enviar).toHaveBeenCalledTimes(2);
+    expect(enviar.mock.calls[1]![0].claveIdempotencia).toBe(enviar.mock.calls[0]![0].claveIdempotencia);
+  });
+
+  it("llega con el viaje elegido desde su detalle", async () => {
+    const usuario = userEvent.setup();
+    const { repositorio, enviar } = repositorioQueResponde(gastoDePrueba({ estado: "aprobado_auto", estado_texto: "Aprobado" }));
+    renderizarConFuente(<PantallaNuevoGasto viajeInicial={8} />, { gastos: repositorio, viajes });
+    expect(await screen.findByText("V-2026-0008", { exact: false })).toBeInTheDocument();
+    await usuario.upload(screen.getByLabelText("Elegir archivo"), foto());
+    await usuario.click(screen.getByRole("button", { name: "Enviar recibo" }));
+    await waitFor(() => expect(enviar).toHaveBeenCalled());
+    expect(enviar.mock.calls[0]![0].viajeId).toBe(8);
+  });
 });
+

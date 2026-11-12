@@ -43,6 +43,12 @@ function describirError(error: ErrorDeAplicacion): ErrorEnvio {
     }
     case "prohibido":
       return { titulo: "No puedes enviar este recibo", detalle: error.message, accion: "elegir" };
+    case "en_curso":
+      return {
+        titulo: "Tu recibo todavía se está procesando",
+        detalle: "Reintenta en unos segundos: se usa el mismo envío, así no se duplica.",
+        accion: "reintentar",
+      };
     default:
       return {
         titulo: "No se pudo enviar el recibo",
@@ -73,10 +79,12 @@ function useVistaPrevia() {
   return { url, mostrar };
 }
 
-export function PantallaNuevoGasto() {
+export function PantallaNuevoGasto({ viajeInicial }: { viajeInicial?: number } = {}) {
   const envio = useEnvioRecibo();
   const viajes = useViajesParaRecibo();
-  const [viajeId, setViajeId] = useState("");
+  // Desde el detalle de un viaje se llega con ese viaje ya elegido.
+  const inicial = viajeInicial ? String(viajeInicial) : "";
+  const [viajeId, setViajeId] = useState(inicial);
   const [justificacion, setJustificacion] = useState("");
   const vistaPrevia = useVistaPrevia();
 
@@ -117,7 +125,7 @@ export function PantallaNuevoGasto() {
           onEnviarOtro={() => {
             envio.reiniciar();
             vistaPrevia.mostrar(null);
-            setViajeId("");
+            setViajeId(inicial);
             setJustificacion("");
           }}
         />

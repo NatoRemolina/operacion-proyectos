@@ -1,21 +1,36 @@
 "use client";
 
 import { createContext, useContext, type PropsWithChildren } from "react";
+import type { Permiso } from "@/shared/domain/navegacion";
 
 /**
- * Identificador de la persona con sesión. Solo sirve para aislar la caché por persona:
- * el servidor nunca lo acepta como prueba de identidad (la identidad sale de la cookie).
+ * Identificador y permiso de la persona con sesión. El identificador aísla la caché por persona;
+ * el permiso decide qué botones se muestran. Ninguno es prueba de identidad: el servidor la saca
+ * de la cookie y vuelve a comprobar el permiso en cada petición.
  */
-const IdentidadContexto = createContext<number | null>(null);
+const IdentidadContexto = createContext<{ personaId: number; permiso: Permiso } | null>(null);
 
-export function IdentidadProvider({ personaId, children }: PropsWithChildren<{ personaId: number }>) {
-  return <IdentidadContexto.Provider value={personaId}>{children}</IdentidadContexto.Provider>;
+export function IdentidadProvider({
+  personaId,
+  permiso = "colaborador",
+  children,
+}: PropsWithChildren<{ personaId: number; permiso?: Permiso }>) {
+  return <IdentidadContexto.Provider value={{ personaId, permiso }}>{children}</IdentidadContexto.Provider>;
+}
+
+function useIdentidad() {
+  const identidad = useContext(IdentidadContexto);
+  if (identidad === null) throw new Error("Falta IdentidadProvider: la pantalla requiere sesión.");
+  return identidad;
 }
 
 export function usePersonaId(): number {
-  const id = useContext(IdentidadContexto);
-  if (id === null) throw new Error("Falta IdentidadProvider: la pantalla requiere sesión.");
-  return id;
+  return useIdentidad().personaId;
+}
+
+/** El permiso de la sesión, solo para decidir qué se muestra. */
+export function usePermiso(): Permiso {
+  return useIdentidad().permiso;
 }
 
 /** Raíz de toda clave de caché con datos de la persona; al salir se borra completa. */
