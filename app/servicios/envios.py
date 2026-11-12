@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from .. import config, db
 from . import eventos, revision
 
-VIGENCIA = timedelta(minutes=15)
+VIGENCIA = timedelta(minutes=5)   # la función de la nube se corta a los 180 s: pasado esto, nadie va a terminar la lectura
 LARGO_MAXIMO = 200
 INTERRUMPIDA = "La lectura del recibo se interrumpió. Administración revisará el soporte, que quedó guardado."
 
@@ -60,6 +60,17 @@ def marcar_interrumpido(gasto_id: int, detalle: str = INTERRUMPIDA) -> bool:
         revision.subir_version(gasto_id)
         eventos.registrar("gasto", gasto_id, "enviado a revisión", detalle, "recuperación del envío")
     return bool(hecho)
+
+
+def recuperar_si_atascado(gasto: dict) -> bool:
+    """Un gasto «procesando» desde antes de la vigencia ya no tiene quién lo termine (el proceso se cortó o cayó):
+    pasa a revisión, y el envío enlazado cambia de dueño para que el proceso anterior, si vuelve, no escriba."""
+    limite = (datetime.now(UTC) - VIGENCIA).strftime("%Y-%m-%d %H:%M:%S")
+    if gasto["estado"] != "procesando" or (gasto.get("creado") or "") > limite:
+        return False
+    db.ejecutar("update envios_soporte set estado='completado', propietario=:p where gasto_id=:g",
+                p=secrets.token_hex(16), g=gasto["id"])
+    return marcar_interrumpido(gasto["id"])
 
 
 def reclamar(usuario_id: int, clave: str, huella_envio: str) -> tuple[dict, bool]:

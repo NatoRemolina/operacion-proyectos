@@ -32,16 +32,17 @@ _nombre_visible = soportes.nombre_visible
 
 
 def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None, viajero_id: int | None, viaje_id: int = 0,
-              clave: str | None = None) -> int:
+              clave: str | None = None) -> tuple[int, bool]:
     """Registra un soporte a nombre de quien tiene la sesión. Sin viaje indicado, se busca el que le corresponde hoy.
 
-    Con `clave` (la página manda una por archivo), reenviar el mismo archivo devuelve el mismo gasto.
+    Con `clave` (la página manda una por archivo), reenviar el mismo archivo devuelve el mismo gasto. Devuelve
+    (gasto, repetido).
     """
     yo = _yo()
     viaje, _ = viajes.resolver_para_gasto(yo, viaje_id or None) if yo else (None, [])
     pedido = {"viaje_id": viaje_id or None, "proyecto_id": proyecto_id, "viajero_id": viajero_id}
-    return soportes.registrar(contenido, nombre, canal, yo or None, viaje, proyecto_id, viajero_id,
-                              clave_idempotencia=clave, contexto=pedido)
+    return soportes.registrar_envio(contenido, nombre, canal, yo or None, viaje, proyecto_id, viajero_id,
+                                    clave_idempotencia=clave, contexto=pedido)
 
 
 @router.get("/gastos", response_class=HTMLResponse)
@@ -74,10 +75,10 @@ def gastos_cargar_enviar(request: Request, archivos: list[UploadFile], proyecto_
     clave = request.headers.get("idempotency-key") if len(archivos) == 1 else None
     for a in archivos[:config.MAX_ARCHIVOS_POR_CARGA]:
         try:
-            gid = _procesar(a.file.read(config.MAX_BYTES_SOPORTE + 1), a.filename or "soporte", canal,
-                            proyecto_id or None, viajero_id or None, viaje_id, clave)
+            gid, repetido = _procesar(a.file.read(config.MAX_BYTES_SOPORTE + 1), a.filename or "soporte", canal,
+                                      proyecto_id or None, viajero_id or None, viaje_id, clave)
             hechos.append(gid)
-            if justificacion.strip() and _yo():
+            if justificacion.strip() and _yo() and not repetido:   # un reintento no vuelve a justificar
                 try:
                     justificaciones.registrar(gid, _yo(), canal, justificacion)
                 except justificaciones.JustificacionRechazada:

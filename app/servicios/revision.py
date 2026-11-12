@@ -83,7 +83,10 @@ def _aplicar(g: dict, quien: dict, version: int | None, accion: str, campos: dic
     if version is not None and (g.get("version") or 0) != version:
         raise ConflictoRevision(CAMBIO)
     if g["estado"] == "procesando":
-        raise ConflictoRevision("El recibo todavía se está leyendo. Espera un momento y recarga la página.")
+        from . import envios
+        if not envios.recuperar_si_atascado(g):
+            raise ConflictoRevision("El recibo todavía se está leyendo. Espera un momento y recarga la página.")
+        g = db.uno("select * from gastos where id=:i", i=gid)   # recuperado: ahora está en revisión y se puede decidir
     nueva = (g.get("version") or 0) + 1
     if accion == "rechazar":
         if len(motivo) < MINIMO_RECHAZO:

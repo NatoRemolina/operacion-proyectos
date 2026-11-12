@@ -139,7 +139,7 @@ def procesar(update: dict) -> str:
         mid = _retomar_si_fallo(update.get("update_id"))
         if not mid:
             return "repetido"   # Telegram reintenta: la misma entrega no se procesa dos veces
-    registro = {"estado": "procesado"}
+    registro = {"estado": "procesado", "_entrega": update.get("update_id")}
     try:
         if "callback_query" in update:
             _boton(update["callback_query"], registro)
@@ -157,6 +157,7 @@ def procesar(update: dict) -> str:
         raise
     finally:
         chat = registro.pop("_chat", None)
+        registro.pop("_entrega", None)
         db.actualizar("telegram_mensajes", mid, chat_id=chat, **registro)
     return registro["estado"]
 
@@ -247,7 +248,11 @@ def _mensaje(m: dict, registro: dict):
         return _responder(registro, f"Audio guardado como evidencia{' de ' + viaje['codigo'] if viaje else ''}.")
 
     registro["tipo"] = "soporte"
-    gid = gastos.registrar(contenido, nombre, "telegram", u, viaje, viajero_id=u["viajero_id"], rapido=True)
+    # La entrega es la clave del envío: reprocesar una que quedó en error devuelve el mismo gasto, no crea otro.
+    # La huella es solo el archivo: al reprocesar, el viaje que corresponde hoy podría ser otro
+    entrega = registro.get("_entrega")
+    gid = gastos.registrar(contenido, nombre, "telegram", u, viaje, viajero_id=u["viajero_id"], rapido=True,
+                           clave_idempotencia=f"telegram:{entrega}" if entrega is not None else None, contexto={})
     registro["gasto_id"] = gid
     motivo = " ".join(re.sub(r"\bV-\d{4}-\d{4}\b", " ", texto, flags=re.IGNORECASE).split())
     justificado = False

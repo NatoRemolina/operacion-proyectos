@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from .. import config, db
-from . import almacen, envios, eventos, extraccion, llm, revision, validacion
+from . import almacen, dinero, envios, eventos, extraccion, llm, revision, validacion
 
 
 class SoporteRechazado(ValueError):
@@ -162,6 +162,9 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
     with db.transaccion() as conexion:
         if op:
             envios.comprobar(op)
+        actual = db.uno("select estado from gastos where id=:i" + ("" if config.ES_SQLITE else " for update"), i=gid)
+        if not actual or actual["estado"] != "procesando":
+            return   # mientras se leía, alguien lo recuperó o lo decidió: la lectura tardía no lo pisa
         viaje = _vigente(conexion, viaje)
         proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
         r = validacion.revisar(x, proyecto, gid, viaje)
@@ -171,7 +174,9 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
             r["motivos"].insert(0, "lectura_fallida")
             r["estado"] = "revision"
         original = {c: x.get(c) for c in extraccion.CAMPOS} | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
-        db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c != "ciudad"}, confianza=x["confianza"],
+        db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c not in ("ciudad", *IMPORTES)},
+                      **_importes_guardables(x),
+                      confianza=x["confianza"],
                       origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"],
                       total_usd=r["total_usd"], extraido=None if x.get("error") else original)
         revision.subir_version(gid)   # quien abrió el gasto mientras se leía tiene que ver los datos leídos antes de revisar
@@ -179,6 +184,22 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
                           " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
         if op:
             envios.terminar(op, "completado")
+
+
+IMPORTES = ("subtotal", "impuesto", "propina", "total")
+
+
+def _importes_guardables(x: dict) -> dict:
+    """Un importe que no es válido (NaN, infinito, total cero o negativo, componente negativo) se guarda vacío:
+    a la base no llega un NaN, y la lectura original queda tal cual en `extraido`."""
+    salida = {}
+    for campo in IMPORTES:
+        try:
+            valor = dinero.decimal(x[campo], positivo=campo == "total") if x.get(campo) is not None else None
+            salida[campo] = None if valor is None or valor < 0 else float(valor)
+        except ValueError:
+            salida[campo] = None
+    return salida
 
 
 def _vigente(conexion, viaje: dict | None) -> dict | None:
@@ -202,7 +223,9 @@ def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
         if g["viaje_id"] != previo["viaje_id"]:
             raise ValueError("El gasto cambió de viaje mientras tanto. Vuelve a consultarlo.")
         if g["estado"] == "procesando":
-            raise ValueError("El recibo todavía se está leyendo. Inténtalo de nuevo en un momento.")
+            if not envios.recuperar_si_atascado(g):
+                raise ValueError("El recibo todavía se está leyendo. Inténtalo de nuevo en un momento.")
+            g = db.uno("select * from gastos where id=:i", i=gasto_id)
         if not vigentes.get(viaje["id"]):
             raise ValueError("Ese viaje ya no existe.")
         viaje = {**viaje, **vigentes[viaje["id"]]}

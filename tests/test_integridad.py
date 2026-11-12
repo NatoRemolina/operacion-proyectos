@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app import db
+from app import config, db
 from app.servicios import dinero, validacion
 
 
@@ -150,6 +150,7 @@ def test_bloquear_viaje_devuelve_la_fila_vigente(viaje_aprobado):
         assert db.bloquear_viaje(c, None) is None
 
 
+@pytest.mark.skipif(not config.ES_SQLITE, reason="en PostgreSQL lo cubre test_concurrencia_de_presupuesto_y_envios_en_postgres")
 def test_una_segunda_transaccion_espera_a_la_primera():
     """En SQLite la transacción toma el cerrojo de escritura al empezar: la segunda lee lo que confirmó la primera."""
     import threading
@@ -546,12 +547,23 @@ def _columna(tabla: str, nombre: str) -> dict:
     return next(c for c in db.todos(f"pragma table_info({tabla})") if c["name"] == nombre)
 
 
+def _como_base_anterior(tabla: str, columna: str):
+    """Deja la columna como la añade `crear_tablas` a una base existente: solo con su tipo, sin NOT NULL ni DEFAULT."""
+    from datos import migracion
+    sql, patron = migracion.definicion_sqlite(tabla, columna)
+    migracion.rehacer_tabla_sqlite(tabla, patron.sub(lambda m: m.group(1), sql, count=1))
+
+
+SOLO_SQLITE = pytest.mark.skipif(not config.ES_SQLITE, reason="comprueba el comportamiento propio de SQLite")
+
+
+@SOLO_SQLITE
 def test_la_migracion_alinea_version_con_el_modelo_sin_perder_datos():
     """Una base anterior recibe `version` de `crear_tablas` sin NOT NULL; la migración la deja como dice el modelo."""
     from app.servicios import revision
     from datos import migracion
     assert not revision.db.gastos.c.version.nullable
-    assert migracion._obligatoria_sqlite("gastos", "version", "0", quitar=True)   # simula la base anterior
+    _como_base_anterior("gastos", "version")
     assert _columna("gastos", "version")["notnull"] == 0
     gid = db.insertar("gastos", comercio="Sonda migración", estado="revision", total=9.5)
     db.ejecutar("update gastos set version=null where id=:i", i=gid)
@@ -570,6 +582,7 @@ def test_la_migracion_alinea_version_con_el_modelo_sin_perder_datos():
     _sin_rastro(gid)
 
 
+@SOLO_SQLITE
 def test_la_tabla_de_envios_existe_con_sus_restricciones():
     columnas = {c["name"]: c for c in db.todos("pragma table_info(envios_soporte)")}
     assert {n for n, c in columnas.items() if c["notnull"]} >= {"usuario_id", "clave", "huella", "estado"}
@@ -742,3 +755,97 @@ def test_telegram_una_entrega_que_falla_queda_en_error_y_se_puede_reintentar(ano
     assert db.uno("select estado from telegram_mensajes where update_id=880777")["estado"] == segundo
     assert enviar().json()["estado"] == "repetido"
     assert db.uno("select count(*) n from telegram_mensajes where update_id=880777")["n"] == 1
+
+
+# ---------- ronda 1 de la revisión ----------
+def _hace(minutos: int) -> str:
+    return (datetime.now(UTC) - timedelta(minutes=minutos)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def test_un_gasto_atascado_en_procesando_se_puede_revisar_y_asignar(cliente, nuevo_viaje):
+    from app.servicios import gastos
+    v = nuevo_viaje()
+    atascado = _gasto_en(v, "Sonda atascada", 20, estado="procesando", creado=_hace(60))
+    reciente = _gasto_en(v, "Sonda reciente", 20, estado="procesando", creado=_hace(0))
+    sin_viaje = _gasto_en(v, "Sonda atascada sin viaje", 20, estado="procesando", creado=_hace(60), viaje_id=None)
+    try:
+        cliente.post(f"/gastos/{atascado}", data={"accion": "rechazar", "motivo_rechazo": "Recibo ilegible", "version": 0})
+        g = db.uno("select estado, motivo_rechazo from gastos where id=:i", i=atascado)
+        assert g == {"estado": "rechazado", "motivo_rechazo": "Recibo ilegible"}
+        r = cliente.post(f"/gastos/{reciente}", data={"accion": "rechazar", "motivo_rechazo": "Recibo ilegible", "version": 0},
+                         follow_redirects=False)
+        assert "leyendo" in cliente.get(r.headers["location"]).text   # el que se está leyendo de verdad sigue protegido
+        assert gastos.asignar_viaje(sin_viaje, v)["viaje_id"] == v["id"]
+        assert "lectura_fallida" in db.de_json(db.uno("select motivos from gastos where id=:i", i=sin_viaje)["motivos"])
+    finally:
+        _sin_rastro(atascado, reciente, sin_viaje)
+
+
+def test_la_lectura_tardia_no_pisa_un_gasto_ya_recuperado(ejemplos, monkeypatch, viaje_aprobado):
+    from app.servicios import envios, extraccion, gastos
+    extraer = extraccion.extraer
+
+    def tarda_y_otro_lo_recupera(contenido, mime, nombre, gid):
+        envios.marcar_interrumpido(gid)
+        db.actualizar("gastos", gid, estado="rechazado")
+        return extraer(contenido, mime, nombre, gid)
+
+    monkeypatch.setattr(extraccion, "extraer", tarda_y_otro_lo_recupera)
+    gid = gastos.registrar(_foto(ejemplos, "tardía"), "r.png", "web", {"id": viaje_aprobado["usuario_id"]}, viaje_aprobado)
+    assert db.uno("select estado from gastos where id=:i", i=gid)["estado"] == "rechazado"
+
+
+def test_el_reintento_web_no_duplica_la_justificacion(cliente, ejemplos, viaje_aprobado):
+    datos = {"viaje_id": viaje_aprobado["id"], "canal": "web", "justificacion": "Taxi del hotel al set de grabación"}
+    foto = _foto(ejemplos, "justificación web")
+    respuestas = [cliente.post("/gastos/cargar", data=datos, files={"archivos": ("r.png", foto, "image/png")},
+                               headers={"X-Envio": "pagina", "Idempotency-Key": "clave-justificada"}) for _ in range(2)]
+    gastos_ = {g for r in respuestas for g in r.json()["gastos"]}
+    assert len(gastos_) == 1
+    assert db.uno("select count(*) n from justificaciones where gasto_id=:g", g=gastos_.pop())["n"] == 1
+
+
+def test_telegram_reprocesar_una_entrega_no_crea_otro_gasto(anonimo, monkeypatch, nuevo_viaje, ejemplos):
+    from app import config
+    from app.servicios import telegram
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+    monkeypatch.setattr(config, "TELEGRAM_WEBHOOK_SECRETO", "secreto-de-pruebas")
+    monkeypatch.setattr(telegram, "_llamar", lambda metodo, **d: {})
+    monkeypatch.setattr(telegram, "descargar", lambda file_id: _foto(ejemplos, "telegram reproceso"))
+    resumen, fallos = telegram._resumen_gasto, []
+
+    def falla_una_vez(*a, **k):
+        if not fallos:
+            fallos.append(1)
+            raise RuntimeError("caída después de registrar")
+        return resumen(*a, **k)
+
+    monkeypatch.setattr(telegram, "_resumen_gasto", falla_una_vez)
+    v = nuevo_viaje()
+    db.actualizar("usuarios", v["usuario_id"], telegram_chat_id=880555)
+    entrega = {"update_id": 880555, "message": {"chat": {"id": 880555, "type": "private"},
+                                                "photo": [{"file_id": "f", "file_size": 1000}]}}
+    ultimo = db.uno("select coalesce(max(id),0) i from gastos")["i"]
+    try:
+        antes = db.uno("select count(*) n from gastos where usuario_id=:u", u=v["usuario_id"])["n"]
+        for _ in range(2):
+            anonimo.post("/telegram/webhook", json=entrega, headers={"X-Telegram-Bot-Api-Secret-Token": "secreto-de-pruebas"})
+        assert fallos and db.uno("select estado from telegram_mensajes where update_id=880555")["estado"] != "error"
+        assert db.uno("select count(*) n from gastos where usuario_id=:u", u=v["usuario_id"])["n"] == antes + 1
+    finally:
+        db.actualizar("usuarios", v["usuario_id"], telegram_chat_id=None)
+        # Fuera de la ventana en que el bot toma el siguiente mensaje como justificación: no interfiere con otras pruebas
+        db.ejecutar("update gastos set creado=:c where id>:i and usuario_id=:u", c=_hace(24 * 60), i=ultimo, u=v["usuario_id"])
+
+
+def test_un_importe_no_valido_no_llega_a_la_base(ejemplos, monkeypatch, viaje_aprobado):
+    from app.servicios import extraccion, gastos
+    leido = {"comercio": "Sonda NaN", "fecha": viaje_aprobado["ida"], "categoria": "otros", "subtotal": float("inf"),
+             "impuesto": None, "propina": None, "total": float("nan"), "moneda": "USD", "metodo_pago": None,
+             "canal_reserva": None, "ciudad": None, "confianza": 0.95, "dudas": [], "origen_dato": "en vivo", "error": None}
+    monkeypatch.setattr(extraccion, "extraer", lambda *a, **k: dict(leido))
+    gid = gastos.registrar(_foto(ejemplos, "nan"), "r.png", "web", {"id": viaje_aprobado["usuario_id"]}, viaje_aprobado)
+    g = db.uno("select total, subtotal, estado, motivos, extraido from gastos where id=:i", i=gid)
+    assert g["total"] is None and g["subtotal"] is None and g["estado"] == "revision"
+    assert "importe_invalido" in db.de_json(g["motivos"])
+    assert "NaN" in g["extraido"]   # la lectura original se conserva tal cual

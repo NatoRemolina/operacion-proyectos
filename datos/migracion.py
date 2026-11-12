@@ -146,30 +146,28 @@ def _por_omision(columna) -> str | None:
     return valor if re.fullmatch(r"-?\d+(\.\d+)?", valor) else "'" + valor.replace("'", "''") + "'"
 
 
-def _obligatoria_sqlite(tabla: str, columna: str, defecto: str, quitar: bool = False) -> bool:
-    """SQLite no cambia una columna en su lugar: se rehace la tabla, con el procedimiento de `_rehacer_usuarios_sqlite`.
-
-    Rellena los vacíos con `defecto`. `quitar` hace lo contrario y solo sirve a las pruebas, para simular una base anterior.
-    """
+def definicion_sqlite(tabla: str, columna: str) -> tuple[str, re.Pattern] | None:
+    """El CREATE TABLE guardado y el patrón que encuentra la definición de la columna (tipo, DEFAULT y NOT NULL)."""
     col = next((c for c in db.todos(f"pragma table_info({tabla})") if c["name"] == columna), None)
-    if not col or bool(col["notnull"]) == (not quitar):
-        return False
+    if not col:
+        return None
     sql = db.uno("select sql from sqlite_master where type='table' and name=:t", t=tabla)["sql"]
-    definicion = rf'(\b"?{columna}"?\s+{re.escape(col["type"])})(?:\s+DEFAULT\s+[^\s,)]+|\s+NOT NULL)*'
-    nuevo, cambios = re.subn(definicion, (lambda m: m.group(1)) if quitar else (lambda m: f"{m.group(1)} DEFAULT {defecto} NOT NULL"),
-                             sql, count=1)
-    if not cambios:
-        return False
-    nuevo = re.sub(rf'^CREATE TABLE "?{tabla}"?', f"CREATE TABLE {tabla}__nueva", nuevo)
+    return sql, re.compile(rf'(\b"?{columna}"?\s+{re.escape(col["type"])})(?:\s+DEFAULT\s+[^\s,)]+|\s+NOT NULL)*')
+
+
+def rehacer_tabla_sqlite(tabla: str, crear: str, origen: dict[str, str] | None = None):
+    """SQLite no cambia una columna en su lugar: tabla nueva con `crear` (su CREATE TABLE), copia, borrar y renombrar,
+    con el procedimiento de `_rehacer_usuarios_sqlite`. `origen` da la expresión con que se copia alguna columna."""
+    crear = re.sub(rf'^CREATE TABLE "?{tabla}"?', f"CREATE TABLE {tabla}__nueva", crear)
     columnas = [c["name"] for c in db.todos(f"pragma table_info({tabla})")]
-    origen = ", ".join(f"coalesce({c}, {defecto})" if c == columna and not quitar else c for c in columnas)
+    copia = ", ".join((origen or {}).get(c, c) for c in columnas)
     crudo = db.motor.raw_connection()
     try:
         crudo.driver_connection.executescript(f"""
             PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON;
             BEGIN;
-            {nuevo};
-            INSERT INTO {tabla}__nueva ({", ".join(columnas)}) SELECT {origen} FROM {tabla};
+            {crear};
+            INSERT INTO {tabla}__nueva ({", ".join(columnas)}) SELECT {copia} FROM {tabla};
             DROP TABLE {tabla};
             ALTER TABLE {tabla}__nueva RENAME TO {tabla};
             COMMIT;
@@ -177,6 +175,18 @@ def _obligatoria_sqlite(tabla: str, columna: str, defecto: str, quitar: bool = F
     finally:
         crudo.close()
     db.ejecutar("select 1")   # vacía la caché de lecturas
+
+
+def _obligatoria_sqlite(tabla: str, columna: str, defecto: str) -> bool:
+    """Pone NOT NULL y el valor por omisión a una columna de SQLite, rellenando los vacíos con `defecto`."""
+    encontrada = definicion_sqlite(tabla, columna)
+    if not encontrada:
+        return False
+    sql, patron = encontrada
+    nuevo, cambios = patron.subn(lambda m: f"{m.group(1)} DEFAULT {defecto} NOT NULL", sql, count=1)
+    if not cambios or nuevo == sql:
+        return False
+    rehacer_tabla_sqlite(tabla, nuevo, {columna: f"coalesce({columna}, {defecto})"})
     return True
 
 
