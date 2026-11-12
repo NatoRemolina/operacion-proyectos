@@ -111,3 +111,4 @@ Requisitos de diseño para la web nueva; el encargo `web-next` ya incluye los ma
 | I06 | Lógica de negocio dentro de rutas (comparación, revisión, tablero previsto/real) | Pendiente: al extraer servicios (ver `docs/arquitectura_objetivo.md`) |
 | I07 | El cambio de contraseña no limita intentos | Pendiente |
 | I08 | La cookie no se borra al salir en HTTPS (falta `secure` al borrarla; la sesión sí se revoca) | Pendiente: antes de publicar |
+| I09 | El cliente central del modelo (`servicios/llm.py`) solo habla el formato `generateContent`: con un proveedor de formato «mensajes», solo el agente de viajes y la lectura de recibos usan el modelo, sin reintentos ni registro en el monitoreo | Parcial: el asistente razona con el asesor (agente alojado, `servicios/asesor.py`) y el modelo de `MODELO_*` queda para recibos y notas de voz. Pendiente: que `llm.py` hable ambos formatos y que el costo del asesor entre en Monitoreo |
