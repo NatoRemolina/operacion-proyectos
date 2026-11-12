@@ -47,3 +47,19 @@ describe("cliente HTTP: códigos de administración", () => {
     expect((await errorDe(errorApi(409, "EDIT_CONFLICT"))).tipo).toBe("cambio_ajeno");
   });
 });
+
+describe("cliente HTTP: cabeceras en escrituras JSON", () => {
+  it("postJson manda las cabeceras pedidas (por ejemplo, Idempotency-Key) junto al token CSRF", async () => {
+    const fetchFalso = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+    );
+    vi.stubGlobal("fetch", fetchFalso);
+    const cliente = crearClienteHttp("/api/v1");
+    cliente.fijarCsrf("token-1");
+    await cliente.postJson("/x", { a: 1 }, z.object({}), { cabeceras: { "Idempotency-Key": "clave-1" } });
+    const cabeceras = new Headers(fetchFalso.mock.calls[0]![1]?.headers);
+    expect(cabeceras.get("Idempotency-Key")).toBe("clave-1");
+    expect(cabeceras.get("X-CSRF-Token")).toBe("token-1");
+    expect(cabeceras.get("Content-Type")).toBe("application/json");
+  });
+});
