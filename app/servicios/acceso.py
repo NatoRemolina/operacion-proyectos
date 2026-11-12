@@ -115,6 +115,7 @@ def autenticar(correo: str, clave: str) -> tuple[dict | None, str]:
 
 
 def abrir_sesion(respuesta, usuario_id: int):
+    """Crea la sesión y pone la cookie. El token queda también en `respuesta.token_sesion`: la API v1 deriva de él el CSRF."""
     token = secrets.token_urlsafe(32)
     ahora = _ahora()
     db.ejecutar("delete from sesiones where usuario_id=:u and expira<:a", u=usuario_id, a=_fmt(ahora))
@@ -122,6 +123,7 @@ def abrir_sesion(respuesta, usuario_id: int):
                 expira=_fmt(ahora + VIDA))
     respuesta.set_cookie(COOKIE, token, httponly=True, secure=not config.LOCAL, samesite="lax", path="/",
                          max_age=int(VIDA.total_seconds()))
+    respuesta.token_sesion = token
     return respuesta
 
 

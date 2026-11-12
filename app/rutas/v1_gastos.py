@@ -1,0 +1,72 @@
+"""API v1: gastos visibles para la persona, envío de un recibo y su archivo original. Contrato en `contracts/api-v1.md`."""
+from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
+from fastapi.responses import Response
+
+from .. import config
+from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
+from ..api_v1.esquemas import EstadoGasto, GastoDetalle, ListaGastos, errores
+from ..servicios import consultas, viajes
+from ..servicios import gastos as soportes
+
+router = APIRouter(prefix=PREFIJO, tags=["gastos"])
+
+
+def _no_encontrado() -> ErrorApi:
+    return ErrorApi(404, "NOT_FOUND", MENSAJE_HTTP[404])
+
+
+@router.get("/gastos", response_model=ListaGastos, responses=errores(401, 422))
+def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, paginacion: tuple = Depends(pagina),
+          yo: dict = Depends(persona)):
+    """Mismo alcance que los viajes. Más reciente primero."""
+    limite, cursor = paginacion
+    return consultas.lista_gastos(yo, viaje_id, estado, limite, cursor)
+
+
+@router.get("/gastos/{id}", response_model=GastoDetalle, responses=errores(401, 404, 422))
+def detalle(id: int, yo: dict = Depends(persona)):
+    g = consultas.gasto(yo, id)
+    if not g:
+        raise _no_encontrado()
+    return g
+
+
+@router.post("/gastos", status_code=201, response_model=GastoDetalle, responses=errores(401, 403, 409, 413, 415, 422))
+def enviar(archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."),
+           viaje_id: int | None = Form(None, description="Opcional. Sin él, se usa el viaje que corresponde hoy a la persona."),
+           clave: str | None = Header(None, alias="Idempotency-Key", max_length=200,
+                                      description="Un valor único por archivo, que se repite si se reintenta el mismo envío."),
+           yo: dict = Depends(escritura)):
+    """Lee y valida el recibo. Responde con su estado real: `aprobado_auto` o `revision` (que no es un error).
+
+    Función normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor.
+    """
+    contenido = archivo.file.read(config.MAX_BYTES_SOPORTE + 1)
+    if len(contenido) > config.MAX_BYTES_SOPORTE:
+        raise ErrorApi(413, "PAYLOAD_TOO_LARGE", f"El archivo supera el máximo de {config.MAX_BYTES_SOPORTE / 1e6:.1f} MB.")
+    if not contenido:
+        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"archivo": "El archivo está vacío."})
+    nombre = archivo.filename or "soporte"
+    if not soportes.tipo_real(contenido, nombre):
+        raise ErrorApi(415, "UNSUPPORTED_MEDIA_TYPE", "Tipo de archivo no admitido. Se aceptan fotos (JPG, PNG, WebP), PDF y correos (.eml).")
+    # Con viaje indicado solo se acepta uno propio; si no lo es, el gasto queda sin viaje y en revisión
+    viaje, _ = viajes.resolver_para_gasto(yo, viaje_id)
+    try:
+        gid = soportes.registrar(contenido, nombre, "web", yo, viaje, viajero_id=yo.get("viajero_id"), clave_idempotencia=clave)
+    except soportes.SoporteRechazado as e:
+        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"archivo": str(e)}) from e
+    return consultas.gasto(yo, gid)
+
+
+@router.get("/documentos/{id}/contenido", response_class=Response, responses={
+    **errores(401, 404, 422),
+    200: {"description": "El archivo original", "content": {t: {} for t in (*consultas.TIPOS_EN_LINEA, "text/plain")}}})
+def contenido(id: int, yo: dict = Depends(persona)):
+    """Se entrega aislado: sin adivinar el tipo, sin ejecutar nada y sin quedar en caché."""
+    archivo = consultas.contenido_documento(yo, id)
+    if not archivo:
+        raise _no_encontrado()
+    datos, tipo = archivo
+    return Response(datos, media_type=tipo, headers={
+        "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
