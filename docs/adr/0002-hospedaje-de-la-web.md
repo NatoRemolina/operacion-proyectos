@@ -38,6 +38,22 @@ La web no tiene secretos: llama a la API con `NEXT_PUBLIC_API_BASE=/api/v1`, una
 | Coherencia con el ADR 0001 | Es el «gateway administrado» del anillo 4: CloudFront hace en la nube lo que Caddy hace en local | Duplica el borde: Vercel por delante y la API detrás |
 | Vistas previas por rama | Hay que construirlas si se quieren | Vienen incluidas: es su principal ventaja |
 
+## Dominio (decisión del 12 de noviembre de 2026)
+
+**El dominio se gestiona en AWS con Route 53, integrado al mismo código de infraestructura.** Así el dominio, el certificado, CloudFront y los registros viven en el mismo stack de CDK y se revisan con el mismo `cdk diff`.
+
+| Pieza | Cómo |
+|---|---|
+| Registro del dominio | Route 53 (un `.com` cuesta unos 15 USD al año). Si la empresa ya tuviera un dominio en otro registrador, se conserva allí y solo se delega su DNS a Route 53 cambiando los servidores de nombres |
+| Zona DNS | Una zona alojada en Route 53 (0,50 USD al mes más centavos por consultas; las que apuntan a CloudFront no se cobran) |
+| Certificado | ACM en `us-east-1`, pedido y validado por CDK en la propia zona: sin pasos a mano. Gratis |
+| Registros | *Alias* del dominio raíz y de `www` hacia la distribución de CloudFront; `admin.` hacia las pantallas actuales |
+| Configuración | `ORIGENES_WEB` con el dominio, en el secreto de la API |
+
+**Mientras no se compre el dominio**, el mismo stack publica en la dirección gratuita de CloudFront (`https://<id>.cloudfront.net`), con HTTPS incluido y el mismo comportamiento de sesión y CSRF. El dominio se activa con una variable del despliegue (nombre del dominio y zona); si está vacía, no se crean zona, certificado ni registros.
+
+Alternativas descartadas: Cloudflare como DNS (funciona, pero deja una parte fuera de CDK y la validación del certificado a mano) y Cloudflare como proxy delante de CloudFront (dos CDN en cadena, más reglas que mantener).
+
 ## Consecuencias
 
 - El entorno local con Caddy sigue siendo el modelo exacto de producción: lo que funciona en `127.0.0.1:8088` funciona detrás de CloudFront.
@@ -50,7 +66,7 @@ La web no tiene secretos: llama a la API con `NEXT_PUBLIC_API_BASE=/api/v1`, una
 
 - Next.js 16 en modo independiente detrás del adaptador web de Lambda: respuestas en flujo, optimización de imágenes y encabezados de caché.
 - Que CloudFront reenvíe la cookie de sesión y los encabezados `Origin` y `X-CSRF-Token` hacia la API, y nada de eso hacia los archivos estáticos.
-- El nombre exacto del subdominio de administración y del dominio principal.
+- El nombre del dominio de la empresa (registrarlo en Route 53 o delegar su DNS) y el del subdominio de administración.
 
 ## Condición para revisar esta decisión
 
