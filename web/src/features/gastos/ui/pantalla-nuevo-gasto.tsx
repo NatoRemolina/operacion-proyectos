@@ -158,7 +158,8 @@ export function PantallaNuevoGasto({ viajeInicial }: { viajeInicial?: number } =
         />
       )}
 
-      <Link href="/gastos" className={clasesBoton("secundario", "w-full")}>
+      {/* Con el archivo elegido, «Enviar recibo» es la única acción principal: esto queda como enlace. */}
+      <Link href="/gastos" className={clasesBoton("texto", "self-center")}>
         Ver mis gastos
       </Link>
     </section>

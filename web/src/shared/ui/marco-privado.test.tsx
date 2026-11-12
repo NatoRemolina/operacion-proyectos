@@ -113,4 +113,13 @@ describe("Marco privado", () => {
     const atajos = screen.getByRole("navigation", { name: "Atajos" });
     expect(within(atajos).getAllByRole("link").map((a) => a.textContent)).toEqual(["Cotizar", "Viajes", "Gastos"]);
   });
+
+  it("en celular la barra de atajos es un material sobre el contenido y la cabecera queda fija arriba", () => {
+    marco({ permiso: "colaborador" });
+    // Material translúcido (con respaldo sólido si se pide menos transparencia), sin línea dura encima
+    expect(screen.getByRole("navigation", { name: "Atajos" }).className).toMatch(/material-barra/);
+    expect(screen.getByRole("navigation", { name: "Atajos" }).className).not.toMatch(/border-t /);
+    expect(screen.getByRole("button", { name: "Menú" }).closest("header")!.parentElement!.className).toMatch(/sticky top-0/);
+  });
 });
+

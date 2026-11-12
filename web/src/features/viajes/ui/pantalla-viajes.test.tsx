@@ -81,4 +81,41 @@ describe("Viajes", () => {
     expect(within(lista).queryByText("V-2026-0009")).not.toBeInTheDocument();
     expect(within(lista).getByText("V-2026-0012")).toBeInTheDocument();
   });
+
+  it("si otra persona ya decidió el viaje, lo explica y la lista se pone al día", async () => {
+    const usuario = userEvent.setup();
+    const compartidos = [PENDIENTE, APROBADO];
+    renderizarConFuente(<PantallaViajes />, {
+      viajes: crearViajesMemoria({ viajes: compartidos }),
+      administracion: crearAdministracionMemoria({ resumen: resumenDePrueba(), viajes: compartidos }),
+      permiso: "admin",
+    });
+    const porAprobar = await screen.findByRole("region", { name: "Por aprobar" });
+    await within(porAprobar).findByRole("link", { name: "V-2026-0012" });
+    // Mientras tanto, otra persona de administración lo aprobó
+    compartidos[0] = { ...PENDIENTE, estado: "aprobado", estado_texto: "Aprobado" };
+    await usuario.click(within(porAprobar).getByRole("button", { name: "Aprobar presupuesto" }));
+    expect(await screen.findByText("No hay viajes esperando aprobación.")).toBeInTheDocument();
+  });
+
+  it("la bandeja «Por aprobar» deja ver más cuando hay muchos pendientes", async () => {
+    const usuario = userEvent.setup();
+    const muchos = Array.from({ length: 25 }, (_, i) =>
+      viajeDePrueba({
+        id: 100 + i,
+        codigo: `V-2026-${String(100 + i).padStart(4, "0")}`,
+        estado: "pendiente_aprobacion",
+        estado_texto: "Pendiente de aprobación",
+        en_curso: false,
+        ida: `2026-12-${String((i % 28) + 1).padStart(2, "0")}`,
+        titular: { id: 7, codigo: "P-0007", nombre: "Alex Rivera" },
+      }),
+    );
+    montar({ viajes: muchos, estado: "pendiente_aprobacion" });
+    const lista = await screen.findByRole("list", { name: "Viajes por aprobar" });
+    expect(within(lista).getAllByRole("listitem")).toHaveLength(20);
+    await usuario.click(screen.getByRole("button", { name: "Ver más viajes por aprobar" }));
+    expect(await within(lista).findAllByRole("listitem")).toHaveLength(25);
+  });
 });
+

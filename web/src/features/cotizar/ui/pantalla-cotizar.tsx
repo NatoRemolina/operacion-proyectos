@@ -61,7 +61,7 @@ function conOmisiones(b: BorradorCotizacion, f: FormularioCotizacion): BorradorC
 export function PantallaCotizar() {
   const formulario = useFormularioCotizacion();
   return (
-    <section aria-labelledby="titulo-cotizar" className="flex flex-col gap-6">
+    <section aria-labelledby="titulo-cotizar" className="flex flex-col gap-6 md:gap-8">
       <EncabezadoPagina
         idTitulo="titulo-cotizar"
         migas={[{ texto: "Operaciones" }, { texto: "Cotizar viaje" }]}
@@ -170,7 +170,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
   });
 
   return (
-    <form noValidate onSubmit={enviar} className="flex flex-col gap-6" aria-busy={buscando}>
+    <form noValidate onSubmit={enviar} className="flex flex-col gap-6 md:gap-8" aria-busy={buscando}>
       {!datos.precios_en_vivo ? (
         <Alerta tono="info" titulo="El buscador en vivo no está conectado" rol="status">
           <p>

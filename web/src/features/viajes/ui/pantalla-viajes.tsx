@@ -49,7 +49,7 @@ function Filtros({ activo }: { activo?: EstadoViaje }) {
 
 function TarjetaPorAprobar({ viaje }: { viaje: ViajeResumen }) {
   return (
-    <li className="flex flex-col gap-3 rounded-tarjeta border border-linea bg-superficie p-4 shadow-sm">
+    <li className="flex flex-col gap-3 rounded-tarjeta border border-linea bg-superficie p-4 shadow-tarjeta">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-lg font-bold">
@@ -90,11 +90,22 @@ function PorAprobar() {
           No hay viajes esperando aprobación.
         </p>
       ) : (
-        <ul aria-label="Viajes por aprobar" className="flex flex-col gap-3">
-          {consulta.viajes.map((v) => (
-            <TarjetaPorAprobar key={v.id} viaje={v} />
-          ))}
-        </ul>
+        <>
+          <ul aria-label="Viajes por aprobar" className="flex flex-col gap-3">
+            {consulta.viajes.map((v) => (
+              <TarjetaPorAprobar key={v.id} viaje={v} />
+            ))}
+          </ul>
+          {consulta.hasNextPage ? (
+            <Boton
+              variante="secundario"
+              onClick={() => void consulta.fetchNextPage()}
+              disabled={consulta.isFetchingNextPage}
+            >
+              {consulta.isFetchingNextPage ? "Cargando…" : "Ver más viajes por aprobar"}
+            </Boton>
+          ) : null}
+        </>
       )}
     </section>
   );
@@ -109,7 +120,7 @@ export function PantallaViajes({ estado }: { estado?: EstadoViaje }) {
   const listaVisible = !(esAdmin && estado === "pendiente_aprobacion");
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 md:gap-8">
       <EncabezadoPagina
         migas={[{ texto: "Operaciones" }, { texto: permiso === "colaborador" ? "Mis viajes" : "Viajes" }]}
         titulo={permiso === "colaborador" ? "Mis viajes" : "Viajes"}
@@ -125,7 +136,8 @@ export function PantallaViajes({ estado }: { estado?: EstadoViaje }) {
             <Link href="/gastos/nuevo" className={clasesBoton("secundario")}>
               Cargar recibo
             </Link>
-            <Link href="/cotizar" className={clasesBoton("primario")}>
+            {/* En administración la acción principal es decidir cada viaje: cotizar queda como secundaria. */}
+            <Link href="/cotizar" className={clasesBoton(esAdmin ? "secundario" : "primario")}>
               Cotizar viaje
             </Link>
           </>

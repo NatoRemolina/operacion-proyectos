@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { GastoDetalle, GastosRepository } from "@/features/gastos/domain/gastos";
@@ -177,6 +177,39 @@ describe("Revisar un gasto", () => {
     await usuario.click(await screen.findByRole("button", { name: "Aprobar gasto" }));
     await within(screen.getByRole("status", { name: "Avisos" })).findByText(/Gasto aprobado/);
     expect(navegacion.push).toHaveBeenCalledWith("/gastos/300");
+  });
+
+  it("si otra persona ya lo decidió, el aviso queda aunque la pantalla cambie a la vista normal", async () => {
+    const usuario = userEvent.setup();
+    const { obtener } = montar({
+      revisar: async () => {
+        throw new ErrorDeAplicacion("cambio_ajeno");
+      },
+    });
+    obtener.mockResolvedValue({ ...EN_REVISION, estado: "aprobado", estado_texto: "Aprobado", version: 4 });
+    await usuario.click(await screen.findByRole("button", { name: "Aprobar gasto" }));
+    expect(
+      await within(screen.getByRole("status", { name: "Avisos" })).findByText(/Otra persona cambió este gasto/),
+    ).toBeInTheDocument();
+  });
+
+  it("si la imagen del recibo no se puede mostrar, lo dice sin suponer que es un PDF", async () => {
+    montar();
+    const imagen = await screen.findByRole("img", { name: "Recibo original de Café del centro" });
+    fireEvent.error(imagen);
+    expect(await screen.findByText(/No se puede mostrar aquí/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Abrir el recibo original en otra pestaña" })).toBeInTheDocument();
+  });
+
+  it("la decisión está arriba, junto al título, y lo que contó la persona va antes que lo leído", async () => {
+    montar();
+    const encabezado = (await screen.findByRole("heading", { level: 1, name: "Revisar: Café del centro" })).closest("header")!;
+    expect(within(encabezado).getByRole("button", { name: "Aprobar gasto" })).toBeInTheDocument();
+    expect(within(encabezado).getByRole("button", { name: "Rechazar" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Tu decisión" })).not.toBeInTheDocument();
+    const contado = screen.getByRole("region", { name: "Lo que contó la persona" });
+    const leido = screen.getByRole("region", { name: "Lo que leímos del recibo" });
+    expect(contado.compareDocumentPosition(leido) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

@@ -107,7 +107,7 @@ export function DialogoConfirmacion({
         aria-labelledby={`${id}-titulo`}
         aria-describedby={`${id}-efecto`}
         onKeyDown={alTeclear}
-        className="se-mueve w-full max-w-md rounded-tarjeta bg-superficie p-5 shadow-lg transition-[scale,opacity] duration-200 ease-salida starting:scale-95 starting:opacity-0 contrast-more:border-2 contrast-more:border-texto"
+        className="se-mueve w-full max-w-md rounded-tarjeta bg-superficie p-5 shadow-flotante transition-[scale,opacity] duration-200 ease-salida starting:scale-95 starting:opacity-0 contrast-more:border-2 contrast-more:border-texto"
       >
         <form onSubmit={enviar} className="flex flex-col gap-4">
           <h2 id={`${id}-titulo`} className="text-xl font-bold">

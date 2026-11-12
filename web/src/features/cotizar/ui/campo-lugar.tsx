@@ -161,7 +161,7 @@ function ComboLugar({
         </p>
       ) : null}
       <div
-        className={`se-mueve absolute inset-x-0 top-full z-20 mt-1 origin-top overflow-hidden rounded-tarjeta border border-linea bg-superficie shadow-lg transition-[opacity,scale] duration-150 ease-out starting:scale-y-95 starting:opacity-0 motion-reduce:starting:scale-y-100 ${
+        className={`se-mueve absolute inset-x-0 top-full z-20 mt-1 origin-top overflow-hidden rounded-tarjeta border border-linea bg-superficie shadow-flotante transition-[opacity,scale] duration-150 ease-out starting:scale-y-95 starting:opacity-0 motion-reduce:starting:scale-y-100 ${
           visible ? "" : "hidden"
         }`}
       >

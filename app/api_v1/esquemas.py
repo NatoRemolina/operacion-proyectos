@@ -79,7 +79,8 @@ class ViajeResumen(BaseModel):
     gastos: int
     propio: bool = Field(False, description="Es de la persona de la sesión (titular o viajero): nadie aprueba lo suyo.")
     precio_por_confirmar: str | None = Field(
-        None, description="Pendiente de aprobación cuyo precio de vuelo subió más que la tolerancia: hay que confirmarlo al aprobar.")
+        None, description="Solo para administración: pendiente de aprobación cuyo precio de vuelo subió más que la "
+                          "tolerancia; hay que confirmarlo al aprobar.")
 
 
 class LineaPresupuesto(BaseModel):

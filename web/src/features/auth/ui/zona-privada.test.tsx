@@ -73,6 +73,7 @@ function LecturaVencida() {
 describe("Zona privada con la sesión vencida", () => {
   it("si una lectura descubre que la sesión venció, lleva a entrar y regresa a la misma página", async () => {
     navegacion.replace.mockClear();
+    window.history.pushState({}, "", "/viajes");
     renderizarConFuente(
       <ZonaPrivada plataforma="">
         <LecturaVencida />
@@ -81,4 +82,19 @@ describe("Zona privada con la sesión vencida", () => {
     );
     await waitFor(() => expect(navegacion.replace).toHaveBeenCalledWith(`/entrar?volver=${encodeURIComponent("/viajes")}`));
   });
+
+  it("al volver conserva la consulta de la página (filtros, viaje elegido)", async () => {
+    navegacion.replace.mockClear();
+    window.history.pushState({}, "", "/viajes?estado=aprobado");
+    renderizarConFuente(
+      <ZonaPrivada plataforma="">
+        <LecturaVencida />
+      </ZonaPrivada>,
+      { auth: auth(personaDePrueba({ rol: "colaborador" })) },
+    );
+    await waitFor(() =>
+      expect(navegacion.replace).toHaveBeenCalledWith(`/entrar?volver=${encodeURIComponent("/viajes?estado=aprobado")}`),
+    );
+  });
 });
+

@@ -2,7 +2,8 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTML
 
 const CONTROL =
   "block min-h-11 w-full rounded-lg border border-borde-campo bg-superficie px-3 py-2 text-base text-texto " +
-  "placeholder:text-texto-secundario aria-invalid:border-error aria-invalid:border-2";
+  "placeholder:text-texto-secundario aria-invalid:border-error aria-invalid:border-2 " +
+  "disabled:cursor-not-allowed disabled:bg-neutro-suave/60";
 
 interface PropsComunes {
   id: string;

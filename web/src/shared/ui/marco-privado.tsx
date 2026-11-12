@@ -26,7 +26,7 @@ function esActivo(enlace: EntradaMenu, ruta: string): boolean {
 
 const BOTON_OSCURO =
   "inline-flex min-h-11 items-center justify-center rounded-lg border border-sobre-grafito-suave px-4 " +
-  `font-semibold text-sobre-grafito hover:bg-sobre-grafito/10 disabled:opacity-60 ${PRESIONAR}`;
+  `font-semibold text-sobre-grafito hover:bg-sobre-grafito/10 active:bg-sobre-grafito-presionado disabled:opacity-60 ${PRESIONAR}`;
 
 /** Enlace del menú: las pantallas de esta web navegan sin recargar; las actuales, con un enlace normal. */
 function EnlaceMenuOscuro({ enlace, activo, onNavegar }: { enlace: EntradaMenu; activo: boolean; onNavegar?: () => void }) {
@@ -172,7 +172,8 @@ export function MarcoPrivado({
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="md:hidden" onKeyDown={alTeclear}>
+          {/* Como una barra de navegación: queda arriba al desplazar, sólida en grafito. */}
+          <div className="sticky top-0 z-20 md:hidden" onKeyDown={alTeclear}>
           <header className="zona-oscura flex items-center justify-between gap-3 bg-grafito px-4 py-3 text-sobre-grafito">
             <Marca tamano="pequena" />
             <button
@@ -198,7 +199,7 @@ export function MarcoPrivado({
             id="menu-celular"
             aria-hidden={!abierto}
             inert={!abierto}
-            className={`zona-oscura se-mueve fixed inset-y-0 left-0 z-40 flex w-72 max-w-full flex-col overflow-y-auto bg-grafito px-5 py-6 text-sobre-grafito shadow-lg transition-[translate,opacity] duration-200 ease-salida ${
+            className={`zona-oscura se-mueve fixed inset-y-0 left-0 z-40 flex w-72 max-w-full flex-col overflow-y-auto bg-grafito px-5 py-6 text-sobre-grafito shadow-flotante transition-[translate,opacity] duration-200 ease-salida ${
               abierto ? "translate-x-0 opacity-100" : "-translate-x-full opacity-0"
             }`}
           >
@@ -224,7 +225,7 @@ export function MarcoPrivado({
         <nav
           aria-label="Atajos"
           inert={abierto}
-          className="fixed inset-x-0 bottom-0 z-20 border-t border-linea bg-superficie pb-[env(safe-area-inset-bottom)] md:hidden"
+          className="material-barra fixed inset-x-0 bottom-0 z-20 pb-[env(safe-area-inset-bottom)] md:hidden"
         >
           <ul className="grid" style={{ gridTemplateColumns: `repeat(${Math.max(atajos.length, 1)}, minmax(0, 1fr))` }}>
             {atajos.map((enlace) => {

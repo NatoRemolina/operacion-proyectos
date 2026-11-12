@@ -72,7 +72,7 @@ interface ViajeResumen {
   ejecucion_pct: number | null;               // gastado ÷ presupuesto, entero
   gastos: number;
   propio: boolean;                            // es de la persona de la sesión (titular o viajero)
-  precio_por_confirmar: string | null;        // pendiente cuyo precio subió más que la tolerancia: "antes … ahora …"
+  precio_por_confirmar: string | null;        // solo administración: pendiente cuyo precio subió más que la tolerancia
 }
 
 interface ViajeDetalle extends ViajeResumen {

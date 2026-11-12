@@ -32,7 +32,7 @@ export interface OpcionViaje {
   enCurso: boolean;
 }
 
-const TARJETA = "rounded-tarjeta border border-linea bg-superficie p-4 shadow-sm";
+const TARJETA = "rounded-tarjeta border border-linea bg-superficie p-4 shadow-tarjeta";
 
 /** Un input de archivo oculto con su etiqueta visible como botón; el foco se ve en la etiqueta. */
 function BotonArchivo({
@@ -205,8 +205,8 @@ export function FormularioRecibo({
         <div className="mt-3 flex flex-col gap-3">
           <BotonArchivo
             id="foto-recibo"
-            texto="Tomar foto"
-            variante="primario"
+            texto={archivo ? "Tomar otra foto" : "Tomar foto"}
+            variante={archivo ? "secundario" : "primario"}
             accept="image/*"
             capture="environment"
             disabled={enviando}
@@ -215,7 +215,7 @@ export function FormularioRecibo({
           />
           <BotonArchivo
             id="archivo-recibo"
-            texto="Elegir archivo"
+            texto={archivo ? "Elegir otro archivo" : "Elegir archivo"}
             variante="secundario"
             accept="image/*,application/pdf"
             disabled={enviando}

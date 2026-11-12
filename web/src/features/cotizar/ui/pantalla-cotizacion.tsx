@@ -34,14 +34,14 @@ export function PantallaCotizacion({ id }: { id: number }) {
   const migas = [{ texto: "Cotizar viaje", href: "/cotizar" }, { texto: `Cotización ${id}` }];
   if (consulta.isPending) {
     return (
-      <section className="flex flex-col gap-6">
+      <section className="flex flex-col gap-6 md:gap-8">
         <EsqueletoDetalle texto="Cargando la cotización…" />
       </section>
     );
   }
   if (consulta.error) {
     return (
-      <section aria-labelledby="titulo-cotizacion" className="flex flex-col gap-6">
+      <section aria-labelledby="titulo-cotizacion" className="flex flex-col gap-6 md:gap-8">
         <EncabezadoPagina idTitulo="titulo-cotizacion" titulo={`Cotización ${id}`} migas={migas} />
         {consulta.error.tipo === "no_encontrado" ? (
           <EstadoVacio titulo="No encontramos esta cotización" accion={{ href: "/cotizar", texto: "Cotizar un viaje" }}>
@@ -60,7 +60,7 @@ function VistaCotizacion({ c, migas }: { c: Cotizacion; migas: { texto: string; 
   const origen = textoOrigenDato(c.origen_dato);
   const vacia = sinDatos(c);
   return (
-    <section aria-labelledby="titulo-cotizacion" className="flex flex-col gap-6">
+    <section aria-labelledby="titulo-cotizacion" className="flex flex-col gap-6 md:gap-8">
       <EncabezadoPagina
         idTitulo="titulo-cotizacion"
         titulo={tituloRuta(c)}
@@ -369,7 +369,7 @@ function FormularioDecision({
   }
 
   return (
-    <form noValidate onSubmit={enviar} className="flex flex-col gap-6">
+    <form noValidate onSubmit={enviar} className="flex flex-col gap-6 md:gap-8">
       <fieldset className="flex min-w-0 flex-col gap-3" aria-describedby={errorVuelo ? errorVueloId : undefined}>
         <legend className="mb-1 text-xl font-bold tracking-tight">
           {soloDescartados ? "Vuelos descartados" : "Vuelos por costo total esperado"}

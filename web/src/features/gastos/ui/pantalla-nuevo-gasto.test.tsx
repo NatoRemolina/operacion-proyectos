@@ -201,5 +201,15 @@ describe("Cargar un gasto", () => {
     await waitFor(() => expect(enviar).toHaveBeenCalled());
     expect(enviar.mock.calls[0]![0].viajeId).toBe(8);
   });
+
+  it("con el archivo elegido, «Enviar recibo» es la única acción principal y elegir pasa a «Elegir otro archivo»", async () => {
+    const usuario = userEvent.setup();
+    const { repositorio } = repositorioQueResponde(gastoDePrueba());
+    renderizarConFuente(<PantallaNuevoGasto />, { gastos: repositorio, viajes });
+    await usuario.upload(screen.getByLabelText("Elegir archivo"), foto());
+    expect(screen.getByLabelText("Elegir otro archivo")).toBeInTheDocument();
+    expect(screen.getByText("Elegir otro archivo").className).toMatch(/border-borde-campo/);
+    expect(screen.getByRole("link", { name: "Ver mis gastos" }).className).not.toMatch(/border-borde-campo/);
+  });
 });
 

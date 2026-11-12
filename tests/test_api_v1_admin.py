@@ -247,3 +247,13 @@ def test_cambiar_el_estado_desde_otro_origen_no_cambia_nada(cliente, nuevo_viaje
                      headers={**_csrf(cliente), "Origin": "https://sitio-ajeno.example", "Sec-Fetch-Site": "cross-site"})
     _error(r, 403, "ORIGIN_NOT_ALLOWED")
     assert viajes.uno(v["id"])["estado"] == "pendiente_aprobacion"
+
+
+def test_el_precio_por_confirmar_solo_se_calcula_para_administracion(cliente, piloto, nuevo_viaje):
+    v = nuevo_viaje(aprobar=False)
+    cambio = f"antes 410.00 USD, ahora 451.00 USD (+10.0%); {viajes.SUPERA_TOLERANCIA} de 5%"
+    eventos.registrar("viaje", v["id"], "precio cambió", cambio, "SerpApi (en vivo)")
+    del_piloto = {x["id"]: x for x in piloto.get(f"{V1}/viajes", params={"limite": 100}).json()["items"]}
+    assert del_piloto[v["id"]]["precio_por_confirmar"] is None   # quien no aprueba no necesita el dato
+    del_admin = {x["id"]: x for x in cliente.get(f"{V1}/viajes", params={"limite": 100}).json()["items"]}
+    assert del_admin[v["id"]]["precio_por_confirmar"] == cambio
