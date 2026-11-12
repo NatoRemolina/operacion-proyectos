@@ -75,7 +75,9 @@ def sembrar():
 # Las usa el catálogo de métricas y sirven tal cual a una herramienta externa de inteligencia de negocio.
 VISTAS = {
     "v_h_gasto": """select g.*, p.nombre proyecto, p.ciudad ciudad_proyecto, v.nombre viajero, u.nombre usuario,
-                           r.nombre revisor, d.canal, d.mime, d.nombre archivo, vi.estado estado_viaje, vi.ida ida_viaje
+                           r.nombre revisor, d.canal, d.mime, d.nombre archivo, vi.estado estado_viaje, vi.ida ida_viaje,
+                           coalesce((select c.nombre from usuarios x join cargos c on c.id=x.cargo_id
+                                     where x.id=coalesce(vi.usuario_id, g.usuario_id)), 'Sin cargo') cargo
                     from gastos g left join proyectos p on p.id=g.proyecto_id left join viajeros v on v.id=g.viajero_id
                     left join viajes vi on vi.id=g.viaje_id
                     left join usuarios u on u.id=g.usuario_id left join usuarios r on r.id=g.revisado_por
@@ -89,7 +91,8 @@ VISTAS = {
     "v_h_viaje": """select v.*, s.origen, s.destino, p.nombre proyecto, u.nombre titular, u.rol rol_titular,
                            (select coalesce(sum(g.total_usd),0) from gastos g where g.viaje_id=v.id and g.estado in ('aprobado','aprobado_auto')) gastado_usd,
                            (select coalesce(sum(g.total_usd),0) from gastos g where g.viaje_id=v.id and g.estado='revision') en_revision_usd,
-                           (select count(*) from gastos g where g.viaje_id=v.id) gastos
+                           (select count(*) from gastos g where g.viaje_id=v.id) gastos,
+                           coalesce((select c.nombre from usuarios x join cargos c on c.id=x.cargo_id where x.id=v.usuario_id), 'Sin cargo') cargo
                     from viajes v left join solicitudes s on s.id=v.solicitud_id left join proyectos p on p.id=v.proyecto_id
                     left join usuarios u on u.id=v.usuario_id""",
     "v_h_evento": "select e.*, u.nombre usuario, u.rol from eventos e left join usuarios u on u.id=e.usuario_id",

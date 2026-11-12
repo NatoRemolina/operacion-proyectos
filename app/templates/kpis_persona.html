@@ -9,7 +9,7 @@
 {% set u = p.usuario %}
 <p class="eti"><a href="/admin/kpis">← KPIs</a></p>
 <h1><span class="mono">{{ u.codigo }}</span> · {{ u.nombre }}</h1>
-<p class="sub">{{ u.rol_texto|capitalize }} · {{ u.correo }}{% if u.viajero %} · viajero {{ u.viajero }}{% if u.base %} (base {{ u.base }}){% endif %}{% endif %}
+<p class="sub">{{ u.rol_texto|capitalize }} · {{ u.cargo }} · {{ u.correo }}{% if u.viajero %} · viajero {{ u.viajero }}{% if u.base %} (base {{ u.base }}){% endif %}{% endif %}
 {% if u.telegram_usuario %} · Telegram @{{ u.telegram_usuario }}{% endif %}{% if not u.activo %} · <span class="chip">cuenta inactiva</span>{% endif %}</p>
 <p class="nota">Aquí está todo lo que pertenece a {{ u.codigo }}: lo que la tiene como titular (quien viaja) y los gastos o evidencias sin viaje que cargó. Nada de otras personas.</p>
 

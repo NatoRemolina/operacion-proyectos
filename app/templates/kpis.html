@@ -90,6 +90,12 @@ Las metas son supuestos editables en <a href="/reglas">Reglas y supuestos</a> (�
   {% else %}<tr><td colspan="4">Ningún gasto espera revisión.</td></tr>{% endfor %}</table></div>
 </div>
 
+<h2>Gasto por cargo</h2>
+<div class="tarjeta tabla"><p class="eti">El cargo de un viaje es el de su titular; el de un gasto, el del titular de su viaje o, sin viaje, el de quien lo cargó.</p>
+<table><tr><th>Cargo</th><th class="d">Viajes</th><th class="d">Gasto aprobado</th><th class="d">En revisión</th></tr>
+{% for c in t.por_cargo %}<tr><td>{{ c.cargo }}</td><td class="d">{{ c.viajes }}</td><td class="d">{{ c.gasto_usd|dinero }}</td><td class="d">{{ c.en_revision|dinero }}</td></tr>
+{% else %}<tr><td colspan="4">Sin viajes ni gastos en el periodo.</td></tr>{% endfor %}</table></div>
+
 <h2>Personas</h2>
 <div class="tarjeta tabla"><p class="eti">A cada persona le pertenece lo que la tiene como titular (quien viaja); un gasto sin viaje, a quien lo cargó. Abre la ficha para ver todo lo suyo por su ID.</p>
 <table><tr><th>ID</th><th>Nombre</th><th>Rol</th><th class="d">Cotizaciones</th><th class="d">Viajes</th><th class="d">Presupuesto aprobado</th><th class="d">Gasto aprobado</th><th class="d">Ejecución</th><th class="d">Gastos</th><th class="d">En revisión</th></tr>

@@ -186,7 +186,7 @@ def tablero(f: dict) -> dict:
                            "errores_buscador": c["errores"], "cupo": metricas.cupo()["cupo"]},
             "gastos": {"por_viaje": v["detalle"], "por_proyecto": v["por_proyecto"], "por_categoria": v["por_categoria"],
                        "por_moneda": g["por_moneda"], "revision_antiguas": g["revision_antiguas"], "real_total": g["real_total"]},
-            "personas": personas(f),
+            "personas": personas(f), "por_cargo": por_cargo(f),
         }
 
 
@@ -220,6 +220,24 @@ def personas(f: dict) -> list[dict]:
     return salida
 
 
+def por_cargo(f: dict | None = None) -> list[dict]:
+    """Viajes, gasto aprobado y gasto en revisión por cargo. El cargo de un viaje es el de su titular; el de un gasto,
+    el del titular de su viaje o, sin viaje, el de quien lo cargó. Las cuentas sin cargo salen como «Sin cargo»."""
+    f = {k: v for k, v in (f or {}).items() if k != "persona_id"}
+    donde_v, par_v = metricas._filtro(f, "creado")
+    donde_g, par_g = metricas._filtro(f, "creado")
+    filas: dict[str, dict] = {}
+    for r in db.todos(f"select cargo, count(*) n from v_h_viaje where {donde_v} group by cargo", **par_v):
+        filas[r["cargo"]] = {"cargo": r["cargo"], "viajes": r["n"], "gasto_usd": 0.0, "en_revision": 0.0}
+    for r in db.todos(
+            f"""select cargo, sum(case when estado in ('aprobado','aprobado_auto') then total_usd else 0 end) gasto,
+                       sum(case when estado='revision' then total_usd else 0 end) revision
+                from v_h_gasto where {donde_g} group by cargo""", **par_g):
+        fila = filas.setdefault(r["cargo"], {"cargo": r["cargo"], "viajes": 0, "gasto_usd": 0.0, "en_revision": 0.0})
+        fila["gasto_usd"], fila["en_revision"] = round(r["gasto"] or 0, 2), round(r["revision"] or 0, 2)
+    return sorted(filas.values(), key=lambda x: (-x["gasto_usd"], x["cargo"]))
+
+
 def _codigo_de(viaje_id, creado) -> str | None:
     return viajes.codigo_viaje({"id": viaje_id, "creado": creado}) if viaje_id else None
 
@@ -229,8 +247,9 @@ def ficha_persona(usuario_id: int) -> dict | None:
 
     Pertenece a la persona lo que la tiene como titular (quien viaja); un gasto o evidencia sin viaje, a quien lo cargó.
     """
-    u = db.uno("""select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, u.telegram_usuario, v.nombre viajero, v.base
-                  from usuarios u left join viajeros v on v.id=u.viajero_id where u.id=:i""", i=usuario_id)
+    u = db.uno("""select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, u.telegram_usuario, v.nombre viajero, v.base,
+                         coalesce(c.nombre, 'Sin cargo') cargo
+                  from usuarios u left join viajeros v on v.id=u.viajero_id left join cargos c on c.id=u.cargo_id where u.id=:i""", i=usuario_id)
     if not u:
         return None
     cotizaciones = db.todos(f"""select s.id, s.origen, s.destino, s.ciudad, s.ida, s.regreso, s.estado, s.creado, p.nombre proyecto,

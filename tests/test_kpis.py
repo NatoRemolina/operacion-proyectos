@@ -247,3 +247,40 @@ def test_tablero_api_csv_y_acceso(caso, cliente, piloto, gestor):
         for ruta in ("/admin/kpis", "/api/kpis", f"/admin/kpis/persona/{caso['a']}", "/admin/kpis/exportar.csv"):
             assert quien.get(ruta).status_code == 403, ruta
     assert "/admin/kpis" not in piloto.get("/").text
+
+
+def test_gasto_y_viajes_por_cargo(cliente):
+    proyecto = 914   # proyecto propio: las cifras no se mezclan con las de otras pruebas
+    if not db.uno("select id from proyectos where id=:i", i=proyecto):
+        db.insertar("proyectos", id=proyecto, nombre="Proyecto de cargos", moneda="USD")
+    cargo = {c["nombre"]: c["id"] for c in acceso.cargos()}
+    piloto = acceso.crear_usuario("cargo-p@demo.local", "Piloto de cargos", "colaborador", "clave-de-prueba-p", cargo_id=cargo["Pilotaje de dron"])
+    editor = acceso.crear_usuario("cargo-e@demo.local", "Editora de cargos", "colaborador", "clave-de-prueba-e", cargo_id=cargo["Edición de video"])
+    sin_cargo = acceso.crear_usuario("cargo-s@demo.local", "Sin cargo de cargos", "colaborador", "clave-de-prueba-s")
+    viajero = lambda u: db.uno("select viajero_id from usuarios where id=:i", i=u)["viajero_id"]  # noqa: E731
+    def gasto(viaje, usuario, estado, total, categoria, fecha, creado):
+        doc = db.insertar("documentos", nombre=f"cargo-{total}.jpg", mime="image/jpeg", canal="web", huella=f"cargo-{total}-{estado}",
+                          creado=creado, usuario_id=usuario, viaje_id=viaje, tipo="soporte")
+        return db.insertar("gastos", documento_id=doc, proyecto_id=proyecto, viaje_id=viaje, usuario_id=usuario, comercio="Comercio",
+                           fecha=fecha, categoria=categoria, total=total, moneda="USD", total_usd=total, estado=estado, confianza=0.95,
+                           creado=creado)
+
+    v = db.insertar("viajes", proyecto_id=proyecto, usuario_id=piloto, viajero_id=viajero(piloto), ida="2026-11-20", regreso="2026-11-21",
+                    presupuesto_usd=500, estado="aprobado", creado="2026-11-10 10:00:00")
+    gasto(v, piloto, "aprobado", 120, "vuelo", "2026-11-11", "2026-11-11 10:00:00")
+    gasto(v, piloto, "revision", 45, "comida", "2026-11-11", "2026-11-11 11:00:00")
+    gasto(None, editor, "aprobado", 80, "hotel", "2026-11-12", "2026-11-12 09:00:00")   # sin viaje: cuenta el cargo de quien lo cargó
+    gasto(None, sin_cargo, "aprobado", 10, "comida", "2026-11-12", "2026-11-12 09:30:00")
+    filas = {f["cargo"]: f for f in kpis.por_cargo({"proyecto_id": proyecto})}
+    assert filas["Pilotaje de dron"] == {"cargo": "Pilotaje de dron", "viajes": 1, "gasto_usd": 120.0, "en_revision": 45.0}
+    assert filas["Edición de video"] == {"cargo": "Edición de video", "viajes": 0, "gasto_usd": 80.0, "en_revision": 0.0}
+    assert filas["Sin cargo"]["gasto_usd"] == 10.0
+    # las vistas llevan la columna y el CSV de la vista sigue saliendo
+    assert db.uno("select cargo from v_h_viaje where id=:i", i=v)["cargo"] == "Pilotaje de dron"
+    csv = cliente.get(f"/admin/monitoreo/exportar.csv?vista=v_h_gasto&proyecto_id={proyecto}")
+    assert csv.status_code == 200 and "cargo" in csv.text.splitlines()[0] and "Edición de video" in csv.text
+    pagina = cliente.get(f"/admin/kpis?proyecto_id={proyecto}")
+    assert "Gasto por cargo" in pagina.text and "Edición de video" in pagina.text
+    ficha = cliente.get(f"/admin/kpis/persona/{piloto}")
+    assert "Pilotaje de dron" in ficha.text
+    assert "Sin cargo" in cliente.get(f"/admin/kpis/persona/{sin_cargo}").text
