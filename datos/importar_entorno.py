@@ -16,7 +16,8 @@ Reglas:
 - Respuestas del buscador, consultas registradas, aeropuertos que solo conoce Google y los eventos de lo cargado
   entran con id nuevo y sin repetirse. Los eventos de ingreso o de la semilla son de cada entorno y no se llevan.
 - Una segunda corrida no duplica nada. Cada carga queda en `cargas_datos` y en un evento «datos importados».
-- Nunca escribe en la base publicada: si el destino es la conexión de `.env.supabase-publicada`, se detiene.
+- Nunca escribe en la base publicada: la reconoce por su proyecto (el de `.env.supabase-publicada`), se
+  conecte como se conecte, y se detiene. Si el destino es remoto y no hay con qué comprobarlo, tampoco escribe.
 """
 import hashlib
 import json
@@ -31,7 +32,23 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 RAIZ = Path(__file__).resolve().parent.parent
-ENV_PUBLICADA = RAIZ / ".env.supabase-publicada"
+
+
+def _raiz_principal() -> Path:
+    """La carpeta principal del repositorio. En una carpeta de trabajo aparte (`git worktree`) los archivos locales
+    de configuración no están: viven en la principal, a la que apunta el archivo `.git`."""
+    marca = RAIZ / ".git"
+    if marca.is_file():
+        destino = marca.read_text().partition("gitdir:")[2].strip()
+        if "/.git/" in destino:
+            return Path(destino.split("/.git/")[0])
+    return RAIZ
+
+
+# El archivo local que dice cuál es la base publicada (el del respaldo), en esta carpeta o en la principal.
+# El `.env` no sirve de referencia: puede apuntar a la base de pruebas.
+ARCHIVOS_PUBLICADA = [carpeta / ".env.supabase-publicada" for carpeta in dict.fromkeys((RAIZ, _raiz_principal()))]
+LOCALES = ("localhost", "127.0.0.1", "::1", "db", "host.docker.internal")
 FUENTE = "otro entorno de la plataforma"
 
 # En el orden de carga: cada tabla después de aquellas a las que apunta
@@ -58,13 +75,53 @@ def _identidad(url: str) -> tuple:
     return u.host, u.username, u.database
 
 
+def _proyectos(url: str) -> set[str]:
+    """Los proyectos de Supabase que nombra una dirección: en el usuario (`postgres.<proyecto>`, por el agrupador),
+    en el servidor (`db.<proyecto>.supabase.co`) o en la dirección del proyecto (`https://<proyecto>.supabase.co`)."""
+    if not url:
+        return set()
+    servidor, usuario = url.split("://", 1)[-1].split("/", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0], ""
+    if url.startswith(("postgres", "sqlite")):
+        try:
+            u = make_url(url.replace("[YOUR-PASSWORD]", "x"))
+            servidor, usuario = u.host or "", u.username or ""
+        except Exception:   # noqa: BLE001  una dirección mal escrita no nombra ningún proyecto
+            return set()
+    encontrados = set()
+    if usuario.startswith("postgres.") and len(usuario) > 9:
+        encontrados.add(usuario[9:].lower())
+    partes = servidor.lower().split(".")
+    if servidor.lower().endswith(".supabase.co") and len(partes) >= 3:
+        encontrados.add(partes[1] if partes[0] == "db" else partes[0])
+    return encontrados
+
+
+def _publicada() -> tuple[set, set]:
+    """(proyectos, identidades) de la base publicada según los archivos locales que existan."""
+    proyectos, identidades = set(), set()
+    for archivo in ARCHIVOS_PUBLICADA:
+        if not Path(archivo).is_file():
+            continue
+        valores = dotenv_values(archivo)
+        for clave in ("DATABASE_URL", "SUPABASE_URL"):
+            proyectos |= _proyectos(valores.get(clave) or "")
+        base = valores.get("DATABASE_URL") or ""
+        if base.startswith("postgres"):
+            identidades.add(_identidad(base)[:2])
+    return proyectos, identidades
+
+
 def _comprobar_destino(origen: str, destino: str):
     if _identidad(origen) == _identidad(destino):
         raise ImportacionImpedida("El origen y el destino son la misma base.")
-    if ENV_PUBLICADA.exists():
-        publicada = dotenv_values(ENV_PUBLICADA).get("DATABASE_URL") or ""
-        if publicada and _identidad(publicada)[:2] == _identidad(destino)[:2]:
-            raise ImportacionImpedida("El destino es la base publicada: esta carga nunca escribe allí.")
+    if destino.startswith("sqlite") or _identidad(destino)[0] in LOCALES:
+        return
+    proyectos, identidades = _publicada()
+    if _proyectos(destino) & proyectos or _identidad(destino)[:2] in identidades:
+        raise ImportacionImpedida("El destino es la base publicada: esta carga nunca escribe allí.")
+    if not proyectos and not identidades:
+        raise ImportacionImpedida("No se carga nada: no se puede comprobar cuál es la base publicada (falta el archivo "
+                                  "local `.env.supabase-publicada`), así que no se escribe en una base remota.")
 
 
 def _filas(c, sql: str, **p) -> list[dict]:
@@ -96,7 +153,14 @@ def importar(origen: str, destino: str, aplicar: bool = False, fuente: str = FUE
         d.begin()
 
         def mapa(sql: str, clave: str, origen_: list[dict]) -> dict:
-            en_destino = {f[clave]: f["id"] for f in _filas(d, sql)}
+            filas_destino = _filas(d, sql)
+            en_destino = {f[clave]: f["id"] for f in filas_destino}
+            usados = {f[clave] for f in origen_}
+            vistos, repetidos = set(), set()
+            for f in filas_destino:
+                (repetidos if f[clave] in vistos else vistos).add(f[clave])
+            if repetidos & usados:   # con dos filas iguales no se sabe a cuál pertenece lo que se carga
+                raise ImportacionImpedida(f"No se carga nada: «{sorted(repetidos & usados)[0]}» está repetido en el destino.")
             return {f["id"]: en_destino[f[clave]] for f in origen_ if f[clave] in en_destino}
 
         persona = mapa("select id, correo from usuarios", "correo", datos["usuarios"])
@@ -175,7 +239,7 @@ def importar(origen: str, destino: str, aplicar: bool = False, fuente: str = FUE
                 insertar("eventos", {**ev, "usuario_id": persona.get(ev["usuario_id"])}, con_id=False)
 
         # ---------- el siguiente id sigue después de lo cargado (PostgreSQL) ----------
-        if d.dialect.name == "postgresql":
+        if aplicar and d.dialect.name == "postgresql":   # `setval` no se revierte: en el ensayo no se toca
             for tabla in CON_ID:
                 d.execute(text(f"select setval(pg_get_serial_sequence('{tabla}', 'id'), "                  # noqa: S608
                                f"greatest((select coalesce(max(id), 0) from {tabla}), 1))"))

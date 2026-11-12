@@ -114,8 +114,58 @@ def test_nunca_escribe_en_la_base_publicada(bases, tmp_path, monkeypatch):
     publicada = "postgresql://postgres.proyecto-publicado:[YOUR-PASSWORD]@servidor.pooler.example:5432/postgres"
     archivo = tmp_path / ".env.supabase-publicada"
     archivo.write_text(f"DATABASE_URL={publicada}\n")
-    monkeypatch.setattr(importar_entorno, "ENV_PUBLICADA", archivo)
+    monkeypatch.setattr(importar_entorno, "ARCHIVOS_PUBLICADA", [archivo])
     with pytest.raises(importar_entorno.ImportacionImpedida, match="publicada"):
         importar_entorno.importar(origen, publicada.replace("[YOUR-PASSWORD]", "secreto"), aplicar=True)
     with pytest.raises(importar_entorno.ImportacionImpedida, match="misma base"):
         importar_entorno.importar(origen, origen, aplicar=True)
+
+
+REF = "abcdefghijklmnopqrst"
+CLAVE = ":" + "secreto" + "@"   # por partes: son de prueba y así no tienen la forma de una credencial real
+
+
+def _publicada(tmp_path, monkeypatch, contenido: str):
+    archivo = tmp_path / "publicada.env"
+    archivo.write_text(contenido)
+    monkeypatch.setattr(importar_entorno, "ARCHIVOS_PUBLICADA", [archivo])
+
+
+@pytest.mark.parametrize("destino", [
+    "postgresql://postgres" + CLAVE + "db." + REF + ".supabase.co:5432/postgres",           # conexión directa
+    "postgresql://postgres." + REF + CLAVE + "aws-1-us-east-1.pooler.supabase.com:6543/postgres",   # otro agrupador
+])
+def test_reconoce_la_publicada_por_el_proyecto_aunque_cambie_la_forma_de_conectar(bases, tmp_path, monkeypatch, destino):
+    origen, _ = bases
+    _publicada(tmp_path, monkeypatch,
+               "DATABASE_URL=postgresql://postgres." + REF + ":[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:5432/postgres\n")
+    with pytest.raises(importar_entorno.ImportacionImpedida, match="publicada"):
+        importar_entorno.importar(origen, destino, aplicar=True)
+
+
+def test_tambien_la_reconoce_por_la_direccion_del_proyecto(bases, tmp_path, monkeypatch):
+    origen, _ = bases
+    _publicada(tmp_path, monkeypatch, "SUPABASE_URL=https://" + REF + ".supabase.co\n")
+    with pytest.raises(importar_entorno.ImportacionImpedida, match="publicada"):
+        importar_entorno.importar(origen, "postgresql://postgres" + CLAVE + "db." + REF + ".supabase.co:5432/postgres", aplicar=True)
+
+
+def test_sin_saber_cual_es_la_publicada_no_escribe_en_una_base_remota(bases, monkeypatch):
+    origen, _ = bases
+    monkeypatch.setattr(importar_entorno, "ARCHIVOS_PUBLICADA", [])
+    with pytest.raises(importar_entorno.ImportacionImpedida, match="no se puede comprobar"):
+        importar_entorno.importar(origen, "postgresql://postgres.otroproyecto" + CLAVE + "servidor.example:5432/postgres", aplicar=True)
+
+
+def test_un_destino_local_no_necesita_el_archivo_de_la_publicada(bases, monkeypatch):
+    origen, destino = bases
+    monkeypatch.setattr(importar_entorno, "ARCHIVOS_PUBLICADA", [])
+    assert importar_entorno.importar(origen, destino, aplicar=True)["filas"]["solicitudes"] == 1
+
+
+def test_no_carga_nada_si_un_nombre_esta_repetido_en_el_destino(bases):
+    origen, destino = bases
+    _insertar(destino, "viajeros", id=9, nombre="Andrés Molina")       # dos viajeros con el mismo nombre: no se adivina
+    with pytest.raises(importar_entorno.ImportacionImpedida, match="repetido"):
+        importar_entorno.importar(origen, destino, aplicar=True)
+    assert _cuenta(destino, "solicitudes") == 0
