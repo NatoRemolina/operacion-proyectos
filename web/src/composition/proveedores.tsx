@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AuthRepositoryProvider } from "@/features/auth/application/sesion";
+import { CotizarRepositoryProvider } from "@/features/cotizar/application/cotizar";
 import { GastosRepositoryProvider } from "@/features/gastos/application/gastos";
 import { ViajesRepositoryProvider } from "@/features/viajes/application/viajes";
 import { leerBaseApi, type FuenteDatos } from "@/config/configuracion";
@@ -27,8 +28,10 @@ export function Proveedores({ fuente, children }: { fuente: FuenteDatos; childre
         <AuthRepositoryProvider repositorio={repositorios.auth}>
           <ViajesRepositoryProvider repositorio={repositorios.viajes}>
             <GastosRepositoryProvider repositorio={repositorios.gastos}>
-              {repositorios.demo ? <AvisoDemo /> : null}
-              {children}
+              <CotizarRepositoryProvider repositorio={repositorios.cotizar}>
+                {repositorios.demo ? <AvisoDemo /> : null}
+                {children}
+              </CotizarRepositoryProvider>
             </GastosRepositoryProvider>
           </ViajesRepositoryProvider>
         </AuthRepositoryProvider>
