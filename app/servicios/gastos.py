@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from .. import config, db
-from . import almacen, eventos, extraccion, llm, validacion
+from . import almacen, envios, eventos, extraccion, llm, validacion
 
 
 class SoporteRechazado(ValueError):
@@ -64,11 +64,29 @@ def _campos_de(gasto: dict) -> dict:
 
 def registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, viaje: dict | None = None,
               proyecto_id: int | None = None, viajero_id: int | None = None, rapido: bool = False,
-              clave_idempotencia: str | None = None) -> int:
+              clave_idempotencia: str | None = None, contexto: dict | None = None) -> int:
     """Guarda el soporte, lo lee, lo valida contra la regla del viaje y devuelve el identificador del gasto.
 
-    `clave_idempotencia`: la misma clave y el mismo contenido de la misma persona devolverán el mismo gasto.
-    Pendiente de implementar (frente de integridad); hoy se acepta y se ignora.
+    `clave_idempotencia`: la misma clave y el mismo contenido de la misma persona devuelven el mismo gasto
+    (ver `registrar_envio`).
+    """
+    return registrar_envio(contenido, nombre, canal, usuario, viaje, proyecto_id, viajero_id, rapido,
+                           clave_idempotencia, contexto)[0]
+
+
+def _sin_lectura(error: str) -> dict:
+    return {**{c: None for c in extraccion.CAMPOS}, "confianza": 0.0, "dudas": list(extraccion.CAMPOS),
+            "origen_dato": "sin datos", "error": error}
+
+
+def registrar_envio(contenido: bytes, nombre: str, canal: str, usuario: dict | None, viaje: dict | None = None,
+                    proyecto_id: int | None = None, viajero_id: int | None = None, rapido: bool = False,
+                    clave_idempotencia: str | None = None, contexto: dict | None = None) -> tuple[int, bool]:
+    """Como `registrar`, y además dice si el envío era repetido: (gasto, repetido).
+
+    Con clave, el reintento de la misma persona con el mismo archivo y lo mismo pedido (`contexto`; por omisión el viaje,
+    el proyecto y el viajero) devuelve el gasto que ya existe, aunque siga en lectura. La misma clave con otro archivo u
+    otro viaje lanza `envios.ConflictoEnvio`; si otro proceso la está atendiendo y aún no hay gasto, `envios.EnvioEnCurso`.
     """
     if not contenido:
         raise SoporteRechazado("El archivo está vacío.")
@@ -78,6 +96,26 @@ def registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, v
     if not tipo:
         raise SoporteRechazado("Tipo de archivo no admitido. Se aceptan fotos (JPG, PNG, WebP), PDF y correos (.eml).")
     mime, extension = tipo
+    op = None
+    clave = (clave_idempotencia or "").strip()
+    if clave and usuario:
+        if len(clave) > envios.LARGO_MAXIMO:
+            raise SoporteRechazado(f"La clave del envío es demasiado larga (máximo {envios.LARGO_MAXIMO} caracteres).")
+        pedido = contexto if contexto is not None else \
+            {"viaje_id": viaje["id"] if viaje else None, "proyecto_id": proyecto_id, "viajero_id": viajero_id}
+        op, repetido = envios.reclamar(usuario["id"], clave, envios.huella(contenido, pedido))
+        if repetido:
+            return op["gasto_id"], True
+    try:
+        return _registrar(contenido, nombre, canal, usuario, viaje, proyecto_id, viajero_id, rapido, mime, extension, op), False
+    except Exception:
+        if op:
+            envios.terminar(op, "fallido")   # libera la concesión: un reintento puede retomarlo o recuperarlo
+        raise
+
+
+def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, viaje: dict | None, proyecto_id: int | None,
+               viajero_id: int | None, rapido: bool, mime: str, extension: str, op: dict | None) -> int:
     nombre = nombre_visible(nombre)
     ruta, huella = _guardar(contenido, mime, extension)
     if viaje:   # el viaje define el proyecto y la persona que viaja
@@ -91,21 +129,40 @@ def registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, v
                           estado="procesando", creado=db.ahora(), usuario_id=yo)
         eventos.registrar("gasto", gid, "documento recibido", f"{nombre} ({mime})" + (f" · {viaje['codigo']}" if viaje else ""),
                           f"canal: {canal}")
+        if op:
+            envios.enlazar(op, gid)   # desde aquí, un reintento con la misma clave recibe este gasto
+    try:
+        _leer_y_decidir(gid, contenido, mime, nombre, viaje, proyecto_id, rapido, huella, op)
+    except envios.EnvioEnCurso:
+        raise   # otro proceso recuperó el envío y ya dejó el gasto en revisión
+    except Exception:
+        envios.marcar_interrumpido(gid)   # nunca queda «procesando» para siempre
+        raise
+    return gid
+
+
+def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: dict | None, proyecto_id: int | None,
+                    rapido: bool, huella: str, op: dict | None):
     # Un archivo idéntico ya leído no se vuelve a pagar: se reutiliza su lectura
     previo = db.uno("""select g.extraido from gastos g join documentos d on d.id=g.documento_id
                        where d.huella=:h and g.id<>:i and g.extraido is not null order by g.id limit 1""", h=huella, i=gid)
     marca = llm.RAPIDO.set(rapido)
     try:
         with eventos.cronometro() as t:
-            x = {**db.de_json(previo["extraido"], {}), "origen_dato": "reutilizado", "error": None} if previo else \
-                extraccion.extraer(contenido, mime, nombre, gid)
+            try:
+                x = {**db.de_json(previo["extraido"], {}), "origen_dato": "reutilizado", "error": None} if previo else \
+                    extraccion.extraer(contenido, mime, nombre, gid)
+            except Exception as e:   # un fallo inesperado de la lectura manda el gasto a revisión, como una lectura fallida
+                x = _sin_lectura(f"La lectura del recibo falló ({type(e).__name__}). Administración completará los datos.")
     finally:
         llm.RAPIDO.reset(marca)
     eventos.registrar("gasto", gid, "datos extraídos", x.get("error") or f"{x['comercio']} · {x['total']} {x['moneda']} · confianza {x['confianza']:.0%}",
                       f"modelo ({x['origen_dato']})", t())
     # La lectura tarda y va fuera; la decisión, con el viaje bloqueado y releído: lo gastado no cambia mientras se decide
-    with db.transaccion() as c:
-        viaje = _vigente(c, viaje)
+    with db.transaccion() as conexion:
+        if op:
+            envios.comprobar(op)
+        viaje = _vigente(conexion, viaje)
         proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
         r = validacion.revisar(x, proyecto, gid, viaje)
         if x.get("error"):
@@ -119,7 +176,8 @@ def registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, v
                       total_usd=r["total_usd"], extraido=None if x.get("error") else original)
         eventos.registrar("gasto", gid, "aprobado sin intervención" if r["estado"] == "aprobado_auto" else "enviado a revisión",
                           " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
-    return gid
+        if op:
+            envios.terminar(op, "completado")
 
 
 def _vigente(conexion, viaje: dict | None) -> dict | None:

@@ -33,7 +33,8 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 403 | `ORIGIN_NOT_ALLOWED` | Escritura desde un origen no permitido |
 | 403 | `FORBIDDEN` | Operación reservada a otro rol |
 | 404 | `NOT_FOUND` | No existe o no es visible para la persona |
-| 409 | `IDEMPOTENCY_CONFLICT` | Misma `Idempotency-Key` con un archivo distinto |
+| 409 | `IDEMPOTENCY_CONFLICT` | Misma `Idempotency-Key` con un archivo distinto o con otro `viaje_id` |
+| 409 | `REQUEST_IN_PROGRESS` | El primer envío con esa clave todavía no creó su gasto: reintentar con la misma clave |
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF ni correo |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
@@ -129,7 +130,8 @@ Parámetros: `viaje_id`, `estado` (opcionales), `limite`, `cursor`. Mismo alcanc
 
 - Sin `viaje_id`, la plataforma resuelve el viaje que corresponde a la persona hoy (`viajes.resolver_para_gasto`). Con `viaje_id`, solo se acepta un viaje propio; si no lo es, el gasto queda sin viaje y en revisión.
 - 201 `GastoDetalle` con su estado real tras leer y validar: `aprobado_auto` o `revision`. La web muestra ese estado, no «aprobado» por haber recibido 201.
-- Misma clave y mismo archivo: 200 con el mismo gasto. Misma clave y otro archivo: 409.
+- Misma clave y mismo archivo (y mismo `viaje_id`): 200 con el mismo gasto, aunque siga `procesando`; no se vuelve a leer. Misma clave con otro archivo u otro `viaje_id`: 409 `IDEMPOTENCY_CONFLICT`. Si el primer envío aún no creó el gasto: 409 `REQUEST_IN_PROGRESS`. La clave es de cada persona: la misma clave de dos personas son dos envíos.
+- Si la lectura se interrumpe, el gasto no queda `procesando`: pasa a `revision` con el motivo `lectura_fallida`, y el reintento con la misma clave lo devuelve.
 - Errores: 413, 415, 422.
 
 ### `POST /gastos/{id}/justificaciones`

@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
 from ..api_v1.esquemas import EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, errores
-from ..servicios import consultas, justificaciones, viajes
+from ..servicios import consultas, envios, justificaciones, viajes
 from ..servicios import gastos as soportes
 
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
@@ -32,7 +32,7 @@ def detalle(id: int, yo: dict = Depends(persona)):
 
 
 @router.post("/gastos", status_code=201, response_model=GastoDetalle, responses=errores(401, 403, 409, 413, 415, 422))
-def enviar(archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."),
+def enviar(response: Response, archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."),
            viaje_id: int | None = Form(None, description="Opcional. Sin él, se usa el viaje que corresponde hoy a la persona."),
            justificacion: str | None = Form(None, max_length=2000,
                                             description="Opcional. Para qué fue el gasto, con las palabras de la persona."),
@@ -40,6 +40,10 @@ def enviar(archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), P
                                       description="Un valor único por archivo, que se repite si se reintenta el mismo envío."),
            yo: dict = Depends(escritura)):
     """Lee y valida el recibo. Responde con su estado real: `aprobado_auto` o `revision` (que no es un error).
+
+    Con `Idempotency-Key`, el reintento con el mismo archivo y el mismo `viaje_id` responde 200 con el mismo gasto
+    (puede seguir `procesando`); con otro archivo u otro viaje, 409 `IDEMPOTENCY_CONFLICT`. Si el primer envío todavía
+    no creó su gasto, 409 `REQUEST_IN_PROGRESS`: se reintenta con la misma clave.
 
     Función normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor.
     """
@@ -54,9 +58,18 @@ def enviar(archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), P
     # Con viaje indicado solo se acepta uno propio; si no lo es, el gasto queda sin viaje y en revisión
     viaje, _ = viajes.resolver_para_gasto(yo, viaje_id)
     try:
-        gid = soportes.registrar(contenido, nombre, "web", yo, viaje, viajero_id=yo.get("viajero_id"), clave_idempotencia=clave)
+        # La huella del envío usa el viaje pedido, no el resuelto: el reintento debe coincidir aunque cambie el viaje del día
+        gid, repetido = soportes.registrar_envio(contenido, nombre, "web", yo, viaje, viajero_id=yo.get("viajero_id"),
+                                                 clave_idempotencia=clave, contexto={"viaje_id": viaje_id})
+    except envios.ConflictoEnvio as e:
+        raise ErrorApi(409, "IDEMPOTENCY_CONFLICT", str(e)) from e
+    except envios.EnvioEnCurso as e:
+        raise ErrorApi(409, "REQUEST_IN_PROGRESS", str(e)) from e
     except soportes.SoporteRechazado as e:
         raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"archivo": str(e)}) from e
+    if repetido:
+        response.status_code = 200
+        return consultas.gasto(yo, gid)
     if justificacion and len(justificacion.strip()) >= justificaciones.MINIMO:
         justificaciones.registrar(gid, yo, "api", justificacion)
     return consultas.gasto(yo, gid)

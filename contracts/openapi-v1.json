@@ -262,7 +262,7 @@
           "gastos"
         ],
         "summary": "Enviar",
-        "description": "Lee y valida el recibo. Responde con su estado real: `aprobado_auto` o `revision` (que no es un error).\n\nFunción normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor.",
+        "description": "Lee y valida el recibo. Responde con su estado real: `aprobado_auto` o `revision` (que no es un error).\n\nCon `Idempotency-Key`, el reintento con el mismo archivo y el mismo `viaje_id` responde 200 con el mismo gasto\n(puede seguir `procesando`); con otro archivo u otro viaje, 409 `IDEMPOTENCY_CONFLICT`. Si el primer envío todavía\nno creó su gasto, 409 `REQUEST_IN_PROGRESS`: se reintenta con la misma clave.\n\nFunción normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor.",
         "operationId": "enviar_api_v1_gastos_post",
         "parameters": [
           {

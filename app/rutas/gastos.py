@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import acceso, almacen, eventos, justificaciones, telegram, validacion, viajes
+from ..servicios import acceso, almacen, envios, eventos, justificaciones, telegram, validacion, viajes
 from ..servicios import gastos as soportes
 from ..web import (
     NO_ENCONTRADO,
@@ -31,11 +31,17 @@ SoporteRechazado = soportes.SoporteRechazado
 _nombre_visible = soportes.nombre_visible
 
 
-def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None, viajero_id: int | None, viaje_id: int = 0) -> int:
-    """Registra un soporte a nombre de quien tiene la sesión. Sin viaje indicado, se busca el que le corresponde hoy."""
+def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None, viajero_id: int | None, viaje_id: int = 0,
+              clave: str | None = None) -> int:
+    """Registra un soporte a nombre de quien tiene la sesión. Sin viaje indicado, se busca el que le corresponde hoy.
+
+    Con `clave` (la página manda una por archivo), reenviar el mismo archivo devuelve el mismo gasto.
+    """
     yo = _yo()
     viaje, _ = viajes.resolver_para_gasto(yo, viaje_id or None) if yo else (None, [])
-    return soportes.registrar(contenido, nombre, canal, yo or None, viaje, proyecto_id, viajero_id)
+    pedido = {"viaje_id": viaje_id or None, "proyecto_id": proyecto_id, "viajero_id": viajero_id}
+    return soportes.registrar(contenido, nombre, canal, yo or None, viaje, proyecto_id, viajero_id,
+                              clave_idempotencia=clave, contexto=pedido)
 
 
 @router.get("/gastos", response_class=HTMLResponse)
@@ -63,23 +69,29 @@ def gastos_cargar_enviar(request: Request, archivos: list[UploadFile], proyecto_
                          canal: str = Form("web"), viaje_id: int = Form(0), justificacion: str = Form("")):
     """Función normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor."""
     canal = canal if canal in ("web", "celular") else "web"
-    hechos, errores = [], []
+    hechos, errores, conflicto = [], [], False
+    # La clave identifica un archivo: solo vale cuando la petición trae uno (la página envía uno por petición)
+    clave = request.headers.get("idempotency-key") if len(archivos) == 1 else None
     for a in archivos[:config.MAX_ARCHIVOS_POR_CARGA]:
         try:
             gid = _procesar(a.file.read(config.MAX_BYTES_SOPORTE + 1), a.filename or "soporte", canal,
-                            proyecto_id or None, viajero_id or None, viaje_id)
+                            proyecto_id or None, viajero_id or None, viaje_id, clave)
             hechos.append(gid)
             if justificacion.strip() and _yo():
                 try:
                     justificaciones.registrar(gid, _yo(), canal, justificacion)
                 except justificaciones.JustificacionRechazada:
                     pass  # demasiado corta: el gasto queda y se puede justificar desde su detalle
+        except (envios.ConflictoEnvio, envios.EnvioEnCurso) as e:
+            conflicto = True
+            errores.append(f"{_nombre_visible(a.filename or '')}: {e}")
         except SoporteRechazado as e:
             errores.append(f"{_nombre_visible(a.filename or '')}: {e}")
     if len(archivos) > config.MAX_ARCHIVOS_POR_CARGA:
         errores.append(f"Solo se procesan {config.MAX_ARCHIVOS_POR_CARGA} archivos por envío.")
     if request.headers.get("x-envio") == "pagina":  # la página envía un archivo por petición y muestra el avance
-        return JSONResponse({"gastos": hechos, "errores": errores}, status_code=200 if hechos or not errores else 400)
+        estado = 200 if hechos or not errores else 409 if conflicto else 400
+        return JSONResponse({"gastos": hechos, "errores": errores}, status_code=estado)
     destino = "/gastos" + (f"?aviso={quote(' '.join(errores)[:300])}" if errores else "")
     return RedirectResponse(destino, status_code=303)
 

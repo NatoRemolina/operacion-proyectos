@@ -52,6 +52,22 @@ async function reducir(archivo) {
     return blob && blob.size < archivo.size ? new File([blob], archivo.name.replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'}) : archivo;
   } catch (e) { return archivo; }  // formato que el navegador no decodifica: se envía tal cual
 }
+// Cada archivo lleva su clave de envío (Idempotency-Key): si se reenvía, el servidor devuelve el mismo gasto en vez de crear otro.
+// La clave y la versión reducida se guardan por archivo, así un reintento manda exactamente lo mismo.
+const preparados = new WeakMap();
+function claveNueva() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+async function preparar(original) {
+  if (!preparados.has(original)) preparados.set(original, {clave: claveNueva(), archivo: await reducir(original)});
+  return preparados.get(original);
+}
+async function enviarUno(datos, clave) {
+  const opciones = {method: 'POST', body: datos, headers: {'X-Envio': 'pagina', 'Idempotency-Key': clave}};
+  try { return await fetch('/gastos/cargar', opciones); }
+  catch (e) { return await fetch('/gastos/cargar', opciones); }  // un corte de red: un reintento con la misma clave no duplica
+}
 const campoCanal = document.querySelector('#carga input[type=hidden][name=canal]');
 if (campoCanal && matchMedia('(pointer: coarse)').matches) campoCanal.value = 'celular';
 document.getElementById('carga').addEventListener('submit', async (ev) => {
@@ -64,9 +80,10 @@ document.getElementById('carga').addEventListener('submit', async (ev) => {
     const li = document.createElement('li'); li.textContent = `${i + 1} de ${archivos.length} · ${original.name}: leyendo…`; lista.appendChild(li);
     const datos = new FormData();
     for (const campo of ['viaje_id', 'proyecto_id', 'viajero_id', 'canal', 'justificacion']) datos.append(campo, f.elements[campo].value);
-    datos.append('archivos', await reducir(original));
+    const listo = await preparar(original);
+    datos.append('archivos', listo.archivo);
     try {
-      const r = await fetch('/gastos/cargar', {method: 'POST', body: datos, headers: {'X-Envio': 'pagina'}});
+      const r = await enviarUno(datos, listo.clave);
       const esJson = (r.headers.get('content-type') || '').includes('application/json');
       if (r.redirected || r.status === 401 || !esJson) {
         fallos++; li.textContent = `${original.name}: tu sesión se cerró. Ingresa de nuevo en otra pestaña y vuelve a enviarlo.`; li.style.color = 'var(--mal)';

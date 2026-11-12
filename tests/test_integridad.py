@@ -277,3 +277,138 @@ def test_dos_aprobaciones_a_la_vez_no_gastan_el_mismo_saldo(cliente, nuevo_viaje
         assert estados == ["aprobado", "revision"]
     finally:
         _sin_rastro(*ids)
+
+
+# ---------- envíos idempotentes ----------
+def _csrf(c) -> dict:
+    from app import api_v1
+    from app.servicios import acceso
+    return {"X-CSRF-Token": api_v1.token_csrf(c.cookies.get(acceso.COOKIE))}
+
+
+def _foto(ejemplos, marca: str) -> bytes:
+    """Una foto única para cada prueba: misma cabecera PNG, cola distinta."""
+    return (ejemplos / "recibo_lisboa.png").read_bytes() + marca.encode()
+
+
+def _api_enviar(c, contenido: bytes, clave: str | None, **datos):
+    cabeceras = {**_csrf(c), **({"Idempotency-Key": clave} if clave else {})}
+    return c.post("/api/v1/gastos", headers=cabeceras, data=datos, files={"archivo": ("recibo.png", contenido, "image/png")})
+
+
+def test_reintento_con_la_misma_clave_devuelve_el_mismo_gasto(piloto, ejemplos):
+    foto = _foto(ejemplos, "reintento")
+    a, b = _api_enviar(piloto, foto, "clave-reintento"), _api_enviar(piloto, foto, "clave-reintento")
+    assert (a.status_code, b.status_code) == (201, 200) and a.json()["id"] == b.json()["id"]
+    otro = _api_enviar(piloto, _foto(ejemplos, "otro archivo"), "clave-reintento")
+    assert otro.status_code == 409 and otro.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+    sin_clave = [_api_enviar(piloto, foto, None).json()["id"] for _ in range(2)]
+    assert len(set(sin_clave)) == 2   # sin cabecera, cada envío es un gasto nuevo, como antes
+
+
+def test_la_misma_clave_con_otro_viaje_es_otro_envio(piloto, ejemplos, viaje_aprobado):
+    foto = _foto(ejemplos, "otro viaje")
+    assert _api_enviar(piloto, foto, "clave-viaje").status_code == 201
+    r = _api_enviar(piloto, foto, "clave-viaje", viaje_id=str(viaje_aprobado["id"]))
+    assert r.status_code == 409 and r.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+
+
+def test_la_clave_es_de_cada_persona(piloto, piloto2, ejemplos):
+    foto = _foto(ejemplos, "dos personas")
+    a, b = _api_enviar(piloto, foto, "clave-compartida"), _api_enviar(piloto2, foto, "clave-compartida")
+    assert (a.status_code, b.status_code) == (201, 201) and a.json()["id"] != b.json()["id"]
+
+
+def test_un_reintento_durante_la_lectura_recibe_el_mismo_gasto(piloto, ejemplos, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.servicios import extraccion
+    leyendo, seguir, extraer = threading.Event(), threading.Event(), extraccion.extraer
+
+    def lenta(*a, **k):
+        leyendo.set()
+        assert seguir.wait(5)
+        return extraer(*a, **k)
+
+    monkeypatch.setattr(extraccion, "extraer", lenta)
+    foto = _foto(ejemplos, "concurrente")
+    with ThreadPoolExecutor(max_workers=1) as ejecutor:
+        primero = ejecutor.submit(_api_enviar, piloto, foto, "clave-concurrente")
+        assert leyendo.wait(5)
+        try:
+            segundo = _api_enviar(piloto, foto, "clave-concurrente")
+        finally:
+            seguir.set()
+        primero = primero.result(timeout=10)
+    assert (primero.status_code, segundo.status_code) == (201, 200)
+    assert primero.json()["id"] == segundo.json()["id"] and segundo.json()["estado"] == "procesando"
+    assert db.uno("select estado from gastos where id=:i", i=primero.json()["id"])["estado"] != "procesando"
+
+
+def test_si_la_lectura_se_cae_el_gasto_queda_en_revision_y_la_concesion_se_libera(piloto, ejemplos, monkeypatch):
+    from app.servicios import extraccion
+
+    def rota(*a, **k):
+        raise ConnectionError("proveedor caído")
+
+    monkeypatch.setattr(extraccion, "extraer", rota)
+    foto = _foto(ejemplos, "lectura caída")
+    r = _api_enviar(piloto, foto, "clave-caida")
+    assert r.status_code == 201 and r.json()["estado"] == "revision" and "lectura_fallida" in r.json()["motivos"]
+    envio = db.uno("select estado from envios_soporte where clave='clave-caida'")
+    assert envio["estado"] == "completado"
+    otra = _api_enviar(piloto, foto, "clave-caida")
+    assert otra.status_code == 200 and otra.json()["id"] == r.json()["id"]
+    # Sin clave también: nunca queda un gasto «procesando» para siempre
+    assert _api_enviar(piloto, _foto(ejemplos, "lectura caída 2"), None).json()["estado"] == "revision"
+
+
+def test_un_envio_vencido_se_recupera_y_el_trabajador_anterior_no_escribe():
+    from app.servicios import envios
+    op, repetido = envios.reclamar(1, "clave-vencida", "huella-1")
+    assert not repetido
+    gid = db.insertar("gastos", estado="procesando", usuario_id=1)
+    try:
+        with db.transaccion():
+            envios.enlazar(op, gid)
+        db.actualizar("envios_soporte", op["id"], expira="2000-01-01 00:00:00")
+        recuperado, repetido = envios.reclamar(1, "clave-vencida", "huella-1")
+        assert repetido and recuperado["gasto_id"] == gid
+        g = db.uno("select estado, motivos from gastos where id=:i", i=gid)
+        assert g["estado"] == "revision" and "lectura_fallida" in db.de_json(g["motivos"])
+        with pytest.raises(envios.EnvioEnCurso), db.transaccion():
+            envios.comprobar(op)
+    finally:
+        db.ejecutar("delete from envios_soporte where id=:i", i=op["id"])
+        _sin_rastro(gid)
+
+
+def test_un_envio_en_curso_sin_gasto_responde_que_siga_esperando():
+    from app.servicios import envios
+    op, _ = envios.reclamar(1, "clave-en-curso", "huella")
+    try:
+        with pytest.raises(envios.EnvioEnCurso):
+            envios.reclamar(1, "clave-en-curso", "huella")
+        with pytest.raises(envios.ConflictoEnvio):
+            envios.reclamar(1, "clave-en-curso", "otra huella")
+        envios.terminar(op, "fallido")
+        de_nuevo, repetido = envios.reclamar(1, "clave-en-curso", "huella")   # el que falló sin gasto se puede retomar
+        assert not repetido and de_nuevo["propietario"] != op["propietario"]
+    finally:
+        db.ejecutar("delete from envios_soporte where id=:i", i=op["id"])
+
+
+def test_la_pagina_de_carga_envia_la_clave_y_el_servidor_la_respeta(cliente, ejemplos, viaje_aprobado):
+    assert "Idempotency-Key" in cliente.get("/gastos/cargar").text
+    datos = {"viaje_id": viaje_aprobado["id"], "canal": "web"}
+    foto = _foto(ejemplos, "web")
+
+    def subir(contenido, clave):
+        return cliente.post("/gastos/cargar", data=datos, files={"archivos": ("r.png", contenido, "image/png")},
+                            headers={"X-Envio": "pagina", "Idempotency-Key": clave})
+
+    a, b = subir(foto, "clave-web"), subir(foto, "clave-web")
+    assert a.status_code == b.status_code == 200 and a.json()["gastos"] == b.json()["gastos"]
+    c = subir(_foto(ejemplos, "web distinto"), "clave-web")
+    assert c.status_code == 409 and c.json()["errores"]
