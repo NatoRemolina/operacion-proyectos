@@ -1,6 +1,9 @@
 {% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
 <div class="fila"><div><h1>Ficha de decisión · viaje #{{ sol.id }}</h1><p class="sub">{{ sol.proyecto }} · {{ sol.viajero }} · guardada {{ decision.creado }} UTC</p></div>
 <span class="der noimp"><button class="sec" onclick="window.print()">Imprimir o guardar PDF</button> <a class="boton sec" href="/proyectos/{{ sol.proyecto_id }}">Ver proyecto</a></span></div>
+{% if el_viaje %}<p class="nota {{ 'ok' if el_viaje.estado == 'aprobado' else 'aviso' if el_viaje.estado == 'pendiente_aprobacion' else 'mal' }}">
+  Viaje <a href="/viaje/{{ el_viaje.id }}"><b>{{ el_viaje.codigo }}</b></a> asignado a <b>{{ el_viaje.titular or '—' }}</b> · presupuesto {{ el_viaje.presupuesto_usd|dinero }} · <b>{{ el_viaje.estado_texto }}</b>.
+  {% if el_viaje.estado == 'pendiente_aprobacion' %}Administración debe aprobar el presupuesto antes de que los gastos de este viaje se aprueben solos.{% endif %}</p>{% endif %}
 <div class="dos">
   <div class="tarjeta"><h3>Opción elegida</h3>
     <p><b>{{ d.vuelo.aerolinea }} {{ d.vuelo.numeros|join(' + ') }}</b> · {{ decision.tarifa }}<br>{{ d.vuelo.sale }} → {{ d.vuelo.llega }} · {{ 'directo' if d.vuelo.escalas == 0 else d.vuelo.escalas ~ ' escala(s)' }} {{ m.origen(d.origen_vuelo) }}</p>

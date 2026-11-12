@@ -1,8 +1,16 @@
 """Recorrido de gastos sin claves: lectura guardada, validación, revisión, subidas hostiles."""
+import pytest
+
 from app import db
 from app.main import _numero
 
 BASE = {"proyecto_id": 1, "viajero_id": 1, "canal": "web"}
+
+
+@pytest.fixture(autouse=True)
+def _con_viaje(viaje_aprobado):
+    """La regla exige que cada gasto pertenezca a un viaje aprobado: las cargas de este archivo van a ese viaje."""
+    BASE["viaje_id"] = viaje_aprobado["id"]
 
 
 def _subir(cliente, nombre, contenido, tipo="application/octet-stream"):

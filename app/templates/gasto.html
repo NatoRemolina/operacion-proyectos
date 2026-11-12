@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% import "_macros.html" as m %}{% block cuerpo %}
 <div class="fila"><div><h1>Gasto #{{ g.id }}</h1><p class="sub">{{ g.archivo }} · canal {{ g.canal }} · lectura {{ g.origen_dato }} con confianza {{ '%.0f'|format((g.confianza or 0) * 100) }}%</p></div><span class="der">{{ m.estado(g.estado) }}</span></div>
+{% if el_viaje %}<p class="eti">Viaje <a href="/viaje/{{ el_viaje.id }}"><b>{{ el_viaje.codigo }}</b></a> · {{ el_viaje.origen }} → {{ el_viaje.destino }} · {{ el_viaje.ida }} a {{ el_viaje.regreso }} · {{ el_viaje.estado_texto }} · titular {{ el_viaje.titular or '—' }}</p>{% endif %}
 {% for a in alertas %}<p class="nota aviso">{{ a }}</p>{% endfor %}
 <div class="dos">
 <div class="tarjeta"><h3>Soporte original</h3>
@@ -17,6 +18,7 @@
     <div><label>Total</label><input name="total" value="{{ g.total if g.total is not none else '' }}"></div>
     <div><label>Método de pago</label><input name="metodo_pago" value="{{ g.metodo_pago or '' }}"></div>
     <div><label>Canal de reserva</label><input name="canal_reserva" value="{{ g.canal_reserva or '' }}"></div>
+    <div><label>Viaje</label><select name="viaje_id"><option value="0">Sin viaje</option>{% for v in mis_viajes %}<option value="{{ v.id }}" {{ 'selected' if v.id == g.viaje_id }}>{{ v.codigo }} · {{ v.titular or '—' }} · {{ v.ida }} · {{ v.estado_texto }}</option>{% endfor %}</select></div>
     <div><label>Proyecto</label><select name="proyecto_id"><option value="0">—</option>{% for p in proyectos %}<option value="{{ p.id }}" {{ 'selected' if p.id == g.proyecto_id }}>{{ p.nombre }}</option>{% endfor %}</select></div>
     <div><label>Viajero</label><select name="viajero_id"><option value="0">—</option>{% for v in viajeros %}<option value="{{ v.id }}" {{ 'selected' if v.id == g.viajero_id }}>{{ v.nombre }}</option>{% endfor %}</select></div>
 

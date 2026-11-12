@@ -22,7 +22,24 @@
 <p style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0">{% for clave, nombre in pestanas.items() %}
   <a class="chip {{ 'azul' if clave == pestana }}" style="padding:6px 14px;font-size:13px;text-decoration:none" href="/admin/monitoreo?pestana={{ clave }}{{ '&' ~ consulta if consulta }}">{{ nombre }}</a>{% endfor %}</p>
 
-{% if pestana == 'gastos' %}
+{% if pestana == 'viajes' %}
+<div class="rejilla">
+  {{ cifra("Presupuestos por aprobar", d.pendientes, d.viajes ~ " viajes en total · " ~ d.aprobados ~ " aprobados") }}
+  {{ cifra("Ejecución del presupuesto", d.ejecucion, d.gastado|dinero ~ " de " ~ d.presupuesto_aprobado|dinero, "%") }}
+  {{ cifra("Viajes sobre su presupuesto", d.sobre_presupuesto, "gasto aprobado mayor al presupuesto") }}
+  {{ cifra("De la decisión a la aprobación", d.horas_a_aprobacion, "mediana", "h") }}
+  {{ cifra("Gastos sin viaje", d.gastos_sin_viaje, "de " ~ d.gastos ~ " gastos: incumplen la regla y esperan revisión") }}
+</div>
+<div class="tarjeta tabla"><h3>Presupuesto frente a gasto, por viaje</h3><table><tr><th>Viaje</th><th>Titular</th><th>Ruta</th><th>Ida</th><th>Estado</th><th class="d">Presupuesto</th><th class="d">Aprobado</th><th class="d">En revisión</th><th class="d">Ejecución</th></tr>
+{% for v in d.detalle %}<tr><td><a href="/viaje/{{ v.id }}">#{{ v.id }}</a></td><td>{{ v.titular or '—' }}</td><td>{{ v.ruta }}</td><td>{{ v.ida }}</td><td>{{ v.estado }}</td><td class="d">{{ '%.2f'|format(v.presupuesto or 0) }}</td><td class="d">{{ '%.2f'|format(v.gastado or 0) }}</td><td class="d">{{ '%.2f'|format(v.en_revision or 0) }}</td><td class="d">{{ v.pct ~ ' %' if v.pct is not none else '—' }}</td></tr>
+{% else %}<tr><td colspan="9">Sin viajes en el periodo.</td></tr>{% endfor %}</table></div>
+<div class="dos">
+  {{ tabla2("Por dónde llegan los gastos", d.por_canal, "Canal", "Gastos") }}
+  {{ tabla2("Viajes por persona", d.por_titular, "Titular", "Viajes") }}
+</div>
+<p>{{ bajar("v_h_viaje", "viajes") }}</p>
+
+{% elif pestana == 'gastos' %}
 <div class="rejilla">
   {{ cifra("Aprobados sin intervención", d.tasa_sin_intervencion, "de " ~ d.recibidos ~ " recibidos", "%") }}
   {{ cifra("Esperando revisión", d.pendientes, "carga actual de quien revisa") }}

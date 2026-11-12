@@ -11,7 +11,10 @@ AGENCIAS = ("booking", "expedia", "hotels.com", "travelnow", "agoda", "priceline
 MOTIVOS = {"campo_faltante": "Campo faltante", "total_no_cuadra": "El total no cuadra", "ilegible": "Lectura poco confiable",
            "sin_proyecto": "Sin proyecto", "fuera_de_fechas": "Fecha fuera del proyecto", "sin_tasa": "Moneda sin tasa de cambio",
            "duplicado": "Posible duplicado", "duplicado_aproximado": "Parecido a otro gasto", "atipico": "Importe atípico",
-           "sin_puntos": "Fidelización perdida", "compra_anticipada": "Compra anticipada", "lectura_fallida": "Lectura fallida"}
+           "sin_puntos": "Fidelización perdida", "compra_anticipada": "Compra anticipada", "lectura_fallida": "Lectura fallida",
+           "sin_viaje": "Sin viaje asignado", "viaje_no_aprobado": "Viaje sin presupuesto aprobado", "viaje_cerrado": "Viaje cerrado",
+           "fuera_del_viaje": "Fecha fuera del viaje", "presupuesto_superado": "Presupuesto del viaje superado"}
+SE_COMPRAN_ANTES = ("vuelo", "hotel", "alquiler_carro")
 
 
 class _Alertas(list):
@@ -39,8 +42,44 @@ def a_usd(total, moneda, cat: dict):
     return round(total * float(tasa["valor"]), 2) if tasa else None
 
 
-def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None) -> dict:
-    """Devuelve {estado, alertas, total_usd}. `g` son los campos extraídos."""
+def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict, alertas: "_Alertas") -> bool:
+    """Regla de negocio: todo gasto pertenece a un viaje con presupuesto aprobado. Devuelve si bloquea."""
+    from . import viajes
+    if not viaje:
+        alertas.agregar("sin_viaje", "Sin viaje asignado: no se sabe a qué viaje pertenece este gasto.")
+        return True
+    codigo = viajes.codigo_viaje(viaje)
+    if viaje["estado"] == "cerrado":
+        alertas.agregar("viaje_cerrado", f"El viaje {codigo} ya está cerrado.")
+        return True
+    if viaje["estado"] != "aprobado":
+        alertas.agregar("viaje_no_aprobado", f"El presupuesto del viaje {codigo} no está aprobado ({viajes.ESTADOS.get(viaje['estado'], viaje['estado']).lower()}).")
+        return True
+    bloquea = False
+    try:
+        dia = date.fromisoformat(g["fecha"]) if g.get("fecha") else None
+        desde = date.fromisoformat(viaje["ida"]) - timedelta(days=viajes.MARGEN_ANTES)
+        hasta = date.fromisoformat(viaje["regreso"]) + timedelta(days=viajes.MARGEN_DESPUES)
+    except (TypeError, ValueError):
+        dia = None
+    if dia and not (desde <= dia <= hasta):
+        if g.get("categoria") in SE_COMPRAN_ANTES and dia < desde:
+            alertas.agregar("compra_anticipada", f"Comprado antes del viaje {codigo} (normal en tiquetes y reservas).")
+        else:
+            alertas.agregar("fuera_del_viaje", f"La fecha {g['fecha']} está fuera del viaje {codigo} ({viaje['ida']} a {viaje['regreso']}).")
+            bloquea = True
+    if total_usd is not None and viaje.get("presupuesto_usd"):
+        tolerancia = costo.supuesto(cat, "tolerancia_presupuesto", 0.10)
+        acumulado = viajes.gastado(viaje["id"], gasto_id) + total_usd
+        if acumulado > viaje["presupuesto_usd"] * (1 + tolerancia):
+            alertas.agregar("presupuesto_superado", f"Con este gasto el viaje {codigo} llega a {acumulado:.2f} USD, "
+                                                    f"sobre un presupuesto de {viaje['presupuesto_usd']:.2f} USD.")
+            bloquea = True
+    return bloquea
+
+
+def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: dict | None = None) -> dict:
+    """Devuelve {estado, alertas, motivos, total_usd}. `g` son los campos extraídos; `viaje`, el viaje al que pertenece."""
     cat = costo.catalogo()
     alertas, bloquea, motivos = _Alertas(), False, []
 
@@ -65,7 +104,7 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None) -> dict
     if not proyecto:
         alertas.agregar("sin_proyecto", "Sin proyecto asignado.")
         bloquea = True
-    elif g.get("fecha") and proyecto.get("fecha_inicio") and proyecto.get("fecha_fin"):
+    elif not viaje and g.get("fecha") and proyecto.get("fecha_inicio") and proyecto.get("fecha_fin"):  # con viaje mandan sus fechas
         if not (proyecto["fecha_inicio"] <= g["fecha"] <= proyecto["fecha_fin"]):
             # Los tiquetes se compran antes del viaje: solo avisa, no bloquea
             if g.get("categoria") == "vuelo" and g["fecha"] < proyecto["fecha_inicio"]:
@@ -98,6 +137,9 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None) -> dict
                 if parecido:
                     alertas.agregar("duplicado_aproximado", f"Muy parecido al gasto #{parecido['id']} (mismo comercio, fecha cercana, importe casi igual).")
                     bloquea = True
+
+    if _del_viaje(g, viaje, total_usd, gasto_id or 0, cat, alertas):
+        bloquea = True
 
     # Importe atípico frente a lo habitual de su categoría (solo avisa; con pocos datos no opina)
     from . import inteligencia

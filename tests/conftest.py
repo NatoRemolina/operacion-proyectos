@@ -42,9 +42,44 @@ def piloto():
     return _con_sesion("piloto@demo.local", "demo-piloto-2026")
 
 
+@pytest.fixture(scope="session")
+def gestor():
+    """Gestor de demostración: gestiona el proyecto 1, sin aprobar nada."""
+    return _con_sesion("gestor@demo.local", "demo-gestor-2026")
+
+
 @pytest.fixture()
 def anonimo():
     return TestClient(app)
+
+
+FORM_VIAJE = dict(proyecto_id=1, viajero_id=1, origen="Miami (MIA)", destino="las vegas", ciudad="", ida="2026-12-08",
+                  regreso="2026-12-11", llegar_antes="2026-12-08T18:00", baterias_n=4, baterias_wh=77, maleta="on",
+                  prob_cambio=25, carro_dia=65, solicitado_por="Pruebas")
+
+
+@pytest.fixture(scope="session")
+def nuevo_viaje(cliente):
+    """Devuelve una función que cotiza, decide y (si se pide) aprueba; entrega el viaje resultante."""
+    from app.main import _comparacion
+    from app.servicios import viajes
+
+    def crear(aprobar: bool = True, **cambios) -> dict:
+        r = cliente.post("/viajes", data={**FORM_VIAJE, **cambios}, follow_redirects=False)
+        sid = int(r.headers["location"].rsplit("/", 1)[1])
+        vuelo = _comparacion(sid)["vuelos"][0]["id"]
+        cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": vuelo, "razones": ["costo_total"]})
+        v = viajes.de_solicitud(sid)
+        if aprobar:
+            cliente.post(f"/admin/viajes/{v['id']}", data={"accion": "aprobar"})
+        return viajes.de_solicitud(sid)
+    return crear
+
+
+@pytest.fixture(scope="session")
+def viaje_aprobado(nuevo_viaje):
+    """Un viaje del piloto de demostración con el presupuesto ya aprobado."""
+    return nuevo_viaje()
 
 
 @pytest.fixture(scope="session")

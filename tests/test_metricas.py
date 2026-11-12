@@ -8,6 +8,8 @@ PROYECTO = 901   # proyecto exclusivo de estas pruebas: aísla las cifras de lo 
 
 
 def _gasto(estado, total, categoria="comidas", moneda="USD", proyecto=PROYECTO, **extra):
+    if not db.uno("select id from proyectos where id=:i", i=proyecto):   # las claves foráneas exigen que el proyecto exista
+        db.insertar("proyectos", id=proyecto, nombre=f"Proyecto de pruebas {proyecto}", moneda="USD")
     return db.insertar("gastos", proyecto_id=proyecto, viajero_id=1, comercio="Prueba", fecha="2026-11-01", categoria=categoria,
                        total=total, moneda=moneda, total_usd=total, estado=estado, confianza=0.95, creado=db.ahora(), **extra)
 
@@ -37,7 +39,7 @@ def test_importe_atipico_usa_mediana_y_no_opina_con_pocos_datos():
 
 
 def test_consola_y_api(cliente, piloto):
-    for pestana in ("gastos", "busquedas", "modelo", "cupos", "auditoria", "calidad"):
+    for pestana in ("viajes", "gastos", "busquedas", "modelo", "cupos", "auditoria", "calidad"):
         assert cliente.get(f"/admin/monitoreo?pestana={pestana}&proyecto_id=1&desde=2026-01-01").status_code == 200, pestana
     assert piloto.get("/admin/monitoreo").status_code == 403
     assert piloto.get("/api/metricas").status_code == 403

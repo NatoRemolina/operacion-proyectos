@@ -1,0 +1,40 @@
+{% extends "base.html" %}{% import "_viajes.html" as mv %}{% import "_macros.html" as m %}{% block titulo %}Mi cuenta{% endblock %}{% block cuerpo %}
+<h1>Mi cuenta</h1>
+<p class="sub">{{ yo.nombre }} · <b>{{ mi_codigo }}</b> · {{ rol_texto }} · {{ yo.correo }}</p>
+{% if aviso %}<p class="nota">{{ aviso }}</p>{% endif %}
+
+<div class="dos">
+  <div class="tarjeta"><h3>A dónde van mis gastos hoy</h3>
+    {% if activo_hoy %}<p><a href="/viaje/{{ activo_hoy.id }}"><b>{{ activo_hoy.codigo }}</b></a> · {{ activo_hoy.origen }} → {{ activo_hoy.destino }} · {{ activo_hoy.ida }} a {{ activo_hoy.regreso }} {{ mv.chip(activo_hoy) }}</p>
+    {{ mv.ejecucion(activo_hoy) }}
+    {% else %}<p class="eti">No hay un viaje único que te corresponda hoy. Un gasto sin viaje se guarda y va a revisión.</p>{% endif %}
+    <p style="margin-top:12px"><a class="boton" href="/gastos/cargar">Cargar soporte</a> <a class="boton sec" href="/viajes/nuevo">Cotizar un viaje</a></p></div>
+  <div class="tarjeta"><h3>Telegram</h3>
+    {% if vinculo %}<p class="nota ok">Abre este enlace desde el teléfono donde tienes Telegram. Vale {{ vinculo.minutos }} minutos y sirve una sola vez.</p>
+      {% if vinculo.enlace %}<p><a class="boton" href="{{ vinculo.enlace }}" target="_blank" rel="noopener">Abrir el chat y vincular</a></p>{% endif %}
+      <p class="eti">O escribe en el chat del bot: <code>/start {{ vinculo.codigo }}</code></p>
+    {% elif yo.telegram_chat_id %}<p><span class="chip ok">Chat vinculado</span></p>
+      <p class="eti">Envía al chat la foto o el PDF de cada recibo: se registra en tu viaje y te responde con lo leído y cómo va el presupuesto.</p>
+      <form method="post" action="/mi-cuenta/telegram"><button class="sec peq" name="accion" value="desvincular">Desvincular</button></form>
+    {% elif telegram_activo %}<p class="eti">Vincula tu chat para registrar gastos con una foto, sin abrir la plataforma. El chat solo te identifica: tus permisos son los mismos de aquí.</p>
+      <form method="post" action="/mi-cuenta/telegram"><button name="accion" value="vincular">Vincular Telegram</button></form>
+    {% else %}<p class="eti">El canal de Telegram no está configurado en esta instalación. Los gastos entran por «Cargar soporte».</p>{% endif %}</div>
+</div>
+
+<h2>Mis viajes</h2>
+<div class="tarjeta tabla"><table><tr><th>Viaje</th><th>Ruta</th><th>Fechas</th><th>Proyecto</th>{% if yo.rol != 'piloto' %}<th>Titular</th>{% endif %}<th>Estado</th><th style="min-width:220px">Presupuesto</th><th class="d">Gastos</th></tr>
+{% for v in mis_viajes %}<tr><td><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a></td><td>{{ v.origen }} → {{ v.destino }}</td><td>{{ v.ida }} a {{ v.regreso }}</td><td>{{ v.proyecto or '—' }}</td>{% if yo.rol != 'piloto' %}<td>{{ v.titular or '—' }}</td>{% endif %}
+<td>{{ mv.chip(v) }}</td><td>{{ mv.ejecucion(v) }}</td><td class="d">{{ v.n_gastos }}</td></tr>
+{% else %}<tr><td colspan="8">Todavía no hay viajes. Un viaje nace cuando se guarda la decisión de una cotización.</td></tr>{% endfor %}</table></div>
+
+<h2>Historial de cotizaciones</h2>
+<div class="tarjeta tabla"><table><tr><th>#</th><th>Consultada (UTC)</th><th>Ruta</th><th>Fechas estimadas</th><th>Viajero</th><th>Proyecto</th><th class="d">Costo recomendado</th><th>Resultado</th></tr>
+{% for s in cotizaciones %}<tr><td><a href="/viajes/{{ s.id }}">{{ s.id }}</a></td><td class="mono">{{ s.creado }}</td><td>{{ s.origen }} → {{ s.destino }}</td><td>{{ s.ida }} a {{ s.regreso }}</td><td>{{ s.viajero or '—' }}</td><td>{{ s.proyecto or '—' }}</td>
+<td class="d">{{ '%.2f'|format(s.costo_mejor) if s.costo_mejor else '—' }}</td>
+<td>{% if s.viaje_id %}<a href="/viaje/{{ s.viaje_id }}">{{ codigo_viaje({'id': s.viaje_id, 'creado': s.viaje_creado}) }}</a> · {{ estados[s.estado_viaje] }}{% else %}Sin decisión{% endif %}</td></tr>
+{% else %}<tr><td colspan="8">Sin cotizaciones.</td></tr>{% endfor %}</table></div>
+
+{% if sin_viaje %}<h2>Gastos sin viaje</h2>
+<div class="tarjeta tabla"><table><tr><th>#</th><th>Comercio</th><th>Fecha</th><th class="d">Total</th><th>Estado</th></tr>
+{% for g in sin_viaje %}<tr><td><a href="/gastos/{{ g.id }}">{{ g.id }}</a></td><td>{{ g.comercio or '—' }}</td><td>{{ g.fecha or '—' }}</td><td class="d">{{ g.total|dinero(g.moneda or '') }}</td><td>{{ m.estado(g.estado) }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% endblock %}

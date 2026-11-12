@@ -119,6 +119,35 @@ def busquedas(f: dict) -> dict:
     }
 
 
+# ---------- viajes: presupuesto aprobado frente a gasto ----------
+def viajes(f: dict) -> dict:
+    donde, par = _filtro(f, "creado")
+    filas = db.todos(f"select * from v_h_viaje where {donde} order by id", **par)
+    por_estado = Counter(v["estado"] for v in filas)
+    con_presupuesto = [v for v in filas if v["estado"] in ("aprobado", "cerrado") and v["presupuesto_usd"]]
+    previsto = sum(v["presupuesto_usd"] for v in con_presupuesto)
+    gastado = sum(v["gastado_usd"] or 0 for v in con_presupuesto)
+    esperas = []
+    for v in filas:
+        if v["aprobado_en"]:
+            esperas.append((datetime.fromisoformat(v["aprobado_en"]) - datetime.fromisoformat(v["creado"])).total_seconds() / 3600)
+    donde_g, par_g = _filtro(f, "creado")
+    gastos_ = db.todos(f"select viaje_id, canal from v_h_gasto where {donde_g}", **par_g)
+    return {
+        "viajes": len(filas), "pendientes": por_estado["pendiente_aprobacion"], "aprobados": por_estado["aprobado"],
+        "rechazados": por_estado["rechazado"], "cerrados": por_estado["cerrado"],
+        "presupuesto_aprobado": round(previsto, 2), "gastado": round(gastado, 2), "ejecucion": _pct(gastado, previsto),
+        "sobre_presupuesto": sum(1 for v in con_presupuesto if (v["gastado_usd"] or 0) > v["presupuesto_usd"]),
+        "horas_a_aprobacion": round(median(esperas), 1) if esperas else None,
+        "gastos_sin_viaje": sum(1 for g in gastos_ if not g["viaje_id"]), "gastos": len(gastos_),
+        "por_canal": Counter(g["canal"] or "—" for g in gastos_).most_common(),
+        "por_titular": Counter(v["titular"] or "—" for v in filas).most_common(8),
+        "detalle": [{"id": v["id"], "titular": v["titular"], "ruta": f"{v['origen']} → {v['destino']}", "ida": v["ida"], "estado": v["estado"],
+                     "presupuesto": v["presupuesto_usd"], "gastado": v["gastado_usd"], "en_revision": v["en_revision_usd"],
+                     "pct": _pct(v["gastado_usd"] or 0, v["presupuesto_usd"])} for v in filas],
+    }
+
+
 # ---------- modelo de lenguaje ----------
 def uso_modelo(f: dict) -> dict:
     donde, par = _filtro({k: v for k, v in f.items() if k != "proyecto_id"}, "momento")
@@ -149,6 +178,9 @@ def calidad_de_datos() -> list[dict]:
         ("Gastos aprobados sin proyecto", "select count(*) n from gastos where estado in ('aprobado','aprobado_auto') and proyecto_id is null"),
         ("Gastos atascados en proceso", "select count(*) n from gastos where estado='procesando'"),
         ("Decisiones sin opciones registradas", "select count(*) n from decisiones d where siguio_recomendacion is not null and not exists (select 1 from elecciones e where e.decision_id=d.id)"),
+        ("Viajes sin titular", "select count(*) n from viajes where usuario_id is null"),
+        ("Viajes aprobados sin presupuesto", "select count(*) n from viajes where estado='aprobado' and coalesce(presupuesto_usd,0)<=0"),
+        ("Decisiones de vuelo sin viaje", "select count(*) n from decisiones d where d.vuelo_id is not null and not exists (select 1 from viajes v where v.solicitud_id=d.solicitud_id)"),
         ("Sesiones vencidas sin limpiar", "select count(*) n from sesiones where expira < :a"),
     ]
     return [{"prueba": t, "casos": db.uno(sql, a=db.ahora())["n"] if ":a" in sql else db.uno(sql)["n"]} for t, sql in pruebas]
@@ -164,6 +196,9 @@ CATALOGO = {
     "acuerdo_recomendacion": ("Decisiones que siguen la recomendación", "%", "Validez de las reglas", lambda f: busquedas(f)["acuerdo"]),
     "ahorro_capturado": ("Ahorro capturado en decisiones", "USD", "Valor del comparador", lambda f: busquedas(f)["ahorro_capturado"]),
     "tasa_reutilizacion": ("Búsquedas resueltas sin pagar otra consulta", "%", "Costo del buscador", lambda f: busquedas(f)["tasa_reutilizacion"]),
+    "presupuestos_pendientes": ("Viajes esperando aprobación de presupuesto", "viajes", "Carga de quien aprueba", lambda f: viajes(f)["pendientes"]),
+    "ejecucion_presupuesto": ("Gasto aprobado sobre presupuesto aprobado", "%", "Vigilancia de los recursos por viaje", lambda f: viajes(f)["ejecucion"]),
+    "gastos_sin_viaje": ("Gastos que no pertenecen a ningún viaje", "gastos", "Cumplimiento de la regla de negocio", lambda f: viajes(f)["gastos_sin_viaje"]),
     "decisiones_etiquetadas": ("Decisiones etiquetadas para entrenar", "decisiones", "Avance hacia el modelo de decisión", lambda f: busquedas(f)["decisiones_etiquetadas"]),
 }
 

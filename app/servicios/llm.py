@@ -7,6 +7,7 @@ El proveedor se elige por configuración; este módulo habla el formato `generat
 import base64
 import json
 import time
+from contextvars import ContextVar
 
 import httpx
 
@@ -44,6 +45,10 @@ def _registrar(uso: str, entidad_id, cuerpo: dict | None, ms: int, estado_http: 
         pass  # el registro nunca debe tumbar la operación
 
 
+# Canales que deben responder en segundos (un chat) piden un solo intento con espera corta
+RAPIDO: ContextVar[bool] = ContextVar("lectura_rapida", default=False)
+
+
 def generar(contenidos: list[dict], *, uso: str, entidad_id: int | None = None, sistema: str = "",
             esquema: dict | None = None, herramientas: list[dict] | None = None, tope_salida: int = 8192) -> dict:
     """Devuelve el primer candidato ({'content': {'parts': [...]}, 'finishReason': ...}) o lanza ErrorDelModelo."""
@@ -56,10 +61,11 @@ def generar(contenidos: list[dict], *, uso: str, entidad_id: int | None = None, 
         cuerpo["tools"] = [{"functionDeclarations": herramientas}]
     url = f"{config.MODELO_API_URL}/models/{config.MODELO_NOMBRE}:generateContent"
     ultimo = ""
-    for intento in range(3):
+    rapido = RAPIDO.get()
+    for intento in range(1 if rapido else 3):
         inicio = time.perf_counter()
         try:
-            r = httpx.post(url, json=cuerpo, timeout=ESPERA_S,
+            r = httpx.post(url, json=cuerpo, timeout=min(ESPERA_S, 40) if rapido else ESPERA_S,
                            headers={"x-goog-api-key": config.MODELO_API_KEY, **config.MODELO_CABECERAS})
         except httpx.HTTPError as e:
             ultimo = type(e).__name__
@@ -92,7 +98,7 @@ def generar(contenidos: list[dict], *, uso: str, entidad_id: int | None = None, 
             raise ErrorDelModelo("La respuesta del modelo quedó truncada.")
         _registrar(uso, entidad_id, datos, ms, 200)
         return candidato
-    raise ErrorDelModelo(f"El modelo no respondió tras tres intentos ({ultimo}).")
+    raise ErrorDelModelo(f"El modelo no respondió ({ultimo}).")
 
 
 def texto_de(candidato: dict) -> str:

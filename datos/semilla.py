@@ -58,17 +58,22 @@ def sembrar():
                         nota=nota, fuente=fuente, confianza=confianza, verificado=HOY)
     from app.servicios import precios
     precios.cargar_respaldos()
-    sembrar_cuentas()
     asegurar_supuestos()
+    sembrar_cuentas()
+    from datos import migracion
+    hechos = migracion.migrar()
     crear_vistas()
+    migracion.permisos_de_vistas(VISTAS)
+    return hechos
 
 
 # Capa analítica: hechos listos para consultar, con sus dimensiones ya unidas.
 # Las usa el catálogo de métricas y sirven tal cual a una herramienta externa de inteligencia de negocio.
 VISTAS = {
     "v_h_gasto": """select g.*, p.nombre proyecto, p.ciudad ciudad_proyecto, v.nombre viajero, u.nombre usuario,
-                           r.nombre revisor, d.canal, d.mime, d.nombre archivo
+                           r.nombre revisor, d.canal, d.mime, d.nombre archivo, vi.estado estado_viaje, vi.ida ida_viaje
                     from gastos g left join proyectos p on p.id=g.proyecto_id left join viajeros v on v.id=g.viajero_id
+                    left join viajes vi on vi.id=g.viaje_id
                     left join usuarios u on u.id=g.usuario_id left join usuarios r on r.id=g.revisado_por
                     left join documentos d on d.id=g.documento_id""",
     "v_h_busqueda": """select s.*, p.nombre proyecto, v.nombre viajero, u.nombre usuario
@@ -77,12 +82,20 @@ VISTAS = {
     "v_h_decision": """select d.*, s.origen, s.destino, s.ida, s.viajero_id, u.nombre usuario
                        from decisiones d left join solicitudes s on s.id=d.solicitud_id left join usuarios u on u.id=d.usuario_id""",
     "v_h_lectura": "select * from llamadas_modelo",
+    "v_h_viaje": """select v.*, s.origen, s.destino, p.nombre proyecto, u.nombre titular, u.rol rol_titular,
+                           (select coalesce(sum(g.total_usd),0) from gastos g where g.viaje_id=v.id and g.estado in ('aprobado','aprobado_auto')) gastado_usd,
+                           (select coalesce(sum(g.total_usd),0) from gastos g where g.viaje_id=v.id and g.estado='revision') en_revision_usd,
+                           (select count(*) from gastos g where g.viaje_id=v.id) gastos
+                    from viajes v left join solicitudes s on s.id=v.solicitud_id left join proyectos p on p.id=v.proyecto_id
+                    left join usuarios u on u.id=v.usuario_id""",
     "v_h_evento": "select e.*, u.nombre usuario, u.rol from eventos e left join usuarios u on u.id=e.usuario_id",
 }
 
 SUPUESTOS_NUEVOS = [
     ("modelo_usd_por_millon_entrada", "0.5", "Precio de referencia del modelo de lenguaje por millón de tokens de entrada (USD). Ajustar al precio vigente."),
     ("modelo_usd_por_millon_salida", "3", "Precio de referencia del modelo de lenguaje por millón de tokens de salida (USD). Ajustar al precio vigente."),
+    ("viaticos_dia_usd", "75", "Viáticos por día de viaje que se suman al presupuesto (comidas, transporte local, combustible), en USD."),
+    ("tolerancia_presupuesto", "0.10", "Margen sobre el presupuesto del viaje antes de mandar un gasto a revisión (0.10 = 10 %)."),
 ]
 
 
@@ -101,7 +114,8 @@ def crear_vistas():
 
 # Cuentas de demostración para ejecutar en local sin configurar nada. Nunca se crean en una base compartida.
 DEMO = [("admin@demo.local", "Administración (demo)", "admin", "demo-admin-2026", None),
-        ("piloto@demo.local", "Andrés Molina", "usuario", "demo-piloto-2026", 1)]
+        ("piloto@demo.local", "Andrés Molina", "piloto", "demo-piloto-2026", 1),
+        ("gestor@demo.local", "Gestión de proyecto (demo)", "gestor", "demo-gestor-2026", None)]
 
 
 def sembrar_cuentas():
@@ -113,7 +127,9 @@ def sembrar_cuentas():
         return
     if config.ES_SQLITE and config.LOCAL:
         for correo, nombre, rol, clave, viajero in DEMO:
-            acceso.crear_usuario(correo, nombre, rol, clave, viajero)
+            uid = acceso.crear_usuario(correo, nombre, rol, clave, viajero)
+            if rol == "gestor":   # gestiona el primer proyecto de ejemplo
+                db.insertar("proyecto_miembros", usuario_id=uid, proyecto_id=1, papel="gestor", creado=db.ahora())
         return
     # Base compartida: el primer administrador sale de la configuración, una sola vez
     correo, clave = os.getenv("ADMIN_INICIAL_CORREO", ""), os.getenv("ADMIN_INICIAL_CLAVE", "")
@@ -121,7 +137,7 @@ def sembrar_cuentas():
         acceso.crear_usuario(correo, "Administración", "admin", clave)
         demo_correo, demo_clave = os.getenv("USUARIO_DEMO_CORREO", ""), os.getenv("USUARIO_DEMO_CLAVE", "")
         if demo_correo and demo_clave:
-            acceso.crear_usuario(demo_correo, "Andrés Molina", "usuario", demo_clave, 1)
+            acceso.crear_usuario(demo_correo, "Andrés Molina", "piloto", demo_clave, 1)
 
 
 if __name__ == "__main__":

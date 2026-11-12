@@ -15,6 +15,7 @@
   <p class="eti">El agente explica y recomienda; la decisión la guarda una persona.{% if modo().extraccion != 'en vivo' %} Sin clave del modelo de lenguaje responde el análisis determinista, que no interpreta preguntas libres.{% endif %}</p>
 </div>
 
+{% if el_viaje %}<p class="nota">Esta cotización ya tiene el viaje <a href="/viaje/{{ el_viaje.id }}"><b>{{ el_viaje.codigo }}</b></a> ({{ el_viaje.estado_texto|lower }}), asignado a {{ el_viaje.titular or '—' }}.</p>{% endif %}
 {% if aviso_form %}<p class="nota mal">{{ aviso_form }}</p>{% endif %}
 <form method="post" action="/viajes/{{ sol.id }}/decidir">
 <h2>Vuelos, ordenados por costo total esperado</h2>

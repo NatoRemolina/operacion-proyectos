@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% import "_viajes.html" as mv %}{% import "_macros.html" as m %}{% block titulo %}{{ v.codigo }}{% endblock %}{% block cuerpo %}
+<div class="fila"><div><h1>Viaje {{ v.codigo }} · {{ v.origen }} → {{ v.destino }}</h1>
+<p class="sub">{{ v.ida }} a {{ v.regreso }} · {{ v.proyecto or 'sin proyecto' }} · titular <b>{{ v.titular or '—' }}</b> · <a href="/viajes/{{ v.solicitud_id }}/ficha">ficha de decisión</a></p></div>
+<span class="der">{{ mv.chip(v) }}</span></div>
+{% if aviso %}<p class="nota">{{ aviso }}</p>{% endif %}
+{% if v.motivo %}<p class="nota aviso">Motivo registrado: {{ v.motivo }}</p>{% endif %}
+
+<div class="rejilla">
+  <div class="tarjeta"><div class="eti">Presupuesto</div><div class="num">{{ v.presupuesto_usd|dinero }}</div><div class="eti">lo que se espera pagar</div></div>
+  <div class="tarjeta"><div class="eti">Gastado y aprobado</div><div class="num">{{ v.gastado|dinero }}</div>{{ mv.ejecucion(v) }}</div>
+  <div class="tarjeta"><div class="eti">En revisión</div><div class="num">{{ v.en_revision|dinero }}</div><div class="eti">todavía no cuenta como gasto</div></div>
+  <div class="tarjeta"><div class="eti">Soportes recibidos</div><div class="num">{{ v.n_gastos }}</div><div class="eti">último: {{ v.ultimo_gasto or '—' }}</div></div>
+</div>
+
+{% if es_admin %}<form method="post" action="/admin/viajes/{{ v.id }}" class="tarjeta"><h3>Decisión de administración</h3>
+  <input type="hidden" name="volver" value="detalle">
+  <div class="fila"><input name="motivo" placeholder="Motivo (obligatorio para rechazar)" style="flex:1;min-width:220px">
+  {% if v.estado == 'pendiente_aprobacion' %}<button name="accion" value="aprobar">Aprobar presupuesto</button> <button class="mal" name="accion" value="rechazar">Rechazar</button>
+  {% elif v.estado == 'aprobado' %}<button class="sec" name="accion" value="cerrar">Cerrar viaje</button> <button class="sec" name="accion" value="reabrir">Reabrir para cambiar la decisión</button>
+  {% else %}<button class="sec" name="accion" value="reabrir">Reabrir</button>{% endif %}</div>
+  <p class="eti">Con el presupuesto aprobado, los gastos claros de este viaje se aprueban solos; sin aprobar, todos esperan revisión.</p></form>{% endif %}
+
+<div class="dos">
+  <div class="tarjeta tabla"><h3>De qué se compone el presupuesto</h3><table>
+    {% for l in detalle %}<tr><td>{{ l.concepto }}</td><td class="d">{{ '%.2f'|format(l.valor) }}</td></tr>{% endfor %}
+    <tr><td><b>Total</b></td><td class="d"><b>{{ '%.2f'|format(v.presupuesto_usd or 0) }}</b></td></tr></table>
+    <p class="eti">No incluye el riesgo de cambio ni el valor de las millas: esos pesan al comparar opciones, pero no son desembolsos.</p></div>
+  <div class="tarjeta tabla"><h3>Línea de tiempo</h3><table>
+    {% for e in eventos %}<tr><td class="mono">{{ e.momento }}</td><td>{{ e.paso }}</td><td>{{ e.detalle }}</td><td>{{ e.usuario or '—' }}</td></tr>
+    {% else %}<tr><td>Sin hechos registrados.</td></tr>{% endfor %}</table></div>
+</div>
+
+<h2>Gastos del viaje</h2>
+<div class="tarjeta tabla"><table><tr><th>#</th><th>Recibido (UTC)</th><th>Canal</th><th>Comercio</th><th>Fecha</th><th>Categoría</th><th class="d">Total</th><th class="d">USD</th><th>Estado</th></tr>
+{% for g in gastos %}<tr><td><a href="/gastos/{{ g.id }}">{{ g.id }}</a></td><td class="mono">{{ g.creado }}</td><td>{{ g.canal or '—' }}</td><td>{{ g.comercio or '—' }}</td><td>{{ g.fecha or '—' }}</td><td>{{ categorias.get(g.categoria, g.categoria or '—') }}</td>
+<td class="d">{{ g.total|dinero(g.moneda or '') }}</td><td class="d">{{ '%.2f'|format(g.total_usd) if g.total_usd is not none else '—' }}</td><td>{{ m.estado(g.estado) }}</td></tr>
+{% else %}<tr><td colspan="9">Todavía no hay gastos en este viaje.</td></tr>{% endfor %}</table></div>
+
+{% if evidencias %}<h2>Evidencias</h2>
+<div class="tarjeta tabla"><table><tr><th>Recibida (UTC)</th><th>Tipo</th><th>Canal</th><th>Contenido</th></tr>
+{% for d in evidencias %}<tr><td class="mono">{{ d.creado }}</td><td>{{ d.tipo }}</td><td>{{ d.canal }}</td>
+<td>{% if d.tipo == 'audio' %}<audio controls preload="none" src="/viaje/{{ v.id }}/evidencia/{{ d.id }}"></audio>{% if d.texto %}<br>{{ d.texto }}{% endif %}{% else %}{{ d.texto }}{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
+{% endblock %}

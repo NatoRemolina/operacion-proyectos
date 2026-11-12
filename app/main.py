@@ -18,7 +18,8 @@ from datos.semilla import sembrar
 
 from . import aeropuertos, config, db
 from .servicios import (acceso, agente, almacen, analitica, costo, eventos, extraccion, inteligencia, metricas, modelo,
-                        precios, validacion)
+                        precios, telegram, validacion, viajes)
+from .servicios import gastos as soportes
 from datos.semilla import VISTAS
 
 AQUI = Path(__file__).parent
@@ -111,19 +112,29 @@ def _yo() -> dict:
     return acceso.actual() or {}
 
 
-def _solicitud_propia(sid: int) -> bool:
-    return acceso.puede_ver(_yo(), db.uno("select usuario_id, viajero_id from solicitudes where id=:i", i=sid))
+def _solicitud_propia(sid: int, para_modificar: bool = False) -> bool:
+    """Ver alcanza a quien gestiona el proyecto; modificar, solo a quien la creó, a quien viaja o a administración."""
+    fila = db.uno("select usuario_id, viajero_id, proyecto_id from solicitudes where id=:i", i=sid)
+    return acceso.es_propio(_yo(), fila) if para_modificar else acceso.puede_ver(_yo(), fila)
 
 
 def _gasto_propio(gid: int) -> bool:
-    return acceso.puede_ver(_yo(), db.uno("select usuario_id, viajero_id from gastos where id=:i", i=gid))
+    return acceso.puede_ver(_yo(), db.uno("select usuario_id, viajero_id, proyecto_id from gastos where id=:i", i=gid))
+
+
+def _viajes_para_cargar() -> list[dict]:
+    """Viajes a los que la persona puede cargar gastos: los suyos; administración, todos los que siguen abiertos."""
+    if acceso.es_admin(_yo()):
+        return viajes.lista("v.estado in ('aprobado','pendiente_aprobacion')")
+    return [v for v in viajes.de_persona(_yo(), ("aprobado", "pendiente_aprobacion"))]
 
 
 NO_ENCONTRADO = Response("No encontrado.", status_code=404)
 
 
 def _ctx(**extra):
-    return {"yo": _yo(), "es_admin": acceso.es_admin(_yo()),
+    return {"yo": _yo(), "es_admin": acceso.es_admin(_yo()), "rol_texto": acceso.NOMBRE_ROL.get(_yo().get("rol"), ""),
+            "mi_codigo": viajes.codigo_persona(_yo()["id"]) if _yo() else "", "telegram_activo": telegram.activo(),
             "proyectos": db.todos_cache("select * from proyectos order by id"),
             "viajeros": db.todos_cache("select * from viajeros order by id"), **extra}
 
@@ -278,7 +289,8 @@ def viaje(request: Request, sid: int, aviso: str = ""):
     if not c:
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "viaje.html", _ctx(
-        **c, agente=agente.recomendar(c, solo_determinista=True), aviso_form=aviso[:200], razones=config.RAZONES))
+        **c, agente=agente.recomendar(c, solo_determinista=True), aviso_form=aviso[:200], razones=config.RAZONES,
+        el_viaje=viajes.de_solicitud(sid), editable=_solicitud_propia(sid, True)))
 
 
 @app.post("/viajes/{sid}/agente", response_class=HTMLResponse)
@@ -313,9 +325,12 @@ def viaje_tarifas(sid: int, oid: int):
 @app.post("/viajes/{sid}/decidir")
 def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), motivo: str = Form(""),
                   aprobado_por: str = Form(""), razones: list[str] = Form([])):
-    c = _comparacion(sid) if _solicitud_propia(sid) else None
+    c = _comparacion(sid) if _solicitud_propia(sid, para_modificar=True) else None
     if not c:
         return NO_ENCONTRADO
+    bloqueo = viajes.bloquea_decision(sid)
+    if bloqueo:
+        return RedirectResponse(f"/viajes/{sid}?aviso={quote(bloqueo)}", status_code=303)
     aprobado_por = _yo()["nombre"]
     vuelo = next((v for v in c["vuelos"] + c["descartados"] if v["id"] == vuelo_id), None)
     hotel = next((h for h in c["hoteles"] if h["id"] == hotel_id), None)  # puede no haber hoteles para la ciudad
@@ -365,6 +380,8 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
          "creado": db.ahora()} for i, h in enumerate(c["hoteles"])])
     db.actualizar("solicitudes", sid, estado="decidido")
     eventos.registrar("solicitud", sid, "decisión guardada", f"Total previsto {total:.2f} USD (ficha #{did})", aprobado_por or "usuario")
+    # La decisión asigna el viaje a la persona: nace con su código y queda a la espera de que administración apruebe el presupuesto
+    viajes.crear_desde_decision(did)
     return RedirectResponse(f"/viajes/{sid}/ficha", status_code=303)
 
 
@@ -375,79 +392,20 @@ def viaje_ficha(request: Request, sid: int):
     c = _comparacion(sid)
     if not c or not c["decision"]:
         return RedirectResponse(f"/viajes/{sid}", status_code=303)
-    return plantillas.TemplateResponse(request, "ficha.html", _ctx(**c, d=db.de_json(c["decision"]["desglose"], {})))
+    return plantillas.TemplateResponse(request, "ficha.html", _ctx(**c, d=db.de_json(c["decision"]["desglose"], {}),
+                                                                   el_viaje=viajes.de_solicitud(sid)))
 
 
 # ---------- reto 2: gastos ----------
-class SoporteRechazado(ValueError):
-    """El archivo no se acepta; el mensaje se muestra a quien lo subió."""
+SoporteRechazado = soportes.SoporteRechazado
+_nombre_visible = soportes.nombre_visible
 
 
-def _tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
-    """Tipo según el contenido, no según lo que declara quien sube. Devuelve (tipo, extensión) o None."""
-    if contenido[:3] == b"\xff\xd8\xff":
-        return "image/jpeg", "jpg"
-    if contenido[:8] == b"\x89PNG\r\n\x1a\n":
-        return "image/png", "png"
-    if contenido[:4] == b"RIFF" and contenido[8:12] == b"WEBP":
-        return "image/webp", "webp"
-    if contenido[:5] == b"%PDF-":
-        return "application/pdf", "pdf"
-    if nombre.lower().endswith(".eml"):
-        cabecera = contenido[:4000].decode("utf-8", "ignore").lower()
-        if not cabecera.lstrip().startswith("<") and sum(c in cabecera for c in ("from:", "subject:", "date:", "to:")) >= 2:
-            return "message/rfc822", "eml"
-    return None
-
-
-def _nombre_visible(nombre: str) -> str:
-    """Nombre original solo para mostrarlo: sin rutas ni caracteres de control."""
-    limpio = re.sub(r"[\x00-\x1f\\/]", "_", Path(nombre or "soporte").name)[:120]
-    return limpio or "soporte"
-
-
-def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None, viajero_id: int | None) -> int:
-    if not contenido:
-        raise SoporteRechazado("El archivo está vacío.")
-    if len(contenido) > config.MAX_BYTES_SOPORTE:
-        raise SoporteRechazado(f"El archivo pesa {len(contenido) / 1e6:.1f} MB; el máximo es {config.MAX_BYTES_SOPORTE / 1e6:.1f} MB.")
-    tipo = _tipo_real(contenido, nombre)
-    if not tipo:
-        raise SoporteRechazado("Tipo de archivo no admitido. Se aceptan fotos (JPG, PNG, WebP), PDF y correos (.eml).")
-    mime, extension = tipo
-    nombre = _nombre_visible(nombre)
-    huella = hashlib.sha256(contenido).hexdigest()
-    try:
-        ruta = almacen.guardar(almacen.clave(huella, extension), contenido, mime)
-    except Exception as e:
-        raise SoporteRechazado(f"No se pudo guardar el archivo ({type(e).__name__}). Intenta de nuevo.") from e
-    yo = _yo().get("id")
-    doc = db.insertar("documentos", nombre=nombre, mime=mime, canal=canal, ruta=ruta, huella=huella, creado=db.ahora(), usuario_id=yo)
-    gid = db.insertar("gastos", documento_id=doc, proyecto_id=proyecto_id, viajero_id=viajero_id, estado="procesando",
-                      creado=db.ahora(), usuario_id=yo)
-    eventos.registrar("gasto", gid, "documento recibido", f"{nombre} ({mime})", f"canal: {canal}")
-    # Un archivo idéntico ya leído no se vuelve a pagar: se reutiliza su lectura
-    previo = db.uno("""select g.extraido from gastos g join documentos d on d.id=g.documento_id
-                       where d.huella=:h and g.id<>:i and g.extraido is not null order by g.id limit 1""", h=huella, i=gid)
-    with eventos.cronometro() as t:
-        x = {**db.de_json(previo["extraido"], {}), "origen_dato": "reutilizado", "error": None} if previo else \
-            extraccion.extraer(contenido, mime, nombre, gid)
-    eventos.registrar("gasto", gid, "datos extraídos", x.get("error") or f"{x['comercio']} · {x['total']} {x['moneda']} · confianza {x['confianza']:.0%}",
-                      f"modelo ({x['origen_dato']})", t())
-    proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
-    r = validacion.revisar(x, proyecto, gid)
-    if x.get("error"):
-        # Una lectura fallida nunca se aprueba sola
-        r["alertas"].insert(0, x["error"])
-        r["motivos"].insert(0, "lectura_fallida")
-        r["estado"] = "revision"
-    original = {c: x.get(c) for c in extraccion.CAMPOS} | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
-    db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c != "ciudad"}, confianza=x["confianza"],
-                  origen_dato=x["origen_dato"], estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"],
-                  total_usd=r["total_usd"], extraido=None if x.get("error") else original)
-    eventos.registrar("gasto", gid, "aprobado sin intervención" if r["estado"] == "aprobado_auto" else "enviado a revisión",
-                      " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
-    return gid
+def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None, viajero_id: int | None, viaje_id: int = 0) -> int:
+    """Registra un soporte a nombre de quien tiene la sesión. Sin viaje indicado, se busca el que le corresponde hoy."""
+    yo = _yo()
+    viaje, _ = viajes.resolver_para_gasto(yo, viaje_id or None) if yo else (None, [])
+    return soportes.registrar(contenido, nombre, canal, yo or None, viaje, proyecto_id, viajero_id)
 
 
 @app.get("/gastos", response_class=HTMLResponse)
@@ -465,19 +423,21 @@ def gastos(request: Request, estado: str = "", aviso: str = ""):
 def gastos_cargar(request: Request):
     ejemplos = sorted(p.name for p in config.DIR_EJEMPLOS.iterdir() if p.suffix in (".png", ".pdf", ".jpg"))
     correos = sorted(p.name for p in config.DIR_EJEMPLOS.glob("*.eml"))
-    return plantillas.TemplateResponse(request, "cargar.html", _ctx(ejemplos=ejemplos, correos=correos))
+    elegido, _ = viajes.resolver_para_gasto(_yo())
+    return plantillas.TemplateResponse(request, "cargar.html", _ctx(
+        ejemplos=ejemplos, correos=correos, mis_viajes=_viajes_para_cargar(), elegido=elegido))
 
 
 @app.post("/gastos/cargar")
 def gastos_cargar_enviar(request: Request, archivos: list[UploadFile], proyecto_id: int = Form(0), viajero_id: int = Form(0),
-                         canal: str = Form("web")):
+                         canal: str = Form("web"), viaje_id: int = Form(0)):
     """Función normal (no asíncrona): la lectura con el modelo corre en un hilo y no detiene al resto del servidor."""
     canal = canal if canal in ("web", "celular") else "web"
     hechos, errores = [], []
     for a in archivos[:config.MAX_ARCHIVOS_POR_CARGA]:
         try:
             hechos.append(_procesar(a.file.read(config.MAX_BYTES_SOPORTE + 1), a.filename or "soporte", canal,
-                                    proyecto_id or None, viajero_id or None))
+                                    proyecto_id or None, viajero_id or None, viaje_id))
         except SoporteRechazado as e:
             errores.append(f"{_nombre_visible(a.filename or '')}: {e}")
     if len(archivos) > config.MAX_ARCHIVOS_POR_CARGA:
@@ -489,13 +449,15 @@ def gastos_cargar_enviar(request: Request, archivos: list[UploadFile], proyecto_
 
 
 @app.post("/gastos/ejemplos")
-def gastos_ejemplos(nombres: list[str] = Form([]), proyecto_id: int = Form(0), viajero_id: int = Form(0), canal: str = Form("web")):
+def gastos_ejemplos(nombres: list[str] = Form([]), proyecto_id: int = Form(0), viajero_id: int = Form(0), canal: str = Form("web"),
+                    viaje_id: int = Form(0)):
     """Procesa soportes de la carpeta de ejemplos; con canal 'correo' simula la lectura de un buzón."""
     for n in nombres:
         archivo = config.DIR_EJEMPLOS / Path(n).name
         if archivo.is_file():
             try:
-                _procesar(archivo.read_bytes(), archivo.name, "correo" if canal == "correo" else canal, proyecto_id or None, viajero_id or None)
+                _procesar(archivo.read_bytes(), archivo.name, "correo" if canal == "correo" else canal,
+                          proyecto_id or None, viajero_id or None, viaje_id)
             except SoporteRechazado:
                 continue
     return RedirectResponse("/gastos", status_code=303)
@@ -508,7 +470,8 @@ def gasto(request: Request, gid: int):
     if not g:
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "gasto.html", _ctx(
-        g=g, alertas=db.de_json(g["alertas"], []),
+        g=g, alertas=db.de_json(g["alertas"], []), el_viaje=viajes.uno(g["viaje_id"]),
+        mis_viajes=viajes.lista("v.estado<>'rechazado'") if acceso.es_admin(_yo()) else [],
         eventos=db.todos("select * from eventos where entidad='gasto' and entidad_id=:i order by id", i=gid)))
 
 
@@ -552,24 +515,30 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
                   comercio: str = Form(""), fecha: str = Form(""), categoria: str = Form("otros"),
                   subtotal: str = Form(""), impuesto: str = Form(""), propina: str = Form(""), total: str = Form(""),
                   moneda: str = Form(""), metodo_pago: str = Form(""), canal_reserva: str = Form(""), revisor: str = Form(""),
-                  motivo_excepcion: str = Form("")):
+                  motivo_excepcion: str = Form(""), viaje_id: int = Form(-1)):
     # Revisar es tarea de administración: nadie aprueba su propio gasto
     if not acceso.es_admin(_yo()):
         return Response("Solo un administrador puede revisar gastos.", status_code=403)
-    if not db.uno("select id from gastos where id=:i", i=gid):
+    previo = db.uno("select id, viaje_id, usuario_id from gastos where id=:i", i=gid)
+    if not previo:
         return NO_ENCONTRADO
     revisor = _yo()["nombre"]
     if accion == "rechazar":
         db.actualizar("gastos", gid, estado="rechazado", revisado_por=_yo()["id"])
         eventos.registrar("gasto", gid, "rechazado en revisión", "", revisor or "revisor")
+        telegram.avisar(previo["usuario_id"], f"Tu gasto #{gid} fue rechazado en la revisión.")
         return RedirectResponse("/gastos?estado=revision", status_code=303)
+    # El formulario puede cambiar el viaje; si no lo trae, se conserva el que tenía
+    el_viaje = viajes.uno(previo["viaje_id"] if viaje_id < 0 else viaje_id)
+    if el_viaje:
+        proyecto_id, viajero_id = el_viaje["proyecto_id"] or proyecto_id, el_viaje["viajero_id"] or viajero_id
     campos = {"comercio": comercio.strip() or None, "fecha": fecha or None, "categoria": categoria,
               "subtotal": _numero(subtotal), "impuesto": _numero(impuesto), "propina": _numero(propina),
               "total": _numero(total), "moneda": moneda.upper().strip() or None,
               "metodo_pago": metodo_pago.strip() or None, "canal_reserva": canal_reserva.strip() or None}
     proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
     # Una persona confirmó los datos: la confianza de lectura deja de ser el criterio
-    r = validacion.revisar({**campos, "confianza": 1.0, "dudas": []}, proyecto, gid)
+    r = validacion.revisar({**campos, "confianza": 1.0, "dudas": []}, proyecto, gid, el_viaje)
     estado = "aprobado" if r["estado"] == "aprobado_auto" else "revision"
     # Excepción justificada: una persona responde por un gasto que las reglas no dejan pasar (dos peajes iguales el mismo día)
     excepcion = accion == "excepcion" and estado == "revision"
@@ -579,11 +548,122 @@ def gasto_guardar(gid: int, accion: str = Form(...), proyecto_id: int = Form(0),
         estado = "aprobado"
         r["alertas"].append(f"Aprobado con excepción: {motivo_excepcion.strip()[:200]}")
     db.actualizar("gastos", gid, **campos, proyecto_id=proyecto_id or None, viajero_id=viajero_id or None,
-                  estado=estado, alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"], revisado_por=_yo()["id"])
+                  viaje_id=el_viaje["id"] if el_viaje else None, estado=estado, alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"], revisado_por=_yo()["id"])
     paso = "aprobado con excepción" if excepcion and estado == "aprobado" else \
         "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión"
     eventos.registrar("gasto", gid, paso, " ".join(r["alertas"]), revisor or "revisor")
+    if estado == "aprobado":
+        telegram.avisar(previo["usuario_id"], f"Tu gasto #{gid} ({campos['comercio'] or 'sin comercio'}, "
+                                              f"{campos['total'] or 0:.2f} {campos['moneda'] or ''}) fue aprobado.")
     return RedirectResponse("/gastos" if estado == "aprobado" else f"/gastos/{gid}", status_code=303)
+
+
+# ---------- el viaje: historial de la persona, aprobación y seguimiento ----------
+@app.get("/mi-cuenta", response_class=HTMLResponse)
+def mi_cuenta(request: Request, aviso: str = ""):
+    return _mi_cuenta(request, aviso)
+
+
+def _mi_cuenta(request: Request, aviso: str = "", vinculo: dict | None = None):
+    yo = _yo()
+    donde_s, ps = acceso.alcance(yo, "s")
+    donde_v, pv = acceso.alcance(yo, "v")
+    donde_g, pg = acceso.alcance(yo, "g")
+    mis_viajes = viajes.lista(donde_v, **pv)
+    return plantillas.TemplateResponse(request, "mi_cuenta.html", _ctx(
+        aviso=aviso[:200], vinculo=vinculo, mis_viajes=mis_viajes, activo_hoy=viajes.resolver_para_gasto(yo)[0],
+        cotizaciones=db.todos(f"""select s.*, p.nombre proyecto, vj.nombre viajero, v.id viaje_id, v.estado estado_viaje, v.creado viaje_creado
+                                  from solicitudes s left join proyectos p on p.id=s.proyecto_id
+                                  left join viajeros vj on vj.id=s.viajero_id left join viajes v on v.solicitud_id=s.id
+                                  where {donde_s} order by s.id desc limit 50""", **ps),
+        sin_viaje=db.todos(f"""select g.id, g.comercio, g.fecha, g.total, g.moneda, g.estado from gastos g
+                               where {donde_g} and g.viaje_id is null order by g.id desc limit 20""", **pg),
+        codigo_viaje=viajes.codigo_viaje, estados=viajes.ESTADOS))
+
+
+@app.post("/mi-cuenta/telegram")
+def mi_cuenta_telegram(request: Request, accion: str = Form("vincular")):
+    if accion == "desvincular":
+        telegram.desvincular(_yo()["id"])
+        eventos.registrar("usuario", _yo()["id"], "Telegram desvinculado", "", _yo()["nombre"])
+        return RedirectResponse("/mi-cuenta?aviso=Chat+desvinculado.", status_code=303)
+    if not telegram.activo():
+        return RedirectResponse("/mi-cuenta?aviso=El+canal+de+Telegram+no+est%C3%A1+configurado.", status_code=303)
+    return _mi_cuenta(request, vinculo=telegram.nuevo_vinculo(_yo()["id"]))
+
+
+def _viaje_visible(vid: int) -> dict | None:
+    v = viajes.resumen(vid)
+    return v if v and acceso.puede_ver(_yo(), v) else None
+
+
+@app.get("/viaje/{vid}", response_class=HTMLResponse)
+def viaje_detalle(request: Request, vid: int, aviso: str = ""):
+    v = _viaje_visible(vid)
+    if not v:
+        return NO_ENCONTRADO
+    return plantillas.TemplateResponse(request, "viaje_detalle.html", _ctx(
+        v=v, aviso=aviso[:300], detalle=db.de_json(v["presupuesto_detalle"], []),
+        gastos=db.todos("""select g.*, d.canal, d.nombre archivo from gastos g left join documentos d on d.id=g.documento_id
+                           where g.viaje_id=:i order by g.id desc""", i=vid),
+        evidencias=db.todos("select * from documentos where viaje_id=:i and tipo in ('audio','nota') order by id desc", i=vid),
+        eventos=db.todos("select e.*, u.nombre usuario from eventos e left join usuarios u on u.id=e.usuario_id "
+                         "where e.entidad='viaje' and e.entidad_id=:i order by e.id", i=vid)))
+
+
+@app.get("/viaje/{vid}/evidencia/{doc}")
+def viaje_evidencia(vid: int, doc: int):
+    d = db.uno("select * from documentos where id=:d and viaje_id=:v and tipo='audio'", d=doc, v=vid) if _viaje_visible(vid) else None
+    contenido = almacen.leer(d["ruta"]) if d and d["ruta"] else None
+    if contenido is None:
+        return NO_ENCONTRADO
+    return Response(contenido, media_type=d["mime"], headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+
+
+@app.get("/admin/viajes", response_class=HTMLResponse)
+def viajes_admin(request: Request, aviso: str = ""):
+    todos_ = viajes.lista()
+    return plantillas.TemplateResponse(request, "viajes_admin.html", _ctx(
+        aviso=aviso[:300], pendientes=[v for v in todos_ if v["estado"] == "pendiente_aprobacion"],
+        abiertos=[v for v in todos_ if v["estado"] == "aprobado"],
+        otros=[v for v in todos_ if v["estado"] in ("rechazado", "cerrado")]))
+
+
+@app.post("/admin/viajes/{vid}")
+def viaje_estado(vid: int, accion: str = Form(...), motivo: str = Form(""), volver: str = Form("")):
+    _, mensaje = viajes.cambiar_estado(vid, accion, motivo, _yo())
+    destino = f"/viaje/{vid}" if volver == "detalle" else "/admin/viajes"
+    return RedirectResponse(f"{destino}?aviso={quote(mensaje)}", status_code=303)
+
+
+@app.get("/api/viajes", tags=["api"])
+def api_viajes(estado: str = ""):
+    """Viajes con su ejecución de presupuesto. Lo consulta el tablero cada pocos segundos."""
+    campos = ("id", "codigo", "estado", "estado_texto", "en_curso", "titular", "proyecto", "origen", "destino", "ida", "regreso",
+              "presupuesto_usd", "gastado", "en_revision", "pct", "n_gastos", "ultimo_gasto")
+    filas = viajes.lista("v.estado=:e", e=estado) if estado in viajes.ESTADOS else viajes.lista()
+    return [{c: v.get(c) for c in campos} for v in filas]
+
+
+# ---------- canal de Telegram ----------
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Entrada del bot. Solo Telegram conoce la cabecera secreta; todo lo demás se rechaza sin procesar."""
+    secreto = config.TELEGRAM_WEBHOOK_SECRETO
+    if not telegram.activo() or not secreto or \
+            not secrets.compare_digest(request.headers.get("x-telegram-bot-api-secret-token", ""), secreto):
+        return Response(status_code=403)
+    try:
+        entrega = await request.json()
+    except ValueError:
+        return Response(status_code=400)
+    from starlette.concurrency import run_in_threadpool
+    try:
+        estado = await run_in_threadpool(telegram.procesar, entrega if isinstance(entrega, dict) else {})
+    except Exception as e:   # se responde 200 para que Telegram no reintente sin fin; el fallo queda registrado
+        _error_registrado(request, e)
+        estado = "error"
+    return {"ok": True, "estado": estado}
 
 
 # ---------- tablero por proyecto ----------
@@ -686,9 +766,9 @@ def api_eventos(limite: int = 200):
 
 
 # ---------- monitoreo ----------
-PESTANAS = {"gastos": "Gastos", "busquedas": "Búsquedas", "modelo": "Modelo de lenguaje", "cupos": "Cupos",
+PESTANAS = {"viajes": "Viajes", "gastos": "Gastos", "busquedas": "Búsquedas", "modelo": "Modelo de lenguaje", "cupos": "Cupos",
             "auditoria": "Auditoría", "calidad": "Calidad"}
-FECHA_DE_VISTA = {"v_h_gasto": "creado", "v_h_busqueda": "creado", "v_h_decision": "creado", "v_h_lectura": "momento",
+FECHA_DE_VISTA = {"v_h_viaje": "creado", "v_h_gasto": "creado", "v_h_busqueda": "creado", "v_h_decision": "creado", "v_h_lectura": "momento",
                   "v_h_evento": "momento"}
 _ES_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -699,6 +779,8 @@ def _filtros(proyecto_id: int = 0, desde: str = "", hasta: str = "") -> dict:
 
 
 def _datos_pestana(pestana: str, f: dict) -> dict:
+    if pestana == "viajes":
+        return metricas.viajes(f)
     if pestana == "gastos":
         return metricas.gastos(f)
     if pestana == "busquedas":
@@ -711,7 +793,7 @@ def _datos_pestana(pestana: str, f: dict) -> dict:
         return {"buscador": precios.cupo(), "busquedas": metricas.busquedas(f),
                 "modelo_hoy": db.uno("select count(*) n from llamadas_modelo where momento>=:h", h=hoy)["n"],
                 "filas": [(t, db.uno(f"select count(*) n from {t}")["n"]) for t in
-                          ("gastos", "documentos", "solicitudes", "opciones", "decisiones", "elecciones", "observaciones",
+                          ("usuarios", "viajes", "gastos", "documentos", "telegram_mensajes", "solicitudes", "opciones", "decisiones", "elecciones", "observaciones",
                            "busquedas", "eventos", "llamadas_modelo", "errores")]}
     if pestana == "auditoria":
         donde, par = metricas._filtro({**f, "proyecto_id": None}, "momento")
@@ -772,9 +854,18 @@ def api_metricas(nombre: str = "", proyecto_id: int = 0, desde: str = "", hasta:
 def usuarios_pagina(request: Request, aviso: str = ""):
     return plantillas.TemplateResponse(request, "usuarios.html", _ctx(
         aviso=aviso[:200], roles=acceso.ROLES,
-        usuarios=db.todos("""select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, v.nombre viajero,
+        nombre_rol=acceso.NOMBRE_ROL, codigo=viajes.codigo_persona,
+        miembros={m["usuario_id"]: m["proyectos"] for m in _proyectos_por_gestor()},
+        usuarios=db.todos("""select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, v.nombre viajero, u.telegram_usuario, u.telegram_chat_id,
                              (select max(ultima) from sesiones s where s.usuario_id=u.id) ultima
                              from usuarios u left join viajeros v on v.id=u.viajero_id order by u.id""")))
+
+
+def _proyectos_por_gestor() -> list[dict]:
+    salida: dict[int, list[int]] = {}
+    for m in db.todos("select usuario_id, proyecto_id from proyecto_miembros order by proyecto_id"):
+        salida.setdefault(m["usuario_id"], []).append(m["proyecto_id"])
+    return [{"usuario_id": u, "proyectos": p} for u, p in salida.items()]
 
 
 def _admins_activos(excepto: int = 0) -> int:
@@ -782,7 +873,7 @@ def _admins_activos(excepto: int = 0) -> int:
 
 
 @app.post("/admin/usuarios")
-def usuario_crear(correo: str = Form(...), nombre: str = Form(""), rol: str = Form("usuario"), clave: str = Form(...),
+def usuario_crear(correo: str = Form(...), nombre: str = Form(""), rol: str = Form("piloto"), clave: str = Form(...),
                   viajero_id: int = Form(0)):
     try:
         uid = acceso.crear_usuario(correo, nombre, rol, clave, viajero_id or None)
@@ -793,7 +884,8 @@ def usuario_crear(correo: str = Form(...), nombre: str = Form(""), rol: str = Fo
 
 
 @app.post("/admin/usuarios/{uid}")
-def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clave: str = Form("")):
+def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clave: str = Form(""),
+                    proyectos_ids: list[int] = Form([])):
     u = db.uno("select * from usuarios where id=:i", i=uid)
     if not u:
         return NO_ENCONTRADO
@@ -812,6 +904,12 @@ def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clav
             db.actualizar("usuarios", uid, activo=0 if u["activo"] else 1, fallos=0, bloqueado_hasta=None)
             acceso.cerrar_todas(uid)
             eventos.registrar("usuario", uid, "cuenta desactivada" if u["activo"] else "cuenta reactivada", u["correo"], _yo()["nombre"])
+    elif accion == "proyectos":
+        validos = {p["id"] for p in db.todos("select id from proyectos")}
+        db.ejecutar("delete from proyecto_miembros where usuario_id=:u", u=uid)
+        db.insertar_varios("proyecto_miembros", [{"usuario_id": uid, "proyecto_id": p, "papel": "gestor", "creado": db.ahora()}
+                                                 for p in sorted(set(proyectos_ids) & validos)])
+        eventos.registrar("usuario", uid, "proyectos asignados", f"{u['correo']}: {sorted(set(proyectos_ids) & validos)}", _yo()["nombre"])
     elif accion == "clave":
         if len(clave) < 10:
             aviso = "La contraseña debe tener al menos 10 caracteres."

@@ -8,7 +8,8 @@ import time
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Column, Float, Integer, MetaData, Table, Text, create_engine, inspect, text
+from sqlalchemy import (BigInteger, CheckConstraint, Column, Float, ForeignKey, Integer, MetaData, Table, Text,
+                        create_engine, event, inspect, text)
 
 from . import config
 
@@ -37,11 +38,21 @@ if not config.ES_SQLITE:
         _args.update(pool_size=2, max_overflow=2, pool_recycle=120, pool_pre_ping=True)
 motor = create_engine(_url(), **_args)
 
+if config.ES_SQLITE:
+    @event.listens_for(motor, "connect")
+    def _claves_foraneas(conexion, _):
+        conexion.execute("PRAGMA foreign_keys=ON")  # SQLite no las hace cumplir si no se le pide
+
 meta = MetaData()
 
 
 def _tabla(nombre, *columnas):
     return Table(nombre, meta, Column("id", Integer, primary_key=True, autoincrement=True), *columnas)
+
+
+def _ref(tabla: str, columna: str, destino: str) -> Column:
+    """Columna que apunta a otra tabla. El nombre de la restricción es fijo para que la migración sepa si ya existe."""
+    return Column(columna, Integer, ForeignKey(f"{destino}.id", name=f"fk_{tabla}_{columna}"))
 
 
 proyectos = _tabla(
@@ -52,24 +63,24 @@ proyectos = _tabla(
 viajeros = _tabla("viajeros", Column("nombre", Text, nullable=False), Column("base", Text), Column("rol", Text))
 membresias = _tabla(
     "membresias",
-    Column("viajero_id", Integer),  # vacío = cuenta de la empresa
+    _ref("membresias", "viajero_id", "viajeros"),  # vacío = cuenta de la empresa
     Column("programa", Text), Column("entidad", Text), Column("estatus", Text),
 )
 solicitudes = _tabla(
     "solicitudes",
-    Column("proyecto_id", Integer), Column("viajero_id", Integer),
+    _ref("solicitudes", "proyecto_id", "proyectos"), _ref("solicitudes", "viajero_id", "viajeros"),
     Column("origen", Text), Column("destino", Text), Column("ciudad", Text),
     Column("ida", Text), Column("regreso", Text), Column("llegar_antes", Text),
     Column("baterias_n", Integer), Column("baterias_wh", Float), Column("maleta", Integer),
     Column("prob_cambio", Float), Column("carro_dia", Float),
-    Column("estado", Text), Column("creado", Text), Column("solicitado_por", Text), Column("usuario_id", Integer),
+    Column("estado", Text), Column("creado", Text), Column("solicitado_por", Text), _ref("solicitudes", "usuario_id", "usuarios"),
     # Se calculan al registrar la consulta y alimentan la analítica
     Column("precio_min_buscador", Float), Column("costo_mas_barato", Float),
     Column("costo_mejor", Float), Column("ahorro_potencial", Float),
 )
 opciones = _tabla(
     "opciones",
-    Column("solicitud_id", Integer), Column("tipo", Text), Column("titulo", Text),
+    _ref("opciones", "solicitud_id", "solicitudes"), Column("tipo", Text), Column("titulo", Text),
     Column("precio", Float), Column("moneda", Text), Column("datos", Text),
     Column("tarifas", Text), Column("origen_dato", Text), Column("capturado", Text),
 )
@@ -81,17 +92,17 @@ reglas = _tabla(
 )
 decisiones = _tabla(
     "decisiones",
-    Column("solicitud_id", Integer), Column("proyecto_id", Integer),
+    _ref("decisiones", "solicitud_id", "solicitudes"), _ref("decisiones", "proyecto_id", "proyectos"),
     Column("vuelo_id", Integer), Column("hotel_id", Integer), Column("tarifa", Text),
     Column("desglose", Text), Column("total", Float), Column("motivo", Text),
-    Column("aprobado_por", Text), Column("creado", Text), Column("usuario_id", Integer),
+    Column("aprobado_por", Text), Column("creado", Text), _ref("decisiones", "usuario_id", "usuarios"),
     # Qué recomendó el sistema y por qué eligió la persona: base del acuerdo y del futuro modelo de decisión
     Column("razones", Text), Column("recomendado_id", Integer), Column("siguio_recomendacion", Integer),
     Column("posicion_elegida", Integer),
 )
 elecciones = _tabla(
     "elecciones",  # una fila por opción mostrada al decidir, con la marca de cuál se eligió: conjunto etiquetado
-    Column("decision_id", Integer), Column("solicitud_id", Integer), Column("opcion_id", Integer), Column("tipo", Text),
+    _ref("elecciones", "decision_id", "decisiones"), _ref("elecciones", "solicitud_id", "solicitudes"), Column("opcion_id", Integer), Column("tipo", Text),
     Column("posicion", Integer), Column("elegida", Integer), Column("recomendada", Integer), Column("descartada", Integer),
     Column("precio", Float), Column("costo_esperado", Float), Column("rasgos", Text), Column("creado", Text),
 )
@@ -103,20 +114,23 @@ errores = _tabla(
 documentos = _tabla(
     "documentos",
     Column("nombre", Text), Column("mime", Text), Column("canal", Text),
-    Column("ruta", Text), Column("huella", Text), Column("creado", Text), Column("usuario_id", Integer),
+    Column("ruta", Text), Column("huella", Text), Column("creado", Text), _ref("documentos", "usuario_id", "usuarios"),
+    # tipo: soporte (origina un gasto), audio o nota (evidencias del viaje que no originan gasto)
+    _ref("documentos", "viaje_id", "viajes"), Column("tipo", Text), Column("texto", Text),
 )
 gastos = _tabla(
     "gastos",
-    Column("documento_id", Integer), Column("proyecto_id", Integer), Column("viajero_id", Integer),
+    _ref("gastos", "documento_id", "documentos"), _ref("gastos", "proyecto_id", "proyectos"), _ref("gastos", "viajero_id", "viajeros"),
     Column("comercio", Text), Column("fecha", Text), Column("categoria", Text),
     Column("subtotal", Float), Column("impuesto", Float), Column("propina", Float),
     Column("total", Float), Column("moneda", Text), Column("total_usd", Float),
     Column("metodo_pago", Text), Column("canal_reserva", Text),
     Column("confianza", Float), Column("estado", Text), Column("alertas", Text),
     Column("origen_dato", Text), Column("creado", Text),
-    Column("usuario_id", Integer), Column("revisado_por", Integer),
+    _ref("gastos", "usuario_id", "usuarios"), _ref("gastos", "revisado_por", "usuarios"),
     Column("motivos", Text),  # códigos de las alertas, para contar por qué se revisa sin buscar en el texto
     Column("extraido", Text),  # lectura original del modelo, intacta, para medir cuánto se corrige
+    _ref("gastos", "viaje_id", "viajes"),
 )
 eventos = _tabla(
     "eventos",
@@ -141,12 +155,42 @@ historial_ruta = _tabla(
 usuarios = _tabla(
     "usuarios",
     Column("correo", Text, unique=True), Column("nombre", Text), Column("rol", Text), Column("activo", Integer),
-    Column("clave_hash", Text), Column("viajero_id", Integer), Column("fallos", Integer),
+    Column("clave_hash", Text), _ref("usuarios", "viajero_id", "viajeros"), Column("fallos", Integer),
     Column("bloqueado_hasta", Text), Column("creado", Text),
+    Column("telegram_chat_id", BigInteger), Column("telegram_usuario", Text),
+    Column("viaje_activo_id", Integer),  # viaje que la persona fijó a mano para sus próximos gastos
+    CheckConstraint("rol in ('piloto','gestor','admin')", name="ck_usuarios_rol"),
+)
+proyecto_miembros = _tabla(
+    "proyecto_miembros",  # qué proyectos ve un gestor
+    _ref("proyecto_miembros", "usuario_id", "usuarios"), _ref("proyecto_miembros", "proyecto_id", "proyectos"),
+    Column("papel", Text), Column("creado", Text),
+)
+viajes = _tabla(
+    "viajes",  # el eje: nace de una decisión, lo aprueba administración y agrupa gastos y evidencias
+    Column("solicitud_id", Integer, ForeignKey("solicitudes.id", name="fk_viajes_solicitud_id"), unique=True),
+    _ref("viajes", "decision_id", "decisiones"), _ref("viajes", "proyecto_id", "proyectos"),
+    _ref("viajes", "usuario_id", "usuarios"),  # titular: quien viaja y reporta los gastos
+    _ref("viajes", "viajero_id", "viajeros"),
+    Column("ida", Text), Column("regreso", Text), Column("presupuesto_usd", Float), Column("presupuesto_detalle", Text),
+    Column("estado", Text, nullable=False), _ref("viajes", "aprobado_por", "usuarios"), Column("aprobado_en", Text),
+    Column("motivo", Text), Column("creado", Text),
+    CheckConstraint("estado in ('pendiente_aprobacion','aprobado','rechazado','cerrado')", name="ck_viajes_estado"),
+)
+vinculos_telegram = _tabla(
+    "vinculos_telegram",  # códigos de un solo uso para unir un chat con una cuenta; solo se guarda la huella
+    _ref("vinculos_telegram", "usuario_id", "usuarios"), Column("huella", Text, unique=True),
+    Column("expira", Text), Column("usado", Text),
+)
+telegram_mensajes = _tabla(
+    "telegram_mensajes",  # todo lo recibido por el chat; update_id único evita procesar dos veces la misma entrega
+    Column("update_id", BigInteger, unique=True), Column("chat_id", BigInteger), Column("usuario_id", Integer),
+    Column("tipo", Text), Column("texto", Text), Column("documento_id", Integer), Column("gasto_id", Integer),
+    Column("viaje_id", Integer), Column("estado", Text), Column("momento", Text),
 )
 sesiones = _tabla(
     "sesiones",  # solo la huella del token: la tabla no sirve para suplantar a nadie
-    Column("huella", Text, unique=True), Column("usuario_id", Integer),
+    Column("huella", Text, unique=True), _ref("sesiones", "usuario_id", "usuarios"),
     Column("creada", Text), Column("ultima", Text), Column("expira", Text),
 )
 busquedas = _tabla(

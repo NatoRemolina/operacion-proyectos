@@ -19,10 +19,11 @@ COOKIE = "sesion" if config.LOCAL else "__Host-sesion"
 VIDA = timedelta(hours=12)
 INACTIVIDAD = timedelta(hours=2)
 MAX_FALLOS = 5
-ROLES = ("usuario", "admin")
+ROLES = ("piloto", "gestor", "admin")
+NOMBRE_ROL = {"piloto": "piloto", "gestor": "gestor de proyecto", "admin": "administrador"}
 
 # Rutas que no piden sesión, y prefijos reservados al administrador
-PUBLICAS = ("/static", "/entrar", "/salud")
+PUBLICAS = ("/static", "/entrar", "/salud", "/telegram/webhook")
 SOLO_ADMIN = ("/admin", "/analitica", "/flujo", "/reglas", "/proyectos", "/api", "/docs", "/openapi.json", "/gastos/ejemplos")
 
 _hasher = PasswordHasher()
@@ -79,7 +80,11 @@ def crear_usuario(correo: str, nombre: str, rol: str, clave: str, viajero_id: in
         raise ValueError("Datos de la cuenta no válidos (correo, rol o contraseña de menos de 10 caracteres).")
     if db.uno("select id from usuarios where correo=:c", c=correo):
         raise ValueError("Ya existe una cuenta con ese correo.")
-    return db.insertar("usuarios", correo=correo, nombre=nombre.strip()[:80] or correo, rol=rol, activo=1,
+    nombre = nombre.strip()[:80] or correo
+    if rol == "piloto" and not viajero_id:
+        # Quien viaja necesita su perfil operativo (base, membresías): se crea con la cuenta
+        viajero_id = db.insertar("viajeros", nombre=nombre, base="", rol="Piloto de dron")
+    return db.insertar("usuarios", correo=correo, nombre=nombre, rol=rol, activo=1,
                        clave_hash=hash_clave(clave), viajero_id=viajero_id, fallos=0, creado=db.ahora())
 
 
@@ -130,7 +135,8 @@ def usuario_de(token: str | None) -> dict | None:
     if not token:
         return None
     ahora = _ahora()
-    u = db.uno("""select u.id, u.correo, u.nombre, u.rol, u.viajero_id, s.id sesion_id, s.ultima
+    u = db.uno("""select u.id, u.correo, u.nombre, u.rol, u.viajero_id, u.telegram_chat_id, u.viaje_activo_id,
+                         s.id sesion_id, s.ultima
                   from sesiones s join usuarios u on u.id=s.usuario_id
                   where s.huella=:h and s.expira>:a and s.ultima>:i and u.activo=1""",
                h=huella(token), a=_fmt(ahora), i=_fmt(ahora - INACTIVIDAD))
@@ -155,11 +161,24 @@ def alcance(u: dict, alias: str = "") -> tuple[str, dict]:
     if es_admin(u):
         return "1=1", {}
     p = f"{alias}." if alias else ""
-    return f"({p}usuario_id=:_yo or ({p}viajero_id is not null and {p}viajero_id=:_mi_viajero))", \
-        {"_yo": u["id"], "_mi_viajero": u["viajero_id"] or -1}
+    propio = f"{p}usuario_id=:_yo or ({p}viajero_id is not null and {p}viajero_id=:_mi_viajero)"
+    if u["rol"] == "gestor":   # además, todo lo de los proyectos que gestiona
+        propio += f" or {p}proyecto_id in (select proyecto_id from proyecto_miembros where usuario_id=:_yo)"
+    return f"({propio})", {"_yo": u["id"], "_mi_viajero": u.get("viajero_id") or -1}
+
+
+def es_propio(u: dict, fila: dict | None) -> bool:
+    """Lo creó la persona o es quien viaja. Es la condición para modificar; ver puede ser más amplio."""
+    if not fila or not u:
+        return False
+    return es_admin(u) or fila.get("usuario_id") == u["id"] or bool(u.get("viajero_id") and fila.get("viajero_id") == u["viajero_id"])
+
+
+def proyectos_de(u: dict) -> set[int]:
+    return {f["proyecto_id"] for f in db.todos("select proyecto_id from proyecto_miembros where usuario_id=:u", u=u["id"])}
 
 
 def puede_ver(u: dict, fila: dict | None) -> bool:
-    if not fila:
-        return False
-    return es_admin(u) or fila.get("usuario_id") == u["id"] or (u["viajero_id"] and fila.get("viajero_id") == u["viajero_id"])
+    if es_propio(u, fila):
+        return True
+    return bool(fila and u and u["rol"] == "gestor" and fila.get("proyecto_id") in proyectos_de(u))

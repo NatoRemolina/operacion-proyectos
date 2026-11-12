@@ -1,17 +1,19 @@
 {% extends "base.html" %}{% block cuerpo %}
-<h1>Usuarios</h1><p class="sub">El administrador crea las cuentas. Cambiar el rol, desactivar o restablecer la contraseña cierra las sesiones abiertas de esa persona.</p>
+<h1>Usuarios</h1><p class="sub">El administrador crea las cuentas; cada una recibe su ID al nacer. Cambiar el rol, desactivar o restablecer la contraseña cierra las sesiones abiertas de esa persona.</p>
 {% if aviso %}<p class="nota">{{ aviso }}</p>{% endif %}
-<div class="tarjeta tabla"><table><tr><th>Nombre</th><th>Correo</th><th>Viajero</th><th>Rol</th><th>Estado</th><th>Última actividad (UTC)</th><th>Contraseña</th></tr>
-{% for u in usuarios %}<tr><td><b>{{ u.nombre }}</b></td><td>{{ u.correo }}</td><td>{{ u.viajero or '—' }}</td>
-<td><form method="post" action="/admin/usuarios/{{ u.id }}" class="fila"><input type="hidden" name="accion" value="rol"><select name="rol" style="width:110px">{% for r in roles %}<option {{ 'selected' if r == u.rol }}>{{ r }}</option>{% endfor %}</select><button class="sec peq">Cambiar</button></form></td>
+<div class="tarjeta tabla"><table><tr><th>ID</th><th>Nombre</th><th>Correo</th><th>Viajero</th><th>Rol</th><th>Estado</th><th>Última actividad (UTC)</th><th>Contraseña</th></tr>
+{% for u in usuarios %}<tr><td class="mono">{{ codigo(u.id) }}</td><td><b>{{ u.nombre }}</b>{% if u.telegram_chat_id %}<br><span class="chip ok">Telegram{% if u.telegram_usuario %} @{{ u.telegram_usuario }}{% endif %}</span>{% endif %}</td><td>{{ u.correo }}</td><td>{{ u.viajero or '—' }}</td>
+<td><form method="post" action="/admin/usuarios/{{ u.id }}" class="fila"><input type="hidden" name="accion" value="rol"><select name="rol" style="width:150px">{% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == u.rol }}>{{ nombre_rol[r] }}</option>{% endfor %}</select><button class="sec peq">Cambiar</button></form>
+{% if u.rol == 'gestor' %}<form method="post" action="/admin/usuarios/{{ u.id }}" style="margin-top:6px"><input type="hidden" name="accion" value="proyectos"><span class="eti">Proyectos que gestiona:</span>
+{% for p in proyectos %}<label style="display:block;font-size:13px"><input type="checkbox" name="proyectos_ids" value="{{ p.id }}" {{ 'checked' if p.id in miembros.get(u.id, []) }}> {{ p.nombre }}</label>{% endfor %}<button class="sec peq">Guardar proyectos</button></form>{% endif %}</td>
 <td><form method="post" action="/admin/usuarios/{{ u.id }}" class="fila"><input type="hidden" name="accion" value="estado"><span class="chip {{ 'ok' if u.activo else 'mal' }}">{{ 'Activa' if u.activo else 'Desactivada' }}</span><button class="sec peq">{{ 'Desactivar' if u.activo else 'Reactivar' }}</button></form></td>
 <td class="mono">{{ u.ultima or '—' }}</td>
 <td><form method="post" action="/admin/usuarios/{{ u.id }}" class="fila"><input type="hidden" name="accion" value="clave"><input type="password" name="clave" placeholder="Nueva (10+)" autocomplete="new-password" style="width:130px"><button class="sec peq">Restablecer</button></form></td></tr>{% endfor %}
 </table></div>
 <form method="post" action="/admin/usuarios" class="tarjeta"><h3>Crear cuenta</h3>
 <div class="campos"><div><label>Correo</label><input type="email" name="correo" required></div><div><label>Nombre</label><input name="nombre" required></div>
-<div><label>Rol</label><select name="rol">{% for r in roles %}<option>{{ r }}</option>{% endfor %}</select></div>
-<div><label>Es el viajero (opcional)</label><select name="viajero_id"><option value="0">—</option>{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
+<div><label>Rol</label><select name="rol">{% for r in roles %}<option value="{{ r }}">{{ nombre_rol[r] }}</option>{% endfor %}</select></div>
+<div><label>Perfil de viajero existente (si es piloto y se deja vacío, se crea)</label><select name="viajero_id"><option value="0">—</option>{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
 <div><label>Contraseña inicial (10 o más caracteres)</label><input type="password" name="clave" autocomplete="new-password" minlength="10" required></div></div>
 <p><button>Crear cuenta</button></p></form>
 {% endblock %}

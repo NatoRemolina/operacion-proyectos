@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% import "_viajes.html" as mv %}{% block titulo %}Viajes{% endblock %}{% block cuerpo %}
+<h1>Viajes</h1>
+<p class="sub">Cada viaje nace de una cotización decidida, queda asignado a una persona y espera aquí la aprobación de su presupuesto. Desde ese momento agrupa todos sus gastos.</p>
+{% if aviso %}<p class="nota">{{ aviso }}</p>{% endif %}
+
+<h2>Presupuestos por aprobar <span class="chip {{ 'aviso' if pendientes else 'ok' }}">{{ pendientes|length }}</span></h2>
+<div class="tarjeta tabla"><table><tr><th>Viaje</th><th>Titular</th><th>Ruta</th><th>Fechas</th><th>Proyecto</th><th class="d">Presupuesto (USD)</th><th>Decisión</th></tr>
+{% for v in pendientes %}<tr><td><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a><br><a class="eti" href="/viajes/{{ v.solicitud_id }}/ficha">ver cotización</a></td><td>{{ v.titular or '—' }}</td><td>{{ v.origen }} → {{ v.destino }}</td><td>{{ v.ida }} a {{ v.regreso }}</td><td>{{ v.proyecto or '—' }}</td><td class="d"><b>{{ '%.2f'|format(v.presupuesto_usd or 0) }}</b></td>
+<td><form method="post" action="/admin/viajes/{{ v.id }}" class="fila"><input name="motivo" placeholder="Motivo si se rechaza" style="width:170px"><button class="peq" name="accion" value="aprobar">Aprobar</button><button class="peq mal" name="accion" value="rechazar">Rechazar</button></form></td></tr>
+{% else %}<tr><td colspan="7">No hay presupuestos esperando.</td></tr>{% endfor %}</table></div>
+
+<h2>Viajes aprobados: presupuesto frente a gasto <span class="eti" id="reloj"></span></h2>
+<div class="tarjeta tabla"><table id="tablero"><tr><th>Viaje</th><th>Titular</th><th>Ruta</th><th>Fechas</th><th>Estado</th><th style="min-width:240px">Ejecución</th><th class="d">Soportes</th><th>Último gasto (UTC)</th></tr>
+{% for v in abiertos %}<tr data-viaje="{{ v.id }}"><td><a href="/viaje/{{ v.id }}"><b>{{ v.codigo }}</b></a></td><td>{{ v.titular or '—' }}</td><td>{{ v.origen }} → {{ v.destino }}</td><td>{{ v.ida }} a {{ v.regreso }}</td><td>{{ mv.chip(v) }}</td>
+<td class="ejecucion">{{ mv.ejecucion(v) }}</td><td class="d soportes">{{ v.n_gastos }}</td><td class="mono ultimo">{{ v.ultimo_gasto or '—' }}</td></tr>
+{% else %}<tr><td colspan="8">Ningún viaje aprobado todavía.</td></tr>{% endfor %}</table>
+<p class="eti">Se actualiza solo cada 15 segundos mientras esta pestaña esté a la vista.</p></div>
+
+{% if otros %}<h2>Cerrados y rechazados</h2>
+<div class="tarjeta tabla"><table><tr><th>Viaje</th><th>Titular</th><th>Ruta</th><th>Fechas</th><th>Estado</th><th class="d">Presupuesto</th><th class="d">Gastado</th></tr>
+{% for v in otros %}<tr><td><a href="/viaje/{{ v.id }}">{{ v.codigo }}</a></td><td>{{ v.titular or '—' }}</td><td>{{ v.origen }} → {{ v.destino }}</td><td>{{ v.ida }} a {{ v.regreso }}</td><td>{{ mv.chip(v) }}</td><td class="d">{{ '%.2f'|format(v.presupuesto_usd or 0) }}</td><td class="d">{{ '%.2f'|format(v.gastado or 0) }}</td></tr>{% endfor %}</table></div>{% endif %}
+
+<script>
+// Sondeo ligero: solo con la pestaña visible, para no mantener viva una sesión olvidada.
+const f2 = n => (n || 0).toFixed(2);
+async function refrescar() {
+  if (document.hidden) return;
+  try {
+    const r = await fetch('/api/viajes?estado=aprobado'); if (!r.ok) return;
+    const viajes = await r.json();
+    if (viajes.length !== document.querySelectorAll('#tablero tr[data-viaje]').length) return location.reload();
+    for (const v of viajes) {
+      const fila = document.querySelector(`#tablero tr[data-viaje="${v.id}"]`); if (!fila) return location.reload();
+      const pct = v.pct || 0;
+      fila.querySelector('.ejecucion').innerHTML = `<div class="barra" title="${pct} % del presupuesto"><i style="width:${Math.min(pct, 100)}%;${pct > 100 ? 'background:var(--mal)' : ''}"></i></div>`
+        + `<span class="eti">${f2(v.gastado)} de ${f2(v.presupuesto_usd)} USD${v.en_revision ? ' · ' + f2(v.en_revision) + ' en revisión' : ''}</span>`;
+      fila.querySelector('.soportes').textContent = v.n_gastos;
+      fila.querySelector('.ultimo').textContent = v.ultimo_gasto || '—';
+    }
+    document.getElementById('reloj').textContent = '· actualizado ' + new Date().toLocaleTimeString();
+  } catch (e) {}
+}
+setInterval(refrescar, 15000);
+</script>
+{% endblock %}

@@ -47,6 +47,11 @@ SUPABASE_BUCKET = _txt("SUPABASE_BUCKET") or "soportes"
 
 APP_CLAVE = _txt("APP_CLAVE")
 
+# Canal de Telegram: sin estas variables queda apagado y el resto funciona igual
+TELEGRAM_BOT_TOKEN = _txt("TELEGRAM_BOT_TOKEN")
+TELEGRAM_WEBHOOK_SECRETO = _txt("TELEGRAM_WEBHOOK_SECRETO")
+TELEGRAM_BOT_NOMBRE = _txt("TELEGRAM_BOT_NOMBRE").lstrip("@")
+
 # "local" es el equipo de quien desarrolla o evalúa; cualquier otro valor es un despliegue.
 ENTORNO = _txt("ENTORNO") or ("nube" if os.getenv("SECRETO_ARN") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") else "local")
 LOCAL = ENTORNO == "local"
