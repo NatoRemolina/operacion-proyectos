@@ -165,13 +165,18 @@ def test_varios_aeropuertos_una_sola_consulta(cliente, monkeypatch, tmp_path):
 def test_sin_clave_ni_respaldo_no_falla(cliente, monkeypatch, tmp_path):
     """Punto de atención 3: sin clave y sin respuesta guardada para varios códigos, la cotización muestra «sin datos»."""
     llamadas = _buscador(monkeypatch, tmp_path, clave="")
-    r, sid = _cotizar(cliente, destino="Moab, Utah, Estados Unidos", destino_aeropuertos="CNY,GJT,SLC",
+    # CNY y GJT: ninguna respuesta guardada para esa combinación, ni en otras fechas
+    r, sid = _cotizar(cliente, destino="Moab, Utah, Estados Unidos", destino_aeropuertos="CNY,GJT",
                       destino_lugar=json.dumps(MOAB), ida="2027-02-01", regreso="2027-02-04", llegar_antes="")
     assert r.status_code == 303 and r.headers["location"] == f"/viajes/{sid}" and llamadas == []
     pagina = cliente.get(f"/viajes/{sid}")
     assert pagina.status_code == 200 and "No hay vuelos para esta ruta y fechas" in pagina.text
     fila = db.uno("select * from consultas_buscador where solicitud_id=:i and tipo='vuelos'", i=sid)
-    assert fila["origen"] == "fallida" and fila["clave"] == "vuelos_MIA_CNY-GJT-SLC_2027-02-01_2027-02-04.json"
+    assert fila["origen"] == "fallida" and fila["clave"] == "vuelos_MIA_CNY-GJT_2027-02-01_2027-02-04.json"
+    # con los tres aeropuertos sí hay una respuesta guardada de otras fechas: se usa y se dice
+    _, otra = _cotizar(cliente, destino="Moab", destino_aeropuertos="CNY,GJT,SLC", destino_lugar=json.dumps(MOAB),
+                       ida="2027-02-01", regreso="2027-02-04", llegar_antes="")
+    assert db.uno("select origen from consultas_buscador where solicitud_id=:i and tipo='vuelos'", i=otra)["origen"] == "guardado (otras fechas)"
 
 
 def test_la_respuesta_guardada_de_un_solo_codigo_sigue_valiendo(cliente, monkeypatch, tmp_path):
@@ -341,3 +346,18 @@ def test_un_vuelo_incompleto_no_rompe_la_lectura(cliente):
                         "layovers": [{"duration": 40, "id": "DEN", "overnight": True}]})
     assert v["numeros"] == ["s/n"] and v["aerolinea"] and v["escalas_detalle"][0] == {"aeropuerto": "DEN", "minutos": 40, "nocturna": True}
     assert precios._vuelo({"price": 300}) is None   # sin tramos no es un vuelo que se pueda comparar
+
+
+# ---------- caso de demostración: respuesta real guardada (12 nov 2026), sin clave ni internet ----------
+def test_demostracion_miami_a_moab_sin_clave(cliente):
+    from app.main import _comparacion
+    _, sid = _cotizar(cliente, destino="Moab, Utah, Estados Unidos", destino_aeropuertos="CNY,GJT,SLC",
+                      destino_lugar=json.dumps(MOAB))   # fechas, hora límite y carro del formulario de siempre
+    assert db.uno("select origen from consultas_buscador where solicitud_id=:i and tipo='vuelos'", i=sid)["origen"] == "guardado"
+    c = _comparacion(sid)
+    assert {v["v"]["hasta"] for v in c["vuelos"] + c["descartados"]} == {"CNY", "GJT", "SLC"}
+    # lo más barato del buscador llega a Salt Lake City, pero con el traslado conviene Moab (CNY)
+    assert (c["mas_barato"]["v"]["hasta"], c["mas_barato"]["v"]["precio"]) == ("SLC", 415)
+    assert c["vuelos"][0]["v"]["hasta"] == "CNY"
+    assert any((v["ev"]["descartada"] or "").startswith("Con el traslado llega a las") for v in c["descartados"])
+    assert "Combustible y peajes desde SLC" in cliente.get(f"/viajes/{sid}").text   # el formulario trae carro de alquiler
