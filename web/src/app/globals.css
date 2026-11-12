@@ -27,6 +27,8 @@
   --aviso-suave: #fdf3e0;
   --error: #b42318;
   --error-suave: #fdecea;
+  --error-presionado: #8f1c13;      /* acción de peligro mientras se presiona */
+  --sobre-grafito-presionado: rgb(255 255 255 / 0.16);
   --neutro: #4b5563;
   --neutro-suave: #eef1f5;
   --foco: var(--marca);
@@ -73,6 +75,8 @@
   --color-aviso-suave: var(--aviso-suave);
   --color-error: var(--error);
   --color-error-suave: var(--error-suave);
+  --color-error-presionado: var(--error-presionado);
+  --color-sobre-grafito-presionado: var(--sobre-grafito-presionado);
   --color-neutro: var(--neutro);
   --color-neutro-suave: var(--neutro-suave);
   --color-velo: var(--velo);
@@ -90,9 +94,17 @@
   --text-3xl--letter-spacing: -0.02em;
   --text-2xl--line-height: 1.2;
   --text-2xl--letter-spacing: -0.02em;
-  --text-xl--line-height: 1.3;
-  --text-xl--letter-spacing: -0.01em;
-  --text-lg--letter-spacing: -0.005em;
+  --text-xl--line-height: 1.25;
+  --text-xl--letter-spacing: -0.015em;
+  --text-lg--line-height: 1.5rem;
+  --text-lg--letter-spacing: -0.01em;
+  /* Cifra de indicador: grande, compacta y con números tabulares (tabular-nums en el componente). */
+  --text-cifra: 1.75rem;
+  --text-cifra--line-height: 1.1;
+  --text-cifra--letter-spacing: -0.02em;
+  /* Profundidad: la tarjeta apenas se separa del fondo; lo que flota (avisos, diálogos, menú) se separa más. */
+  --shadow-tarjeta: 0 1px 2px rgb(17 28 36 / 0.05), 0 2px 6px rgb(17 28 36 / 0.04);
+  --shadow-flotante: 0 4px 12px -2px rgb(17 28 36 / 0.12), 0 16px 40px -8px rgb(17 28 36 / 0.24);
   --text-base--line-height: 1.5;
   --text-sm--letter-spacing: 0.005em;
   --text-xs--letter-spacing: 0.02em;

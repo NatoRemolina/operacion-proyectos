@@ -1,4 +1,6 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
+import { clasesBoton } from "@/shared/ui/boton";
 import { Alerta } from "@/shared/ui/estado";
 import { formatearDinero, formatearFecha, formatearInstante } from "@/shared/ui/formato";
 import type { GastoDetalle } from "../domain/gastos";
@@ -53,6 +55,16 @@ export function DetalleGasto({
       {gasto.estado === "rechazado" ? (
         <Alerta tono="error" titulo="Por qué se rechazó">
           <p>{gasto.motivo_rechazo || "Quien revisó no dejó el motivo escrito."}</p>
+          {(gasto.puede_justificar ?? true) ? (
+            <p className="mt-3">
+              <Link
+                href={gasto.viaje ? `/gastos/nuevo?viaje=${gasto.viaje.id}` : "/gastos/nuevo"}
+                className={clasesBoton("primario")}
+              >
+                Cargar el recibo de nuevo
+              </Link>
+            </p>
+          ) : null}
         </Alerta>
       ) : null}
 

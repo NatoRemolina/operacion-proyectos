@@ -15,7 +15,7 @@ import { Tabla } from "@/shared/ui/tabla";
 import { useResumen } from "../application/administracion";
 import type { ActividadGasto, ResumenAdmin } from "../domain/administracion";
 
-const TARJETA = "rounded-tarjeta border border-linea bg-superficie p-4 shadow-sm";
+const TARJETA = "rounded-tarjeta border border-linea bg-superficie p-4 shadow-tarjeta";
 
 function plural(n: number, uno: string, varios: string) {
   return `${n} ${n === 1 ? uno : varios}`;
@@ -35,7 +35,7 @@ function ViajesPorAprobar({ resumen }: { resumen: ResumenAdmin }) {
       ) : (
         <ul className="mt-2 flex flex-col">
           {resumen.pendientes.map((v) => (
-            <li key={v.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-linea py-3 last:border-b-0">
+            <li key={v.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 border-b border-linea py-3 last:border-b-0">
               <div className="min-w-0">
                 <Link href={`/viajes/${v.id}`} className="font-semibold">
                   {v.codigo} · {v.titular?.nombre ?? "Sin titular"}
@@ -195,7 +195,7 @@ export function PantallaResumen() {
   ) : null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 md:gap-8">
       <EncabezadoPagina
         migas={[{ texto: "Operaciones" }, { texto: "Resumen" }]}
         titulo="Resumen"

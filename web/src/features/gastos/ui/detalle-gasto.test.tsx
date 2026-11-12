@@ -19,4 +19,25 @@ describe("Detalle de un gasto rechazado", () => {
     render(<DetalleGasto gasto={gastoDePrueba({ estado: "rechazado", estado_texto: "Rechazado", motivo_rechazo: null })} urlOriginal={null} />);
     expect(screen.getByText("Quien revisó no dejó el motivo escrito.")).toBeInTheDocument();
   });
+
+  it("si es suyo, ofrece cargar el recibo de nuevo en el mismo viaje", () => {
+    render(
+      <DetalleGasto
+        gasto={gastoDePrueba({ estado: "rechazado", estado_texto: "Rechazado", motivo_rechazo: "Ilegible", puede_justificar: true })}
+        urlOriginal={null}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Cargar el recibo de nuevo" })).toHaveAttribute("href", "/gastos/nuevo?viaje=7");
+  });
+
+  it("si no es suyo, no lo ofrece", () => {
+    render(
+      <DetalleGasto
+        gasto={gastoDePrueba({ estado: "rechazado", estado_texto: "Rechazado", motivo_rechazo: "Ilegible", puede_justificar: false })}
+        urlOriginal={null}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: "Cargar el recibo de nuevo" })).not.toBeInTheDocument();
+  });
 });
+

@@ -200,5 +200,16 @@ describe("Revisar un gasto", () => {
     expect(await screen.findByText(/No se puede mostrar aquí/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Abrir el recibo original en otra pestaña" })).toBeInTheDocument();
   });
+
+  it("la decisión está arriba, junto al título, y lo que contó la persona va antes que lo leído", async () => {
+    montar();
+    const encabezado = (await screen.findByRole("heading", { level: 1, name: "Revisar: Café del centro" })).closest("header")!;
+    expect(within(encabezado).getByRole("button", { name: "Aprobar gasto" })).toBeInTheDocument();
+    expect(within(encabezado).getByRole("button", { name: "Rechazar" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Tu decisión" })).not.toBeInTheDocument();
+    const contado = screen.getByRole("region", { name: "Lo que contó la persona" });
+    const leido = screen.getByRole("region", { name: "Lo que leímos del recibo" });
+    expect(contado.compareDocumentPosition(leido) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
 

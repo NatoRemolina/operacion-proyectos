@@ -16,7 +16,7 @@ import { Migas, type Miga } from "@/shared/ui/migas";
 import { useRevisarGasto } from "../application/administracion";
 import { problemaDeMotivo } from "../domain/administracion";
 
-const TARJETA = "rounded-tarjeta border border-linea bg-superficie p-4 shadow-sm";
+const TARJETA = "rounded-tarjeta border border-linea bg-superficie p-4 shadow-tarjeta";
 
 const TITULO_ERROR: Partial<Record<ErrorDeAplicacion["tipo"], string>> = {
   prohibido: "No puedes revisar este gasto",
@@ -126,17 +126,52 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 md:gap-8">
       <header className="flex flex-col gap-1">
         <Migas items={migas} />
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-extrabold">Revisar: {gasto.comercio ?? "Gasto sin comercio leído"}</h1>
-          <EtiquetaEstado estado={estadoVisibleGasto(gasto.estado)} texto={gasto.estado_texto} />
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-extrabold">Revisar: {gasto.comercio ?? "Gasto sin comercio leído"}</h1>
+              <EtiquetaEstado estado={estadoVisibleGasto(gasto.estado)} texto={gasto.estado_texto} />
+            </div>
+            <p className="text-texto-secundario">
+              Recibido {formatearInstante(gasto.creado)} · {gasto.viaje?.codigo ?? "sin viaje asignado"}
+            </p>
+          </div>
+          {/* La decisión, visible sin desplazarse: una sola acción principal. */}
+          <div className="flex flex-wrap gap-2">
+            <Boton variante="secundario" onClick={() => setRechazando(true)} disabled={revision.isPending}>
+              Rechazar
+            </Boton>
+            <Boton onClick={() => decidir("aprobar")} disabled={revision.isPending}>
+              {revision.isPending && revision.variables?.accion === "aprobar" ? "Aprobando…" : "Aprobar gasto"}
+            </Boton>
+          </div>
         </div>
-        <p className="text-texto-secundario">
-          Recibido {formatearInstante(gasto.creado)} · {gasto.viaje?.codigo ?? "sin viaje asignado"}
-        </p>
       </header>
+
+      {sigueEnRevision ? (
+        <Alerta tono="aviso" rol="alert" titulo="No se aprobó: las reglas todavía no lo dejan pasar">
+          <p>Mira «Por qué va a revisión». Para corregir los datos o aprobarlo con una excepción justificada:</p>
+          {plataforma ? (
+            <p className="mt-2">
+              <a href={`${plataforma}/gastos/${gasto.id}`}>Abrir la revisión completa de este gasto</a>
+            </p>
+          ) : (
+            <p className="mt-1">usa la revisión completa de la plataforma actual.</p>
+          )}
+        </Alerta>
+      ) : null}
+      {error ? (
+        <Alerta tono={error.tipo === "cambio_ajeno" ? "aviso" : "error"} rol="alert" titulo={TITULO_ERROR[error.tipo] ?? "No se pudo guardar la revisión"}>
+          <p>
+            {error.tipo === "prohibido"
+              ? "Si el gasto es tuyo, lo revisa otra persona de administración."
+              : error.message}
+          </p>
+        </Alerta>
+      ) : null}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
         <section aria-labelledby="titulo-recibo" className={`${TARJETA} flex flex-col gap-3`}>
@@ -171,6 +206,21 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
             )}
           </section>
 
+          <section aria-labelledby="titulo-contado" className={TARJETA}>
+            <h2 id="titulo-contado" className="mb-1 text-lg font-bold">
+              Lo que contó la persona
+            </h2>
+            {gasto.justificaciones.length ? (
+              <ul className="flex flex-col gap-2">
+                {gasto.justificaciones.map((j) => (
+                  <li key={j.id}>{j.texto ?? "Nota de voz sin transcribir."}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-texto-secundario">No dejó una justificación.</p>
+            )}
+          </section>
+
           <section aria-labelledby="titulo-leido" className={TARJETA}>
             <h2 id="titulo-leido" className="mb-1 text-lg font-bold">
               Lo que leímos del recibo
@@ -191,55 +241,6 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
             </dl>
           </section>
 
-          <section aria-labelledby="titulo-contado" className={TARJETA}>
-            <h2 id="titulo-contado" className="mb-1 text-lg font-bold">
-              Lo que contó la persona
-            </h2>
-            {gasto.justificaciones.length ? (
-              <ul className="flex flex-col gap-2">
-                {gasto.justificaciones.map((j) => (
-                  <li key={j.id}>{j.texto ?? "Nota de voz sin transcribir."}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-texto-secundario">No dejó una justificación.</p>
-            )}
-          </section>
-
-          <section aria-labelledby="titulo-decision" className={`${TARJETA} flex flex-col gap-3`}>
-            <h2 id="titulo-decision" className="text-lg font-bold">
-              Tu decisión
-            </h2>
-            {sigueEnRevision ? (
-              <Alerta tono="aviso" rol="alert" titulo="No se aprobó: las reglas todavía no lo dejan pasar">
-                <p>Mira «Por qué va a revisión». Para corregir los datos o aprobarlo con una excepción justificada:</p>
-                {plataforma ? (
-                  <p className="mt-2">
-                    <a href={`${plataforma}/gastos/${gasto.id}`}>Abrir la revisión completa de este gasto</a>
-                  </p>
-                ) : (
-                  <p className="mt-1">usa la revisión completa de la plataforma actual.</p>
-                )}
-              </Alerta>
-            ) : null}
-            {error ? (
-              <Alerta tono={error.tipo === "cambio_ajeno" ? "aviso" : "error"} rol="alert" titulo={TITULO_ERROR[error.tipo] ?? "No se pudo guardar la revisión"}>
-                <p>
-                  {error.tipo === "prohibido"
-                    ? "Si el gasto es tuyo, lo revisa otra persona de administración."
-                    : error.message}
-                </p>
-              </Alerta>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Boton onClick={() => decidir("aprobar")} disabled={revision.isPending}>
-                {revision.isPending && revision.variables?.accion === "aprobar" ? "Aprobando…" : "Aprobar gasto"}
-              </Boton>
-              <Boton variante="secundario" onClick={() => setRechazando(true)} disabled={revision.isPending}>
-                Rechazar
-              </Boton>
-            </div>
-          </section>
         </div>
       </div>
 

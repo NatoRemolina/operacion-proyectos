@@ -62,8 +62,8 @@ export function Tabla<T>({
       >
         <table className="w-full border-collapse text-left">
           <caption className={tituloVisible ? "px-4 pt-4 text-left text-lg font-bold" : "sr-only"}>{titulo}</caption>
-          <thead className={`sticky top-0 z-10 bg-superficie ${desplazada ? "shadow-sm" : ""}`}>
-            <tr className={desplazada ? "border-b border-linea" : "border-b border-transparent"}>
+          <thead className={`sticky top-0 z-10 bg-fondo ${desplazada ? "shadow-tarjeta" : ""}`}>
+            <tr>
               {columnas.map((c) => (
                 <th
                   key={c.clave}
@@ -108,7 +108,7 @@ export function Tabla<T>({
 
       <ul aria-label={titulo} className="flex flex-col gap-3 md:hidden">
         {filas.map((fila) => (
-          <li key={claveFila(fila)} className="rounded-tarjeta border border-linea bg-superficie p-4 shadow-sm">
+          <li key={claveFila(fila)} className="rounded-tarjeta border border-linea bg-superficie p-4 shadow-tarjeta">
             <p className="text-base">{contenidoPrincipal(fila, false)}</p>
             <dl className="mt-2 flex flex-col gap-1 text-sm">
               {resto.map((c) => (

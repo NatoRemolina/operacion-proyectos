@@ -32,7 +32,7 @@ export function PantallaGastos({ estado: estadoInicial, viajeId: viajeInicial }:
   const filtrando = Boolean(estado || viajeId);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 md:gap-8">
       <EncabezadoPagina
         migas={[{ texto: "Operaciones" }, { texto: permiso === "colaborador" ? "Mis gastos" : "Gastos" }]}
         titulo={permiso === "colaborador" ? "Mis gastos" : "Gastos"}

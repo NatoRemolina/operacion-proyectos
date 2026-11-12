@@ -24,10 +24,10 @@ export function Indicador({
 }) {
   return (
     <div
-      className={`rounded-tarjeta border bg-superficie p-4 shadow-sm ${destacado ? "border-marca" : "border-linea"}`}
+      className={`rounded-tarjeta border bg-superficie p-4 shadow-tarjeta ${destacado ? "border-marca" : "border-linea"}`}
     >
       <dt className="text-sm text-texto-secundario">{etiqueta}</dt>
-      <dd className="mt-1 text-2xl font-bold tabular-nums">{cifra}</dd>
+      <dd className="mt-1 text-cifra font-bold tabular-nums">{cifra}</dd>
       {pie ? <dd className="mt-1 text-sm text-texto-secundario">{pie}</dd> : null}
     </div>
   );

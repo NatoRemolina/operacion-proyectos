@@ -9,7 +9,7 @@ export function ListaGastos({ gastos, esAdmin = false }: { gastos: readonly Gast
     <ul aria-label="Gastos" className="flex flex-col gap-3">
       {gastos.map((gasto) => (
         <li key={gasto.id}>
-          <article className="relative rounded-tarjeta border border-linea bg-superficie p-4 shadow-sm focus-within:outline-3 focus-within:outline-marca hover:border-borde-campo">
+          <article className="relative rounded-tarjeta border border-linea bg-superficie p-4 shadow-tarjeta focus-within:outline-3 focus-within:outline-marca hover:border-borde-campo">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <h2 className="text-lg font-bold">
                 {/* El enlace se estira sobre la tarjeta con ::after para ampliar la zona táctil. */}

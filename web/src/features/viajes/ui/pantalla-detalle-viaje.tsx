@@ -18,7 +18,7 @@ import { useViaje } from "../application/viajes";
 import { estadoVisibleViaje, type LineaPresupuesto, type ViajeDetalle } from "../domain/viajes";
 import { BarraPresupuesto } from "./barra-presupuesto";
 
-const TARJETA = "rounded-tarjeta border border-linea bg-superficie p-4 shadow-sm";
+const TARJETA = "rounded-tarjeta border border-linea bg-superficie p-4 shadow-tarjeta";
 
 /** Qué sigue según el estado: cada viaje dice cuál es el próximo paso y de quién es. */
 function SiguientePaso({ viaje }: { viaje: ViajeDetalle }) {
@@ -136,7 +136,7 @@ export function PantallaDetalleViaje({ id }: { id: number }) {
 
   if (!viaje) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 md:gap-8">
         <EncabezadoPagina migas={migas} titulo="Detalle del viaje" />
         {consulta.error ? (
           <ErrorConsulta
@@ -153,7 +153,7 @@ export function PantallaDetalleViaje({ id }: { id: number }) {
 
   const puedeCargar = viaje.estado === "aprobado" && viaje.propio;
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 md:gap-8">
       <EncabezadoPagina
         migas={migas}
         titulo={viaje.codigo}
