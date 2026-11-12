@@ -155,6 +155,27 @@ Pedido de la dueña durante la construcción. Toda información que entra a la p
 - Cada cambio de permiso o de cargo, cada lugar elegido al cotizar, cada consulta al buscador (incluido el estado del vuelo), cada traslado calculado (con las reglas y valores usados), cada tramo registrado, cada aviso enviado y cada intento de autoaprobación impedido deja su evento en la bitácora (`eventos`) o en `consultas_buscador`.
 - Cada una de estas trazas tiene una prueba que la verifica.
 
+## La opción elegida se carga completa (pedido de la dueña)
+
+Toda búsqueda queda guardada; la opción elegida, además, se carga completa en dos momentos. Referencia: `docs/referencias/serpapi-google-flights/`.
+
+- **Al decidir (2 búsquedas):**
+  - regreso con el `departure_token` de la opción, enviando los mismos códigos que la búsqueda original (para aprovechar la caché del proveedor); de los regresos, se toman los que salen del aeropuerto real de llegada y se elige el más barato;
+  - opciones de reserva con el `booking_token` de ese regreso: `booking_options` y `baggage_prices` reales. El presupuesto usa la tarifa real cuando existe; si no, la estimada, marcada como tal.
+- **Al aprobar (1 búsqueda):** se consulta de nuevo el itinerario fijo con `selected_flights_json` y se registra «precio confirmado» o «precio cambió: antes X, ahora Y». Si sube más que la regla `tolerancia_precio_aprobacion` (5 % por defecto), administración ve la diferencia y la confirma antes de aprobar. Sin clave o si la consulta falla, se aprueba con el aviso «precio no reconfirmado».
+- **Seguridad:** antes de guardar una respuesta se elimina `booking_request` (URL y `post_data`). La plataforma nunca ejecuta una reserva; se limpia también la respuesta de tarifas ya versionada.
+- **Sin costo de búsquedas,** con lo que ya traen las respuestas: las `extensions` del itinerario corrigen el costo estimado (cambio gratis, cambio con cargo, maleta incluida, reembolso); `often_delayed_by_over_30_min` avisa si el retraso habitual compromete la hora límite; `layovers` avisa de escalas de menos de 60 minutos o nocturnas.
+
+## Proveedor de lugares intercambiable
+
+El autocompletado del buscador usa datos locales en el MVP. El autocompletado de Google queda como proveedor alternativo, apagado por defecto (`PROVEEDOR_LUGARES=local`), para cuando la empresa contrate un plan que lo cubra (`PROVEEDOR_LUGARES=serpapi`). Con ese proveedor cada respuesta también se guarda y se registra.
+
+## Para después de la entrega
+
+- Calendario de precios: botón «¿mover la ida ±3 días ahorra?» y recolector de precios más barato.
+- Alerta de ofertas para las rutas frecuentes de la empresa: una consulta semanal por aeropuerto base, cruzada con los destinos más frecuentes.
+- Tarifas: rango de precio de la maleta, cargo por cambio y tiquetes separados.
+
 ## Decisiones tomadas al revisar el diseño
 
 Decididas por quien diseña (no por la dueña), para que se puedan revisar:

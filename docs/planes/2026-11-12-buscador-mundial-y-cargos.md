@@ -24,6 +24,8 @@
 - Cargos iniciales: «Pilotaje de dron», «Edición de video», «Desarrollo de software», «Ingeniería de datos», «Producción».
 - El permiso `piloto` pasa a `colaborador` en base, código, API v1 y web.
 - Datos: OurAirports (dominio público) y GeoNames `cities1000` (CC BY 4.0, citar en README y en el pie del buscador).
+- Referencia de las APIs: `docs/referencias/serpapi-google-flights/` (léase `uso-en-el-proyecto.md`).
+- La opción elegida se carga completa: 2 búsquedas al decidir y 1 al aprobar; `booking_request` nunca se guarda.
 - Trazabilidad: todo dato que entra queda registrado (quién, cuándo, de dónde, qué) en `eventos`, `consultas_buscador` o la tabla nueva `cargas_datos` de la tarea 5; cada tarea lo prueba.
 - Sin push ni despliegue. Voz neutra; sin menciones a asistentes en lo versionado. Antes de cada commit: `git grep -i -E "claude|anthropic"` sin resultados nuevos.
 - Verificación de cada tarea: `.venv/bin/ruff check .` y `.venv/bin/python -m pytest -q`; en `web/`: `npm run typecheck` (genera los tipos de Next antes de `tsc`), `npx eslint --max-warnings=0 .`, `npx vitest run`.
@@ -227,6 +229,16 @@ Entradas que el diseño implica y que ninguna prueba obvia cubre; cada una tiene
   - `test_tablero_muestra_el_estado_y_la_hora_limite`: `/admin/viajes` del día muestra estado, retraso, terminal y puerta, y marca «No llega a la grabación» si la llegada estimada más el traslado supera la hora límite.
 - [ ] **Paso 3:** fallan. **Paso 4:** implementar; el tablero pide `/admin/viajes/vuelos` en el mismo ciclo de 15 s que ya existe; cada fila tiene «Actualizar ahora».
 - [ ] **Paso 5:** verificación. Commit «Monitoreo del vuelo el día del viaje con avisos por Telegram».
+
+### Ajustes por la documentación de SerpApi (12 nov)
+
+Se suman a las tareas indicadas; cada punto lleva su prueba en esa tarea.
+
+- **Tarea 6:** `geografia.buscar` pasa por un puerto `ProveedorLugares` con adaptador local por defecto y adaptador SerpApi (`engine=google_flights_autocomplete`) que solo se activa con `PROVEEDOR_LUGARES=serpapi`; con ese adaptador cada respuesta se guarda y se registra. Prueba: por defecto nunca se llama al proveedor externo.
+- **Tarea 8:** `registrar_observaciones` con los aeropuertos reales de cada vuelo; respaldo «otras fechas» y nombre de archivo de tarifas con los códigos unidos; la consulta del rango típico en `_comparacion` con la clave nueva; con el bloque `airports` se registra un evento si la búsqueda ignoró algún código.
+- **Tarea 9:** `tarifa_supuesta` lee las `extensions` del itinerario («Free change» → admite cambio; «Ticket changes for a fee» → admite cambio con la regla `costo_cambio_usd`; «1 checked bag included» → maleta 0; «Full refund» → reembolsable), origen «buscador»; aviso por `often_delayed_by_over_30_min` si llegada + 30 min pasa la hora límite; aviso por escala de menos de 60 min o nocturna; `_vuelo` lee todo con `.get`.
+- **Tarea 10:** al decidir, regreso con los mismos códigos unidos, filtrado por salida desde `vuelo["hasta"]` y el más barato; opciones de reserva con su `booking_token`; el presupuesto usa la tarifa real; `tarifas_de_vuelo` deja una fila por consulta; `_guardar` quita `booking_request` y se limpia `datos/respaldo/tarifas_MIA_LAS_2026-12-08_2026-12-11_AA1851.json`. Al aprobar, `precios.reconfirmar(decision) -> dict` con `selected_flights_json` (1 búsqueda), evento con el precio anterior y el nuevo, y confirmación explícita si sube más que `tolerancia_precio_aprobacion` (5 %). Pruebas: precio igual, mayor que la tolerancia, sin datos; respuesta guardada sin `post_data`.
+- **Tarea 11:** zona horaria de cada aeropuerto (de GeoNames, por el lugar más cercano) para comparar la ventana; caché de 60 min; topes por viaje y por día además del de 6 por tramo; el monitoreo se suspende si el cupo restante del plan baja de la regla `cupo_minimo_monitoreo`.
 
 ### Tarea 12: Documentación y verificación final
 
