@@ -33,7 +33,9 @@
   --neutro-suave: #eef1f5;
   --foco: var(--marca);
   --velo: rgb(17 28 36 / 0.6); /* fondo atenuado tras un diálogo: grafito al 60 % */
-  --material: rgb(255 255 255 / 0.82); /* barra flotante clara sobre el contenido */
+  /* Barra flotante clara sobre el contenido. Al 92 %: con contenido oscuro debajo, el atajo activo
+     (color de marca) conserva más de 4,5:1 de contraste. */
+  --material: rgb(255 255 255 / 0.92);
   --radio: 0.75rem;
   --ancho-contenido: 60rem;
 }
@@ -144,6 +146,16 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* En celular la cabecera queda fija arriba y la barra de atajos abajo: lo que recibe el foco o el
+       destino de un ancla no debe quedar tapado por ellas. */
+    scroll-padding-top: 4.5rem;
+    scroll-padding-bottom: 6rem;
+  }
+  @media (min-width: 48rem) {
+    html {
+      scroll-padding-top: 0;
+      scroll-padding-bottom: 0;
+    }
   }
   body {
     background: var(--fondo);
