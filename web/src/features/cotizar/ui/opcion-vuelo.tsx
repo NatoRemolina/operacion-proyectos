@@ -13,12 +13,13 @@ import {
   segmentosCosto,
   textoOrigenDato,
   type AnalisisVuelo,
+  type OpcionesBuscador,
   type OpcionVuelo,
   type SegmentoCosto,
   type TablaVendedor,
   tablasPorVendedor,
 } from "../domain/cotizar";
-import { useAnalisisVuelo, useRegistrarFuente, useUrlIrA } from "../application/cotizar";
+import { useAnalisisVuelo, useOpcionesBuscador, useRegistrarFuente, useUrlIrA } from "../application/cotizar";
 
 const COLOR: Record<SegmentoCosto["tipo"], string> = {
   precio: "bg-marca",
@@ -151,6 +152,7 @@ export function OpcionDeVuelo({
   const registrarFuente = useRegistrarFuente(cotizacionId);
   const analisis = useAnalisisVuelo(cotizacionId, vuelo.id);
   const urlIrA = useUrlIrA(cotizacionId, vuelo.id);
+  const buscador = useOpcionesBuscador(cotizacionId, vuelo.id, abierto);
   // Abrir el desglose abre también la página oficial del vendedor (el mismo enlace, en otra pestaña; el servidor deja
   // el rastro del clic) y pide leer la página del vuelo en Google Flights. El servidor reutiliza una lectura de menos
   // de una hora: volver a abrir no gasta otra.
@@ -300,6 +302,7 @@ export function OpcionDeVuelo({
           {abierto ? (
             <>
               <Desglose vuelo={vuelo} />
+              <CapaBuscador esperando={buscador.esperando} error={Boolean(buscador.error)} opciones={buscador.data} urlIrA={urlIrA} />
               <DetalleGoogle
                 pendiente={analisis.isPending}
                 agotado={analisis.agotado}
@@ -338,7 +341,9 @@ function TablaDeVendedor({ tabla, urlIrA }: { tabla: TablaVendedor; urlIrA: (ven
     "before:text-texto-secundario before:content-[attr(data-titulo)] md:before:content-none";
   return (
     <table className="w-full text-sm [overflow-wrap:anywhere]">
-      <caption className="mb-1 text-left font-semibold">{tabla.vendedor}</caption>
+      <caption className="mb-1 text-left font-semibold">
+        {tabla.vendedor} <span className="font-normal text-texto-secundario">(según {tabla.filas[0]?.origen === "buscador" ? "el buscador" : "la página"})</span>
+      </caption>
       <thead className="sr-only md:not-sr-only">
         <tr className="text-left text-texto-secundario">
           <th scope="col" className="py-1 pr-3 font-semibold">Tarifa</th>
@@ -377,6 +382,37 @@ function TablaDeVendedor({ tabla, urlIrA }: { tabla: TablaVendedor; urlIrA: (ven
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** Primera capa: lo que trajo el buscador, en 2 a 5 s; no espera a la lectura de la página. */
+function CapaBuscador({
+  esperando,
+  error,
+  opciones,
+  urlIrA,
+}: {
+  esperando: boolean;
+  error: boolean;
+  opciones: OpcionesBuscador | null;
+  urlIrA: (vendedor: string, tarifa: string) => string;
+}) {
+  const listo = opciones?.estado === "listo" && opciones.tarifas.length > 0;
+  return (
+    <section aria-label="Opciones del buscador" className="flex flex-col gap-3 border-t border-linea pt-3">
+      <p role="status" className={`text-sm ${listo ? "font-semibold" : "text-texto-secundario"}`}>
+        {listo
+          ? `Opciones de reserva del buscador${opciones.consultado ? ` (consultadas a las ${horaLocal(opciones.consultado)})` : ""}`
+          : esperando
+            ? "Buscando las opciones de reserva…"
+            : error
+              ? "No se pudieron traer las opciones del buscador."
+              : "El buscador no trajo opciones de reserva para este vuelo."}
+      </p>
+      {listo
+        ? tablasPorVendedor(opciones.tarifas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} urlIrA={urlIrA} />)
+        : null}
+    </section>
   );
 }
 

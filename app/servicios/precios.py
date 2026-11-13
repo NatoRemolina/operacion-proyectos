@@ -461,6 +461,36 @@ def regreso_guardado(vuelo_ida: dict, origenes: str | list[str], destinos: str |
     return min(candidatos, key=lambda v: v["precio"]) if candidatos else None
 
 
+def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
+                       regreso: str) -> tuple[list[dict], str | None]:
+    """Las opciones de reserva del itinerario que ya están guardadas (las trajo el enlace a la página oficial o una
+    decisión), sin consultar: [(vendedor, tarifa, precio, equipaje, cambios, reembolso, otras)], y cuándo se guardaron
+    (None si vienen de un archivo de respaldo). Lo guardado nunca trae el pedido de un solo uso."""
+    _, _, n_origen, n_destino = ruta(origenes, destinos)
+    clave = _clave_vuelo(vuelo_ida)
+    nombre = f"reserva_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
+    datos = _leer(nombre)
+    if datos is None:
+        nombre = f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
+        datos = (_leer(nombre) or {}).get("reserva")
+    if not isinstance(datos, dict):
+        return [], None
+    fila = db.uno("select creado from busquedas where clave=:c order by id desc limit 1", c=nombre)
+    salida = []
+    for o in datos.get("booking_options") or []:
+        t = (o.get("together") or o.get("departing") or {}) if isinstance(o, dict) else {}
+        if not t.get("price"):
+            continue
+        notas = [x for x in t.get("extensions") or [] if isinstance(x, str)]
+        cambios = [x for x in notas if "change" in x.lower()]
+        reembolso = [x for x in notas if "refund" in x.lower()]
+        salida.append({"vendedor": t.get("book_with") or "el vendedor", "aerolinea": bool(t.get("airline")),
+                       "nombre": t.get("option_title") or "Tarifa", "precio": float(t["price"]),
+                       "equipaje": [x for x in t.get("baggage_prices") or [] if isinstance(x, str)],
+                       "cambios": cambios, "reembolso": reembolso, "otras": [x for x in notas if x not in cambios + reembolso]})
+    return salida, fila["creado"] if fila else None
+
+
 def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
                     regreso: str, solicitud_id: int | None = None) -> list[dict]:
     """Opciones de reserva del itinerario consultadas ahora, con el `booking_request` de cada vendedor (`url` y

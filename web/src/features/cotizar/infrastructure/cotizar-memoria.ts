@@ -215,6 +215,15 @@ export function crearCotizarMemoria(opciones: {
         throw new ErrorDeAplicacion("validacion", { campos: { vuelo_id: "Ese vuelo no es de esta cotización." } });
       }
     },
+    async opcionesBuscador(id, vueloId, signal) {
+      await esperar(latenciaMs, signal);
+      exigirSesion(sesion);
+      if (![...obtener(id).vuelos, ...obtener(id).descartados].some((v) => v.id === vueloId)) {
+        throw new ErrorDeAplicacion("no_encontrado");
+      }
+      const datos = ANALISIS_EJEMPLO.datos!;
+      return { estado: "listo" as const, consultado: null, tarifas: datos.tarifas, vendedores: datos.vendedores };
+    },
     urlIrA(id, vueloId, vendedor, tarifa) {
       // en memoria no hay vendedor al que ir: la página del vuelo en Google Flights
       const vuelo = [...obtener(id).vuelos, ...obtener(id).descartados].find((v) => v.id === vueloId);

@@ -253,6 +253,22 @@ const analisisSchema = z.object({
   captura_url: z.string().nullable(),
 });
 
+const tarifaSchema = z.object({
+  vendedor: z.string(),
+  nombre: z.string(),
+  precio: z.number(),
+  equipaje: lista,
+  cambios: lista,
+  reembolso: lista,
+  otras: lista,
+});
+const opcionesBuscadorSchema = z.object({
+  estado: z.enum(["listo", "sin_datos"]),
+  consultado: z.string().nullable(),
+  tarifas: z.array(tarifaSchema),
+  vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
+});
+
 const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), url: z.string() });
 
 export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
@@ -292,6 +308,9 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema);
       // La API da la ruta con su prefijo; la web la pide a la misma base que el resto
       return { ...a, captura_url: a.captura_url ? absoluta(a.captura_url) : null };
+    },
+    opcionesBuscador(id, vueloId, signal) {
+      return cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/reserva`, opcionesBuscadorSchema, { signal });
     },
     urlIrA(id, vueloId, vendedor, tarifa) {
       return cliente.url(`/cotizaciones/${id}/vuelos/${vueloId}/ir${consulta({ vendedor, tarifa })}`);

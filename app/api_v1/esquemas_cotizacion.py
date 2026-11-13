@@ -356,6 +356,15 @@ class DetalleLeido(BaseModel):
     avisos: list[str] = Field(description="Lo que la página no mostró (por ejemplo, opciones de reserva).")
 
 
+class OpcionesBuscador(BaseModel):
+    """La primera capa del desglose: las opciones de reserva del buscador para este itinerario, ya guardadas."""
+    estado: Literal["listo", "sin_datos"] = Field(description="`sin_datos`: todavía no hay opciones guardadas (la web "
+                                                             "reintenta unos segundos mientras el enlace al vendedor las trae).")
+    consultado: str | None = Field(description="Cuándo las trajo el buscador (UTC); null si vienen del respaldo del repositorio.")
+    tarifas: list[TarifaLeida]
+    vendedores: list[VendedorLeido]
+
+
 class AnalisisVuelo(BaseModel):
     """La lectura de la página del vuelo en Google Flights. No reemplaza el precio del buscador."""
     id: int | None

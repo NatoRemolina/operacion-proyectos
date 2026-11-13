@@ -397,7 +397,15 @@ describe("Comparación de una cotización", () => {
     expect(registrarFuente).toHaveBeenLastCalledWith(12, "vuelos", { vueloId: RECOMENDADA.id });
     // el desglose del buscador se ve enseguida; la lectura llega después
     expect(within(tarjeta).getByRole("table", { name: /Desglose del costo total esperado/ })).toBeInTheDocument();
-    expect(within(tarjeta).getByRole("status")).toHaveTextContent("Leyendo la página del vuelo…");
+    expect(within(within(tarjeta).getByRole("region", { name: "Detalle de Google Flights" })).getByRole("status"))
+      .toHaveTextContent("Leyendo la página del vuelo…");
+    // primera capa: lo del buscador aparece sin esperar a la lectura de la página
+    const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+    expect(await within(capa).findByText("Opciones de reserva del buscador")).toBeInTheDocument();
+    const deBuscador = within(capa).getByRole("table", { name: "American (según el buscador)" });
+    expect(within(deBuscador).getAllByRole("row").slice(1).map((f) => within(f).getByRole("rowheader").textContent))
+      .toEqual(["Basic Economy", "Main Cabin", "Main Plus", "Main Select"]);
+    expect(within(deBuscador).getByRole("link", { name: "Ir a American, Basic Economy, se abre en otra pestaña" })).toBeInTheDocument();
     responder({ ...ANALISIS_EJEMPLO, opcion_id: RECOMENDADA.id, leido: "2026-11-13T15:10:00Z", captura_url: "/api/v1/captura.png" });
     expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las \d\d:\d\d$/)).toBeInTheDocument();
     const detalle = within(tarjeta).getByRole("region", { name: "Detalle de Google Flights" });
@@ -405,7 +413,7 @@ describe("Comparación de una cotización", () => {
     expect(within(detalle).getByText(/La comparación sigue usando el precio del buscador/)).toBeInTheDocument();
     expect(within(detalle).getByText("Basic Economy")).toBeInTheDocument();
     // una tabla por vendedor, una fila por tarifa, con su «Ir a…» (en otra pestaña, sin acceso a esta)
-    const tabla = within(detalle).getByRole("table", { name: "American" });
+    const tabla = within(detalle).getByRole("table", { name: "American (según la página)" });
     const filas = within(tabla).getAllByRole("row").slice(1);
     expect(filas.map((f) => within(f).getByRole("rowheader").textContent)).toEqual(["Basic Economy", "Main Cabin", "Main Plus", "Main Select"]);
     const main = filas[1]!;
@@ -477,4 +485,24 @@ describe("Comparación de una cotización", () => {
       vi.useRealTimers();
     }
   });
+
+  it("si el buscador todavía no trajo opciones, reintenta cada segundo y, si no llegan, lo dice", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const vacio = { estado: "sin_datos" as const, consultado: null, tarifas: [], vendedores: [] };
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue(vacio);
+      renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { opcionesBuscador }) });
+      const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+      await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+      const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+      expect(await within(capa).findByText("Buscando las opciones de reserva…")).toBeInTheDocument();
+      for (let i = 0; i < 7; i++) await vi.advanceTimersByTimeAsync(1000);
+      expect(await within(capa).findByText("El buscador no trajo opciones de reserva para este vuelo.")).toBeInTheDocument();
+      expect(opcionesBuscador).toHaveBeenCalledTimes(5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+

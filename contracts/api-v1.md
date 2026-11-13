@@ -377,6 +377,18 @@ Navegación en otra pestaña (la abre «Ver desglose»), no una llamada de datos
 - La abre **toda persona que ve la cotización** (también el gestor del proyecto); lo ajeno, 404; sin sesión, 401. Una navegación desde otro sitio (`Sec-Fetch-Site: cross-site`) recibe 403: no gasta el cupo de nadie.
 - Cada apertura deja en la bitácora de la cotización el paso `página oficial abierta`: quién, opción, vendedor (aerolínea o agencia) y dominio de salida, o por qué fue a Google Flights.
 
+### `GET /cotizaciones/{id}/vuelos/{opcion_id}/reserva`
+Primera capa del desglose (aparece en 2 a 5 s, sin esperar a la lectura de la página): las opciones de reserva del buscador para el itinerario, **de lo guardado**, sin consultar ni gastar cupo. Las trae el enlace a la página oficial (`…/vendedor`) que abre el mismo clic; la respuesta guardada nunca lleva el pedido de un solo uso.
+
+```json
+{"estado": "listo", "consultado": "2026-11-13T15:10:00Z",
+ "tarifas": [{"vendedor": "American", "nombre": "Basic Economy", "precio": 458, "equipaje": ["1 free carry-on", "1st checked bag: 110"],
+              "cambios": ["No ticket changes"], "reembolso": ["No refunds"], "otras": ["Seat selection for a fee"]}],
+ "vendedores": [{"vendedor": "American", "aerolinea": true, "precio_desde": 458}]}
+```
+
+`estado: sin_datos` mientras no haya nada guardado: la web reintenta cada segundo, hasta 5 veces. La ve quien ve la cotización; lo ajeno, 404.
+
 ### `POST /cotizaciones/{id}/vuelos/{opcion_id}/ir`
 Cuerpo JSON `{"vendedor": "American", "tarifa": "Main Cabin"}` (los nombres como los muestra el desglose; «Tarifa» si el vendedor no la nombra) y `X-CSRF-Token`. Responde 200, `no-store`:
 

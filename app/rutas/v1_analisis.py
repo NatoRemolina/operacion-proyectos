@@ -12,8 +12,15 @@ from fastapi.responses import HTMLResponse, Response
 
 from .. import api_v1, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
-from ..api_v1.esquemas_cotizacion import ENTERO_MAXIMO, AnalisisVuelo, EnvioVendedor, PedidoIrA, errores_cotizacion
-from ..servicios import acceso, analizador, consultas, cotizacion
+from ..api_v1.esquemas_cotizacion import (
+    ENTERO_MAXIMO,
+    AnalisisVuelo,
+    EnvioVendedor,
+    OpcionesBuscador,
+    PedidoIrA,
+    errores_cotizacion,
+)
+from ..servicios import acceso, analizador, consultas, cotizacion, precios
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
@@ -81,6 +88,28 @@ def captura(id: int = Id(), analisis_id: int = Id(), yo: dict = Depends(persona)
         raise _no_encontrado()
     return Response(contenido, media_type="image/png",
                     headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+
+
+# ---------- primera capa del desglose: lo del buscador ----------
+@router.get("/cotizaciones/{id}/vuelos/{opcion_id}/reserva", response_model=OpcionesBuscador,
+            responses=errores_cotizacion(401, 404, 422))
+def opciones_buscador(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
+    """Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada
+    vendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial."""
+    _visible(yo, id)
+    sol = db.uno("select * from solicitudes where id=:i", i=id)
+    o = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=opcion_id, s=id)
+    if not o:
+        raise _no_encontrado()
+    vuelo = db.de_json(o["datos"], {}) or {}
+    lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
+    tarifas, creado = precios.opciones_guardadas(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"])
+    vendedores: dict[str, dict] = {}
+    for t in tarifas:
+        v = vendedores.setdefault(t["vendedor"], {"vendedor": t["vendedor"], "aerolinea": t["aerolinea"], "precio_desde": t["precio"]})
+        v["precio_desde"] = min(v["precio_desde"], t["precio"])
+    return {"estado": "listo" if tarifas else "sin_datos", "consultado": consultas.instante(creado) if creado else None,
+            "tarifas": tarifas, "vendedores": list(vendedores.values())}
 
 
 # ---------- «Ir a…» (pieza 3b) ----------

@@ -295,7 +295,7 @@ def test_el_openapi_versionado_coincide_con_la_api():
                  ("post", "/cotizaciones/{id}/fuente"), ("post", "/cotizaciones/{id}/vuelos/{opcion_id}/analisis"),
                  ("get", "/cotizaciones/{id}/vuelos/{opcion_id}/analisis"), ("get", "/cotizaciones/{id}/analisis/{analisis_id}/captura"),
                  ("get", "/cotizaciones/{id}/vuelos/{vuelo_id}/vendedor"), ("post", "/cotizaciones/{id}/vuelos/{opcion_id}/ir"),
-                 ("get", "/cotizaciones/{id}/vuelos/{opcion_id}/ir"),
+                 ("get", "/cotizaciones/{id}/vuelos/{opcion_id}/ir"), ("get", "/cotizaciones/{id}/vuelos/{opcion_id}/reserva"),
                  ("get", "/resumen"), ("post", "/viajes/{id}/estado"),
                  ("get", "/documentos/{id}/contenido"), ("post", "/asistente"), ("post", "/asistente/voz")}
     esperadas |= {("get", "/kpis"), ("get", "/kpis/personas/{id}"), ("get", "/kpis/exportar.csv")}

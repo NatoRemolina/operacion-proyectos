@@ -12,6 +12,7 @@ import type {
   DecisionPedida,
   AnalisisVuelo,
   DestinoFuente,
+  OpcionesBuscador,
   ObjetivoFuente,
   PedidoCotizacion,
 } from "../domain/cotizar";
@@ -256,4 +257,34 @@ export function useUrlIrA(id: number, vueloId: number) {
     (vendedor: string, tarifa: string) => repositorio.urlIrA(id, vueloId, vendedor, tarifa),
     [repositorio, id, vueloId],
   );
+}
+
+export const OPCIONES_REINTENTO_MS = 1000;
+export const OPCIONES_INTENTOS = 5;
+
+/**
+ * Primera capa del desglose: lo que trajo el buscador. El mismo clic que abre el desglose abre la página oficial, que
+ * consulta el buscador; mientras tanto la respuesta es `sin_datos` y se reintenta cada segundo, 5 veces.
+ */
+export function useOpcionesBuscador(id: number, vueloId: number, activo: boolean) {
+  const repositorio = useCotizarRepository();
+  const personaId = usePersonaId();
+  const queryClient = useQueryClient();
+  const clave = claveDePersona(personaId, "cotizar", "opciones", id, vueloId);
+  const consulta = useQuery<OpcionesBuscador, ErrorDeAplicacion>({
+    queryKey: clave,
+    queryFn: ({ signal }) => repositorio.opcionesBuscador(id, vueloId, signal),
+    enabled: activo,
+    retry: false,
+    refetchInterval: (q) =>
+      q.state.data?.estado === "sin_datos" && q.state.dataUpdateCount < OPCIONES_INTENTOS ? OPCIONES_REINTENTO_MS : false,
+  });
+  const buscando = consulta.isFetching;
+  const intentos = queryClient.getQueryState(clave)?.dataUpdateCount ?? 0;
+  return {
+    data: consulta.data ?? null,
+    error: consulta.error,
+    /** Todavía puede llegar: primera consulta o reintentos en curso. */
+    esperando: activo && (consulta.isPending || (consulta.data?.estado === "sin_datos" && (intentos < OPCIONES_INTENTOS || buscando))),
+  };
 }

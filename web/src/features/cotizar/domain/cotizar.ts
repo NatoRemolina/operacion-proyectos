@@ -289,6 +289,15 @@ export interface DetalleLeido {
   readonly avisos: readonly string[];
 }
 
+/** La primera capa del desglose: lo que trajo el buscador para el itinerario (sin esperar a la página). */
+export interface OpcionesBuscador {
+  readonly estado: "listo" | "sin_datos";
+  /** Cuándo las trajo el buscador (UTC); null si vienen del respaldo. */
+  readonly consultado: string | null;
+  readonly tarifas: readonly TarifaLeida[];
+  readonly vendedores: DetalleLeido["vendedores"];
+}
+
 /** La lectura de la página del vuelo. `no_disponible`: no se leyó (apagado, topes, otra lectura); `motivo` lo dice. */
 export interface AnalisisVuelo {
   readonly id: number | null;
@@ -330,6 +339,8 @@ export interface CotizarRepository {
   analizarVuelo(id: number, vueloId: number): Promise<AnalisisVuelo>;
   /** La última lectura del vuelo, para seguir una que está en curso. */
   verAnalisis(id: number, vueloId: number, signal?: AbortSignal): Promise<AnalisisVuelo>;
+  /** Las opciones de reserva del buscador ya guardadas para el itinerario (primera capa del desglose). */
+  opcionesBuscador(id: number, vueloId: number, signal?: AbortSignal): Promise<OpcionesBuscador>;
   /** Dirección de la página que lleva a esa tarifa de ese vendedor («Ir a…», en otra pestaña). */
   urlIrA(id: number, vueloId: number, vendedor: string, tarifa: string): string;
 }
