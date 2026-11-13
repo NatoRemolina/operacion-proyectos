@@ -409,3 +409,16 @@ def test_un_dictado_que_falla_cuenta_igual(mundo, monkeypatch):
     with pytest.raises(llm.ErrorDelModelo):
         asistente.transcribir_pregunta(b"audio", "audio/wav", andres)
     assert asistente.dictados_hoy(andres["id"]) == antes + 1   # lo seguro: la reserva se paga aunque falle
+
+
+def test_un_texto_propio_que_nombra_un_viaje_ajeno_no_dice_su_codigo(mundo):
+    andres, va, vl, vl2 = mundo["andres"], mundo["va"], mundo["vl"], mundo["vl2"]
+    alertas = [f"El viaje {vl['codigo']} ya está cerrado.", f"Muy parecido a un gasto del viaje {vl2['codigo']}.",
+               f"Comprado antes del viaje {va['codigo']} (normal en tiquetes)."]
+    gid = _gasto(andres, va, "Kiosko de los viajes", 9.5, estado="revision")
+    db.ejecutar("update gastos set alertas=:a where id=:i", a=json.dumps(alertas), i=gid)
+    propio = asistente.ejecutar(asistente.Rastro(andres), "detalle_gasto", {"id": gid})["alertas"]
+    assert propio == ["Otro viaje ya está cerrado.", "Muy parecido a un gasto de otro viaje.", alertas[2]]   # el suyo sí se nombra
+    del_gestor = asistente.ejecutar(asistente.Rastro(mundo["gestor"]), "detalle_gasto", {"id": gid})["alertas"]
+    assert del_gestor == [alertas[0], "Muy parecido a un gasto de otro viaje.", alertas[2]]   # el proyecto 1 lo gestiona
+    assert asistente.ejecutar(asistente.Rastro(_usuario("admin@demo.local")), "detalle_gasto", {"id": gid})["alertas"] == alertas

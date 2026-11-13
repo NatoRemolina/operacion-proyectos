@@ -205,20 +205,25 @@ class Alcance:
         return viajes.codigo_persona(self.yo) if self.valido else ""
 
 
-_REF_GASTO = re.compile(r"\b(?:(del|al|el)\s+)?gasto #(\d+)", re.I)
+# Referencias a otro gasto o a otro viaje dentro de un texto: (tipo, patrón con el artículo y el número)
+_REFERENCIAS = (("gasto", re.compile(r"\b(?:(del|al|el)\s+)?gasto #(\d+)", re.I)),
+                ("viaje", re.compile(r"\b(?:(del|al|el)\s+)?(?:viaje\s+)?V-\d{4}-0*(\d+)\b", re.I)))
 
 
 def _sin_ajenos(texto, alcance: Alcance):
-    """Una alerta puede nombrar otro gasto («posible duplicado del gasto #12»): fuera de administración, si ese gasto
-    no está en su alcance, se dice «otro gasto» sin su número."""
-    if alcance.admin or not isinstance(texto, str) or "#" not in texto:
+    """Un texto puede nombrar otro gasto («posible duplicado del gasto #12») u otro viaje («el viaje V-2026-0003 ya
+    está cerrado»): fuera de administración, si no está en su alcance, se dice «otro gasto» u «otro viaje», sin el
+    número ni el código."""
+    if alcance.admin or not isinstance(texto, str) or ("#" not in texto and "V-" not in texto.upper()):
         return texto
-
-    def cambio(m):
-        if alcance.ve("gasto", int(m.group(2))):
-            return m.group(0)
-        return {"del": "de otro gasto", "al": "a otro gasto"}.get((m.group(1) or "").lower(), "otro gasto")
-    return _REF_GASTO.sub(cambio, texto)
+    for tipo, patron in _REFERENCIAS:
+        def cambio(m, tipo=tipo):
+            if alcance.ve(tipo, int(m.group(2))):
+                return m.group(0)
+            otro = {"del": f"de otro {tipo}", "al": f"a otro {tipo}"}.get((m.group(1) or "").lower(), f"otro {tipo}")
+            return otro[0].upper() + otro[1:] if m.group(0)[0].isupper() else otro
+        texto = patron.sub(cambio, texto)
+    return texto
 
 
 # ---------- rastro de lo consultado ----------
