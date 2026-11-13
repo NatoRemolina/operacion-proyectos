@@ -205,8 +205,10 @@ def filas(usuario: dict, desde, hasta, proyecto_id: int | None = None, estados=E
           where {donde}) q
         left join usuarios pu on pu.id=q.persona_id left join usuarios rv on rv.id=q.revisado_por
         order by q.fecha, q.id""", _desde=inicio.isoformat(), _hasta=fin.isoformat(), **marcas, **p)
-    # El alcance ya limitó la consulta; cada fila se comprueba otra vez con la misma regla que el detalle de un gasto
-    return [f for f in datos if acceso.puede_ver(usuario, f)]
+    # El alcance ya limitó la consulta; cada fila se comprueba otra vez con la regla de `acceso.puede_ver`, pero con
+    # los proyectos del gestor leídos una sola vez: preguntarlos en cada fila serían miles de consultas
+    mios = acceso.proyectos_de(usuario) if usuario.get("rol") == "gestor" else set()
+    return [f for f in datos if acceso.es_propio(usuario, f) or f["proyecto_id"] in mios]
 
 
 def _decimal(valor) -> Decimal | None:

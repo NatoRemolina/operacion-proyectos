@@ -457,3 +457,35 @@ def test_el_guion_corre_desde_la_consola(mundo, tmp_path):
     assert r.returncode == 0, r.stderr[-2000:]
     assert _ids(salida.read_bytes()) == {mundo[k] for k in ("vuelo_a", "hotel_a", "comida_b", "gasolina_b", "parqueo_g")}
     assert "postgres" not in r.stdout + r.stderr and "sqlite" not in r.stdout + r.stderr   # nunca muestra la conexión
+
+
+# ---------- ronda 1 ----------
+def _consultas_al_generar(usuario: dict, desde: str, hasta: str) -> int:
+    from sqlalchemy import event
+    contadas = []
+
+    def contar(*_):
+        contadas.append(1)
+
+    event.listen(db.motor, "before_cursor_execute", contar)
+    try:
+        contable.libro(usuario, desde, hasta)
+    finally:
+        event.remove(db.motor, "before_cursor_execute", contar)
+    return len(contadas)
+
+
+def test_las_consultas_del_libro_no_crecen_con_las_filas(mundo):
+    """Un gestor que ve gastos ajenos de su proyecto: el permiso se lee una vez, no una por fila.
+
+    Los 55 gastos se borran al final: aprobados, moverían la mediana de su categoría (regla de importe atípico) en
+    las pruebas que vienen después.
+    """
+    ids = [_gasto(mundo["b"], P_A, comercio=f"Fila {i}", fecha=f"{mes}-{i % 28 + 1:02d}", total=10)
+           for n, mes in ((5, "2032-04"), (50, "2032-05")) for i in range(n)]
+    try:
+        assert len(_ids(contable.libro(mundo["g"], "2032-05-01", "2032-05-31"))) == 50
+        assert _consultas_al_generar(mundo["g"], "2032-04-01", "2032-04-30") == \
+            _consultas_al_generar(mundo["g"], "2032-05-01", "2032-05-31")
+    finally:
+        db.ejecutar(f"delete from gastos where id in ({', '.join(str(int(i)) for i in ids)})")
