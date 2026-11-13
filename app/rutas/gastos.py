@@ -69,7 +69,7 @@ def gastos_cargar(request: Request):
     correos = sorted(p.name for p in config.DIR_EJEMPLOS.glob("*.eml"))
     elegido, _ = viajes.resolver_para_gasto(_yo())
     return plantillas.TemplateResponse(request, "cargar.html", _ctx(
-        ejemplos=ejemplos, correos=correos, mis_viajes=_viajes_para_cargar(), elegido=elegido))
+        ejemplos=ejemplos, correos=correos, mis_viajes=_viajes_para_cargar(), elegido=elegido, tope_bytes=config.MAX_BYTES_SOPORTE))
 
 
 @router.post("/gastos/cargar")
