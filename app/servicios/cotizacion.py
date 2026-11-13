@@ -453,10 +453,12 @@ def abrir_fuente(usuario: dict, sid: int, destino: str, hotel_id: int | None = N
 
 
 # ---------- página oficial del vendedor ----------
-TOPE_VENDEDOR_DIA = 10   # si la regla no existe
+TOPE_VENDEDOR_DIA = 20   # si la regla no existe: unas 10 aperturas (regreso y opciones de reserva)
 REGLA_VENDEDOR = ("enlace_vendedor_persona_dia", str(TOPE_VENDEDOR_DIA),
-                  "Aperturas de la página oficial del vendedor por persona y día que consultan el buscador (opciones de "
-                  "reserva). El mismo itinerario dentro de la hora no cuenta. Alcanzado, «Ver desglose» lleva a Google Flights.")
+                  "Búsquedas pagas por persona y día del enlace a la página oficial del vendedor: el regreso y las opciones "
+                  "de reserva, también las fallidas. El mismo itinerario dentro de la hora no vuelve a contar. Alcanzado, "
+                  "«Ver desglose» lleva a Google Flights.")
+TIPOS_VENDEDOR = "('vendedor', 'vendedor_regreso')"
 REUSO_VENDEDOR = timedelta(hours=1)
 
 
@@ -510,12 +512,12 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
     repetido = db.uno("""select id from consultas_buscador where tipo='vendedor' and usuario_id=:u and clave=:c
                          and momento>=:h limit 1""", u=usuario["id"], c=nombre, h=hace_una_hora)
     if not repetido:
-        hechas = db.uno("""select count(distinct clave) n from consultas_buscador where tipo='vendedor' and usuario_id=:u
-                           and momento>=:h""", u=usuario["id"], h=db.ahora()[:10])["n"]
+        hechas = db.uno(f"""select count(*) n from consultas_buscador where tipo in {TIPOS_VENDEDOR} and usuario_id=:u
+                            and momento>=:h and origen in ('en vivo', 'fallida')""", u=usuario["id"], h=db.ahora()[:10])["n"]
         if hechas >= int(costo.supuesto(costo.catalogo(), REGLA_VENDEDOR[0], TOPE_VENDEDOR_DIA)):
             anotar("tope del día alcanzado · Google Flights")
             return google
-    regreso = precios.vuelo_regreso(vuelo, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
+    regreso = precios.vuelo_regreso(vuelo, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid, tipo="vendedor_regreso")
     opciones = precios.reserva_en_vivo(vuelo, regreso, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid) if regreso else []
     validas = [x for x in opciones if precios.es_envio_google(x["url"]) and isinstance(x["post_data"], str)]
     elegida = next((x for x in validas if x["aerolinea"]), validas[0] if validas else None)

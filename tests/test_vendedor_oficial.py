@@ -139,7 +139,7 @@ def test_tope_por_persona_y_dia_y_reutiliza_la_ultima_hora(piloto, buscador):
     c = _vegas(piloto)
     uno, dos = c["vuelos"][0]["id"], c["vuelos"][1]["id"]
     cotizacion.asegurar_reglas_vendedor()
-    db.ejecutar("delete from consultas_buscador where tipo='vendedor'")   # las pruebas anteriores abrieron otros
+    db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")   # las pruebas anteriores abrieron otros
     db.ejecutar("update reglas set valor='1' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
     try:
         assert _abrir(piloto, c["id"], uno).status_code == 200
@@ -219,3 +219,31 @@ def test_con_billetes_separados_va_a_google_flights(piloto, buscador):
     vuelo = c["vuelos"][0]
     r = _abrir(piloto, c["id"], vuelo["id"])
     assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"]   # nunca solo la ida
+
+
+# ---------- ronda 1 · punto 22: los regresos que busca el enlace cuentan para el tope, también los fallidos ----------
+def test_los_regresos_buscados_por_el_enlace_cuentan_para_el_tope(piloto, buscador, monkeypatch):
+    llamadas, _, _ = buscador
+    cotizacion.asegurar_reglas_vendedor()
+    db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")
+    db.ejecutar("update reglas set valor='1' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
+    original = precios._consultar
+
+    def regreso_falla(parametros, *a, **k):
+        if "departure_token" in parametros:
+            raise RuntimeError("el buscador no respondió")
+        return original(parametros, *a, **k)
+
+    monkeypatch.setattr(precios, "_consultar", regreso_falla)
+    try:
+        c = _vegas(piloto)
+        sin_guardado = [v for v in c["vuelos"] if v["numeros"] != ["AA 1851"]]   # AA 1851 tiene el regreso guardado
+        r = _abrir(piloto, c["id"], sin_guardado[0]["id"])   # el regreso falla: a Google Flights, pero la búsqueda cuenta
+        assert r.status_code == 303
+        f = db.uno("select tipo, origen from consultas_buscador where tipo='vendedor_regreso' order by id desc")
+        assert (f["tipo"], f["origen"]) == ("vendedor_regreso", "fallida")
+        r = _abrir(piloto, c["id"], sin_guardado[1]["id"])   # tope alcanzado: ni siquiera se busca el regreso
+        assert r.status_code == 303
+        assert db.uno("select count(*) n from consultas_buscador where tipo='vendedor_regreso'")["n"] == 1
+    finally:
+        db.ejecutar("update reglas set valor='20' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")

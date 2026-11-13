@@ -389,7 +389,7 @@ def _guardada(nombre: str) -> tuple:
 
 
 def vuelo_regreso(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str, regreso: str,
-                  solicitud_id: int | None = None) -> dict | None:
+                  solicitud_id: int | None = None, tipo: str = "regreso") -> dict | None:
     """El vuelo de regreso real de una opción de ida: una consulta con su `departure_token`.
 
     Se envían los mismos códigos que la búsqueda original, para aprovechar la caché del proveedor. De los regresos se
@@ -414,10 +414,10 @@ def vuelo_regreso(vuelo_ida: dict, origenes: str | list[str], destinos: str | li
             _guardar(nombre, datos)
             origen_dato, usada = "en vivo", nombre
         except Exception as e:
-            _anotar("regreso", nombre, "fallida", solicitud_id, inicio, error=e)
+            _anotar(tipo, nombre, "fallida", solicitud_id, inicio, error=e)
             return None
     candidatos = [v for v in _vuelos(datos) if not vuelo_ida.get("hasta") or v["desde"] == vuelo_ida["hasta"]]
-    _anotar("regreso", usada, origen_dato, solicitud_id, inicio, [v["precio"] for v in candidatos])
+    _anotar(tipo, usada, origen_dato, solicitud_id, inicio, [v["precio"] for v in candidatos])
     if not candidatos:
         return None
     elegido = min(candidatos, key=lambda v: v["precio"])
