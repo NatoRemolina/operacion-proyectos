@@ -357,4 +357,47 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 
 ## Fuera de este contrato (siguientes fases)
 
-Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
+Reproceso de una lectura fallida, usuarios, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
+
+## Proyectos
+
+Lo que hacen hoy las pantallas `/admin/proyectos` y `/proyectos/{id}`, con la misma regla (`app/servicios/proyectos.py`): administración ve, crea y edita todos; quien gestiona ve el tablero de los proyectos que gestiona; el resto no ve ninguno.
+
+```ts
+interface ProyectoResumen {
+  id: number; nombre: string; cliente: string | null; ciudad: string | null;
+  fecha_inicio: string; fecha_fin: string;   // "2026-12-15"
+  moneda: string;                            // "USD"
+  viajes: number; gastos: number;            // en cualquier estado
+  previsto_usd: Dinero;     // presupuesto de los viajes del proyecto que no se rechazaron
+  real_usd: Dinero;         // gastos aprobados (aprobado y aprobado_auto)
+  diferencia_usd: Dinero;   // real − previsto: positivo es sobrecosto
+}
+interface CategoriaProyecto { clave: "vuelo" | "hotel" | "alquiler_carro" | "viaticos"; nombre: string;
+                              previsto_usd: Dinero; real_usd: Dinero; diferencia_usd: Dinero }
+interface TableroProyecto {
+  proyecto: ProyectoResumen;
+  categorias: CategoriaProyecto[];   // solo las que tienen previsto o real; «viaticos» reúne lo que se paga en el viaje
+  previsto_usd: Dinero; real_usd: Dinero; diferencia_usd: Dinero;
+  en_revision: number;               // gastos del proyecto que esperan revisión
+  faltantes: string[];               // categorías con previsto y sin gasto aprobado
+  viajes: ViajeResumen[];            // los que no se rechazaron
+  gastos: (GastoResumen & { viajero: string | null })[];   // todos, por fecha del recibo
+  periodo_contable: { desde: string; hasta: string };    // el mes en curso que propone el Excel contable
+}
+```
+
+### `GET /proyectos`
+Parámetros `limite` y `cursor`. Administración, todos; quien gestiona, los suyos; colaborador: 403 `FORBIDDEN`. `{"items": ProyectoResumen[], "siguiente"}`, más reciente primero. Las cifras son las mismas del tablero.
+
+### `POST /proyectos`
+Solo administración (403 `FORBIDDEN`). Cuerpo JSON `{"nombre", "cliente", "ciudad", "fecha_inicio", "fecha_fin", "moneda"}` y `X-CSRF-Token`; un campo de más responde 422. 201 `ProyectoResumen`. Validación, con el campo en `fields` (422): `nombre` de 3 caracteres o más, fechas `AAAA-MM-DD` con `fecha_fin` no anterior a `fecha_inicio`, `moneda` de tres letras (se guarda en mayúsculas). Deja el evento `proyecto creado`.
+
+### `GET /proyectos/{id}`
+200 `TableroProyecto`. 404 si no existe o si la persona no lo gestiona ni es de administración. El Excel contable del proyecto es `GET /gastos/contable?proyecto_id={id}&desde&hasta` (ver arriba).
+
+### `POST /proyectos/{id}`
+Solo administración. Mismo cuerpo y validación que el alta; se mandan todos los campos. 200 `ProyectoResumen`. 404 si no existe. Deja el evento `proyecto editado`.
+
+### `GET /proyectos/{id}/exportar.csv`
+Los gastos del proyecto en CSV (`text/csv`, `Content-Disposition: attachment; filename="gastos_proyecto_<id>.csv"`): el mismo archivo que la pantalla actual. Mismo alcance que el tablero; lo ajeno responde 404.

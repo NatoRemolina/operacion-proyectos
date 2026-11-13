@@ -1325,6 +1325,355 @@
         }
       }
     },
+    "/api/v1/proyectos": {
+      "get": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Lista",
+        "description": "Administración, todos; quien gestiona, los suyos; el resto, 403. Más reciente primero.",
+        "operationId": "lista_api_v1_proyectos_get",
+        "parameters": [
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Cuántos elementos devolver (1 a 100).",
+              "default": 20,
+              "title": "Limite"
+            },
+            "description": "Cuántos elementos devolver (1 a 100)."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "El valor de `siguiente` de la página anterior.",
+              "title": "Cursor"
+            },
+            "description": "El valor de `siguiente` de la página anterior."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListaProyectos"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Crear",
+        "description": "Solo administración. Deja el evento `proyecto creado`.",
+        "operationId": "crear_api_v1_proyectos_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatosProyecto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProyectoResumen"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/proyectos/{id}": {
+      "get": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Tablero",
+        "description": "Previsto frente a real por categoría, viajes y gastos del proyecto. Lo ajeno responde 404.",
+        "operationId": "tablero_api_v1_proyectos__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableroProyecto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Editar",
+        "description": "Solo administración. Se mandan todos los campos. Deja el evento `proyecto editado`.",
+        "operationId": "editar_api_v1_proyectos__id__post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatosProyecto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProyectoResumen"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/proyectos/{id}/exportar.csv": {
+      "get": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Exportar",
+        "description": "El mismo CSV que la pantalla actual del proyecto. Lo ajeno responde 404.",
+        "operationId": "exportar_api_v1_proyectos__id__exportar_csv_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Los gastos del proyecto en CSV",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/resumen": {
       "get": {
         "tags": [
@@ -1888,6 +2237,61 @@
         "title": "CambioEstadoViaje",
         "description": "Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."
       },
+      "CategoriaProyecto": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "title": "Clave",
+            "description": "vuelo, hotel, alquiler_carro o viaticos (todo lo que se paga en el viaje)."
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "previsto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previsto Usd"
+          },
+          "real_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Real Usd"
+          },
+          "diferencia_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diferencia Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clave",
+          "nombre",
+          "previsto_usd",
+          "real_usd",
+          "diferencia_usd"
+        ],
+        "title": "CategoriaProyecto"
+      },
       "CorreoDelSoporte": {
         "properties": {
           "remitente": {
@@ -2221,6 +2625,58 @@
         ],
         "title": "Cotizacion"
       },
+      "DatosProyecto": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Nombre",
+            "description": "3 caracteres o más; se guardan hasta 120."
+          },
+          "cliente": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Cliente",
+            "description": "Opcional; vacío se guarda como null.",
+            "default": ""
+          },
+          "ciudad": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Ciudad",
+            "description": "Opcional; vacío se guarda como null.",
+            "default": ""
+          },
+          "fecha_inicio": {
+            "type": "string",
+            "maxLength": 10,
+            "title": "Fecha Inicio",
+            "description": "AAAA-MM-DD"
+          },
+          "fecha_fin": {
+            "type": "string",
+            "maxLength": 10,
+            "title": "Fecha Fin",
+            "description": "AAAA-MM-DD; no antes de `fecha_inicio`."
+          },
+          "moneda": {
+            "type": "string",
+            "maxLength": 3,
+            "title": "Moneda",
+            "description": "Código de tres letras (USD, EUR...); se guarda en mayúsculas.",
+            "default": "USD"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nombre",
+          "fecha_inicio",
+          "fecha_fin"
+        ],
+        "title": "DatosProyecto",
+        "description": "Alta o edición de un proyecto. Quién lo hace sale de la sesión."
+      },
       "DecisionCotizacion": {
         "properties": {
           "id": {
@@ -2539,6 +2995,143 @@
           "destino"
         ],
         "title": "FuenteAsistente"
+      },
+      "GastoDelProyecto": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViajeCodigo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "procesando",
+              "revision",
+              "aprobado_auto",
+              "aprobado",
+              "rechazado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          },
+          "propio": {
+            "type": "boolean",
+            "title": "Propio",
+            "description": "Es de la persona de la sesión: nadie revisa sus propios gastos.",
+            "default": false
+          },
+          "viajero": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viajero",
+            "description": "Nombre de quien viaja, si el gasto lo tiene."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "viaje",
+          "comercio",
+          "fecha",
+          "categoria",
+          "total",
+          "moneda",
+          "total_usd",
+          "estado",
+          "estado_texto",
+          "creado",
+          "viajero"
+        ],
+        "title": "GastoDelProyecto"
       },
       "GastoResumen": {
         "properties": {
@@ -3255,6 +3848,34 @@
         ],
         "title": "ListaLugares"
       },
+      "ListaProyectos": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProyectoResumen"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "siguiente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Siguiente"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "siguiente"
+        ],
+        "title": "ListaProyectos"
+      },
       "ListaViajes": {
         "properties": {
           "items": {
@@ -3965,6 +4586,25 @@
         ],
         "title": "OpcionVuelo"
       },
+      "PeriodoContable": {
+        "properties": {
+          "desde": {
+            "type": "string",
+            "title": "Desde",
+            "description": "Primer día del mes en curso (hora de Nueva York): lo que propone el Excel contable."
+          },
+          "hasta": {
+            "type": "string",
+            "title": "Hasta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "desde",
+          "hasta"
+        ],
+        "title": "PeriodoContable"
+      },
       "Persona": {
         "properties": {
           "id": {
@@ -4092,6 +4732,114 @@
           "para_otra_persona"
         ],
         "title": "ProyectoOpcion"
+      },
+      "ProyectoResumen": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "cliente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cliente"
+          },
+          "ciudad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ciudad"
+          },
+          "fecha_inicio": {
+            "type": "string",
+            "title": "Fecha Inicio"
+          },
+          "fecha_fin": {
+            "type": "string",
+            "title": "Fecha Fin"
+          },
+          "moneda": {
+            "type": "string",
+            "title": "Moneda"
+          },
+          "viajes": {
+            "type": "integer",
+            "title": "Viajes",
+            "description": "Viajes del proyecto, en cualquier estado."
+          },
+          "gastos": {
+            "type": "integer",
+            "title": "Gastos",
+            "description": "Gastos del proyecto, en cualquier estado."
+          },
+          "previsto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previsto Usd",
+            "description": "Presupuesto de los viajes del proyecto que no se rechazaron."
+          },
+          "real_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Real Usd",
+            "description": "Gastos aprobados del proyecto."
+          },
+          "diferencia_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diferencia Usd",
+            "description": "Real menos previsto: positivo es sobrecosto."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre",
+          "cliente",
+          "ciudad",
+          "fecha_inicio",
+          "fecha_fin",
+          "moneda",
+          "viajes",
+          "gastos",
+          "previsto_usd",
+          "real_usd",
+          "diferencia_usd"
+        ],
+        "title": "ProyectoResumen"
       },
       "Razon": {
         "properties": {
@@ -4564,6 +5312,100 @@
           "csrf_token"
         ],
         "title": "Sesion"
+      },
+      "TableroProyecto": {
+        "properties": {
+          "proyecto": {
+            "$ref": "#/components/schemas/ProyectoResumen"
+          },
+          "categorias": {
+            "items": {
+              "$ref": "#/components/schemas/CategoriaProyecto"
+            },
+            "type": "array",
+            "title": "Categorias",
+            "description": "Solo las que tienen previsto o real."
+          },
+          "previsto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previsto Usd"
+          },
+          "real_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Real Usd"
+          },
+          "diferencia_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diferencia Usd"
+          },
+          "en_revision": {
+            "type": "integer",
+            "title": "En Revision",
+            "description": "Gastos del proyecto que esperan revisión."
+          },
+          "faltantes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Faltantes",
+            "description": "Categorías con previsto y sin ningún gasto aprobado todavía."
+          },
+          "viajes": {
+            "items": {
+              "$ref": "#/components/schemas/ViajeResumen"
+            },
+            "type": "array",
+            "title": "Viajes",
+            "description": "Viajes del proyecto que no se rechazaron."
+          },
+          "gastos": {
+            "items": {
+              "$ref": "#/components/schemas/GastoDelProyecto"
+            },
+            "type": "array",
+            "title": "Gastos",
+            "description": "Todos los gastos del proyecto, por fecha del recibo."
+          },
+          "periodo_contable": {
+            "$ref": "#/components/schemas/PeriodoContable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "proyecto",
+          "categorias",
+          "previsto_usd",
+          "real_usd",
+          "diferencia_usd",
+          "en_revision",
+          "faltantes",
+          "viajes",
+          "gastos",
+          "periodo_contable"
+        ],
+        "title": "TableroProyecto"
       },
       "Tarifa": {
         "properties": {
