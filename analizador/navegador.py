@@ -30,6 +30,9 @@ LISTO = re.compile(r"Booking options[\s\S]*\$\d|(Returning|Departing) flights[\s
 PARAMETROS_FIJOS = {"hl": "en", "gl": "us", "curr": "USD"}   # lo que sabe leer el lector: inglés, EE. UU. y dólares
 RESERVA = re.compile(r"Booking options[\s\S]*\$\d")
 
+OTRO_SITIO = "la página llevó a otro sitio"
+OTRA_PESTANA = "la página quiso abrir otra pestaña"
+
 _turno = threading.Lock()
 
 
@@ -81,22 +84,56 @@ def _con_parametros_fijos(url: str) -> str:
 def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int, presupuesto_ms: int) -> dict:
     from playwright.sync_api import Error, sync_playwright
 
-    fuera = {}
+    fuera, abiertas = {}, []
 
     def solo_lista_blanca(ruta):
+        from playwright.sync_api import Error
+
         pedido = ruta.request
-        if pedido.is_navigation_request() and pedido.frame.parent_frame is None:
-            destino = pedido.url
-            if not destino.startswith(("https://www.google.com/", "https://google.com/")):
-                fuera["url"] = destino
-                return ruta.abort()
+        if not pedido.is_navigation_request():
+            return ruta.fallback()
+        try:
+            principal = pedido.frame.parent_frame is None
+        except Error:
+            return ruta.abort()   # la primera navegación de una pestaña nueva aún no tiene marco: no carga nada
+        if principal and not lector.url_navegable(pedido.url):
+            fuera.setdefault("url", pedido.url)
+            return ruta.abort()
         return ruta.fallback()
 
     with sync_playwright() as p:
         navegador = p.chromium.launch(args=ARGUMENTOS)
         try:
             contexto = navegador.new_context(user_agent=AGENTE, locale="en-US", viewport={"width": 1280, "height": 1600})
+            # la lista blanca vale para todo el contexto: también una pestaña que la página intente abrir
+            contexto.route("**/*", solo_lista_blanca)
             pagina = contexto.new_page()
+
+            def otra_pestana(nueva):
+                abiertas.append(nueva.url)
+                nueva.close()
+
+            def navegacion(pedido):
+                # una redirección del servidor no pasa por la ruta: se anota aquí para no leer ni capturar otro sitio
+                try:
+                    principal = pedido.is_navigation_request() and pedido.frame == pagina.main_frame
+                except Exception:  # noqa: BLE001 (un pedido sin marco no es una navegación de la pestaña)
+                    principal = False
+                if principal and not lector.url_navegable(pedido.url):
+                    fuera.setdefault("url", pedido.url)
+
+            contexto.on("page", otra_pestana)
+            pagina.on("request", navegacion)
+
+            def salida() -> str | None:
+                """Por qué ya no se puede leer: la pestaña salió de la lista blanca o la página abrió otra."""
+                if abiertas:
+                    return OTRA_PESTANA
+                destino = fuera.get("url") or ("" if lector.url_navegable(pagina.url) else pagina.url)
+                if not destino:
+                    return None
+                return lector.CONSENTIMIENTO if "consent." in destino else \
+                    lector.VERIFICACION if "/sorry/" in destino else OTRO_SITIO
 
             def restante() -> int:
                 """Lo que queda del plazo total; cada paso del navegador lo usa como su tiempo máximo."""
@@ -105,20 +142,21 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 return quedan
 
             restante()
-            pagina.route("**/*", solo_lista_blanca)
             if servir:
-                servir(pagina)   # registrado después: atiende primero
+                servir(pagina)   # las rutas de la pestaña atienden antes que las del contexto
             try:
                 pagina.goto(url, wait_until="domcontentloaded", timeout=restante())
             except Error as e:
-                motivo = lector.CONSENTIMIENTO if "consent." in fuera.get("url", "") else \
-                    f"no se pudo abrir la página ({_primera_linea(e)})"
-                return _resultado("fallido", inicio, motivo, url_final=fuera.get("url") or pagina.url)
+                motivo = (fuera or abiertas) and salida() or f"no se pudo abrir la página ({_primera_linea(e)})"
+                return _resultado("fallido", inicio, motivo)
+            if salida():
+                return _resultado("fallido", inicio, salida())
             texto = _esperar(pagina, LISTO, min(espera_ms, restante()))
+            if salida():
+                return _resultado("fallido", inicio, salida())
             if texto is None:
-                motivo = lector.CONSENTIMIENTO if "consent." in fuera.get("url", "") else \
-                    "la página tardó demasiado en mostrar los precios"
-                return _resultado("fallido", inicio, motivo, url_final=pagina.url, **_evidencia(pagina))
+                return _resultado("fallido", inicio, "la página tardó demasiado en mostrar los precios", url_final=pagina.url,
+                                  **_evidencia(pagina))
             motivo = lector.bloqueo(pagina.url, texto)
             if motivo:   # una verificación no se fotografía: no se guarda nada de ella
                 return _resultado("fallido", inicio, motivo, url_final=pagina.url)
@@ -128,6 +166,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 if regreso:
                     # sin opciones de reserva a tiempo se lee lo que haya: `avisos` dirá que no las hubo
                     texto = _esperar(pagina, RESERVA, min(espera_ms, restante())) or pagina.inner_text("body")
+            if salida():   # antes de leer y de capturar: nunca otro sitio ni una pestaña que se abrió
+                return _resultado("fallido", inicio, salida())
             restante()
             etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
             datos = lector.leer(texto, etiquetas)
@@ -136,6 +176,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 # para saber qué no se reconoció: unas pocas etiquetas con precio, sin datos de la persona
                 datos["muestra_etiquetas"] = [e[:300] for e in etiquetas if e and "dollar" in e][:3]
             captura = pagina.screenshot(full_page=True, type="png", timeout=restante())
+            if salida():
+                return _resultado("fallido", inicio, salida())
             return _resultado("listo", inicio, datos=datos, url_final=pagina.url,
                               captura_png_b64=base64.b64encode(captura).decode())
         finally:

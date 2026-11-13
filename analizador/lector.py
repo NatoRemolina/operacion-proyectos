@@ -42,6 +42,20 @@ def url_permitida(url) -> bool:
             and p.path.startswith("/travel/flights"))
 
 
+def url_navegable(url) -> bool:
+    """Adónde puede ir la pestaña mientras lee: `https://www.google.com/travel/...` (búsqueda, lista y reserva). La
+    verificación (`/sorry/`) y el aviso de condiciones (`consent.google.com`) quedan fuera: se detectan, nunca se abren."""
+    if not isinstance(url, str):
+        return False
+    try:
+        p = urlsplit(url)
+        puerto = p.port
+    except ValueError:
+        return False
+    return (p.scheme == "https" and p.hostname in DOMINIOS and puerto is None and not p.username and not p.password
+            and p.path.startswith("/travel/"))
+
+
 def bloqueo(url_final: str, texto: str) -> str | None:
     """Por qué no se puede leer la página: una verificación o un aviso de condiciones. Nunca se resuelven."""
     bajo = f"{url_final}\n{texto[:4000]}".lower()

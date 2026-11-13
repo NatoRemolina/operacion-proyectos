@@ -83,3 +83,12 @@ def test_reconoce_las_horas_con_el_espacio_fino_de_chromium():
     assert (o["precio"], o["sale"], o["llega"]) == (564, "6:00 AM", "1:43 PM") and o["etiqueta"] == etiqueta
     d = lector.leer("Selected flights\nTue, Dec 8\n9:48\u202fAM\n – \n12:24\u202fPM\nAmerican\nBooking options\n", [])
     assert (d["tramos"][0]["sale"], d["tramos"][0]["llega"], d["tramos"][0]["aerolinea"]) == ("9:48 AM", "12:24 PM", "American")
+
+
+def test_la_pestana_solo_navega_por_google_travel():
+    assert lector.url_navegable("https://www.google.com/travel/flights/booking?tfs=x")
+    assert lector.url_navegable("https://www.google.com/travel/search?q=hotels")
+    for url in ("https://www.google.com/sorry/index", "https://consent.google.com/m", "https://www.google.com/search?q=x",
+                "https://otro.example/travel/flights", "http://www.google.com/travel/flights", "chrome-error://chromewebdata/",
+                "https://www.google.com:444/travel/flights", None):
+        assert not lector.url_navegable(url), url

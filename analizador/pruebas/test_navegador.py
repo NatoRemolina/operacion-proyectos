@@ -19,12 +19,16 @@ def _servir(paginas: dict[str, str], pedidos: list[str]):
     def registrar(pagina):
         def atender(ruta):
             url = ruta.request.url
-            pedidos.append(url)
             for inicio, archivo in paginas.items():
+                if url.startswith(inicio):
+                    pedidos.append(url)
+                if url.startswith(inicio) and archivo.startswith("302 "):
+                    return ruta.fulfill(status=302, headers={"Location": archivo.removeprefix("302 ")})
                 if url.startswith(inicio):
                     return ruta.fulfill(status=200, content_type="text/html; charset=utf-8",
                                         body=(EJEMPLO / archivo).read_text(encoding="utf-8"))
-            return ruta.abort()
+            # una navegación desconocida pasa a la lista blanca del analizador; lo demás se corta (sin red)
+            return ruta.fallback() if ruta.request.is_navigation_request() else ruta.abort()
         pagina.route("**/*", atender)
     return registrar
 
@@ -96,6 +100,23 @@ def test_toda_la_lectura_respeta_el_plazo_total():
                            presupuesto_ms=3_000)
     assert (r["estado"], r["motivo"]) == ("fallido", "la página tardó demasiado en mostrar los precios")
     assert time.monotonic() - inicio < 8   # el arranque del navegador incluido
+
+
+# ---------- ronda 1 · punto 2: lista blanca completa ----------
+@pytest.mark.parametrize("paginas, motivo", [
+    ({"https://www.google.com/travel/flights?": "302 https://otro.example/oferta"}, navegador.OTRO_SITIO),
+    ({"https://www.google.com/travel/flights?": "a_otro_sitio.html"}, navegador.OTRO_SITIO),
+    ({"https://www.google.com/travel/flights?": "302 https://www.google.com/search?q=vuelos"}, navegador.OTRO_SITIO),
+    ({"https://www.google.com/travel/flights?": "consentimiento.html"}, lector.CONSENTIMIENTO),
+    ({"https://www.google.com/travel/flights/reserva": "reserva.html",
+      "https://www.google.com/travel/flights?": "regresos_otra_pestana.html"}, navegador.OTRA_PESTANA),
+])
+def test_salir_de_la_lista_blanca_termina_en_fallido_sin_captura(paginas, motivo):
+    pedidos = []
+    r = navegador.analizar(URL, servir=_servir(paginas, pedidos), espera_ms=4000)
+    assert (r["estado"], r["motivo"]) == ("fallido", motivo), r
+    assert r["captura_png_b64"] is None and r["datos"] is None
+    assert all(p.startswith("https://www.google.com/travel/") for p in pedidos)   # solo se sirvió lo de la lista blanca
 
 
 def test_una_verificacion_no_se_resuelve():
