@@ -57,24 +57,22 @@ describe("Marco privado", () => {
       "Cotizar viaje",
       "Viajes",
       "Gastos",
+      "Buzón de correo (simulado)",
       "KPIs",
       "Monitoreo",
       "Vuelos",
       "Reglas y supuestos",
       "Proyectos",
       "Usuarios",
+      "Mi cuenta",
     ]);
   });
 
-  it("las pantallas de administración van en su propia sección y se abren en otra pestaña, sin perder la web", () => {
+  it("sin pantallas anteriores no hay sección «Administración» ni enlaces a otra pestaña", () => {
     marco({ permiso: "admin" });
     const barra = barraLateral();
-    expect(within(barra).getByText("Administración")).toBeInTheDocument();
-    const proyectos = within(barra).getByRole("link", { name: /^Proyectos/ });
-    expect(proyectos).toHaveAttribute("target", "_blank");
-    expect(proyectos).toHaveAttribute("rel", "noopener noreferrer");
-    expect(proyectos).toHaveAccessibleName("Proyectos (se abre en otra pestaña)");
-    expect(within(barra).getByRole("link", { name: "Viajes" })).not.toHaveAttribute("target");
+    expect(within(barra).queryByText("Se abre en otra pestaña y pide ingresar aparte.")).not.toBeInTheDocument();
+    expect(within(barra).getAllByRole("link").every((a) => !a.hasAttribute("target"))).toBe(true);
   });
 
   it("marca la página actual, también en sus subpáginas", () => {
@@ -83,12 +81,10 @@ describe("Marco privado", () => {
     expect(within(barraLateral()).getByRole("link", { name: "Viajes" })).not.toHaveAttribute("aria-current");
   });
 
-  it("las pantallas actuales se enlazan con su dirección completa", () => {
+  it("Proyectos y Usuarios se enlazan dentro de la web", () => {
     marco({ permiso: "admin" });
-    expect(within(barraLateral()).getByRole("link", { name: /^Usuarios/ })).toHaveAttribute(
-      "href",
-      "http://127.0.0.1:8000/admin/usuarios",
-    );
+    expect(within(barraLateral()).getByRole("link", { name: "Usuarios" })).toHaveAttribute("href", "/usuarios");
+    expect(within(barraLateral()).getByRole("link", { name: "Proyectos" })).toHaveAttribute("href", "/proyectos");
   });
 
   it("dice el permiso y, solo cuando corresponde, «Entorno de demostración»", () => {

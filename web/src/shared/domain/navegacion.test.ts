@@ -8,14 +8,15 @@ function textos(permiso: Parameters<typeof menuPara>[0]) {
 }
 
 describe("menú por permiso", () => {
-  it("administración ve el resumen, cotizar, viajes, gastos, proyectos y usuarios, en ese orden", () => {
-    expect(textos("admin")).toEqual(["Resumen", "Cotizar viaje", "Viajes", "Gastos", "KPIs", "Monitoreo", "Vuelos", "Reglas y supuestos", "Proyectos", "Usuarios"]);
+  it("administración ve todas las pantallas en la web, en este orden", () => {
+    expect(textos("admin")).toEqual([
+      "Resumen", "Cotizar viaje", "Viajes", "Gastos", "Buzón de correo (simulado)", "KPIs", "Monitoreo", "Vuelos", "Reglas y supuestos", "Proyectos", "Usuarios", "Mi cuenta",
+    ]);
   });
 
-  it("gestor y colaborador no ven el resumen ni las pantallas de administración", () => {
-    for (const permiso of ["gestor", "colaborador"] as const) {
-      expect(textos(permiso)).toEqual(["Cotizar viaje", "Viajes", "Gastos"]);
-    }
+  it("el gestor ve sus proyectos; gestor y colaborador no ven las pantallas de administración", () => {
+    expect(textos("gestor")).toEqual(["Cotizar viaje", "Viajes", "Gastos", "Proyectos", "Mi cuenta"]);
+    expect(textos("colaborador")).toEqual(["Cotizar viaje", "Viajes", "Gastos", "Mi cuenta"]);
   });
 
   it("«Cotizar viaje» lleva a /cotizar para todos los permisos", () => {
@@ -24,22 +25,13 @@ describe("menú por permiso", () => {
     }
   });
 
-  it("proyectos y usuarios enlazan a las pantallas actuales de la plataforma, marcadas como externas", () => {
-    const menu = menuPara("admin", PLATAFORMA);
-    expect(menu.find((e) => e.texto === "Proyectos")).toMatchObject({
-      href: "http://127.0.0.1:8000/admin/proyectos",
-      externa: true,
-    });
-    expect(menu.find((e) => e.texto === "Usuarios")).toMatchObject({
-      href: "http://127.0.0.1:8000/admin/usuarios",
-      externa: true,
-    });
-    expect(menu.find((e) => e.texto === "Viajes")?.externa).toBe(false);
-  });
-
-  it("sin dirección de la plataforma no se ofrecen las pantallas actuales (serían enlaces rotos)", () => {
-    expect(textos("admin")).toContain("Usuarios");
-    expect(menuPara("admin", "").map((e) => e.texto)).toEqual(["Resumen", "Cotizar viaje", "Viajes", "Gastos", "KPIs", "Monitoreo", "Vuelos", "Reglas y supuestos"]);
+  it("ninguna entrada lleva a las pantallas anteriores: todo está en la web", () => {
+    for (const permiso of ["admin", "gestor", "colaborador"] as const) {
+      const menu = menuPara(permiso, PLATAFORMA);
+      expect(menu.every((e) => !e.externa && e.href.startsWith("/"))).toBe(true);
+    }
+    expect(menuPara("admin", PLATAFORMA).find((e) => e.texto === "Usuarios")?.href).toBe("/usuarios");
+    expect(menuPara("admin", "").map((e) => e.texto)).toEqual(textos("admin"));
   });
 
   it("a lo sumo cuatro atajos para la barra inferior del celular", () => {

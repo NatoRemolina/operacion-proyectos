@@ -39,13 +39,14 @@ const MENU: readonly Declaracion[] = [
   { ruta: "/cotizar", texto: "Cotizar viaje", corto: "Cotizar", permisos: TODOS, atajo: true },
   { ruta: "/viajes", texto: "Viajes", corto: "Viajes", permisos: TODOS, atajo: true },
   { ruta: "/gastos", texto: "Gastos", corto: "Gastos", permisos: TODOS, atajo: true },
+  { ruta: "/gastos/buzon", texto: "Buzón de correo (simulado)", corto: "Buzón", permisos: ["admin"] },
   { ruta: "/kpis", texto: "KPIs", corto: "KPIs", permisos: ["admin"] },
   { ruta: "/monitoreo", texto: "Monitoreo", corto: "Monitoreo", permisos: ["admin"] },
   { ruta: "/vuelos", texto: "Vuelos", corto: "Vuelos", permisos: ["admin"] },
   { ruta: "/reglas", texto: "Reglas y supuestos", corto: "Reglas", permisos: ["admin"] },
-  // Mientras no existan en esta web, llevan a las pantallas actuales de la plataforma.
-  { ruta: "/admin/proyectos", texto: "Proyectos", corto: "Proyectos", permisos: ["admin"], externa: true },
-  { ruta: "/admin/usuarios", texto: "Usuarios", corto: "Usuarios", permisos: ["admin"], externa: true },
+  { ruta: "/proyectos", texto: "Proyectos", corto: "Proyectos", permisos: ["admin", "gestor"] },
+  { ruta: "/usuarios", texto: "Usuarios", corto: "Usuarios", permisos: ["admin"] },
+  { ruta: "/mi-cuenta", texto: "Mi cuenta", corto: "Cuenta", permisos: TODOS },
 ];
 
 /**

@@ -35,13 +35,10 @@ async function barraPara(persona: Persona, demo = false) {
 }
 
 describe("Zona privada", () => {
-  it("administración ve el resumen y las pantallas actuales en el menú", async () => {
+  it("administración ve el resumen y Proyectos dentro de la web", async () => {
     const barra = await barraPara(personaDePrueba({ rol: "admin" }));
     expect(within(barra).getByRole("link", { name: "Resumen" })).toHaveAttribute("href", "/resumen");
-    expect(within(barra).getByRole("link", { name: /^Proyectos/ })).toHaveAttribute(
-      "href",
-      "http://127.0.0.1:8000/admin/proyectos",
-    );
+    expect(within(barra).getByRole("link", { name: "Proyectos" })).toHaveAttribute("href", "/proyectos");
   });
 
   it("el gestor no ve el resumen y sí «Cotizar viaje»", async () => {
