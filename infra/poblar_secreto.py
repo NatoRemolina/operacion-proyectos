@@ -7,7 +7,8 @@ Uso, desde la raíz del repositorio:
 
 - El archivo de origen es obligatorio: nunca se lee `.env` por omisión, que en desarrollo apunta a la base de pruebas.
 - El destino es siempre producción, así que se detiene si la base o el almacenamiento son el proyecto de pruebas de
-  Supabase, venga del archivo o de lo que ya tenía el secreto.
+  Supabase, venga del archivo o de lo que ya tenía el secreto. Cuál es ese proyecto lo dice el archivo local
+  `.env.supabase-pruebas` (de esta carpeta o de la principal); de él solo se toma el identificador, y sin él no sigue.
 - Fusiona: lee el secreto actual, reemplaza las claves que el archivo trae con valor y conserva las demás (una clave
   puesta a mano no se pierde). Retira APP_CLAVE, que nadie lee.
 - Nunca imprime valores, solo nombres de claves. La función lee el secreto al arrancar: el cambio entra en las
@@ -26,10 +27,12 @@ RAIZ = Path(__file__).resolve().parent.parent
 if str(RAIZ) not in sys.path:   # al correrlo como `python infra/poblar_secreto.py`
     sys.path.insert(0, str(RAIZ))
 from datos.importar_entorno import _proyectos as proyectos_de  # noqa: E402
+from datos.importar_entorno import _raiz_principal  # noqa: E402
 
 PILA = "OperacionBase"
 REGION = "us-east-1"
-PROYECTO_PRUEBAS = "hqnfytcalpbjylkujhbo"   # Supabase de pruebas: nunca es producción
+# Describen el proyecto de pruebas de Supabase, que nunca es producción. Están fuera de git: el identificador no se versiona
+ARCHIVOS_PRUEBAS = [carpeta / ".env.supabase-pruebas" for carpeta in dict.fromkeys((RAIZ, _raiz_principal()))]
 RETIRADAS = ("APP_CLAVE",)
 # Lo que la función lee del secreto (app/config.py y los servicios), aparte de DATABASE_URL, que se arma abajo.
 # tests/test_poblar_secreto.py comprueba que toda variable que lee la aplicación esté aquí o tenga su razón para no estar.
@@ -72,10 +75,22 @@ def leer(archivo: str) -> dict:
     return valores
 
 
-def comprobar(valores: dict, donde: str):
+def proyectos_de_pruebas() -> set[str]:
+    """Los identificadores del proyecto de pruebas, sacados de su archivo local. No se imprime nada de él."""
+    for archivo in ARCHIVOS_PRUEBAS:
+        if Path(archivo).is_file():
+            v = dotenv_values(archivo)
+            proyectos = proyectos_de(v.get("DATABASE_URL") or "") | proyectos_de(v.get("SUPABASE_URL") or "")
+            if proyectos:
+                return proyectos
+    sys.exit("No se encontró .env.supabase-pruebas (en esta carpeta ni en la principal): sin él no se puede comprobar que "
+             "el destino no sea el proyecto de pruebas. No se cambió nada.")
+
+
+def comprobar(valores: dict, donde: str, pruebas: set[str]):
     """El destino es producción: ni la base ni el almacenamiento pueden ser el proyecto de pruebas."""
     for clave in ("DATABASE_URL", "SUPABASE_URL"):
-        if PROYECTO_PRUEBAS in proyectos_de(valores.get(clave, "")):
+        if proyectos_de(valores.get(clave, "")) & pruebas:
             sys.exit(f"{clave} de {donde} es el proyecto de pruebas de Supabase: no se sube a producción. No se cambió nada.")
 
 
@@ -103,7 +118,8 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     x = a.parse_args(argv)
 
     valores = leer(x.env)
-    comprobar(valores, x.env)
+    pruebas = proyectos_de_pruebas()
+    comprobar(valores, x.env, pruebas)
     comprobar_telegram(valores, x.env, x.sin_telegram)
     if x.ensayo:
         print(f"Ensayo: subiría {len(valores)} claves desde {x.env}: {', '.join(sorted(valores))}.")
@@ -124,7 +140,7 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     cliente = sesion.client("secretsmanager", region_name=REGION)
     antes = _actual(cliente, arn)
     final = {k: v for k, v in {**antes, **valores}.items() if k not in RETIRADAS}
-    comprobar(final, f"el secreto de {PILA}")
+    comprobar(final, f"el secreto de {PILA}", pruebas)
     faltan = [k for k in OBLIGATORIAS if not final.get(k)]
     if faltan:
         sys.exit(f"Faltan {', '.join(faltan)}: la función no arrancaría. No se cambió nada.")

@@ -1,5 +1,6 @@
 """infra/poblar_secreto.py (H-35): archivo de origen explícito, nunca la base de pruebas, fusión con el secreto
-existente y ensayo sin valores. AWS es siempre un doble: ninguna prueba sale del equipo."""
+existente y ensayo sin valores. AWS es siempre un doble: ninguna prueba sale del equipo, y el archivo que dice cuál es
+el proyecto de pruebas es uno inventado (nunca el .env.supabase-pruebas de la carpeta principal)."""
 import json
 import re
 from pathlib import Path
@@ -11,8 +12,17 @@ from infra import poblar_secreto as ps
 
 RAIZ = Path(__file__).resolve().parent.parent
 ARN = "arn:aws:secretsmanager:us-east-1:000000000000:secret:Configuracion-abc123"
-PRUEBAS = ps.PROYECTO_PRUEBAS
+PRUEBAS = "pruebasinventadoabcde"
 PRODUCCION = "produccionabcdefghijk"
+
+
+@pytest.fixture(autouse=True)
+def proyecto_de_pruebas(tmp_path, monkeypatch):
+    """El proyecto de pruebas sale de un archivo local; aquí, de uno inventado."""
+    archivo = tmp_path / ".env.supabase-pruebas"
+    archivo.write_text(f"DATABASE_URL=postgresql://postgres.{PRUEBAS}:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:5432/postgres\n")
+    monkeypatch.setattr(ps, "ARCHIVOS_PRUEBAS", [tmp_path / "no-esta" / ".env.supabase-pruebas", archivo])
+    return archivo
 
 # Lo que la aplicación lee del entorno y no va en el secreto, con su razón
 FUERA_DEL_SECRETO = {
@@ -101,6 +111,19 @@ def test_tampoco_si_el_proyecto_de_pruebas_ya_estaba_en_el_secreto(tmp_path):
     with pytest.raises(SystemExit, match="pruebas"):
         ps.main(["--env", str(ruta), "--sin-telegram"], sesion=nube)
     assert nube.subido is None
+
+
+def test_sin_el_archivo_del_proyecto_de_pruebas_no_se_sigue(tmp_path, monkeypatch):
+    monkeypatch.setattr(ps, "ARCHIVOS_PRUEBAS", [tmp_path / "no-esta" / ".env.supabase-pruebas"])
+    nube = Nube(actual={})
+    with pytest.raises(SystemExit, match="supabase-pruebas"):
+        ps.main(["--env", _archivo(tmp_path), "--ensayo"], sesion=nube)
+    assert nube.clientes == []
+
+
+def test_el_identificador_de_pruebas_no_esta_en_el_codigo():
+    assert not hasattr(ps, "PROYECTO_PRUEBAS")
+    assert re.search(r"[a-z]{20}", (RAIZ / "infra" / "poblar_secreto.py").read_text()) is None
 
 
 def test_fusiona_con_lo_que_ya_tiene_el_secreto_y_retira_app_clave(tmp_path):
