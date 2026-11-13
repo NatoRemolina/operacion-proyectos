@@ -391,3 +391,36 @@ interface DatosRevision {
 
 ### `GET /gastos/{id}/justificaciones/{jid}/audio`
 La nota de voz de una justificación, tal como llegó (`audio/ogg`, `audio/mpeg` o `audio/mp4`), con `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. Se oye si se ve el gasto; si no, o si la justificación es de otro gasto o es escrita, 404.
+
+## Reglas y supuestos
+
+Solo administración (403 `FORBIDDEN` para colaborador y gestor). La lógica es la de `app/servicios/reglas.py`, la misma que la pantalla de administración `/reglas`.
+
+### `GET /reglas`
+200 `CatalogoReglas`:
+
+```ts
+interface Regla {
+  id: number; ambito: string; entidad: string | null; tarifa: string | null; clave: string;
+  valor: string;                       // siempre texto; `numerica` dice si es un número
+  numerica: boolean;
+  nota: string | null; fuente: string | null;     // fuente: una dirección http(s) o la descripción de dónde sale
+  confianza: string | null;            // oficial, buscador, secundaria, sin verificar, supuesto
+  verificado: string | null;           // AAAA-MM-DD
+}
+interface CatalogoReglas {
+  grupos: { clave: string; titulo: string; reglas: Regla[] }[];
+  membresias: { id: number; titular: string; de_empresa: boolean; programa: string | null;
+                entidad: string | null; estatus: string | null; ejemplo: boolean }[];   // solo lectura
+}
+```
+
+- Grupos, en este orden si existen: `aerolinea` (Aerolíneas), `hotel` (Programas de hotel), `bateria` (Baterías), `supuesto` (Supuestos), `kpi` (Metas de los KPI), `cuenta_contable` (Cuentas contables: los supuestos `cuenta_contable_<categoría>`, que no se repiten entre los supuestos) y, al final, cualquier otro ámbito.
+- `ejemplo` en una membresía: dato inventado para la demostración; la web lo rotula «Dato de ejemplo».
+
+### `POST /reglas/{id}`
+Cuerpo JSON `{"valor": "0.25"}` (hasta 500 caracteres) y `X-CSRF-Token`. 200 `Regla` con el valor nuevo y `verificado` de hoy.
+
+- Una regla numérica sigue siendo numérica: se acepta la coma decimal («0,25» se guarda «0.25»); un texto, un negativo, un vacío o un valor no finito responden 422 `VALIDATION_ERROR` con `fields.valor` y no se guarda nada.
+- Una regla de texto guarda el texto sin espacios al principio ni al final.
+- Deja el evento «regla editada» con el valor anterior y el nuevo. 404 si la regla no existe.

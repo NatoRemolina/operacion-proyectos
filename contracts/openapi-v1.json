@@ -1464,6 +1464,131 @@
         }
       }
     },
+    "/api/v1/reglas": {
+      "get": {
+        "tags": [
+          "reglas"
+        ],
+        "summary": "Catalogo",
+        "description": "Las reglas agrupadas por ámbito (aerolíneas, programas de hotel, baterías, supuestos, metas de los KPI, cuentas\ncontables y lo demás que exista) y las membresías de fidelización, en solo lectura.",
+        "operationId": "catalogo_api_v1_reglas_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogoReglas"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reglas/{id}": {
+      "post": {
+        "tags": [
+          "reglas"
+        ],
+        "summary": "Editar",
+        "description": "Cambia el valor de una regla. Una regla numérica sigue siendo numérica (422 si no). Deja el evento «regla editada».",
+        "operationId": "editar_api_v1_reglas__id__post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EdicionRegla"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Regla"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/resumen": {
       "get": {
         "tags": [
@@ -2026,6 +2151,31 @@
         ],
         "title": "CambioEstadoViaje",
         "description": "Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."
+      },
+      "CatalogoReglas": {
+        "properties": {
+          "grupos": {
+            "items": {
+              "$ref": "#/components/schemas/GrupoReglas"
+            },
+            "type": "array",
+            "title": "Grupos"
+          },
+          "membresias": {
+            "items": {
+              "$ref": "#/components/schemas/Membresia"
+            },
+            "type": "array",
+            "title": "Membresias",
+            "description": "Solo lectura."
+          }
+        },
+        "type": "object",
+        "required": [
+          "grupos",
+          "membresias"
+        ],
+        "title": "CatalogoReglas"
       },
       "Categoria": {
         "properties": {
@@ -2687,6 +2837,22 @@
         ],
         "title": "DetalleError"
       },
+      "EdicionRegla": {
+        "properties": {
+          "valor": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Valor",
+            "description": "El valor nuevo. Si la regla es numérica, un número de 0 en adelante (se acepta la coma decimal)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "valor"
+        ],
+        "title": "EdicionRegla"
+      },
       "Equipo": {
         "properties": {
           "nivel": {
@@ -3165,6 +3331,33 @@
           "motivo_rechazo"
         ],
         "title": "GastoRevisable"
+      },
+      "GrupoReglas": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "title": "Clave",
+            "description": "aerolinea, hotel, bateria, supuesto, kpi, cuenta_contable u otro ámbito."
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "reglas": {
+            "items": {
+              "$ref": "#/components/schemas/Regla"
+            },
+            "type": "array",
+            "title": "Reglas"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clave",
+          "titulo",
+          "reglas"
+        ],
+        "title": "GrupoReglas"
       },
       "Ingreso": {
         "properties": {
@@ -3842,6 +4035,73 @@
           "aeropuertos"
         ],
         "title": "LugarSugerido"
+      },
+      "Membresia": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "titular": {
+            "type": "string",
+            "title": "Titular",
+            "description": "Quien viaja, o «Empresa» si es la cuenta de la empresa."
+          },
+          "de_empresa": {
+            "type": "boolean",
+            "title": "De Empresa"
+          },
+          "programa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Programa"
+          },
+          "entidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entidad",
+            "description": "Dónde aplica (la aerolínea; en hoteles, el programa)."
+          },
+          "estatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estatus"
+          },
+          "ejemplo": {
+            "type": "boolean",
+            "title": "Ejemplo",
+            "description": "Dato inventado para la demostración: se rotula «Dato de ejemplo»."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "titular",
+          "de_empresa",
+          "programa",
+          "entidad",
+          "estatus",
+          "ejemplo"
+        ],
+        "title": "Membresia"
       },
       "NuevaCotizacion": {
         "properties": {
@@ -4546,6 +4806,117 @@
           "nombre"
         ],
         "title": "Referencia"
+      },
+      "Regla": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "ambito": {
+            "type": "string",
+            "title": "Ambito",
+            "description": "aerolinea, hotel, bateria, supuesto, kpi..."
+          },
+          "entidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entidad",
+            "description": "A quién aplica: la aerolínea o el programa de hotel; vacío si es general."
+          },
+          "tarifa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tarifa"
+          },
+          "clave": {
+            "type": "string",
+            "title": "Clave"
+          },
+          "valor": {
+            "type": "string",
+            "title": "Valor"
+          },
+          "numerica": {
+            "type": "boolean",
+            "title": "Numerica",
+            "description": "El valor es un número: al editarlo, debe seguir siéndolo."
+          },
+          "nota": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nota"
+          },
+          "fuente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fuente",
+            "description": "Una dirección (http...) o la descripción de dónde sale."
+          },
+          "confianza": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confianza",
+            "description": "oficial, buscador, secundaria, sin verificar o supuesto."
+          },
+          "verificado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verificado",
+            "description": "AAAA-MM-DD de la última verificación o edición."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ambito",
+          "entidad",
+          "tarifa",
+          "clave",
+          "valor",
+          "numerica",
+          "nota",
+          "fuente",
+          "confianza",
+          "verificado"
+        ],
+        "title": "Regla"
       },
       "ReglasCarretera": {
         "properties": {
