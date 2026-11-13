@@ -10,8 +10,10 @@ Cada aviso es un POST JSON con estas cabeceras:
 - `X-Inflight-Entrega`: id único de la entrega; se repite en los reintentos, para no procesar dos veces.
 - `X-Inflight-Firma`: `t=<segundos unix>,v1=<hex>`, donde hex = HMAC-SHA256(secreto, "<t>.<cuerpo tal cual llegó>").
 
-El cuerpo lleva lo mínimo (gasto, viaje, proyecto, fecha, comercio, total, moneda) y un enlace firmado al soporte que
-vence a los 15 minutos; descargarlo exige además una clave de servicio con `soportes:leer`.
+El cuerpo lleva el gasto (viaje, proyecto, persona, fecha, comercio, categoría, totales, estado y alertas), la lectura
+original del modelo (`lectura`, con número de factura, identificación tributaria y líneas de detalle; los números como
+texto) y un enlace firmado al soporte que vence a los 15 minutos; descargarlo exige además una clave de servicio con
+`soportes:leer`.
 
 Entrega: un fallo del destino nunca rompe el registro del gasto. Se intenta enseguida con un tiempo de espera corto;
 si falla, el aviso queda pendiente en `avisos_salientes` y se reintenta con espera creciente cuando se registra el
@@ -33,7 +35,7 @@ from sqlalchemy import Column, Integer, Text, UniqueConstraint
 
 from .. import config, db
 from . import dinero, eventos
-from .viajes import codigo_viaje
+from .viajes import codigo_persona, codigo_viaje
 
 registro = logging.getLogger(__name__)
 
@@ -109,19 +111,49 @@ def enlace_valido(gasto_id: int, vence: int | None, firma: str | None) -> str | 
 
 
 # ---------- cuerpo ----------
+def _importe(valor) -> str | None:
+    """Un número como texto con dos decimales («54.00»). Los números viajan como texto: Python y JavaScript no escriben
+    igual los decimales (5.0 frente a 5), y el nodo de n8n puede verificar la firma volviendo a serializar el JSON."""
+    try:
+        return f"{dinero.decimal(valor):.2f}"
+    except ValueError:   # vacío, ilegible o desmesurado: viaja vacío
+        return None
+
+
+def _lectura(extraido) -> dict | None:
+    """La lectura original del modelo (`gastos.extraido`), con los números como texto. None si la lectura falló."""
+    if not isinstance(extraido, dict):
+        return None
+    salida = {}
+    for clave, valor in extraido.items():
+        if clave == "lineas":
+            salida[clave] = [{"descripcion": linea.get("descripcion"), "cantidad": _importe(linea.get("cantidad")),
+                              "total": _importe(linea.get("total"))}
+                             for linea in (valor if isinstance(valor, list) else []) if isinstance(linea, dict)]
+        elif isinstance(valor, int | float) and not isinstance(valor, bool):
+            salida[clave] = _importe(valor)
+        else:
+            salida[clave] = valor
+    return salida
+
+
 def _cuerpo_gasto(gasto_id: int) -> dict | None:
-    g = db.uno("""select g.id, g.fecha, g.comercio, g.total, g.moneda, g.viaje_id, v.creado viaje_creado, p.nombre proyecto
+    g = db.uno("""select g.id, g.fecha, g.comercio, g.categoria, g.total, g.moneda, g.total_usd, g.estado, g.alertas, g.extraido,
+                         g.viaje_id, v.creado viaje_creado, coalesce(v.usuario_id, g.usuario_id) persona_id, p.nombre proyecto
                   from gastos g left join viajes v on v.id=g.viaje_id left join proyectos p on p.id=g.proyecto_id
                   where g.id=:i""", i=gasto_id)
     if not g:
         return None
     g["viaje"] = codigo_viaje({"id": g["viaje_id"], "creado": g["viaje_creado"]}) if g["viaje_id"] else None
-    try:
-        total = dinero.decimal(g["total"])
-    except ValueError:   # sin total leído o ilegible: el aviso sale igual, con el total vacío
-        total = None
+    alertas = db.de_json(g["alertas"], [])
     return {"gasto_id": g["id"], "viaje": g["viaje"], "proyecto": g["proyecto"], "fecha": g["fecha"],
-            "comercio": g["comercio"], "total": f"{total:.2f}" if total is not None else None, "moneda": g["moneda"]}
+            "comercio": g["comercio"], "total": _importe(g["total"]), "moneda": g["moneda"],
+            # Lo leído de la factura, para guardarlo en Drive y en la hoja de lecturas
+            "categoria": g["categoria"], "total_usd": _importe(g["total_usd"]), "estado": g["estado"],
+            "alertas": [str(a) for a in alertas] if isinstance(alertas, list) else [],
+            "persona": codigo_persona(g["persona_id"]) if g["persona_id"] else None,
+            "enlace_gasto": f"{url_publica()}/gastos/{g['id']}" if url_publica() else None,
+            "lectura": _lectura(db.de_json(g["extraido"], None))}
 
 
 def _serializar(datos: dict) -> bytes:

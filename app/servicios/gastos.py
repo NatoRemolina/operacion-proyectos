@@ -113,7 +113,7 @@ def registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, v
 
 
 def _sin_lectura(error: str) -> dict:
-    return {**{c: None for c in extraccion.CAMPOS}, "confianza": 0.0, "dudas": list(extraccion.CAMPOS),
+    return {**{c: None for c in extraccion.CAMPOS}, **extraccion.datos_de_factura({}), "confianza": 0.0, "dudas": list(extraccion.CAMPOS),
             "origen_dato": "sin datos", "error": error}
 
 
@@ -218,7 +218,7 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
             r["estado"] = "revision"
         # La lectura original tal cual, salvo NaN e infinito, que no son JSON válido: quedan vacíos
         original = {c: None if isinstance(x.get(c), float) and not math.isfinite(x[c]) else x.get(c) for c in extraccion.CAMPOS} \
-            | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
+            | extraccion.datos_de_factura(x) | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
         db.actualizar("gastos", gid, **{c: x[c] for c in extraccion.CAMPOS if c not in ("ciudad", *IMPORTES)},
                       **_importes_guardables(x),
                       confianza=x["confianza"],

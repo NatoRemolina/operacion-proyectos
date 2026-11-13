@@ -165,7 +165,10 @@ def test_el_aviso_va_firmado_y_su_enlace_descarga_el_soporte(cliente, anonimo, r
     datos = json.loads(cuerpo)
     assert datos["entrega"] == cabeceras["X-Inflight-Entrega"] and datos["gasto_id"] == gid
     assert set(datos) == {"evento", "entrega", "gasto_id", "viaje", "proyecto", "fecha", "comercio", "total", "moneda",
+                          "categoria", "total_usd", "estado", "alertas", "persona", "enlace_gasto", "lectura",
                           "enlace_soporte", "enlace_vence_en_segundos"}
+    assert datos["enlace_gasto"].endswith(f"/gastos/{gid}") and datos["estado"] == "revision"
+    assert datos["lectura"] is None   # la lectura de este archivo falló (no hay modelo ni lectura guardada)
     assert cuerpo == json.dumps(datos, ensure_ascii=False, separators=(",", ":")).encode()   # lo mismo que JSON.stringify
     _, clave = claves_servicio.crear("n8n", ["soportes:leer"])
     r = anonimo.get(_ruta(datos["enlace_soporte"]), headers={"X-Clave-Servicio": clave})
@@ -281,3 +284,53 @@ def test_emitir_firma_igual_cualquier_evento_del_catalogo(receptor, monkeypatch)
 
 def test_emitir_apagado_no_guarda_nada():
     assert avisos.emitir("gasto.registrado", {"gasto_id": 1}) is None
+
+
+# ---------- lo leído de cada factura viaja en el aviso ----------
+def _sin_decimales_crudos(valor) -> bool:
+    """Ningún número con decimales fuera de un texto: Python y JavaScript no los escriben igual."""
+    if isinstance(valor, float):
+        return False
+    if isinstance(valor, dict):
+        return all(_sin_decimales_crudos(v) for v in valor.values())
+    if isinstance(valor, list):
+        return all(_sin_decimales_crudos(v) for v in valor)
+    return True
+
+
+def test_el_aviso_lleva_la_lectura_de_la_factura(cliente, receptor, monkeypatch):
+    from app.servicios import extraccion
+
+    def leer(contenido, mime, nombre, entidad_id=None, uso="recibo"):
+        return {"comercio": "Hotel Andino", "fecha": "2026-12-09", "categoria": "alojamiento", "subtotal": 100.0,
+                "impuesto": 19.0, "propina": None, "total": 119.0, "moneda": "USD", "metodo_pago": "Visa",
+                "canal_reserva": "directo", "ciudad": "Medellín", "numero_factura": "FE-4471", "id_fiscal": "900.123.456-7",
+                "lineas": [{"descripcion": "Noche estándar", "cantidad": 1.0, "total": 100.0}],
+                "confianza": 1.0, "dudas": [], "origen_dato": "en vivo", "error": None}
+
+    monkeypatch.setattr(extraccion, "extraer", leer)
+    gid = _gasto_con_soporte(cliente, PNG + b"factura")
+    _, cuerpo = receptor.recibidos[-1]
+    datos = json.loads(cuerpo)
+    lectura = datos["lectura"]
+    assert datos["gasto_id"] == gid and datos["categoria"] == "alojamiento"
+    assert lectura["numero_factura"] == "FE-4471" and lectura["id_fiscal"] == "900.123.456-7"
+    assert lectura["lineas"] == [{"descripcion": "Noche estándar", "cantidad": "1.00", "total": "100.00"}]
+    assert lectura["total"] == "119.00" and lectura["confianza"] == "1.00" and lectura["ciudad"] == "Medellín"
+    assert _sin_decimales_crudos(datos)
+    assert cuerpo == json.dumps(datos, ensure_ascii=False, separators=(",", ":")).encode()
+    assert "isk_" not in cuerpo.decode() and "secreto" not in cuerpo.decode().lower()
+
+
+def test_la_lectura_guardada_conserva_los_datos_de_factura(cliente, monkeypatch):
+    from app.servicios import extraccion
+
+    def leer(contenido, mime, nombre, entidad_id=None, uso="recibo"):
+        base = {c: None for c in extraccion.CAMPOS}
+        return base | {"comercio": "Taller", "total": 50.0, "moneda": "USD", "categoria": "otros", "numero_factura": "A-1",
+                       "id_fiscal": None, "lineas": [], "confianza": 0.9, "dudas": [], "origen_dato": "en vivo", "error": None}
+
+    monkeypatch.setattr(extraccion, "extraer", leer)
+    gid = _gasto_con_soporte(cliente, PNG + b"guardada")
+    extraido = db.de_json(db.uno("select extraido from gastos where id=:i", i=gid)["extraido"], {})
+    assert extraido["numero_factura"] == "A-1" and extraido["id_fiscal"] is None and extraido["lineas"] == []

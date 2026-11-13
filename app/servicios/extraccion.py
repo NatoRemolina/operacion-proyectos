@@ -8,6 +8,7 @@ import base64
 import email
 import hashlib
 import json
+import math
 import re
 from email import policy
 from html.parser import HTMLParser
@@ -19,6 +20,10 @@ from . import llm
 
 CAMPOS = ["comercio", "fecha", "categoria", "subtotal", "impuesto", "propina", "total",
           "moneda", "metodo_pago", "canal_reserva", "ciudad"]
+# Datos propios de una factura. No son columnas de `gastos`: viajan en la lectura original (`gastos.extraido`) y en el
+# aviso a n8n, que los guarda en Drive y en la hoja de lecturas.
+CAMPOS_FACTURA = ("numero_factura", "id_fiscal", "lineas")
+MAX_LINEAS = 30
 
 INSTRUCCION = f"""Eres un asistente de contabilidad. Lee el soporte de gasto adjunto y devuelve SOLO un objeto JSON con:
 - comercio: nombre del comercio o proveedor
@@ -34,6 +39,10 @@ INSTRUCCION = f"""Eres un asistente de contabilidad. Lee el soporte de gasto adj
 - confianza: número entre 0 y 1 con tu seguridad sobre el conjunto
 - dudas: lista de campos que no se leen con claridad (vacía si todo es legible)
 Si el soporte tiene varias páginas, lee todas las páginas: el total y los impuestos suelen ir en la última.
+- numero_factura: número o código de la factura o del recibo tal como aparece, o null
+- id_fiscal: identificación tributaria del proveedor tal como aparece (NIT, RUT, NIF, VAT o EIN), o null
+- lineas: las líneas de detalle, como lista de objetos {{descripcion, cantidad, total}} (como mucho {MAX_LINEAS}); lista vacía
+  si el soporte no las trae
 No inventes valores: si algo no se lee, usa null y nómbralo en dudas."""
 
 
@@ -179,6 +188,9 @@ ESQUEMA = {"type": "OBJECT", "properties": {
     "comercio": TEXTO, "fecha": TEXTO, "categoria": {"type": "STRING", "enum": list(config.CATEGORIAS)},
     "subtotal": NUMERO, "impuesto": NUMERO, "propina": NUMERO, "total": NUMERO, "moneda": TEXTO,
     "metodo_pago": TEXTO, "canal_reserva": TEXTO, "ciudad": TEXTO,
+    "numero_factura": TEXTO, "id_fiscal": TEXTO,
+    "lineas": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {
+        "descripcion": TEXTO, "cantidad": NUMERO, "total": NUMERO}}},
     "confianza": {"type": "NUMBER"}, "dudas": {"type": "ARRAY", "items": {"type": "STRING"}}},
     "required": ["comercio", "fecha", "categoria", "total", "moneda", "confianza", "dudas"]}
 
@@ -222,6 +234,31 @@ def _num(valor):
         return None
 
 
+def _finito(valor):
+    """Un importe o una cantidad de la factura: número finito con dos decimales, o None."""
+    n = _num(valor) if not isinstance(valor, bool) else None
+    return n if n is not None and math.isfinite(n) else None
+
+
+def _texto_corto(valor, largo: int) -> str | None:
+    texto = " ".join(str(valor).split()) if valor not in (None, "") else ""
+    return texto[:largo] or None
+
+
+def datos_de_factura(datos: dict) -> dict:
+    """Número, identificación tributaria y líneas de detalle, saneados. Lo que no tenga forma de línea se descarta."""
+    lineas = []
+    for linea in datos.get("lineas") if isinstance(datos.get("lineas"), list) else []:
+        if not isinstance(linea, dict):
+            continue
+        fila = {"descripcion": _texto_corto(linea.get("descripcion"), 120), "cantidad": _finito(linea.get("cantidad")),
+                "total": _finito(linea.get("total"))}
+        if fila["descripcion"] or fila["total"] is not None:
+            lineas.append(fila)
+    return {"numero_factura": _texto_corto(datos.get("numero_factura"), 60), "id_fiscal": _texto_corto(datos.get("id_fiscal"), 40),
+            "lineas": lineas[:MAX_LINEAS]}
+
+
 def extraer(contenido: bytes, mime: str, nombre: str, entidad_id: int | None = None, uso: str = "recibo") -> dict:
     """Devuelve {campos..., confianza, dudas, origen_dato, error}. `uso` etiqueta la llamada en `llamadas_modelo`."""
     activo = config.modo()["extraccion"] == "en vivo"
@@ -237,7 +274,7 @@ def extraer(contenido: bytes, mime: str, nombre: str, entidad_id: int | None = N
     if datos is None and not activo:
         datos = _guardado(contenido)  # solo cuando no hay modelo configurado; un fallo en vivo nunca cae aquí
     if not isinstance(datos, dict):
-        return {**{c: None for c in CAMPOS}, "confianza": 0.0, "dudas": list(CAMPOS), "origen_dato": "sin datos",
+        return {**{c: None for c in CAMPOS}, **datos_de_factura({}), "confianza": 0.0, "dudas": list(CAMPOS), "origen_dato": "sin datos",
                 "error": error or "Sin modelo de lenguaje configurado y sin lectura guardada para este archivo: completar a mano."}
     salida = {c: datos.get(c) for c in CAMPOS}
     for c in ("subtotal", "impuesto", "propina", "total"):
@@ -249,6 +286,7 @@ def extraer(contenido: bytes, mime: str, nombre: str, entidad_id: int | None = N
     if salida["categoria"] not in config.CATEGORIAS:
         salida["categoria"] = "otros"
     salida["moneda"] = (str(salida["moneda"] or "")).upper()[:3] or None
+    salida |= datos_de_factura(datos)
     try:
         salida["confianza"] = max(0.0, min(1.0, float(datos.get("confianza") or 0)))
     except (TypeError, ValueError):
