@@ -1,5 +1,5 @@
 {
-  "name": "Inflight · Soportes de gastos a Google Drive",
+  "name": "Inflight · Soportes y lecturas de gastos a Google Drive",
   "nodes": [
     {
       "id": "7cf604ec-a27f-5e70-a6c2-67e23eaffb93",
@@ -52,6 +52,12 @@
               "name": "carpeta_raiz",
               "type": "string",
               "value": "Inflight · Soportes"
+            },
+            {
+              "id": "a4",
+              "name": "hoja_lecturas",
+              "type": "string",
+              "value": "PEGAR_AQUI_URL_DE_LA_HOJA_DE_LECTURAS"
             }
           ]
         },
@@ -73,7 +79,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Verifica el aviso de la plataforma antes de hacer nada con él: firma, hora, destino del enlace y repetidos.\n// El secreto sale de la variable de n8n INFLIGHT_WEBHOOK_SECRETO si existe; si no, del nodo «Configuración».\n// Nada de lo que sale de aquí lleva el secreto.\nconst crypto = require('crypto');\nconst entrada = $input.first();\nconst conf = entrada.json;\nconst salida = (estado, motivo, extra = {}) => [{ json: { estado, motivo, ...extra } }];\n\nlet secreto = '';\ntry { secreto = ($vars && $vars.INFLIGHT_WEBHOOK_SECRETO) || ''; } catch (e) { secreto = ''; }\nif (!secreto) secreto = String(conf.secreto_webhook || '');\nif (!secreto || secreto.startsWith('PEGAR_AQUI')) return salida('invalida', 'Falta configurar el secreto del aviso');\n\nconst cabeceras = conf.headers || {};\nconst partes = {};\nfor (const p of String(cabeceras['x-inflight-firma'] || '').split(',')) {\n  const i = p.indexOf('=');\n  if (i > 0) partes[p.slice(0, i).trim()] = p.slice(i + 1).trim();\n}\nconst t = Number(partes.t);\nif (!Number.isFinite(t) || !/^[0-9a-f]{64}$/.test(partes.v1 || '')) return salida('invalida', 'Falta la firma o no tiene el formato esperado');\nif (Math.abs(Date.now() / 1000 - t) > 300) return salida('invalida', 'La firma tiene más de 5 minutos');\n\n// El cuerpo tal cual llegó (opción «Raw Body» del Webhook). Si no estuviera, el JSON leído sirve: la plataforma\n// lo envía compacto, igual a JSON.stringify.\nlet crudo;\ntry { crudo = await this.helpers.getBinaryDataBuffer(0, 'data'); } catch (e) { crudo = null; }\nif (!crudo || !crudo.length) crudo = Buffer.from(JSON.stringify(conf.body), 'utf8');\n\nconst esperado = crypto.createHmac('sha256', secreto).update(Buffer.concat([Buffer.from(`${partes.t}.`, 'utf8'), crudo])).digest();\nconst recibido = Buffer.from(partes.v1, 'hex');\nif (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) return salida('invalida', 'La firma no coincide');\n\nlet datos;\ntry { datos = JSON.parse(crudo.toString('utf8')); } catch (e) { return salida('invalida', 'El cuerpo no es JSON'); }\nif (datos.evento !== 'gasto.registrado' || !datos.entrega || !datos.gasto_id) return salida('invalida', 'No es un aviso gasto.registrado');\n\n// La clave de servicio solo viaja a la plataforma: un enlace que apunte a otro sitio se rechaza\nconst base = String(conf.url_plataforma || '').replace(/\\/+$/, '');\nif (!base || !String(datos.enlace_soporte || '').startsWith(`${base}/api/v1/servicio/gastos/${datos.gasto_id}/soporte?`)) {\n  return salida('invalida', 'El enlace al soporte no apunta a la plataforma configurada');\n}\n\n// Una misma entrega no se procesa dos veces (la plataforma repite el id en sus reintentos)\nconst memoria = $getWorkflowStaticData('global');\nmemoria.entregas = Array.isArray(memoria.entregas) ? memoria.entregas : [];\nif (memoria.entregas.includes(datos.entrega)) return salida('repetida', 'Esta entrega ya se procesó', { entrega: datos.entrega });\nmemoria.entregas = [...memoria.entregas, datos.entrega].slice(-500);\n\nconst limpiar = (texto, defecto) => String(texto ?? '').replace(/[\\\\/:*?\"<>|\\u0000-\\u001f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 80) || defecto;\nconst paraConsulta = (texto) => texto.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\nconst mes = /^\\d{4}-\\d{2}/.test(datos.fecha || '') ? datos.fecha.slice(0, 7) : new Date().toISOString().slice(0, 7);\nconst carpetas = {\n  raiz: limpiar(conf.carpeta_raiz, 'Inflight · Soportes'),\n  proyecto: limpiar(datos.proyecto, 'Sin proyecto'),\n  viaje: limpiar(datos.viaje, 'Sin viaje'),\n  mes,\n};\nconst total = datos.total ? `${datos.total} ${datos.moneda || ''}`.trim() : 'sin total';\nconst nombre_base = [limpiar(datos.fecha, 'sin fecha'), limpiar(datos.comercio, 'sin comercio'), total,\n  limpiar(datos.viaje, `gasto ${datos.gasto_id}`)].join(' · ');\n\nreturn [{ json: {\n  estado: 'valida', motivo: '', entrega: datos.entrega, gasto_id: datos.gasto_id, enlace_soporte: datos.enlace_soporte,\n  carpetas, consulta: Object.fromEntries(Object.entries(carpetas).map(([k, v]) => [k, paraConsulta(v)])), nombre_base,\n} }];\n"
+        "jsCode": "// Verifica el aviso de la plataforma antes de hacer nada con él: firma, hora, destino del enlace y repetidos.\n// El secreto sale de la variable de n8n INFLIGHT_WEBHOOK_SECRETO si existe; si no, del nodo «Configuración».\n// Nada de lo que sale de aquí lleva el secreto.\nconst crypto = require('crypto');\nconst entrada = $input.first();\nconst conf = entrada.json;\nconst salida = (estado, motivo, extra = {}) => [{ json: { estado, motivo, ...extra } }];\n\nlet secreto = '';\ntry { secreto = ($vars && $vars.INFLIGHT_WEBHOOK_SECRETO) || ''; } catch (e) { secreto = ''; }\nif (!secreto) secreto = String(conf.secreto_webhook || '');\nif (!secreto || secreto.startsWith('PEGAR_AQUI')) return salida('invalida', 'Falta configurar el secreto del aviso');\n\nconst cabeceras = conf.headers || {};\nconst partes = {};\nfor (const p of String(cabeceras['x-inflight-firma'] || '').split(',')) {\n  const i = p.indexOf('=');\n  if (i > 0) partes[p.slice(0, i).trim()] = p.slice(i + 1).trim();\n}\nconst t = Number(partes.t);\nif (!Number.isFinite(t) || !/^[0-9a-f]{64}$/.test(partes.v1 || '')) return salida('invalida', 'Falta la firma o no tiene el formato esperado');\nif (Math.abs(Date.now() / 1000 - t) > 300) return salida('invalida', 'La firma tiene más de 5 minutos');\n\n// El cuerpo tal cual llegó (opción «Raw Body» del Webhook). Si no estuviera, el JSON leído sirve: la plataforma\n// lo envía compacto, igual a JSON.stringify.\nlet crudo;\ntry { crudo = await this.helpers.getBinaryDataBuffer(0, 'data'); } catch (e) { crudo = null; }\nif (!crudo || !crudo.length) crudo = Buffer.from(JSON.stringify(conf.body), 'utf8');\n\nconst esperado = crypto.createHmac('sha256', secreto).update(Buffer.concat([Buffer.from(`${partes.t}.`, 'utf8'), crudo])).digest();\nconst recibido = Buffer.from(partes.v1, 'hex');\nif (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) return salida('invalida', 'La firma no coincide');\n\nlet datos;\ntry { datos = JSON.parse(crudo.toString('utf8')); } catch (e) { return salida('invalida', 'El cuerpo no es JSON'); }\nif (datos.evento !== 'gasto.registrado' || !datos.entrega || !datos.gasto_id) return salida('invalida', 'No es un aviso gasto.registrado');\n\n// La clave de servicio solo viaja a la plataforma: un enlace que apunte a otro sitio se rechaza\nconst base = String(conf.url_plataforma || '').replace(/\\/+$/, '');\nif (!base || !String(datos.enlace_soporte || '').startsWith(`${base}/api/v1/servicio/gastos/${datos.gasto_id}/soporte?`)) {\n  return salida('invalida', 'El enlace al soporte no apunta a la plataforma configurada');\n}\n\n// Una misma entrega no se procesa dos veces (la plataforma repite el id en sus reintentos)\nconst memoria = $getWorkflowStaticData('global');\nmemoria.entregas = Array.isArray(memoria.entregas) ? memoria.entregas : [];\nif (memoria.entregas.includes(datos.entrega)) return salida('repetida', 'Esta entrega ya se procesó', { entrega: datos.entrega });\nmemoria.entregas = [...memoria.entregas, datos.entrega].slice(-500);\n\nconst limpiar = (texto, defecto) => String(texto ?? '').replace(/[\\\\/:*?\"<>|\\u0000-\\u001f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 80) || defecto;\nconst paraConsulta = (texto) => texto.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\nconst mes = /^\\d{4}-\\d{2}/.test(datos.fecha || '') ? datos.fecha.slice(0, 7) : new Date().toISOString().slice(0, 7);\nconst carpetas = {\n  raiz: limpiar(conf.carpeta_raiz, 'Inflight · Soportes'),\n  proyecto: limpiar(datos.proyecto, 'Sin proyecto'),\n  viaje: limpiar(datos.viaje, 'Sin viaje'),\n  mes,\n};\nconst total = datos.total ? `${datos.total} ${datos.moneda || ''}`.trim() : 'sin total';\nconst nombre_base = [limpiar(datos.fecha, 'sin fecha'), limpiar(datos.comercio, 'sin comercio'), total,\n  limpiar(datos.viaje, `gasto ${datos.gasto_id}`)].join(' · ');\n\nreturn [{ json: {\n  estado: 'valida', motivo: '', entrega: datos.entrega, gasto_id: datos.gasto_id, enlace_soporte: datos.enlace_soporte,\n  carpetas, consulta: Object.fromEntries(Object.entries(carpetas).map(([k, v]) => [k, paraConsulta(v)])), nombre_base,\n  aviso: datos,   // el cuerpo ya verificado: la lectura de la factura y los datos del gasto para el JSON y la hoja\n} }];\n"
       }
     },
     {
@@ -662,6 +668,137 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000
+    },
+    {
+      "id": "0fda60f6-e661-5456-8f0b-ad702ff40337",
+      "name": "Preparar lectura",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Deja la lectura de la factura como archivo JSON, en la misma carpeta del soporte y con el mismo nombre base.\nconst verificado = $('Verificar firma').first().json;\nconst aviso = verificado.aviso || {};\nconst carpeta = $('Preparar archivo').first().json.carpeta;\nconst soporte = $input.first().json;   // lo que devolvió «Subir a Drive»\nconst contenido = {\n  gasto: {\n    id: aviso.gasto_id, estado: aviso.estado, proyecto: aviso.proyecto, viaje: aviso.viaje, persona: aviso.persona,\n    fecha: aviso.fecha, comercio: aviso.comercio, categoria: aviso.categoria, total: aviso.total, moneda: aviso.moneda,\n    total_usd: aviso.total_usd, alertas: aviso.alertas || [], enlace: aviso.enlace_gasto || null,\n  },\n  lectura: aviso.lectura ?? null,\n  soporte_en_drive: soporte.id ? `https://drive.google.com/file/d/${soporte.id}/view` : null,\n  entrega: aviso.entrega,\n};\nconst nombre = `${verificado.nombre_base} · lectura.json`;\nconst binario = await this.helpers.prepareBinaryData(Buffer.from(JSON.stringify(contenido, null, 2), 'utf8'), nombre, 'application/json');\nreturn [{ json: { carpeta, nombre, soporte_id: soporte.id || null }, binary: { data: binario } }];\n"
+      }
+    },
+    {
+      "id": "80f6fe0e-c090-523f-bef7-e2063293c3e1",
+      "name": "Subir lectura",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5500,
+        200
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "={{ $json.nombre }}",
+        "inputDataFieldName": "data",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.carpeta }}"
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "21fb4c6f-401f-567c-b56b-f81f759383d8",
+      "name": "Fila de la hoja",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5720,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Una fila por gasto para la hoja «Lecturas»: lo leído de la factura, el estado y los enlaces.\nconst aviso = $('Verificar firma').first().json.aviso || {};\nconst lectura = aviso.lectura || {};\nconst soporteId = $('Preparar lectura').first().json.soporte_id;\nconst lecturaId = $input.first().json.id;\nconst enlace = (id) => (id ? `https://drive.google.com/file/d/${id}/view` : '');\n// Un texto que empieza con = + - @ se volvería fórmula en la hoja: se guarda como texto\nconst texto = (v) => { const s = String(v ?? '').replace(/\\s+/g, ' ').trim(); return /^[=+\\-@]/.test(s) ? `'${s}` : s; };\n// Los importes llegan de la plataforma ya validados, como texto con dos decimales\nconst numero = (v) => (v === null || v === undefined || v === '' ? '' : String(v));\nconst lineas = Array.isArray(lectura.lineas) ? lectura.lineas : [];\nreturn [{ json: {\n  'Gasto': aviso.gasto_id,\n  'Fecha de carga': new Date().toISOString().slice(0, 16).replace('T', ' '),\n  'Estado': texto(aviso.estado),\n  'Proyecto': texto(aviso.proyecto),\n  'Viaje': texto(aviso.viaje),\n  'Persona': texto(aviso.persona),\n  'Comercio': texto(aviso.comercio),\n  'NIT o ID fiscal': texto(lectura.id_fiscal),\n  'N.º factura': texto(lectura.numero_factura),\n  'Fecha': texto(aviso.fecha),\n  'Categoría': texto(aviso.categoria),\n  'Base': numero(lectura.subtotal),\n  'Impuesto': numero(lectura.impuesto),\n  'Propina': numero(lectura.propina),\n  'Total': numero(aviso.total),\n  'Moneda': texto(aviso.moneda),\n  'Total USD': numero(aviso.total_usd),\n  'Confianza': numero(lectura.confianza),\n  'Dudas': texto((lectura.dudas || []).join(', ')),\n  'Alertas': texto((aviso.alertas || []).join(' ')),\n  'Líneas': texto(lineas.map((l) => [l.descripcion, l.cantidad ? `× ${l.cantidad}` : '', l.total].filter(Boolean).join(' ')).join(' | ')),\n  'Soporte en Drive': enlace(soporteId),\n  'Lectura en Drive': enlace(lecturaId),\n  'Gasto en la plataforma': aviso.enlace_gasto || '',\n} }];\n"
+      }
+    },
+    {
+      "id": "6fa776f6-f9f1-539a-8c54-362f7e7da8d8",
+      "name": "¿Hay hoja de lecturas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5940,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "h1",
+              "leftValue": "={{ $('Configuración').first().json.hoja_lecturas }}",
+              "rightValue": "https://docs.google.com/spreadsheets/",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "48cf5f3c-a96f-5e97-8340-f7d81cacc78f",
+      "name": "Agregar a la hoja",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        6160,
+        100
+      ],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $('Configuración').first().json.hoja_lecturas }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Lecturas"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Gasto"
+          ],
+          "schema": []
+        },
+        "options": {
+          "handlingExtraData": "insertInNewColumn"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     }
   ],
   "connections": {
@@ -947,6 +1084,61 @@
         [
           {
             "node": "Subir a Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subir a Drive": {
+      "main": [
+        [
+          {
+            "node": "Preparar lectura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar lectura": {
+      "main": [
+        [
+          {
+            "node": "Subir lectura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subir lectura": {
+      "main": [
+        [
+          {
+            "node": "Fila de la hoja",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fila de la hoja": {
+      "main": [
+        [
+          {
+            "node": "¿Hay hoja de lecturas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay hoja de lecturas?": {
+      "main": [
+        [
+          {
+            "node": "Agregar a la hoja",
             "type": "main",
             "index": 0
           }

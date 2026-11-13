@@ -1,6 +1,6 @@
 # Automatizaciones con n8n (propuesta)
 
-**Estado:** diseño aprobado para construir después de la entrega. El primer flujo, que guarda los soportes en Google Drive, se construye aparte.
+**Estado:** el primer flujo está construido: la clave de servicio, el aviso firmado `gasto.registrado` y el flujo «Soportes y lecturas de gastos a Google Drive» ([`README.md`](README.md)). Se activa al poner sus variables en la plataforma y sus credenciales en n8n. Los demás flujos siguen en diseño.
 
 ## Principio
 
@@ -31,7 +31,7 @@ Catálogo de eventos:
 
 | Flujo | Disparador | Qué hace |
 |---|---|---|
-| Soportes a Drive | `gasto.registrado` | Guarda el soporte en «Inflight · Soportes / proyecto / viaje / AAAA-MM» con un nombre legible |
+| Soportes y lecturas a Drive (**construido**) | `gasto.registrado` | Guarda el soporte en «Inflight · Soportes / proyecto / viaje / AAAA-MM» con un nombre legible, la lectura de la factura en JSON al lado y una fila en la hoja «Lecturas» (número de factura, identificación tributaria, importes, confianza y enlaces) |
 | Aprobación por correo | `viaje.pendiente_aprobacion`, `gasto.en_revision` | Correo a administración (nunca a quien viaja) con resumen, presupuesto frente a gastado, motivos y los botones |
 | Resultado al interesado | `viaje.aprobado/rechazado`, `gasto.aprobado/rechazado` | Correo con la decisión y el motivo, además del aviso por Telegram |
 | Contabilidad | `gasto.aprobado`, cada lunes y cada día 1 | Fila en la hoja «Gastos aprobados» con las columnas del Excel contable. El libro semanal y el mensual (`GET /api/v1/gastos/contable`) quedan en «Inflight · Contabilidad / AAAA / MM» y se envían a Finanzas |

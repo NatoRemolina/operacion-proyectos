@@ -200,7 +200,7 @@ Son 21 indicadores con meta y semáforo (11 del reto 1 y 10 del reto 2, en [`kpi
 
 ### El siguiente escalón: automatizaciones con n8n (propuesta)
 
-**Diseñado, sin construir.** La plataforma sigue validando, decidiendo y guardando; n8n solo orquesta: recibe avisos firmados y llama a la API con una clave de permisos acotados. Ninguna automatización aprueba ni rechaza por su cuenta ([`n8n/automatizaciones.md`](n8n/automatizaciones.md)).
+**El primer flujo está construido; el resto, diseñado.** Cada factura leída sale en un aviso firmado hacia n8n, que guarda en Google Drive el soporte, la lectura en JSON (con número de factura, identificación tributaria del proveedor y líneas) y una fila en la hoja «Lecturas»; se activa con sus variables y credenciales. La plataforma sigue validando, decidiendo y guardando en su base; n8n solo orquesta: recibe avisos firmados y llama a la API con una clave de permisos acotados. Ninguna automatización aprueba ni rechaza por su cuenta ([`n8n/automatizaciones.md`](n8n/automatizaciones.md)).
 
 ```mermaid
 flowchart LR
