@@ -5,7 +5,8 @@ Uso:
 
 Deja un viaje aprobado de Madrid a Lisboa del 13 al 16 de diciembre de 2026 con el tramo IB 5634 (09:05 → 09:30), el
 vuelo de la respuesta guardada de ejemplo `datos/respaldo/estado_vuelo_IB5634_2026-12-13.json`. Es idempotente: si el
-viaje ya existe lo reutiliza y reinicia su tramo (estado, consultas y avisos), para repetir la demostración. No hace
+viaje ya existe lo reutiliza y reinicia su tramo (estado, consultas y avisos), para repetir la demostración; si la
+colaboradora ya tiene otro viaje que sale ese día, usa ese y no crea un segundo. No hace
 consultas en vivo: sin clave del buscador, el tablero lee la respuesta de ejemplo.
 
 Después hay que fijar el «ahora» del monitoreo dentro de la ventana del vuelo (variable `MONITOREO_AHORA`, que solo
@@ -67,6 +68,11 @@ def preparar() -> dict:
     previa = _uno("""select s.id solicitud_id, v.id viaje_id from solicitudes s join viajes v on v.solicitud_id=s.id
                      where s.solicitado_por=:f and s.origen='MAD' and s.destino='LIS' and s.ida=:ida order by s.id limit 1""",
                   f=FUENTE, ida=IDA)
+    # Si ella ya tiene un viaje que sale ese día (por ejemplo, el que cotizó y le aprobaron), se usa ese: dos viajes el
+    # mismo día dejan sus recibos sin viaje, porque no se sabe a cuál pertenecen
+    previa = previa or _uno("""select v.solicitud_id, v.id viaje_id from viajes v where v.usuario_id=:u and v.ida=:ida
+                               and v.estado not in ('rechazado', 'cerrado') order by v.id limit 1""",
+                            u=colaborador["id"], ida=IDA)
     creado = previa is None
     if creado:
         lugar = _lugar_lisboa()

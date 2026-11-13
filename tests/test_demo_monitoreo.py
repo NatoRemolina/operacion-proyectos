@@ -39,6 +39,28 @@ def test_idempotente_un_viaje_y_un_tramo(cliente, monkeypatch):
     assert demo_monitoreo.AHORA == "2026-12-13T06:00"
 
 
+def test_si_la_colaboradora_ya_tiene_un_viaje_ese_dia_se_reutiliza(cliente, monkeypatch):
+    """Dos viajes de la misma persona que salen el mismo día dejan sus recibos sin viaje: no se crea otro."""
+    from datos import demo_monitoreo
+    monkeypatch.setattr(config, "PREPARAR_BASE_LOCAL", True)
+    monkeypatch.setattr(config, "SERPAPI_KEY", "")
+    laura = db.uno("select * from usuarios where correo='piloto2@demo.local'")
+    activos = "select id from viajes where usuario_id=:u and ida=:ida and estado not in ('rechazado', 'cerrado')"
+    if not db.todos(activos, u=laura["id"], ida=demo_monitoreo.IDA):   # el viaje que ella misma cotizó y le aprobaron
+        sid = db.insertar("solicitudes", proyecto_id=2, viajero_id=laura["viajero_id"], origen="MAD", destino="LIS",
+                          ciudad="Lisboa", ida=demo_monitoreo.IDA, regreso=demo_monitoreo.REGRESO, estado="decidido",
+                          creado=db.ahora(), solicitado_por=laura["nombre"], usuario_id=laura["id"])
+        db.insertar("viajes", solicitud_id=sid, proyecto_id=2, usuario_id=laura["id"], viajero_id=laura["viajero_id"],
+                    ida=demo_monitoreo.IDA, regreso=demo_monitoreo.REGRESO, presupuesto_usd=581.0, estado="aprobado",
+                    creado=db.ahora())
+    antes = {f["id"] for f in db.todos(activos, u=laura["id"], ida=demo_monitoreo.IDA)}
+    monkeypatch.setattr(demo_monitoreo, "FUENTE", "otro preparador")   # como si el preparador nunca hubiera corrido
+    r = demo_monitoreo.preparar()
+    assert r["hecho"] and r["creado"] is False and r["viaje_id"] in antes
+    assert {f["id"] for f in db.todos(activos, u=laura["id"], ida=demo_monitoreo.IDA)} == antes
+    assert db.uno("select numero from tramos_vuelo where viaje_id=:v", v=r["viaje_id"])["numero"] == "IB 5634"
+
+
 def test_el_tablero_con_ese_ahora_muestra_el_tramo_sin_no_llega(cliente, monkeypatch, capsys):
     from datos import demo_monitoreo
     monkeypatch.setattr(config, "PREPARAR_BASE_LOCAL", True)
