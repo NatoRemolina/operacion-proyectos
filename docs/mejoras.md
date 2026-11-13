@@ -2,12 +2,12 @@
 
 Resultado de cuatro revisiones de la plataforma (recorridos por rol, interfaz y accesibilidad, textos y respuestas, ingeniería de la interacción), hechas sobre el código y sobre 35 pantallas renderizadas en siete anchos. Cada hallazgo se comprobó contra el código antes de anotarlo; las cifras de contraste se recalcularon de forma independiente.
 
-**Criterio.** La plataforma actual (pantallas servidas por el backend) es la que se entrega y se demuestra; la web nueva en Next.js la irá reemplazando. Por eso en la plataforma actual se corrigen los **errores y callejones sin salida**, y lo demás queda como **requisito de diseño de la web nueva**, para no hacer dos veces el mismo trabajo.
+**Criterio.** Las pantallas servidas por el backend y la web nueva en Next.js están publicadas a la vez, y la web nueva las irá reemplazando. Por eso en las pantallas del backend se corrigen los **errores y callejones sin salida**, y lo demás queda como **requisito de diseño de la web nueva**, para no hacer dos veces el mismo trabajo. Estado al 13 de noviembre de 2026.
 
 | Estado | Significado |
 |---|---|
 | Corregida | Ya está en la plataforma, con prueba |
-| Asignada | Tiene dueño en un frente de trabajo concreto |
+| Asignada | Tiene dueño en una tarea concreta |
 | Web nueva | Requisito de diseño para Next.js; no se toca en las pantallas actuales |
 | Pendiente | Sin dueño todavía |
 
@@ -38,11 +38,11 @@ Resultado de cuatro revisiones de la plataforma (recorridos por rol, interfaz y 
 
 | Id | Problema | Estado |
 |---|---|---|
-| T01 | Las alertas del gasto están escritas para el sistema («Confianza de lectura 62 %», «TimeoutError») y las lee el piloto | Pendiente: no se hizo en la integridad (textos en `validacion.py`); Web nueva para su presentación |
+| T01 | Las alertas del gasto están escritas para el sistema («Confianza de lectura 62 %», «TimeoutError») y las lee el piloto | Pendiente: los textos siguen en `validacion.py`; su presentación es requisito de la web nueva |
 | T02 | Vocabulario mezclado: soporte, recibo y gasto; cotización, consulta y solicitud; titular y viajero | Web nueva (glosario abajo) |
 | T03 | Horas en UTC y fechas en formato ISO: un piloto en Miami ve el día siguiente | Web nueva |
 | T04 | Importes con tres formatos distintos | Web nueva |
-| T05 | Tras cargar un recibo no se dice si quedó aprobado o en revisión | Web nueva (pantalla «Enviar recibo» del frente `web-next`) |
+| T05 | Tras cargar un recibo no se dice si quedó aprobado o en revisión | Corregida en la web nueva: muestra el estado que devuelve la API («Aprobado» o «En revisión») |
 | T06 | Los estados vacíos dicen cosas falsas («carga los ejemplos» a quien no puede) | Web nueva |
 | T07 | Éxito y error se ven iguales en la bandeja de aprobación | Web nueva |
 | T08 | Los avisos viajan en la dirección de la página: se repiten al recargar | Web nueva (la API v1 responde JSON, sin avisos en la dirección) |
@@ -66,7 +66,7 @@ Resultado de cuatro revisiones de la plataforma (recorridos por rol, interfaz y 
 
 ## Interfaz y accesibilidad (WCAG 2.2 AA)
 
-Requisitos de diseño para la web nueva; el encargo `web-next` ya incluye los marcados con ✓.
+Requisitos de diseño para la web nueva; los marcados con ✓ ya están en ella.
 
 | Id | Problema medido | Corrección |
 |---|---|---|
@@ -103,12 +103,12 @@ Requisitos de diseño para la web nueva; el encargo `web-next` ya incluye los ma
 
 | Id | Problema | Estado |
 |---|---|---|
-| I01 | Cada consulta cuesta dos viajes de red en la nube (comprobación de conexión en cada préstamo) | Pendiente: antes de publicar |
+| I01 | Cada consulta cuesta dos viajes de red en la nube (comprobación de conexión en cada préstamo) | Pendiente (la plataforma ya está publicada con él) |
 | I02 | Monitoreo · calidad hace 51 consultas | Pendiente |
-| I03 | Estáticos sin política de caché | Pendiente: antes de publicar |
+| I03 | Estáticos sin política de caché | Parcial: los de la web nueva salen de S3 por CloudFront con caché larga (ADR 0002); los de las pantallas del backend siguen sin política |
 | I04 | La cotización busca vuelos y hoteles en serie y puede dejar cotizaciones huérfanas si el proveedor responde algo inesperado | Pendiente |
 | I05 | La política de contenido permite scripts en línea | Web nueva (sin scripts en línea) |
 | I06 | Lógica de negocio dentro de rutas (comparación, revisión, tablero previsto/real) | Pendiente: al extraer servicios (ver `docs/arquitectura_objetivo.md`) |
 | I07 | El cambio de contraseña no limita intentos | Pendiente |
-| I08 | La cookie no se borra al salir en HTTPS (falta `secure` al borrarla; la sesión sí se revoca) | Pendiente: antes de publicar |
-| I09 | El cliente central del modelo (`servicios/llm.py`) solo habla el formato `generateContent`: con un proveedor de formato «mensajes», solo el agente de viajes y la lectura de recibos usan el modelo, sin reintentos ni registro en el monitoreo | Parcial: el asistente razona con el asesor (agente alojado, `servicios/asesor.py`) y el modelo de `MODELO_*` queda para recibos y notas de voz. Pendiente: que `llm.py` hable ambos formatos y que el costo del asesor entre en Monitoreo |
+| I08 | La cookie no se borra al salir en HTTPS (falta `secure` al borrarla; la sesión sí se revoca) | Corregida: `acceso.cerrar_sesion` la borra con `secure` fuera de local |
+| I09 | El cliente central del modelo (`servicios/llm.py`) solo habla el formato `generateContent`: con un proveedor de formato «mensajes», solo el agente de viajes y la lectura de recibos usan el modelo, sin reintentos ni registro en el monitoreo | Parcial: el asistente razona con el asesor (agente alojado, `servicios/asesor.py`) y el modelo de `MODELO_*` queda para recibos y notas de voz; el costo del asesor ya se ve en Monitoreo (pestaña «Modelo de lenguaje», fila `asesor`). Pendiente: que `llm.py` hable ambos formatos |

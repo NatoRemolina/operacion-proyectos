@@ -2,6 +2,8 @@
 
 Fecha: 12 de noviembre de 2026. Debe quedar funcionando para la entrega del viernes 13 por la mañana.
 
+> **Histórico.** Diseño ya ejecutado; se conserva como registro de las decisiones. Lo vigente está en [`regla-de-negocio.md`](../../regla-de-negocio.md) y en el [informe técnico](../../informe-tecnico.md). Ver [`historico/README.md`](../README.md).
+
 ## Intención
 
 1. **Cotizar desde y hacia cualquier lugar del mundo.** Hoy el autocompletado conoce 88 aeropuertos. Las grabaciones de la empresa ocurren a menudo en pueblos sin aeropuerto propio (por ejemplo, Moab, en Utah). La persona debe poder escribir un país, una ciudad, un pueblo o un código de aeropuerto, como en Google Flights, y la cotización debe encontrar el **mejor acceso**: no siempre el aeropuerto más cercano, sino el que deja el menor costo total contando el traslado por carretera.
@@ -33,7 +35,7 @@ Boceto aprobado: un campo con sugerencias (lugar, región, país y aeropuertos c
 - Administración mantiene la lista de cargos y elige el cargo al crear o editar una cuenta. Agregar un cargo no requiere tocar el código.
 - El cargo aparece en la ficha de la persona, en la lista de usuarios y en la analítica (gasto y viajes por cargo).
 - Las cuentas que hoy son «piloto» pasan a *colaborador* con el cargo «Pilotaje de dron». Sus viajes, gastos y justificaciones no cambian.
-- **Todos viajan** (decisión de la dueña): colaboradores, gestores de proyecto y administración pueden cotizar, recibir un viaje a su nombre, reportar gastos y justificarlos. Toda cuenta tiene perfil de viajero y puede tener cargo.
+- **Todos viajan** (decisión de la responsable del proyecto): colaboradores, gestores de proyecto y administración pueden cotizar, recibir un viaje a su nombre, reportar gastos y justificarlos. Toda cuenta tiene perfil de viajero y puede tener cargo.
 - **Nadie aprueba lo suyo:** el presupuesto de un viaje y los gastos de una persona de administración los aprueba otra persona de administración. La plataforma lo impide (el botón no aparece y la ruta responde que no se puede), no solo lo oculta.
 
 ## Objetivos
@@ -133,7 +135,7 @@ Los datos se preparan con un script (`datos/geografia.py`) que descarga, filtra 
 
 ## Monitoreo del vuelo el día del viaje
 
-Lo pidió la dueña: apenas el viaje tiene número de vuelo, administración lo sigue en pantalla y el viajero recibe avisos por Telegram.
+Lo pidió la responsable del proyecto: apenas el viaje tiene número de vuelo, administración lo sigue en pantalla y el viajero recibe avisos por Telegram.
 
 - **Tramos del vuelo.** Al guardar la decisión se registran los tramos del vuelo elegido (aerolínea, número de vuelo, fecha, aeropuertos de salida y llegada, horas programadas), tomados de la respuesta del buscador que ya trae `flight_number` por tramo. Tabla nueva `tramos_vuelo`, ligada al viaje, con el último estado conocido.
 - **Qué se consulta.** El estado del vuelo con el buscador de Google por número de vuelo (`q = "Flight IB5634"`, bloque «flight result» de SerpAPI): estado, retraso de salida y de llegada en minutos, terminal, puerta y horas reales o estimadas. Los nombres exactos de los campos se confirman con la documentación del proveedor y con una respuesta real guardada en `datos/respaldo/`, que también sirve para la demostración y las pruebas sin gastar búsquedas.
@@ -149,15 +151,15 @@ Lo pidió la dueña: apenas el viaje tiene número de vuelo, administración lo 
 
 ## Trazabilidad: todo dato queda registrado desde que se carga
 
-Pedido de la dueña durante la construcción. Toda información que entra a la plataforma deja registro de quién, cuándo, de dónde y qué:
+Pedido de la responsable del proyecto durante la construcción. Toda información que entra a la plataforma deja registro de quién, cuándo, de dónde y qué:
 
 - Las cargas de datos de referencia (aeropuertos, lugares, países) quedan en una tabla `cargas_datos` con fuente, archivo, URL, huella del archivo, filas, momento y quién la hizo, incluso cuando una carga repetida no cambia nada.
 - Cada cambio de permiso o de cargo, cada lugar elegido al cotizar, cada consulta al buscador (incluido el estado del vuelo), cada traslado calculado (con las reglas y valores usados), cada tramo registrado, cada aviso enviado y cada intento de autoaprobación impedido deja su evento en la bitácora (`eventos`) o en `consultas_buscador`.
 - Cada una de estas trazas tiene una prueba que la verifica.
 
-## La opción elegida se carga completa (pedido de la dueña)
+## La opción elegida se carga completa (pedido de la responsable del proyecto)
 
-Toda búsqueda queda guardada; la opción elegida, además, se carga completa en dos momentos. Referencia: `docs/referencias/serpapi-google-flights/`.
+Toda búsqueda queda guardada; la opción elegida, además, se carga completa en dos momentos. Referencia: `docs/referencias/serpapi-google-flights/uso-en-el-proyecto.md`.
 
 - **Al decidir (2 búsquedas):**
   - regreso con el `departure_token` de la opción, enviando los mismos códigos que la búsqueda original (para aprovechar la caché del proveedor); de los regresos, se toman los que salen del aeropuerto real de llegada y se elige el más barato;
@@ -168,7 +170,7 @@ Toda búsqueda queda guardada; la opción elegida, además, se carga completa en
 
 ## Autocompletado: datos locales más el de Google, activo
 
-Decisión de la dueña (12 nov): el autocompletado de Google queda **activo**, combinado con los datos locales.
+Decisión de la responsable del proyecto (12 nov): el autocompletado de Google queda **activo**, combinado con los datos locales.
 
 - Mientras se escribe, las sugerencias locales aparecen al instante (pueblos, distancias en km, sin costo).
 - Cuando la persona hace una pausa (400 ms) y lleva al menos 3 letras, se consulta `engine=google_flights_autocomplete` y sus ciudades y aeropuertos se suman a la lista, marcados como «Google». Un aeropuerto que llega por Google y no está en los datos locales se puede elegir igual.
@@ -185,12 +187,12 @@ Decisión de la dueña (12 nov): el autocompletado de Google queda **activo**, c
 
 ## Decisiones tomadas al revisar el diseño
 
-Decididas por quien diseña (no por la dueña), para que se puedan revisar:
+Decididas en el diseño (no por la responsable del proyecto), para que se puedan revisar:
 
 | Tema | Decisión |
 |---|---|
 | Traslado y carro de alquiler | Sin carro de alquiler, el traslado es taxi o transfer: 0,35 USD/km, ida y vuelta, en un grupo de presupuesto nuevo, `traslados`, que en la comparación con el gasto real corresponde a la categoría transporte. Con carro de alquiler (`carro_dia` > 0), el carro ya cubre el viaje y el traslado solo suma combustible y peajes: 0,12 USD/km, ida y vuelta, en el grupo `combustible`. Las dos tarifas son reglas editables. Así nada se cuenta dos veces |
-| Web Next.js | Primero se une la rama `worktree-web-next` a `dev` (ya era el primer paso del viernes); después, este cambio toca API y web juntas en `dev` |
+| Web Next.js | Primero se une la rama de la web nueva a `dev` (ya era el primer paso del viernes); después, este cambio toca API y web juntas en `dev` |
 | Elegir un país | Es un atajo para marcar sus aeropuertos principales, no una selección final. Si la persona solo marca aeropuertos, sin un lugar, no hay traslado y el hotel se busca en la ciudad del primer aeropuerto marcado |
 | Qué guarda la solicitud | `solicitudes.origen` y `solicitudes.destino` siguen guardando un código de aeropuerto (el más cercano de los marcados), para no romper la API v1, los KPIs ni el modelo de precios. Columnas nuevas: el lugar elegido (nombre, región, país, coordenadas) y la lista de aeropuertos marcados. Al guardar la decisión, origen y destino pasan a los aeropuertos reales del vuelo elegido. Las observaciones del modelo de precios se registran con los aeropuertos reales de cada vuelo |
 

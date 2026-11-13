@@ -45,7 +45,7 @@ Cómo se escribe, se prueba y se integra el código de este repositorio. Vale pa
 
 ## Ramas, commits e integración
 
-- Cada frente trabaja en su rama y su carpeta (`git worktree`), dueño de sus archivos. Se integra en una rama de trabajo, no directamente en `main`.
+- Cada tarea se trabaja en su rama y su carpeta (`git worktree`), dueña de sus archivos. Se integra en una rama de trabajo, no directamente en `main`.
 - Cada cambio pasa por una revisión antes de unirse; los hallazgos se corrigen en una ronda con su prueba y se vuelve a revisar.
 - Commits pequeños, en español, con **un solo autor**: sin líneas `Co-authored-by`.
 - Lo que no se versiona nunca: archivos `.env*`, credenciales, respaldos de la base, datos personales, configuración personal de herramientas.
