@@ -13,21 +13,27 @@ from sqlalchemy import inspect
 from .. import config, db
 
 DIR = config.RAIZ / "datos" / "modelo"
-CATEGORICAS = ["ruta", "aerolinea"]
-VARIABLES = ["ruta", "aerolinea", "escalas", "duracion_min", "hora_salida", "dia_semana", "anticipacion",
-             "noches", "tipico_min", "tipico_max"]
+CATEGORICAS = ["ruta", "aerolinea", "tarifa"]
+VARIABLES_BASE = ["ruta", "aerolinea", "escalas", "duracion_min", "hora_salida", "dia_semana", "anticipacion",
+                  "noches", "tipico_min", "tipico_max"]
+# De `ofertas_tarifa`: tipo de tarifa normalizado, si vende la aerolínea, si incluye la primera maleta y si cambia gratis.
+# Son opcionales: las observaciones del buscador no los traen y el modelo los recibe vacíos
+RASGOS_TARIFA = ["tarifa", "es_aerolinea", "incluye_maleta", "cambio_gratis"]
+VARIABLES = VARIABLES_BASE + RASGOS_TARIFA
 
 
-def codificar(filas, categorias: dict) -> np.ndarray:
-    """Convierte filas (DataFrame o lista de dict) en la matriz del modelo. Categoría desconocida = -1."""
+def codificar(filas, categorias: dict, variables: list[str] | None = None) -> np.ndarray:
+    """Convierte filas (DataFrame o lista de dict) en la matriz del modelo. Categoría desconocida = -1.
+    `variables` son las de la ficha del modelo que se usa: un modelo anterior a los rasgos de tarifa no los lleva."""
     registros = filas.to_dict("records") if hasattr(filas, "to_dict") else filas
     matriz = []
     for r in registros:
         fila = []
-        for v in VARIABLES:
+        for v in variables or VARIABLES:
             valor = r.get(v)
             if v in CATEGORICAS:
-                fila.append(categorias[v].index(valor) if valor in categorias[v] else -1)
+                conocidas = categorias.get(v) or []
+                fila.append(conocidas.index(valor) if valor in conocidas else -1)
             else:
                 fila.append(np.nan if valor is None else float(valor))
         matriz.append(fila)
@@ -58,8 +64,22 @@ def precios_esperados(filas: list[dict]) -> list[float | None]:
     if not filas or not utilizable():
         return [None] * len(filas)
     import xgboost as xgb
-    X = codificar(filas, ficha()["categorias"])
-    return [round(float(p), 2) for p in np.exp(_modelo().predict(xgb.DMatrix(X, feature_names=VARIABLES)))]
+    variables = ficha().get("variables") or VARIABLES_BASE
+    X = codificar(filas, ficha()["categorias"], variables)
+    return [round(float(p), 2) for p in np.exp(_modelo().predict(xgb.DMatrix(X, feature_names=variables)))]
+
+
+def prima_esperada(origen: str, destino: str, directorio=None) -> dict | None:
+    """Prima de flexibilidad esperada (tarifa con cambio gratis o maleta incluida frente a la básica del mismo vuelo):
+    la de la ruta si se ha visto, si no la general. None si aún no se ha calculado."""
+    archivo = (directorio or DIR) / "prima_flexibilidad.json"
+    if not archivo.is_file():
+        return None
+    tabla = json.loads(archivo.read_text())
+    de_ruta = (tabla.get("rutas") or {}).get(f"{origen}-{destino}")
+    if de_ruta:
+        return {**de_ruta, "alcance": "ruta"}
+    return {**tabla["general"], "alcance": "general"} if tabla.get("general") else None
 
 
 # ---------- exactitud como indicador ----------
