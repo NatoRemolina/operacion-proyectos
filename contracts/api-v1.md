@@ -1,4 +1,6 @@
-# Contrato de la API v1 (recorrido mínimo)
+# Contrato de la API v1
+
+Lo que usa la web nueva: ingreso, cotizar y decidir, viajes, gastos y envío de recibos, y la aprobación de viajes y la revisión de gastos de administración.
 
 Fuente de verdad mientras se construye. Cuando la API exista, el OpenAPI que genera (`contracts/openapi-v1.json`) debe coincidir con este documento; si difieren, se corrige uno de los dos en el mismo cambio.
 
