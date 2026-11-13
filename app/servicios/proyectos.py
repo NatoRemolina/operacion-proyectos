@@ -85,15 +85,30 @@ def con_conteos(pid: int) -> dict | None:
     return db.uno(f"{_CON_CONTEOS} where p.id=:i", i=pid)
 
 
-def comparacion(pid: int) -> dict:
-    """Previsto frente a real por categoría.
+def comparaciones(pids: list[int]) -> dict[int, dict]:
+    """Previsto frente a real por categoría de varios proyectos con dos consultas en total (no dos por proyecto).
 
     El previsto es el presupuesto de los viajes del proyecto que no se rechazaron: la misma cifra que aprueba
     administración. El real, los gastos aprobados. Lo que se paga en el viaje se compara en una sola fila.
     """
-    real = {r["categoria"]: r["t"] for r in db.todos(
-        "select categoria, sum(total_usd) t from gastos where proyecto_id=:i and estado in ('aprobado','aprobado_auto') group by categoria", i=pid)}
-    del_proyecto = viajes.lista("v.proyecto_id=:i and v.estado<>'rechazado'", i=pid)
+    if not pids:
+        return {}
+    ids = ",".join(str(int(p)) for p in pids)   # enteros: no hay texto de nadie en la consulta
+    reales: dict[int, dict[str, float]] = {p: {} for p in pids}
+    for r in db.todos(f"""select proyecto_id, categoria, sum(total_usd) t from gastos
+                          where proyecto_id in ({ids}) and estado in ('aprobado','aprobado_auto') group by proyecto_id, categoria"""):
+        reales[r["proyecto_id"]][r["categoria"]] = r["t"]
+    viajes_de: dict[int, list[dict]] = {p: [] for p in pids}
+    for v in viajes.lista(f"v.proyecto_id in ({ids}) and v.estado<>'rechazado'"):
+        viajes_de[v["proyecto_id"]].append(v)
+    return {p: _comparacion(reales[p], viajes_de[p]) for p in pids}
+
+
+def comparacion(pid: int) -> dict:
+    return comparaciones([pid])[pid]
+
+
+def _comparacion(real: dict[str, float], del_proyecto: list[dict]) -> dict:
     previsto: dict[str, float] = {}
     for v in del_proyecto:
         for linea in db.de_json(v["presupuesto_detalle"], []) or []:

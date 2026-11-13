@@ -16,7 +16,7 @@ Base: `/api/v1`. Mismo origen que la web (el gateway envía `/api/v1/*` a la API
 | Caché | Toda respuesta lleva `Cache-Control: no-store` |
 | Dinero | Cadenas decimales con dos cifras: `"54.00"`. Nunca números de coma flotante. `null` si no se pudo leer |
 | Fechas | Fecha de un recibo: `"2026-12-09"` (sin hora). Instantes de auditoría: `"2026-11-12T04:13:13Z"` (UTC) |
-| Listados | `{"items": [...], "siguiente": "<cursor>" \| null}`. Parámetros `limite` (1–100, por defecto 20) y `cursor`. Orden: más reciente primero |
+| Listados | `{"items": [...], "siguiente": "<cursor>" \| null}`. Parámetros `limite` (1–100, por defecto 20) y `cursor` (dígitos 0–9, sin cero delante; otro valor: 422). Orden: más reciente primero |
 | Petición | Cada respuesta trae la cabecera `X-Peticion` y, en los errores, el mismo valor en `request_id` |
 
 ## Errores
@@ -45,7 +45,7 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html) |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
-| 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso |
+| 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso, o cinco fallos seguidos con la contraseña actual en `POST /cuenta/clave` |
 | 429 | `TOO_MANY_REQUESTS` | Tope de cotizaciones nuevas del día por persona (regla `tope_cotizaciones_persona_dia`, 20 en la semilla) |
 | 500 | `INTERNAL_ERROR` | Fallo interno, ya registrado |
 
@@ -430,7 +430,7 @@ Parámetros `limite` y `cursor`. Todas las cuentas, activas o no, la más recien
 Cuerpo `{"correo", "nombre", "rol", "clave", "cargo_id": number | null}`. 201 `ResultadoUsuario`. El correo se guarda en minúsculas y sin espacios; la cuenta recibe su perfil de viajero. 422 con el campo en `fields`: `correo` sin `@` o ya usado, `rol` que no es `colaborador`, `gestor` ni `admin`, `clave` de menos de 10 caracteres, `cargo_id` inexistente o desactivado.
 
 ### `POST /usuarios/{id}/rol`
-Cuerpo `{"rol"}`. Cierra las sesiones abiertas de la cuenta (el permiso nuevo exige entrar de nuevo); quien deja de ser gestor pierde sus proyectos. Nadie se quita su propio rol de administración ni deja la plataforma sin ella: 409 `INVALID_STATE` con el motivo en `message`. Rol desconocido: 422 `fields.rol`.
+Cuerpo `{"rol"}`. Cierra las sesiones abiertas de la cuenta (el permiso nuevo exige entrar de nuevo); quien deja de ser gestor pierde sus proyectos. El mismo permiso que ya tiene no hace nada: 200 con «Sin cambios…» en `mensaje`, sin cerrar sesiones ni dejar evento. Comprobar y escribir van en una transacción en fila con los demás cambios que pueden quitar administración, así dos administraciones a la vez no la dejan sin ninguna. Nadie se quita su propio rol de administración ni deja la plataforma sin ella: 409 `INVALID_STATE` con el motivo en `message`. Rol desconocido: 422 `fields.rol`.
 
 ### `POST /usuarios/{id}/estado`
 Cuerpo `{"activo": boolean}`. Desactivar cierra sus sesiones; reactivar limpia el bloqueo por intentos. Si ya estaba así responde 200 con «Sin cambios…» en `mensaje`. Nadie desactiva su propia cuenta ni a la última administración activa: 409 `INVALID_STATE`.
@@ -442,7 +442,7 @@ Cuerpo `{"cargo_id": number | null}`. El cargo no da permisos: no cierra sesione
 Cuerpo `{"proyectos_ids": number[]}`: reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo para cuentas con permiso de gestor: si no, 422 `fields.proyectos_ids` (al volverla gestora no hereda nada).
 
 ### `POST /usuarios/{id}/clave`
-Cuerpo `{"clave"}` (10 caracteres o más; si no, 422 `fields.clave`). Cierra sus sesiones y limpia el bloqueo por intentos.
+Cuerpo `{"clave"}` (10 caracteres o más; si no, 422 `fields.clave`). Cierra sus sesiones, desvincula su Telegram y anula los códigos de vínculo pendientes (antes le avisa por ese chat, si lo tiene), y limpia el bloqueo por intentos. La propia no se restablece aquí: 409 `INVALID_STATE` (se cambia en «Mi cuenta», que pide la actual).
 
 ### `GET /cargos`
 `{"items": Cargo[]}`: el catálogo completo, sin paginar, por nombre.
@@ -469,7 +469,7 @@ interface MiCuenta {
 200 `MiCuenta`. En producción el bot de Telegram está apagado: `canal_activo: false`.
 
 ### `POST /cuenta/clave`
-Cuerpo `{"actual", "nueva"}` y `X-CSRF-Token`. La actual que no coincide: 422 `fields.actual`; la nueva de menos de 10 caracteres o igual a la actual: 422 `fields.nueva`. Al cambiarla se cierran todas las sesiones de la persona y esta se renueva: 200 `{"csrf_token", "mensaje"}` con la cookie nueva; el token CSRF anterior deja de servir. Deja el evento `contraseña cambiada por la persona`. La contraseña nunca sale en la respuesta.
+Cuerpo `{"actual", "nueva"}` y `X-CSRF-Token`. La actual que no coincide: 422 `fields.actual`; cada fallo cuenta con el mismo contador del ingreso (evento `contraseña actual equivocada`) y al quinto seguido se cierran sus sesiones y responde 429 `TOO_MANY_ATTEMPTS` (el ingreso queda con el bloqueo progresivo). La nueva de menos de 10 caracteres o igual a la actual: 422 `fields.nueva`. Al cambiarla se desvincula su Telegram, se anulan los códigos de vínculo pendientes, se cierran todas las sesiones de la persona y esta se renueva: 200 `{"csrf_token", "mensaje"}` con la cookie nueva; el token CSRF anterior deja de servir. Deja el evento `contraseña cambiada por la persona`. La contraseña nunca sale en la respuesta.
 
 ### `POST /cuenta/telegram/vinculo`
 Con `X-CSRF-Token`, sin cuerpo. 200 `{"codigo", "enlace": string | null, "minutos"}`: un código de un solo uso (en la base queda solo su huella) para escribir `/start <codigo>` en el chat del bot, o el enlace que lo abre si el bot tiene nombre configurado. Con el canal apagado: 409 `INVALID_STATE` con el motivo.

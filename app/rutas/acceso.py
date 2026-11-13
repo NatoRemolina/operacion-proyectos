@@ -114,6 +114,6 @@ def mi_cuenta_clave(request: Request, actual: str = Form(""), nueva: str = Form(
     yo = _yo()
     try:
         usuarios.cambiar_mi_clave(yo, actual, nueva)
-    except usuarios.DatosInvalidos as e:
+    except (usuarios.DatosInvalidos, usuarios.DemasiadosIntentos) as e:
         return RedirectResponse(f"/mi-cuenta?aviso={quote_plus(str(e))}", status_code=303)
     return acceso.abrir_sesion(RedirectResponse("/mi-cuenta?aviso=Contrase%C3%B1a+cambiada.+Se+cerraron+tus+otras+sesiones.", status_code=303), yo["id"])

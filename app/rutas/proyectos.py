@@ -62,4 +62,4 @@ def proyecto_exportar(pid: int):
     if not proyectos.visible(_yo(), pid):
         return NO_ENCONTRADO
     return Response(proyectos.csv_gastos(pid), media_type="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="gastos_proyecto_{pid}.csv"'})
+                    headers={"Content-Disposition": f'attachment; filename="gastos_proyecto_{pid}.csv"', "Cache-Control": "no-store"})

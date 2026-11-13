@@ -37,7 +37,8 @@ if not config.ES_SQLITE:
     else:
         # En la nube cada instancia mantiene pocas conexiones y las comprueba al reanudar tras una pausa
         _args.update(pool_size=2, max_overflow=2, pool_recycle=120, pool_pre_ping=True)
-motor = create_engine(_url(), **_args)
+# Un error de la base no lleva los valores enviados (por ejemplo, la huella de una contraseña) a los registros
+motor = create_engine(_url(), hide_parameters=True, **_args)
 
 if config.ES_SQLITE:
     @event.listens_for(motor, "connect")

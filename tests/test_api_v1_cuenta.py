@@ -137,3 +137,41 @@ def test_la_pantalla_actual_sigue_igual(anonimo):
     anonimo.post("/entrar", data={"correo": c["correo"], "clave": c["clave"]})
     r = anonimo.post("/mi-cuenta/clave", data={"actual": "otra", "nueva": "clave-nueva-123"}, follow_redirects=False)
     assert r.headers["location"] == "/mi-cuenta?aviso=La+contrase%C3%B1a+actual+no+coincide."
+
+
+# ---------- ronda de arreglos menores ----------
+def test_cinco_intentos_con_la_actual_equivocada_cierran_las_sesiones():
+    """Con una sesión robada no se puede probar contraseñas sin fin: al quinto fallo se cierran las sesiones y el ingreso queda
+    con el mismo bloqueo progresivo que tras cinco ingresos fallidos."""
+    c = _cuenta()
+    sesion = _sesion(c["correo"], c["clave"])
+    for _ in range(4):
+        _error(sesion.post(f"{V1}/cuenta/clave", json={"actual": "equivocada", "nueva": "clave-nueva-456789"}, headers=_csrf(sesion)),
+               422, "VALIDATION_ERROR")
+    _error(sesion.post(f"{V1}/cuenta/clave", json={"actual": "equivocada", "nueva": "clave-nueva-456789"}, headers=_csrf(sesion)),
+           429, "TOO_MANY_ATTEMPTS")
+    assert sesion.get(f"{V1}/auth/me").status_code == 401
+    assert TestClient(app).post(f"{V1}/auth/login", json={"correo": c["correo"], "clave": c["clave"]}).status_code == 429
+    assert _pasos(c["id"]).count("contraseña actual equivocada") == 5
+
+
+def test_acertar_la_actual_reinicia_la_cuenta_de_fallos():
+    c = _cuenta()
+    sesion = _sesion(c["correo"], c["clave"])
+    for _ in range(3):
+        sesion.post(f"{V1}/cuenta/clave", json={"actual": "equivocada", "nueva": "clave-nueva-456789"}, headers=_csrf(sesion))
+    r = sesion.post(f"{V1}/cuenta/clave", json={"actual": c["clave"], "nueva": "clave-nueva-456789"}, headers=_csrf(sesion))
+    assert r.status_code == 200
+    assert db.uno("select fallos from usuarios where id=:i", i=c["id"])["fallos"] == 0
+
+
+def test_cambiar_mi_clave_desvincula_telegram_y_anula_los_codigos_pendientes():
+    c = _cuenta()
+    db.actualizar("usuarios", c["id"], telegram_chat_id=88002, telegram_usuario="chat_ajeno")
+    db.insertar("vinculos_telegram", usuario_id=c["id"], huella="huella-pendiente-1", expira="2999-01-01 00:00:00")
+    sesion = _sesion(c["correo"], c["clave"])
+    r = sesion.post(f"{V1}/cuenta/clave", json={"actual": c["clave"], "nueva": "clave-nueva-456789"}, headers=_csrf(sesion))
+    assert r.status_code == 200 and "Telegram" in r.json()["mensaje"]
+    assert db.uno("select telegram_chat_id from usuarios where id=:i", i=c["id"])["telegram_chat_id"] is None
+    assert not db.todos("select id from vinculos_telegram where usuario_id=:u", u=c["id"])
+    assert "Telegram desvinculado" in _pasos(c["id"])

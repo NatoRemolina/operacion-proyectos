@@ -48,7 +48,8 @@ def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clav
     aviso = "Hecho."
     try:
         if accion == "rol" and rol in acceso.ROLES:
-            usuarios.cambiar_rol(u, rol, _yo())
+            if not usuarios.cambiar_rol(u, rol, _yo()):
+                aviso = f"Sin cambios: {u['nombre']} ya tenía ese permiso."
         elif accion == "estado":
             quiere = (0 if u["activo"] else 1) if activo not in ("0", "1") else int(activo)   # el formulario dice el estado deseado
             aviso = usuarios.cambiar_estado(u, bool(quiere), _yo())

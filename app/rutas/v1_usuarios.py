@@ -3,6 +3,7 @@
 La regla vive en `app/servicios/usuarios.py`, la misma que usa la pantalla actual: mismas protecciones y mismos eventos.
 """
 from fastapi import APIRouter, Depends
+from sqlalchemy.exc import IntegrityError
 
 from .. import db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, solo_admin
@@ -83,7 +84,10 @@ def crear(datos: NuevaCuenta, yo: dict = Depends(_admin_que_escribe)):
     problema = usuarios.problema_de_cuenta(datos.correo, datos.rol, datos.clave, datos.cargo_id or None)
     if problema:
         raise _invalido(problema)
-    uid = usuarios.crear(datos.correo, datos.nombre, datos.rol, datos.clave, None, datos.cargo_id or None, yo)
+    try:
+        uid = usuarios.crear(datos.correo, datos.nombre, datos.rol, datos.clave, None, datos.cargo_id or None, yo)
+    except (ValueError, IntegrityError):   # otra petición creó el mismo correo entre la comprobación y la escritura
+        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"correo": "Ya existe una cuenta con ese correo."}) from None
     return {"usuario": _usuario(uid), "mensaje": "Cuenta creada. Comparte la contraseña inicial por un canal seguro."}
 
 
@@ -93,12 +97,14 @@ def cambiar_rol(id: int, datos: CambioRol, yo: dict = Depends(_admin_que_escribe
     Nadie se quita su propio rol de administración ni deja la plataforma sin ella: 409 `INVALID_STATE`."""
     u = _cuenta(id)
     try:
-        usuarios.cambiar_rol(u, datos.rol, yo)
+        cambio = usuarios.cambiar_rol(u, datos.rol, yo)
     except usuarios.DatosInvalidos as e:
         raise _invalido(e) from None
     except usuarios.Protegido as e:
         raise ErrorApi(409, "INVALID_STATE", str(e)) from None
-    return {"usuario": _usuario(id), "mensaje": f"Permiso de {u['nombre']} cambiado; sus sesiones abiertas se cerraron."}
+    mensaje = (f"Permiso de {u['nombre']} cambiado; sus sesiones abiertas se cerraron." if cambio
+               else f"Sin cambios: {u['nombre']} ya tenía ese permiso.")
+    return {"usuario": _usuario(id), "mensaje": mensaje}
 
 
 @router.post("/usuarios/{id}/estado", response_model=ResultadoUsuario, responses=errores(401, 403, 404, 409, 422))
@@ -136,12 +142,15 @@ def asignar_proyectos(id: int, datos: CambioProyectos, yo: dict = Depends(_admin
 
 @router.post("/usuarios/{id}/clave", response_model=ResultadoUsuario, responses=errores(401, 403, 404, 422))
 def restablecer_clave(id: int, datos: NuevaClave, yo: dict = Depends(_admin_que_escribe)):
-    """La contraseña nueva nunca se devuelve. Cierra sus sesiones y limpia el bloqueo por intentos."""
+    """La contraseña nueva nunca se devuelve. Cierra sus sesiones, desvincula su Telegram (le avisa antes por ese chat) y
+    limpia el bloqueo por intentos. La propia no se restablece aquí (409 `INVALID_STATE`): se cambia en «Mi cuenta»."""
     u = _cuenta(id)
     try:
         usuarios.restablecer_clave(u, datos.clave, yo)
     except usuarios.DatosInvalidos as e:
         raise _invalido(e) from None
+    except usuarios.Protegido as e:
+        raise ErrorApi(409, "INVALID_STATE", str(e)) from None
     return {"usuario": _usuario(id), "mensaje": f"Contraseña de {u['nombre']} restablecida; sus sesiones abiertas se cerraron."}
 
 

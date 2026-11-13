@@ -4,7 +4,12 @@ Lo usan la pantalla actual (`/admin/usuarios`, `/mi-cuenta`) y la API v1 (`v1_us
 Protecciones: nadie se quita su propio rol de administración ni desactiva su cuenta, y la plataforma nunca queda sin
 administración activa. Cambiar el permiso, desactivar o cambiar la contraseña cierra las sesiones abiertas de la cuenta.
 """
-from .. import db
+from contextlib import contextmanager
+from datetime import timedelta
+
+from sqlalchemy import text
+
+from .. import config, db
 from . import acceso, eventos, telegram
 
 NO_QUITAR_ROL = "No puedes quitarte tu propio rol ni dejar la plataforma sin administradores."
@@ -12,6 +17,9 @@ NO_DESACTIVAR = "No puedes desactivar tu propia cuenta ni al último administrad
 CLAVE_CORTA = "La contraseña debe tener al menos 10 caracteres."
 CLAVE_ACTUAL = "La contraseña actual no coincide."
 CLAVE_NUEVA = "La nueva contraseña debe tener al menos 10 caracteres y ser distinta."
+CLAVE_PROPIA = "Para cambiar tu propia contraseña usa «Mi cuenta»: allí se pide la actual."
+DEMASIADOS_INTENTOS = "Demasiados intentos con la contraseña actual: por seguridad cerramos tus sesiones. Ingresa de nuevo en unos minutos."
+BLOQUEO_ADMINISTRACION = 7_341_003   # bloqueo de PostgreSQL que pone en fila los cambios que pueden quitar administración
 
 _USUARIOS = """select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, u.viajero_id, v.nombre viajero, u.telegram_usuario,
                       u.telegram_chat_id, u.cargo_id, c.nombre cargo, (select max(ultima) from sesiones s where s.usuario_id=u.id) ultima
@@ -20,6 +28,10 @@ _USUARIOS = """select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, u.via
 
 class Protegido(ValueError):
     """El cambio dejaría a la persona sin su propio acceso o a la plataforma sin administración."""
+
+
+class DemasiadosIntentos(ValueError):
+    """La persona falló la contraseña actual demasiadas veces seguidas: sus sesiones se cerraron."""
 
 
 class DatosInvalidos(ValueError):
@@ -80,28 +92,45 @@ def crear(correo: str, nombre: str, rol: str, clave: str, viajero_id: int | None
 
 
 # ---------- cambios ----------
-def cambiar_rol(u: dict, rol: str, quien: dict) -> None:
+@contextmanager
+def _en_fila_de_administracion(uid: int):
+    """Comprueba y escribe en una sola transacción, en fila con los demás cambios que pueden quitar administración.
+    Sin esto, dos administraciones que se quitan el permiso una a la otra a la vez verían «queda otra» y pasarían las dos.
+    Entrega la cuenta releída dentro de la fila."""
+    with db.transaccion() as c:
+        if not config.ES_SQLITE:   # en SQLite la transacción ya toma el cerrojo de escritura
+            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_ADMINISTRACION})
+        yield db.uno("select * from usuarios where id=:i", i=uid)
+
+
+def cambiar_rol(u: dict, rol: str, quien: dict) -> bool:
+    """Devuelve si cambió. El mismo permiso no hace nada: no cierra sesiones ni deja evento."""
     if rol not in acceso.ROLES:
         raise DatosInvalidos("rol", "El permiso debe ser colaborador, gestor o admin.")
-    if u["rol"] == "admin" and rol != "admin" and (u["id"] == quien["id"] or not admins_activos(u["id"])):
-        raise Protegido(NO_QUITAR_ROL)
-    db.actualizar("usuarios", u["id"], rol=rol)
-    if u["rol"] == "gestor" and rol != "gestor":   # deja de gestionar: pierde también sus proyectos
-        db.ejecutar("delete from proyecto_miembros where usuario_id=:u", u=u["id"])
-    acceso.cerrar_todas(u["id"])
-    eventos.registrar("usuario", u["id"], "rol cambiado", f"{u['correo']}: {u['rol']} → {rol}", quien["nombre"])
+    with _en_fila_de_administracion(u["id"]) as u:
+        if rol == u["rol"]:
+            return False
+        if u["rol"] == "admin" and rol != "admin" and (u["id"] == quien["id"] or not admins_activos(u["id"])):
+            raise Protegido(NO_QUITAR_ROL)
+        db.actualizar("usuarios", u["id"], rol=rol)
+        if u["rol"] == "gestor" and rol != "gestor":   # deja de gestionar: pierde también sus proyectos
+            db.ejecutar("delete from proyecto_miembros where usuario_id=:u", u=u["id"])
+        acceso.cerrar_todas(u["id"])
+        eventos.registrar("usuario", u["id"], "rol cambiado", f"{u['correo']}: {u['rol']} → {rol}", quien["nombre"])
+    return True
 
 
 def cambiar_estado(u: dict, activo: bool, quien: dict) -> str:
     """Devuelve lo que pasó, en palabras. Desactivar cierra sus sesiones; reactivar también limpia el bloqueo por intentos."""
     quiere = int(bool(activo))
-    if quiere == u["activo"]:
-        return f"Sin cambios: la cuenta de {u['nombre']} ya estaba {'activa' if quiere else 'desactivada'}."
-    if not quiere and (u["id"] == quien["id"] or (u["rol"] == "admin" and not admins_activos(u["id"]))):
-        raise Protegido(NO_DESACTIVAR)
-    db.actualizar("usuarios", u["id"], activo=quiere, fallos=0, bloqueado_hasta=None)
-    acceso.cerrar_todas(u["id"])
-    eventos.registrar("usuario", u["id"], "cuenta reactivada" if quiere else "cuenta desactivada", u["correo"], quien["nombre"])
+    with _en_fila_de_administracion(u["id"]) as u:
+        if quiere == u["activo"]:
+            return f"Sin cambios: la cuenta de {u['nombre']} ya estaba {'activa' if quiere else 'desactivada'}."
+        if not quiere and (u["id"] == quien["id"] or (u["rol"] == "admin" and not admins_activos(u["id"]))):
+            raise Protegido(NO_DESACTIVAR)
+        db.actualizar("usuarios", u["id"], activo=quiere, fallos=0, bloqueado_hasta=None)
+        acceso.cerrar_todas(u["id"])
+        eventos.registrar("usuario", u["id"], "cuenta reactivada" if quiere else "cuenta desactivada", u["correo"], quien["nombre"])
     return f"Cuenta de {u['nombre']} {'reactivada' if quiere else 'desactivada'}; sus sesiones abiertas se cerraron."
 
 
@@ -125,24 +154,54 @@ def asignar_proyectos(u: dict, proyectos_ids: list[int], quien: dict) -> list[in
     return elegidos
 
 
+def _cortar_accesos(uid: int, firma: str) -> None:
+    """Con una contraseña nueva no sobrevive nada de antes: sesiones, chat de Telegram vinculado ni códigos de vínculo pendientes.
+    Así, quien se hubiera colado con una sesión robada no se queda con el chat."""
+    acceso.cerrar_todas(uid)
+    db.ejecutar("delete from vinculos_telegram where usuario_id=:u", u=uid)
+    if db.uno("select telegram_chat_id from usuarios where id=:i", i=uid)["telegram_chat_id"]:
+        telegram.desvincular(uid)
+        eventos.registrar("usuario", uid, "Telegram desvinculado", "al cambiar la contraseña", firma)
+
+
 def restablecer_clave(u: dict, clave: str, quien: dict) -> None:
-    """Administración pone una contraseña nueva. Se cierran sus sesiones y se limpia el bloqueo por intentos."""
+    """Administración pone una contraseña nueva a otra persona, que recibe un aviso. La propia se cambia en «Mi cuenta»,
+    que pide la actual. Se cierran sus sesiones, se desvincula su Telegram y se limpia el bloqueo por intentos."""
+    if u["id"] == quien["id"]:
+        raise Protegido(CLAVE_PROPIA)
     if len(clave or "") < 10:
         raise DatosInvalidos("clave", CLAVE_CORTA)
+    telegram.avisar(u["id"], f"{quien['nombre']} restableció la contraseña de tu cuenta. Si no lo pediste, avisa a administración.")
     db.actualizar("usuarios", u["id"], clave_hash=acceso.hash_clave(clave), fallos=0, bloqueado_hasta=None)
-    acceso.cerrar_todas(u["id"])
-    eventos.registrar("usuario", u["id"], "contraseña restablecida", u["correo"], quien["nombre"])
+    _cortar_accesos(u["id"], quien["nombre"])
+    eventos.registrar("usuario", u["id"], "contraseña restablecida",
+                      u["correo"] + (" · cuenta de administración" if u["rol"] == "admin" else ""), quien["nombre"])
+
+
+def _fallo_de_clave_actual(yo: dict) -> None:
+    """Cuenta el fallo con el mismo contador y bloqueo progresivo del ingreso. Al llegar al máximo cierra las sesiones:
+    seguir probando exige pasar por el ingreso, que está bloqueado unos minutos."""
+    fila = db.uno("select fallos from usuarios where id=:i", i=yo["id"])
+    fallos = (fila["fallos"] or 0) + 1
+    espera = timedelta(minutes=min(2 ** (fallos - acceso.MAX_FALLOS), 30)) if fallos >= acceso.MAX_FALLOS else None
+    db.actualizar("usuarios", yo["id"], fallos=fallos, bloqueado_hasta=acceso._fmt(acceso._ahora() + espera) if espera else None)
+    eventos.registrar("usuario", yo["id"], "contraseña actual equivocada", f"intento {fallos}", yo["nombre"])
+    if espera:
+        acceso.cerrar_todas(yo["id"])
+        raise DemasiadosIntentos(DEMASIADOS_INTENTOS)
 
 
 def cambiar_mi_clave(yo: dict, actual: str, nueva: str) -> None:
-    """La persona cambia su propia contraseña: exige la actual. Cierra todas sus sesiones; quien llama abre una nueva."""
+    """La persona cambia su propia contraseña: exige la actual. Cierra todas sus sesiones y desvincula su Telegram;
+    quien llama abre una sesión nueva."""
     hash_actual = db.uno("select clave_hash from usuarios where id=:i", i=yo["id"])["clave_hash"]
     if not acceso._coincide(hash_actual, actual or ""):
+        _fallo_de_clave_actual(yo)
         raise DatosInvalidos("actual", CLAVE_ACTUAL)
     if len(nueva or "") < 10 or nueva == actual:
         raise DatosInvalidos("nueva", CLAVE_NUEVA)
-    db.actualizar("usuarios", yo["id"], clave_hash=acceso.hash_clave(nueva))
-    acceso.cerrar_todas(yo["id"])
+    db.actualizar("usuarios", yo["id"], clave_hash=acceso.hash_clave(nueva), fallos=0, bloqueado_hasta=None)
+    _cortar_accesos(yo["id"], yo["nombre"])
     eventos.registrar("usuario", yo["id"], "contraseña cambiada por la persona", "", yo["nombre"])
 
 

@@ -53,7 +53,8 @@ def lista(paginacion: tuple = Depends(pagina), yo: dict = Depends(persona)):
         raise ErrorApi(403, "FORBIDDEN", "Los proyectos los ven administración y quien los gestiona.")
     limite, cursor = paginacion
     filas = proyectos.lista(yo, limite + 1, cursor)
-    items = [_resumen(p) for p in filas[:limite]]
+    cifras = proyectos.comparaciones([p["id"] for p in filas[:limite]])
+    items = [_resumen(p, cifras[p["id"]]) for p in filas[:limite]]
     return {"items": items, "siguiente": str(items[-1]["id"]) if len(filas) > limite else None}
 
 

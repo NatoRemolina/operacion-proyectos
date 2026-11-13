@@ -279,3 +279,107 @@ def test_solo_una_cuenta_gestora_recibe_proyectos(cliente):
     assert not db.todos("select * from proyecto_miembros where usuario_id=:u", u=u["id"])
     r = cliente.post(f"{V1}/usuarios/{u['id']}/rol", json={"rol": "gestor"}, headers=_csrf(cliente))
     assert r.json()["usuario"]["proyectos"] == []
+
+
+# ---------- ronda de arreglos menores ----------
+def test_nadie_restablece_su_propia_clave_sin_la_actual(cliente):
+    error = _error(cliente.post(f"{V1}/usuarios/{_admin_id()}/clave", json={"clave": "otra-clave-12345"}, headers=_csrf(cliente)),
+                   409, "INVALID_STATE")
+    assert "Mi cuenta" in error["message"]
+    assert cliente.get(f"{V1}/auth/me").status_code == 200       # su sesión sigue: no se cambió nada
+
+
+def test_restablecer_la_clave_desvincula_telegram_y_avisa(cliente, monkeypatch):
+    avisos = []
+    monkeypatch.setattr("app.servicios.telegram.avisar", lambda uid, texto: avisos.append((uid, texto)))
+    u = _crear(cliente)
+    db.actualizar("usuarios", u["id"], telegram_chat_id=99002, telegram_usuario="chat_previo")
+    r = cliente.post(f"{V1}/usuarios/{u['id']}/clave", json={"clave": "clave-nueva-456789"}, headers=_csrf(cliente))
+    assert r.status_code == 200 and r.json()["usuario"]["telegram"]["vinculado"] is False
+    assert avisos and avisos[0][0] == u["id"] and "contraseña" in avisos[0][1]
+
+
+def test_poner_el_mismo_permiso_no_cierra_sesiones_ni_deja_evento(cliente):
+    u = _crear(cliente)
+    sesion = _sesion(u["correo"], u["clave"])
+    r = cliente.post(f"{V1}/usuarios/{u['id']}/rol", json={"rol": "colaborador"}, headers=_csrf(cliente))
+    assert r.status_code == 200 and r.json()["mensaje"].startswith("Sin cambios")
+    assert sesion.get(f"{V1}/auth/me").status_code == 200
+    assert "rol cambiado" not in _pasos(u["id"])
+    r = cliente.post(f"{V1}/usuarios/{_admin_id()}/rol", json={"rol": "admin"}, headers=_csrf(cliente))
+    assert r.status_code == 200 and cliente.get(f"{V1}/auth/me").status_code == 200
+
+
+def test_dos_administraciones_a_la_vez_no_dejan_la_plataforma_sin_ninguna(cliente, monkeypatch):
+    """A desactiva a B mientras B le quita el rol a A: comprobar y escribir van en fila, así que solo una pasa."""
+    import threading
+
+    from app.servicios import usuarios
+    a, b = _crear(cliente, rol="admin"), _crear(cliente, rol="admin")
+    # Deja solo a A y B como administración activa durante la prueba
+    otros = [f["id"] for f in db.todos("select id from usuarios where rol='admin' and activo=1 and id not in (:a, :b)", a=a["id"], b=b["id"])]
+    for i in otros:
+        db.actualizar("usuarios", i, activo=0)
+    real, barrera = usuarios.admins_activos, threading.Barrier(2, timeout=1.5)
+
+    def contar_y_esperar(excepto: int = 0) -> int:
+        n = real(excepto)
+        try:
+            barrera.wait()      # sin la fila, las dos peticiones ven «hay otra admin» antes de que la otra escriba
+        except threading.BrokenBarrierError:
+            pass
+        return n
+
+    monkeypatch.setattr(usuarios, "admins_activos", contar_y_esperar)
+    fa, fb = (db.uno("select * from usuarios where id=:i", i=x["id"]) for x in (a, b))
+    errores = []
+
+    def desactivar_b():
+        try:
+            usuarios.cambiar_estado(fb, False, fa)
+        except usuarios.Protegido as e:
+            errores.append(e)
+
+    def quitar_rol_a():
+        try:
+            usuarios.cambiar_rol(fa, "colaborador", fb)
+        except usuarios.Protegido as e:
+            errores.append(e)
+
+    hilos = [threading.Thread(target=desactivar_b), threading.Thread(target=quitar_rol_a)]
+    try:
+        for h in hilos:
+            h.start()
+        for h in hilos:
+            h.join(10)
+        assert real() >= 1, "la plataforma quedó sin administración activa"
+        assert len(errores) == 1
+    finally:
+        for i in otros:
+            db.actualizar("usuarios", i, activo=1)
+
+
+def test_un_cursor_que_no_es_un_numero_simple_responde_422(cliente):
+    for ruta in ("/usuarios", "/proyectos", "/viajes"):
+        _error(cliente.get(f"{V1}{ruta}", params={"cursor": "²"}), 422, "VALIDATION_ERROR")
+
+
+def test_un_correo_repetido_por_carrera_responde_422(cliente, monkeypatch):
+    from app.servicios import usuarios
+    existente = _crear(cliente)
+    monkeypatch.setattr(usuarios, "problema_de_cuenta", lambda *a, **k: None)   # la otra petición aún no había creado la cuenta
+    error = _error(cliente.post(f"{V1}/usuarios", json={"correo": existente["correo"], "nombre": "Carrera", "rol": "colaborador",
+                                                         "clave": "clave-inicial-123"}, headers=_csrf(cliente)), 422, "VALIDATION_ERROR")
+    assert "correo" in error["fields"]
+
+
+def test_un_error_de_la_base_no_muestra_los_valores_enviados():
+    """Si la base rechaza una escritura, el mensaje (que va a los registros) no lleva la huella de la contraseña."""
+    from sqlalchemy.exc import IntegrityError
+    try:
+        db.insertar("usuarios", correo="admin@demo.local", nombre="Duplicada", rol="colaborador", activo=1,
+                    clave_hash="HUELLA-QUE-NO-DEBE-VERSE", fallos=0, creado=db.ahora())
+    except IntegrityError as e:
+        assert "HUELLA-QUE-NO-DEBE-VERSE" not in str(e)
+    else:
+        raise AssertionError("se esperaba un correo duplicado")

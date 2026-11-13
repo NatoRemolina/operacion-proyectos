@@ -29,15 +29,19 @@ def mi_cuenta(yo: dict = Depends(persona)):
     return _cuenta(yo)
 
 
-@router.post("/clave", response_model=ClaveCambiada, responses=errores(401, 403, 422))
+@router.post("/clave", response_model=ClaveCambiada, responses=errores(401, 403, 422, 429))
 def cambiar_clave(datos: CambioMiClave, response: Response, yo: dict = Depends(escritura)):
-    """Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian."""
+    """Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.
+    También desvincula su Telegram. Cinco fallos seguidos con la actual cierran sus sesiones: 429 `TOO_MANY_ATTEMPTS`."""
     try:
         usuarios.cambiar_mi_clave(yo, datos.actual, datos.nueva)
     except usuarios.DatosInvalidos as e:
         raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {e.campo: str(e)}) from None
+    except usuarios.DemasiadosIntentos as e:
+        raise ErrorApi(429, "TOO_MANY_ATTEMPTS", str(e)) from None
     acceso.abrir_sesion(response, yo["id"])
-    return {"csrf_token": token_csrf(response.token_sesion), "mensaje": "Contraseña cambiada. Se cerraron tus otras sesiones."}
+    return {"csrf_token": token_csrf(response.token_sesion),
+            "mensaje": "Contraseña cambiada. Se cerraron tus otras sesiones; si tenías Telegram vinculado, vuelve a vincularlo."}
 
 
 @router.post("/telegram/vinculo", response_model=VinculoTelegram, responses=errores(401, 403, 409))

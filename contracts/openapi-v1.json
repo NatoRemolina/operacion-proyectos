@@ -720,7 +720,7 @@
           "cuenta"
         ],
         "summary": "Cambiar Clave",
-        "description": "Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.",
+        "description": "Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.\nTambién desvincula su Telegram. Cinco fallos seguidos con la actual cierran sus sesiones: 429 `TOO_MANY_ATTEMPTS`.",
         "operationId": "cambiar_clave_api_v1_cuenta_clave_post",
         "requestBody": {
           "content": {
@@ -765,6 +765,16 @@
           },
           "422": {
             "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiados intentos de ingreso, o se alcanzó un tope del día",
             "content": {
               "application/json": {
                 "schema": {
@@ -2406,7 +2416,7 @@
           "usuarios"
         ],
         "summary": "Restablecer Clave",
-        "description": "La contraseña nueva nunca se devuelve. Cierra sus sesiones y limpia el bloqueo por intentos.",
+        "description": "La contraseña nueva nunca se devuelve. Cierra sus sesiones, desvincula su Telegram (le avisa antes por ese chat) y\nlimpia el bloqueo por intentos. La propia no se restablece aquí (409 `INVALID_STATE`): se cambia en «Mi cuenta».",
         "operationId": "restablecer_clave_api_v1_usuarios__id__clave_post",
         "parameters": [
           {

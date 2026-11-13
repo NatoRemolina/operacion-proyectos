@@ -197,3 +197,29 @@ def test_el_csv_del_proyecto_es_el_de_la_pantalla_actual(cliente, gestor, viaje_
     filas = list(csv.reader(io.StringIO(r.text.lstrip("﻿"))))
     assert filas[0][:4] == ["id", "fecha", "comercio", "categoria"]
     assert len(filas) - 1 == db.uno("select count(*) n from gastos where proyecto_id=1")["n"]
+
+
+# ---------- ronda de arreglos menores ----------
+def test_el_csv_de_la_pantalla_actual_no_se_guarda_en_cache(cliente):
+    assert cliente.get("/proyectos/1/exportar.csv").headers.get("cache-control") == "no-store"
+
+
+def test_la_lista_no_hace_consultas_por_cada_proyecto(cliente):
+    from sqlalchemy import event
+    for _ in range(6):
+        _crear(cliente)
+    consultas: list[str] = []
+
+    def contar(conn, cursor, sql, *a):
+        consultas.append(sql)
+
+    event.listen(db.motor, "before_cursor_execute", contar)
+    try:
+        cliente.get(f"{V1}/proyectos", params={"limite": 1})
+        una = len(consultas)
+        consultas.clear()
+        cliente.get(f"{V1}/proyectos", params={"limite": 7})
+        siete = len(consultas)
+    finally:
+        event.remove(db.motor, "before_cursor_execute", contar)
+    assert siete <= una + 1, (una, siete)
