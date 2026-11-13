@@ -21,11 +21,17 @@ export interface AuthRepository {
   salir(): Promise<void>;
 }
 
-/** Ruta interna a la que volver después de entrar; descarta destinos externos. */
+const BASE_INTERNA = "http://interno.invalid";
+
+/**
+ * Ruta interna a la que volver después de entrar; descarta destinos externos. El navegador quita tabuladores y saltos
+ * de línea y lee «\» como «/»: «/\t/sitio» acaba en «//sitio», que es otro origen. Por eso se rechazan los espacios,
+ * los caracteres de control y la barra invertida, y se comprueba que la ruta no cambie de origen.
+ */
 export function destinoSeguro(volver: string | null | undefined, porDefecto = "/viajes"): string {
-  if (!volver || !volver.startsWith("/") || volver.startsWith("//") || volver.startsWith("/\\")) {
-    return porDefecto;
-  }
+  if (!volver || !volver.startsWith("/") || volver.startsWith("//")) return porDefecto;
+  if ([...volver].some((c) => c.charCodeAt(0) <= 0x20 || c.charCodeAt(0) === 0x7f || c === "\\")) return porDefecto;
+  if (new URL(volver, BASE_INTERNA).origin !== BASE_INTERNA) return porDefecto;
   if (volver.startsWith("/entrar")) return porDefecto;
   return volver;
 }

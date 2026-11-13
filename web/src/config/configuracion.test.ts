@@ -23,4 +23,12 @@ describe("configuración", () => {
     expect(destinoSeguro("//malicioso.example")).toBe("/viajes");
     expect(destinoSeguro(null)).toBe("/viajes");
   });
+
+  it("no la engañan los caracteres que el navegador quita o cambia al navegar (tabulador, salto de línea, barra invertida)", () => {
+    for (const truco of ["/\t/malicioso.example", "/\n/malicioso.example", "/\r\n/malicioso.example", "/ /malicioso.example",
+      "/\\malicioso.example", "/viajes\\..\\..\\x"]) {
+      expect(destinoSeguro(truco), JSON.stringify(truco)).toBe("/viajes");
+    }
+    expect(destinoSeguro("/viajes/12?vista=gastos#v3")).toBe("/viajes/12?vista=gastos#v3");
+  });
 });
