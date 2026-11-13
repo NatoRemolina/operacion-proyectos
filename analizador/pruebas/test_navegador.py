@@ -282,3 +282,9 @@ def test_un_fallo_inesperado_tiene_motivo_fijo(monkeypatch, capsys):
     r = navegador.analizar(URL)
     assert r["motivo"] == navegador.ERROR_NAVEGADOR and "/ruta/del/servidor" not in r["motivo"]
     assert "/ruta/del/servidor" in capsys.readouterr().out
+
+
+# ---------- ronda 2 · punto 3: sin service workers, ninguna navegación esquiva la lista blanca ni la intercepción ----------
+def test_el_contexto_bloquea_los_service_workers():
+    assert navegador.OPCIONES_CONTEXTO["service_workers"] == "block"
+    assert navegador.OPCIONES_CONTEXTO["user_agent"] == navegador.AGENTE

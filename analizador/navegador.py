@@ -51,6 +51,10 @@ CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa
 VENDEDOR_O_TARIFA = re.compile(r"^[\w .,&'()+/-]{1,60}$")
 OTRA_PESTANA = "la página quiso abrir otra pestaña"
 
+# Sin service workers: una página no puede atender sus propias peticiones y esquivar la lista blanca ni la intercepción
+OPCIONES_CONTEXTO = {"user_agent": AGENTE, "locale": "en-US", "viewport": {"width": 1280, "height": 1600},
+                     "service_workers": "block"}
+
 _turno = threading.Lock()
 
 
@@ -148,7 +152,7 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
     with sync_playwright() as p:
         navegador = p.chromium.launch(args=ARGUMENTOS)
         try:
-            contexto = navegador.new_context(user_agent=AGENTE, locale="en-US", viewport={"width": 1280, "height": 1600})
+            contexto = navegador.new_context(**OPCIONES_CONTEXTO)
             # la lista blanca vale para todo el contexto: también una pestaña que la página intente abrir
             contexto.route("**/*", solo_lista_blanca)
             # registrada después, atiende antes: ningún envío a /travel/clk sale del navegador del servidor
