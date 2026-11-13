@@ -3,6 +3,7 @@
 #
 #   docker compose up -d db app                  base y plataforma actual (http://127.0.0.1:8000)
 #   docker compose --profile web up -d           además la web nueva y el gateway (http://127.0.0.1:8088)
+#   docker compose --profile analizador up -d    además el analizador de Google Flights (lectura de la página del vuelo)
 #   docker compose down                          detener (los datos se conservan en los volúmenes)
 #   docker compose down -v                       detener y borrar los datos de demostración
 #
@@ -46,6 +47,9 @@ services:
       SECRETO_ARN: ""
       TELEGRAM_BOT_TOKEN: ""
       PINECONE_API_KEY: ""
+      # Lectura de la página del vuelo en Google Flights: el servicio `analizador` (perfil «analizador»).
+      # Sin él levantado, la lectura queda fallida con su motivo; ANALIZADOR: apagado la desactiva del todo.
+      ANALIZADOR_URL: http://analizador:8090
       # Demostración del monitoreo del vuelo: fija el «ahora» (UTC) dentro de la ventana del vuelo IB 5634 del 13 de
       # diciembre de 2026 que prepara `make demo-monitoreo`. Solo se respeta con ENTORNO=local; sin ella, la hora real.
       # Para usarla, quitar el comentario y recrear el servicio: docker compose up -d app
@@ -69,6 +73,21 @@ services:
       app: {condition: service_healthy}
     environment:
       NEXT_PUBLIC_API_BASE: /api/v1
+
+  # Analizador de la página del vuelo (Playwright con su imagen oficial). Sin puerto publicado: solo lo alcanza la API.
+  # Sus pruebas, sin red: docker compose run --rm --no-deps analizador python -m pytest -q analizador/pruebas
+  analizador:
+    profiles: [analizador]
+    build: ./analizador
+    environment:
+      ANALIZADOR: encendido               # «apagado»: no abre ninguna página
+    shm_size: 1gb                         # Chromium usa memoria compartida para sus pestañas
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/salud')\""]
+      interval: 10s
+      timeout: 3s
+      retries: 10
 
   gateway:
     profiles: [web]

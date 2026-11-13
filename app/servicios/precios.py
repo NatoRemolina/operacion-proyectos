@@ -115,17 +115,33 @@ def _protobuf(campo: int, datos: bytes) -> bytes:
             return bytes([campo << 3 | 2]) + largo + datos
 
 
-def _tramo_tfs(fecha: str, desde: list[str], hasta: list[str]) -> bytes:
+NUMERO_VUELO = re.compile(r"^([A-Z0-9]{2})\s*(\d{1,4})$")
+
+
+def _segmento_tfs(tramo: dict) -> bytes:
+    """Un vuelo elegido dentro del tramo: aeropuertos, fecha, aerolínea y número (como lo pone el buscador al fijarlo)."""
+    m = NUMERO_VUELO.match((tramo.get("numero") or "").strip().upper())
+    if not m or not tramo.get("desde") or not tramo.get("hasta") or len(tramo.get("sale") or "") < 10:
+        raise ValueError(f"tramo incompleto: {tramo}")
+    return _protobuf(4, _protobuf(1, tramo["desde"].encode()) + _protobuf(2, tramo["sale"][:10].encode())
+                     + _protobuf(3, tramo["hasta"].encode()) + _protobuf(5, m.group(1).encode()) + _protobuf(6, m.group(2).encode()))
+
+
+def _tramo_tfs(fecha: str, desde: list[str], hasta: list[str], elegidos: list[dict] | None = None) -> bytes:
     aeropuerto = lambda c: b"\x08\x01" + _protobuf(2, c.encode())  # noqa: E731
-    return _protobuf(3, _protobuf(2, fecha.encode()) + b"".join(_protobuf(13, aeropuerto(c)) for c in desde)
-                     + b"".join(_protobuf(14, aeropuerto(c)) for c in hasta))
+    return _protobuf(3, _protobuf(2, fecha.encode()) + b"".join(_segmento_tfs(t) for t in elegidos or [])
+                     + b"".join(_protobuf(13, aeropuerto(c)) for c in desde) + b"".join(_protobuf(14, aeropuerto(c)) for c in hasta))
 
 
-def construir_enlace_vuelos(origen: str | list[str], destino: str | list[str], ida: str, regreso: str) -> str:
+def construir_enlace_vuelos(origen: str | list[str], destino: str | list[str], ida: str, regreso: str,
+                            tramos_ida: list[dict] | None = None, tramos_regreso: list[dict] | None = None) -> str:
     """La búsqueda de ida y vuelta, en clase económica y para una persona, como la arma el buscador en `google_flights_url`.
-    Sirve cuando la respuesta guardada no lo trae."""
+    Sirve cuando la respuesta guardada no lo trae. Con `tramos_ida` (los `tramos` de un vuelo), la página abre con esa
+    ida elegida y muestra sus regresos; con `tramos_regreso` también, las opciones de reserva del itinerario.
+    ValueError si un tramo no trae aeropuertos, fecha o número de vuelo."""
     o, d = codigos(origen), codigos(destino)
-    tfs = b"\x08\x1c\x10\x02" + _tramo_tfs(ida, o, d) + _tramo_tfs(regreso, d, o) + b"\x40\x01\x48\x01\x70\x01\x98\x01\x01"
+    tfs = (b"\x08\x1c\x10\x02" + _tramo_tfs(ida, o, d, tramos_ida) + _tramo_tfs(regreso, d, o, tramos_regreso)
+           + b"\x40\x01\x48\x01\x70\x01\x98\x01\x01")
     return ("https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs="
             + base64.urlsafe_b64encode(tfs).decode().rstrip("=") + "&tfu=EgIIAQ")
 

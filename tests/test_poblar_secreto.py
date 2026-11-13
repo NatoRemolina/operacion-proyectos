@@ -41,6 +41,9 @@ FUERA_DEL_SECRETO = {
     "ADMIN_INICIAL_CLAVE": "lo usa la migración, que corre desde el equipo",
     "USUARIO_DEMO_CORREO": "lo usa la migración, que corre desde el equipo",
     "USUARIO_DEMO_CLAVE": "lo usa la migración, que corre desde el equipo",
+    "ANALIZADOR_FUNCION": "lo pone la pila en la función (el analizador de Google Flights)",
+    "ANALIZADOR_URL": "solo en local: el servicio analizador de docker compose",
+    "ANALIZADOR": "interruptor: variable de la función para apagarlo sin desplegar; no es un secreto",
 }
 
 

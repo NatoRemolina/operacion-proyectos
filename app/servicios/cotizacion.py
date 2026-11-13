@@ -14,7 +14,7 @@ from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
-from . import acceso, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
+from . import acceso, analizador, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
 
 # Un pedido de cotización con `Idempotency-Key` por la API: la misma clave de la misma persona da la misma cotización
 envios_cotizacion = db._tabla(
@@ -408,7 +408,16 @@ def fuente_vuelos(sol: dict) -> str:
     return precios.enlace_vuelos(codigos(sol, "origen"), codigos(sol, "destino"), sol["ida"], sol["regreso"])
 
 
-def abrir_fuente(usuario: dict, sid: int, destino: str, hotel_id: int | None = None, canal: str = "api v1") -> str:
+def fuente_vuelo(sol: dict, vuelo: dict) -> str:
+    """La página de un vuelo en Google Flights (la búsqueda con su ida elegida); sin tramos completos, la búsqueda."""
+    try:
+        return analizador.enlace_itinerario(sol, vuelo)
+    except ValueError:
+        return fuente_vuelos(sol)
+
+
+def abrir_fuente(usuario: dict, sid: int, destino: str, hotel_id: int | None = None, canal: str = "api v1",
+                 vuelo_id: int | None = None) -> str:
     """El enlace a la fuente que la persona abre, con su rastro en la bitácora (quién, qué cotización y adónde).
 
     La URL la arma siempre el servidor con los datos de la cotización: nunca llega del cliente. Quien llama comprueba
@@ -416,7 +425,13 @@ def abrir_fuente(usuario: dict, sid: int, destino: str, hotel_id: int | None = N
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
     if not sol:
         raise LookupError(sid)
-    if destino == "vuelos":
+    if destino == "vuelos" and vuelo_id:
+        vuelo = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=vuelo_id, s=sid)
+        if not vuelo:
+            raise CotizacionInvalida("vuelo_id", "Ese vuelo no es de esta cotización.")
+        datos = db.de_json(vuelo["datos"], {}) or {}
+        url, que = fuente_vuelo(sol, datos), f"{FUENTES['vuelos']} ({' + '.join(datos.get('numeros') or [])})"
+    elif destino == "vuelos":
         url, que = fuente_vuelos(sol), FUENTES["vuelos"]
     elif hotel_id:
         hotel = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='hotel'", o=hotel_id, s=sid)
@@ -516,6 +531,8 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
                                 "hotel": hotel["h"] if hotel else None, "hotel_evaluado": hotel["ev"] if hotel else None,
                                 "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
                                 "aviso": c["aviso"], "baterias": c["baterias"], "aviso_tope": aviso_tope,
+                                # lo leído de Google Flights en la última hora: evidencia, no cambia el total
+                                "analisis_google": analizador.para_decision(vuelo_id),
                                 # lo que se evita frente a la opción más barata que sirve, por costo esperado
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
                       total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=usuario["id"],

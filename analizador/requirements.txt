@@ -1,0 +1,4 @@
+# Imagen propia del analizador (no la de la API). La versión de playwright debe coincidir con la de la imagen base.
+playwright==1.48.0
+awslambdaric==2.2.*
+pytest==8.3.*

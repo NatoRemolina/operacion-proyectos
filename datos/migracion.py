@@ -27,6 +27,8 @@ INDICES = [  # nombre, tabla, columnas, único
     ("ix_opciones_solicitud", "opciones", "solicitud_id", False),
     ("ix_eventos_entidad", "eventos", "entidad, entidad_id", False),
     ("ix_miembros_usuario", "proyecto_miembros", "usuario_id", False),
+    ("ix_analisis_vuelo_opcion", "analisis_vuelo", "opcion_id, creado", False),
+    ("ix_analisis_vuelo_creado", "analisis_vuelo", "creado", False),
 ]
 
 
@@ -281,8 +283,8 @@ def permisos_de_vistas(vistas):
 
 
 def migrar() -> dict:
-    from app.servicios import envios, revision  # noqa: F401  (registran la tabla de envíos y las columnas de la revisión)
-    hechos = {**_roles(), **_datos(), **_columnas()}
+    from app.servicios import analizador, envios, revision  # noqa: F401  (registran sus tablas y columnas)
+    hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas()}
     _indices()
     if not config.ES_SQLITE:
         hechos.update(_restricciones_postgres())

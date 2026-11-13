@@ -170,7 +170,7 @@ def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escr
     if not acceso.puede_ver(yo, _fila(id)):
         raise _no_encontrado()
     try:
-        url = cotizacion.abrir_fuente(yo, id, datos.destino, datos.hotel_id)
+        url = cotizacion.abrir_fuente(yo, id, datos.destino, datos.hotel_id, vuelo_id=datos.vuelo_id)
     except LookupError as e:
         raise _no_encontrado() from e
     except cotizacion.CotizacionInvalida as e:
@@ -235,7 +235,7 @@ def _vuelo(o: dict, c: dict) -> dict:
             "avisos": ev["avisos"], "descartada": ev["descartada"], "recomendada": recomendada,
             "mas_barata": bool(c["mas_barato"]) and c["mas_barato"]["id"] == o["id"], "origen_dato": o["origen_dato"],
             "esperado_usd": consultas.dinero(o.get("esperado")), "frente_esperado_pct": o.get("frente_esperado"),
-            "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel"))}
+            "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel")), "fuente_url": cotizacion.fuente_vuelo(c["sol"], v)}
 
 
 def _tipo_linea_hotel(concepto: str) -> str:

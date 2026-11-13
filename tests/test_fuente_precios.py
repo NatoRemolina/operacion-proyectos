@@ -64,6 +64,19 @@ def test_sin_metadatos_se_construye_la_misma_busqueda(archivo, origen, destino, 
     assert precios.construir_enlace_vuelos(origen, destino, ida, regreso) == _metadatos(archivo)["google_flights_url"]
 
 
+def test_con_los_vuelos_elegidos_el_enlace_es_el_del_itinerario():
+    """Fijar la ida (y el regreso) da la misma dirección que guardó el buscador al pedir el regreso y la reserva."""
+    guardado = json.loads((config.DIR_RESPALDO / "tarifas_MIA_LAS_2026-12-08_2026-12-11_AA1851.json").read_text())
+    ida = [{"numero": "AA 1851", "desde": "MIA", "hasta": "LAS", "sale": "2026-12-08 09:48"}]
+    vuelta = [{"numero": "AA 1851", "desde": "LAS", "hasta": "MIA", "sale": "2026-12-11 13:43"}]
+    assert precios.construir_enlace_vuelos("MIA", "LAS", "2026-12-08", "2026-12-11", ida) == \
+        guardado["regreso"]["search_metadata"]["google_flights_url"]
+    assert precios.construir_enlace_vuelos("MIA", "LAS", "2026-12-08", "2026-12-11", ida, vuelta) == \
+        guardado["reserva"]["search_metadata"]["google_flights_url"]
+    with pytest.raises(ValueError):
+        precios.construir_enlace_vuelos("MIA", "LAS", "2026-12-08", "2026-12-11", [{"numero": "s/n", "desde": "MIA"}])
+
+
 def test_sin_respuesta_guardada_el_enlace_se_construye(cliente):
     url = precios.enlace_vuelos("BOG", "MDE,CLO", "2027-02-01", "2027-02-04")
     assert precios.es_fuente_google(url)

@@ -261,6 +261,7 @@ interface OpcionVuelo {
   origen_dato: string | null;                 // "en vivo" | "guardado" | "guardado (otras fechas)"
   esperado_usd: Dinero; frente_esperado_pct: number | null;   // modelo de precios, si hay uno utilizable
   total_con_hotel_usd: Dinero;                // vuelo + hotel recomendado (una suma, no todas las combinaciones); null sin hotel
+  fuente_url: string;                         // este vuelo en Google Flights: la búsqueda con su ida elegida
 }
 
 interface LineaHotel {
@@ -360,11 +361,50 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 - `id`, `vuelo_id`, `hotel_id`, `proyecto_id` y `viajero_id` son enteros de 1 a 2³¹−1; fuera de ese rango, 422.
 
 ### `POST /cotizaciones/{id}/fuente`
-Cuerpo JSON `{"destino": "vuelos"}` o `{"destino": "hoteles", "hotel_id": 90}` (sin `hotel_id`, la lista de hoteles) y `X-CSRF-Token`. Deja en la bitácora de la cotización el paso `fuente abierta` con quién, adónde y la URL, y responde 200 `{"destino": "vuelos", "url": "https://www.google.com/travel/flights?..."}`. La web lo llama al hacer clic en «Ver en Google Flights» o «Ver en Google Hotels»; el enlace se abre igual aunque el registro falle.
+Cuerpo JSON `{"destino": "vuelos"}` (con `"vuelo_id": 76`, la página de ese vuelo) o `{"destino": "hoteles", "hotel_id": 90}` (sin `hotel_id`, la lista de hoteles) y `X-CSRF-Token`. Deja en la bitácora de la cotización el paso `fuente abierta` con quién, adónde y la URL, y responde 200 `{"destino": "vuelos", "url": "https://www.google.com/travel/flights?..."}`. La web lo llama al hacer clic en «Ver en Google Flights» o «Ver en Google Hotels»; el enlace se abre igual aunque el registro falle.
 
 - **Fuente de los precios.** `fuente_url` es el `search_metadata.google_flights_url` de la respuesta guardada del buscador para esa ruta y esas fechas; si falta, se construye con los aeropuertos y las fechas (la misma forma `tfs` que usa el buscador). En hoteles, el enlace guardado no trae fechas: se toma su texto de búsqueda y se le añaden («Moab hotels from 2026-12-08 to 2026-12-11»), y cada hotel lleva la búsqueda con su nombre. Solo se aceptan enlaces `https://www.google.com/travel/...` sin credenciales ni puerto; un enlace guardado que no cumpla se reemplaza por el construido.
-- La URL siempre la arma el servidor: el cuerpo no acepta `url` (422). Un `hotel_id` que no es de la cotización: 422 con `fields.hotel_id`.
+- La URL siempre la arma el servidor: el cuerpo no acepta `url` (422). Un `vuelo_id` o `hotel_id` que no es de la cotización: 422 con `fields.vuelo_id` o `fields.hotel_id`.
 - La abre quien ve la cotización (también el gestor del proyecto); a los demás, 404.
+
+### `POST /cotizaciones/{id}/vuelos/{opcion_id}/analisis`
+Con `X-CSRF-Token` y sin cuerpo. Lee la página del vuelo en Google Flights (la búsqueda de la cotización con la ida de ese vuelo elegida; el analizador elige el regreso más barato para llegar a las opciones de reserva) y responde 200 `AnalisisVuelo`. Tarda unos segundos (hasta 55); la web muestra «Leyendo la página del vuelo…» mientras tanto.
+
+```ts
+interface AnalisisVuelo {
+  id: number | null; opcion_id: number;
+  estado: "pendiente" | "listo" | "fallido" | "no_disponible";
+  motivo: string | null;          // «la página pidió verificación», «Llegaste al tope de lecturas…», etc.
+  url: string | null;             // https://www.google.com/travel/flights?... (la página leída)
+  leido: string | null;           // cuándo terminó la lectura (UTC)
+  duracion_ms: number | null;
+  reutilizado: boolean;           // lectura de menos de 60 minutos del mismo vuelo: no se abrió la página otra vez
+  precio_buscador_usd: Dinero;    // el precio que sigue usando la comparación
+  aviso_precio: string | null;    // si la página muestra otro precio total, lo dice
+  datos: {
+    precio_total: number | null;
+    tramos: { fecha; sale; llega; aerolinea; duracion; ruta; escalas; detalle_escalas: string[]; emisiones }[];
+    tarifas: { vendedor; nombre; precio: number; equipaje: string[]; cambios: string[]; reembolso: string[]; otras: string[] }[];
+    vendedores: { vendedor: string; aerolinea: boolean; precio_desde: number | null }[];
+    equipaje: string[]; cambios: string[]; reembolso: string[];
+    regreso_elegido: { precio: number; aerolinea; escalas; sale; llega; desde; hasta; duracion } | null;
+    notas: string[]; avisos: string[];
+  } | null;                       // solo con estado «listo»; el texto es el de la página (en inglés)
+  captura_url: string | null;     // GET de la captura PNG, como evidencia
+}
+```
+
+- Un análisis por itinerario y fechas: si hay uno `listo` de menos de 60 minutos (o uno `pendiente` de menos de 2), se devuelve con `reutilizado: true` y no se abre la página.
+- `no_disponible` (no se guarda nada y el desglose muestra solo lo del buscador): `ANALIZADOR=apagado`, entorno sin analizador, tope del día por persona (regla `analisis_persona_dia`, 10) o en total (regla `analisis_vuelo_dia`, 40), u otra lectura en curso (una a la vez).
+- `fallido` con su `motivo`: la página pidió verificación o aceptar condiciones (nunca se resuelven), tardó demasiado o el analizador no respondió.
+- Lo leído **no reemplaza** el precio del buscador. Al decidir, la lectura vigente se copia a la decisión (`desglose.analisis_google`).
+- La pide quien ve la cotización; un vuelo de otra cotización o una cotización ajena: 404.
+
+### `GET /cotizaciones/{id}/vuelos/{opcion_id}/analisis`
+200 `AnalisisVuelo` con la última lectura del vuelo (para seguir una en curso); 404 si nunca se leyó.
+
+### `GET /cotizaciones/{id}/analisis/{analisis_id}/captura`
+200 `image/png` con la captura de la página leída, `no-store`. Lo ajeno o sin captura: 404.
 
 ## Fuera de este contrato (siguientes fases)
 

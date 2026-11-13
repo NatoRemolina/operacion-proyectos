@@ -6,6 +6,237 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/cotizaciones/{id}/vuelos/{opcion_id}/analisis": {
+      "post": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Pedir",
+        "description": "Lee la página del vuelo en Google Flights (tarda unos segundos) o devuelve la lectura de menos de 60 minutos.\n\nTarifas y qué incluye cada una, equipaje, cambios y reembolso, escalas, precio por vendedor y una captura. Con los\ntopes del día alcanzados, apagado o sin analizador: `estado: no_disponible` y el motivo, sin leer nada.",
+        "operationId": "pedir_api_v1_cotizaciones__id__vuelos__opcion_id__analisis_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalisisVuelo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Ver",
+        "description": "La última lectura del vuelo (para seguir una en curso). 404 si nunca se leyó.",
+        "operationId": "ver_api_v1_cotizaciones__id__vuelos__opcion_id__analisis_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalisisVuelo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}/analisis/{analisis_id}/captura": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Captura",
+        "operationId": "captura_api_v1_cotizaciones__id__analisis__analisis_id__captura_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "analisis_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Analisis Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "La captura de la página leída",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/asistente": {
       "post": {
         "tags": [
@@ -4215,6 +4446,149 @@
         ],
         "title": "AeropuertoSugerido"
       },
+      "AnalisisVuelo": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "opcion_id": {
+            "type": "integer",
+            "title": "Opcion Id"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "pendiente",
+              "listo",
+              "fallido",
+              "no_disponible"
+            ],
+            "title": "Estado",
+            "description": "`no_disponible`: no se leyó (apagado, sin analizador, tope del día, otra lectura en curso); el desglose muestra solo lo del buscador y `motivo` lo dice."
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "La página leída: `https://www.google.com/travel/flights?...` con la ida elegida."
+          },
+          "leido": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leido",
+            "description": "Cuándo terminó la lectura (UTC, ISO 8601)."
+          },
+          "duracion_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duracion Ms"
+          },
+          "reutilizado": {
+            "type": "boolean",
+            "title": "Reutilizado",
+            "description": "Es una lectura de menos de 60 minutos del mismo vuelo: no se volvió a abrir la página."
+          },
+          "precio_buscador_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Buscador Usd"
+          },
+          "aviso_precio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso Precio",
+            "description": "Si la página muestra otro precio que el buscador, lo dice."
+          },
+          "datos": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetalleLeido"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "captura_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captura Url",
+            "description": "La captura de la página (PNG), como evidencia."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "opcion_id",
+          "estado",
+          "motivo",
+          "url",
+          "leido",
+          "duracion_ms",
+          "reutilizado",
+          "precio_buscador_usd",
+          "aviso_precio",
+          "datos",
+          "captura_url"
+        ],
+        "title": "AnalisisVuelo",
+        "description": "La lectura de la página del vuelo en Google Flights. No reemplaza el precio del buscador."
+      },
       "AvisoVuelo": {
         "properties": {
           "momento": {
@@ -5757,6 +6131,102 @@
         ],
         "title": "DetalleGastos"
       },
+      "DetalleLeido": {
+        "properties": {
+          "precio_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Total",
+            "description": "El precio más bajo del itinerario en la página (USD)."
+          },
+          "tramos": {
+            "items": {
+              "$ref": "#/components/schemas/TramoLeido"
+            },
+            "type": "array",
+            "title": "Tramos"
+          },
+          "tarifas": {
+            "items": {
+              "$ref": "#/components/schemas/TarifaLeida"
+            },
+            "type": "array",
+            "title": "Tarifas"
+          },
+          "vendedores": {
+            "items": {
+              "$ref": "#/components/schemas/VendedorLeido"
+            },
+            "type": "array",
+            "title": "Vendedores"
+          },
+          "equipaje": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Equipaje"
+          },
+          "cambios": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cambios"
+          },
+          "reembolso": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reembolso"
+          },
+          "regreso_elegido": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegresoElegido"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notas"
+          },
+          "avisos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Avisos",
+            "description": "Lo que la página no mostró (por ejemplo, opciones de reserva)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "precio_total",
+          "tramos",
+          "tarifas",
+          "vendedores",
+          "equipaje",
+          "cambios",
+          "reembolso",
+          "notas",
+          "avisos"
+        ],
+        "title": "DetalleLeido"
+      },
       "EdicionRegla": {
         "properties": {
           "valor": {
@@ -6574,6 +7044,20 @@
               "hoteles"
             ],
             "title": "Destino"
+          },
+          "vuelo_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vuelo Id",
+            "description": "Con `vuelos`: un vuelo de la cotización (su página)."
           },
           "hotel_id": {
             "anyOf": [
@@ -8963,6 +9447,11 @@
             ],
             "title": "Total Con Hotel Usd",
             "description": "Costo total esperado del vuelo más el del hotel recomendado (una suma, no todas las combinaciones); null sin hotel o si el vuelo está descartado."
+          },
+          "fuente_url": {
+            "type": "string",
+            "title": "Fuente Url",
+            "description": "Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida (si el vuelo no trae sus tramos completos, la búsqueda sin elegir)."
           }
         },
         "type": "object",
@@ -8988,7 +9477,8 @@
           "origen_dato",
           "esperado_usd",
           "frente_esperado_pct",
-          "total_con_hotel_usd"
+          "total_con_hotel_usd",
+          "fuente_url"
         ],
         "title": "OpcionVuelo"
       },
@@ -9569,6 +10059,97 @@
           "velocidad_kmh"
         ],
         "title": "ReglasCarretera"
+      },
+      "RegresoElegido": {
+        "properties": {
+          "precio": {
+            "type": "number",
+            "title": "Precio"
+          },
+          "aerolinea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aerolinea"
+          },
+          "escalas": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalas"
+          },
+          "sale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale"
+          },
+          "llega": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega"
+          },
+          "desde": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desde"
+          },
+          "hasta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hasta"
+          },
+          "duracion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duracion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "precio"
+        ],
+        "title": "RegresoElegido",
+        "description": "El regreso que eligió el analizador en la página (el más barato), para llegar a las opciones de reserva."
       },
       "RespuestaAsistente": {
         "properties": {
@@ -10474,6 +11055,64 @@
         ],
         "title": "Tarifa"
       },
+      "TarifaLeida": {
+        "properties": {
+          "vendedor": {
+            "type": "string",
+            "title": "Vendedor"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre",
+            "description": "«Basic Economy», «Main Cabin»...; «Tarifa» si el vendedor no la nombra."
+          },
+          "precio": {
+            "type": "number",
+            "title": "Precio",
+            "description": "USD, total del viaje para una persona, como lo muestra la página."
+          },
+          "equipaje": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Equipaje"
+          },
+          "cambios": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cambios"
+          },
+          "reembolso": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reembolso"
+          },
+          "otras": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Otras",
+            "description": "Lo demás que incluye: asiento, embarque, espacio para las piernas..."
+          }
+        },
+        "type": "object",
+        "required": [
+          "vendedor",
+          "nombre",
+          "precio",
+          "equipaje",
+          "cambios",
+          "reembolso",
+          "otras"
+        ],
+        "title": "TarifaLeida"
+      },
       "TelegramPropio": {
         "properties": {
           "vinculado": {
@@ -10583,6 +11222,121 @@
           "en_revision"
         ],
         "title": "TotalesPersona"
+      },
+      "TramoLeido": {
+        "properties": {
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha",
+            "description": "Como la muestra la página: \"Tue, Dec 8\"."
+          },
+          "sale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale"
+          },
+          "llega": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega"
+          },
+          "aerolinea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aerolinea"
+          },
+          "duracion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duracion"
+          },
+          "ruta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ruta",
+            "description": "\"MIA–LAS\"."
+          },
+          "escalas": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalas",
+            "description": "\"Nonstop\", \"1 stop\"..."
+          },
+          "detalle_escalas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Detalle Escalas"
+          },
+          "emisiones": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emisiones"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fecha",
+          "sale",
+          "llega",
+          "aerolinea",
+          "duracion",
+          "ruta",
+          "escalas",
+          "detalle_escalas",
+          "emisiones"
+        ],
+        "title": "TramoLeido"
       },
       "TramoVuelo": {
         "properties": {
@@ -11125,6 +11879,37 @@
           "base"
         ],
         "title": "UsuarioFicha"
+      },
+      "VendedorLeido": {
+        "properties": {
+          "vendedor": {
+            "type": "string",
+            "title": "Vendedor"
+          },
+          "aerolinea": {
+            "type": "boolean",
+            "title": "Aerolinea",
+            "description": "Vende la propia aerolínea (no una agencia)."
+          },
+          "precio_desde": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Desde"
+          }
+        },
+        "type": "object",
+        "required": [
+          "vendedor",
+          "aerolinea",
+          "precio_desde"
+        ],
+        "title": "VendedorLeido"
       },
       "ViajeAsignable": {
         "properties": {

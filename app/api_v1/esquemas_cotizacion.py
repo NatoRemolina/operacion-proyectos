@@ -135,6 +135,7 @@ class FuenteAbierta(BaseModel):
     """Qué fuente abre la persona. La URL la arma el servidor: nunca se acepta una del cliente."""
     model_config = ConfigDict(extra="forbid")
     destino: Literal["vuelos", "hoteles"]
+    vuelo_id: int | None = Field(None, ge=1, le=ENTERO_MAXIMO, description="Con `vuelos`: un vuelo de la cotización (su página).")
     hotel_id: int | None = Field(None, ge=1, le=ENTERO_MAXIMO, description="Con `hoteles`: un hotel de la cotización.")
 
 
@@ -194,6 +195,8 @@ class OpcionVuelo(BaseModel):
     frente_esperado_pct: int | None
     total_con_hotel_usd: Dinero = Field(description="Costo total esperado del vuelo más el del hotel recomendado (una suma, no "
                                                     "todas las combinaciones); null sin hotel o si el vuelo está descartado.")
+    fuente_url: str = Field(description="Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida (si "
+                                        "el vuelo no trae sus tramos completos, la búsqueda sin elegir).")
 
 
 class LineaHotel(BaseModel):
@@ -294,6 +297,80 @@ class Cotizacion(BaseModel):
 class EnlaceFuente(BaseModel):
     destino: Literal["vuelos", "hoteles"]
     url: str = Field(description="`https://www.google.com/travel/...`, armada por el servidor.")
+
+
+# ---------- análisis de la página del vuelo (Google Flights) ----------
+class TramoLeido(BaseModel):
+    fecha: str | None = Field(description="Como la muestra la página: \"Tue, Dec 8\".")
+    sale: str | None
+    llega: str | None
+    aerolinea: str | None
+    duracion: str | None
+    ruta: str | None = Field(description="\"MIA–LAS\".")
+    escalas: str | None = Field(description="\"Nonstop\", \"1 stop\"...")
+    detalle_escalas: list[str]
+    emisiones: str | None
+
+
+class TarifaLeida(BaseModel):
+    vendedor: str
+    nombre: str = Field(description="«Basic Economy», «Main Cabin»...; «Tarifa» si el vendedor no la nombra.")
+    precio: float = Field(description="USD, total del viaje para una persona, como lo muestra la página.")
+    equipaje: list[str]
+    cambios: list[str]
+    reembolso: list[str]
+    otras: list[str] = Field(description="Lo demás que incluye: asiento, embarque, espacio para las piernas...")
+
+
+class VendedorLeido(BaseModel):
+    vendedor: str
+    aerolinea: bool = Field(description="Vende la propia aerolínea (no una agencia).")
+    precio_desde: float | None
+
+
+class RegresoElegido(BaseModel):
+    """El regreso que eligió el analizador en la página (el más barato), para llegar a las opciones de reserva."""
+    model_config = ConfigDict(extra="ignore")
+    precio: float
+    aerolinea: str | None = None
+    escalas: str | None = None
+    sale: str | None = None
+    llega: str | None = None
+    desde: str | None = None
+    hasta: str | None = None
+    duracion: str | None = None
+
+
+class DetalleLeido(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    precio_total: float | None = Field(description="El precio más bajo del itinerario en la página (USD).")
+    tramos: list[TramoLeido]
+    tarifas: list[TarifaLeida]
+    vendedores: list[VendedorLeido]
+    equipaje: list[str]
+    cambios: list[str]
+    reembolso: list[str]
+    regreso_elegido: RegresoElegido | None = None
+    notas: list[str]
+    avisos: list[str] = Field(description="Lo que la página no mostró (por ejemplo, opciones de reserva).")
+
+
+class AnalisisVuelo(BaseModel):
+    """La lectura de la página del vuelo en Google Flights. No reemplaza el precio del buscador."""
+    id: int | None
+    opcion_id: int
+    estado: Literal["pendiente", "listo", "fallido", "no_disponible"] = Field(
+        description="`no_disponible`: no se leyó (apagado, sin analizador, tope del día, otra lectura en curso); "
+                    "el desglose muestra solo lo del buscador y `motivo` lo dice.")
+    motivo: str | None
+    url: str | None = Field(description="La página leída: `https://www.google.com/travel/flights?...` con la ida elegida.")
+    leido: str | None = Field(description="Cuándo terminó la lectura (UTC, ISO 8601).")
+    duracion_ms: int | None
+    reutilizado: bool = Field(description="Es una lectura de menos de 60 minutos del mismo vuelo: no se volvió a abrir la página.")
+    precio_buscador_usd: Dinero
+    aviso_precio: str | None = Field(description="Si la página muestra otro precio que el buscador, lo dice.")
+    datos: DetalleLeido | None
+    captura_url: str | None = Field(description="La captura de la página (PNG), como evidencia.")
 
 
 # ---------- errores ----------
