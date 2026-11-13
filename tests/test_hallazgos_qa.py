@@ -32,3 +32,41 @@ def test_las_vegas_guardado_muestra_el_descartado_por_calificacion(cliente):
     assert db.uno("select count(*) n from opciones where solicitud_id=:i and tipo='hotel'", i=sid)["n"] == 15
     c = cotizacion.comparacion(sid)
     assert any(h["h"]["nombre"].startswith("OYO") for h in c["hoteles_descartados"])
+
+
+# ---------- I-3: Lisboa elegida de la lista encuentra los hoteles guardados ----------
+LISBOA = {"nombre": "Lisbon", "region": "Lisbon", "pais": "Portugal", "lat": 38.71667, "lon": -9.13333}
+
+
+def _cotizar_lisboa(cliente, **cambios):
+    import json
+    datos = {**FORM_VIAJE, "origen": "MAD", "destino": "Lisbon, Lisbon, Portugal", "destino_aeropuertos": "LIS",
+             "destino_lugar": json.dumps(LISBOA), "ida": "2026-12-13", "regreso": "2026-12-16",
+             "llegar_antes": "2026-12-13T18:00", **cambios}
+    r = cliente.post("/viajes", data=datos, follow_redirects=False)
+    return int(r.headers["location"].rsplit("/", 1)[1])
+
+
+def test_lisboa_elegida_de_la_lista_trae_los_hoteles_guardados(cliente, monkeypatch):
+    from app import config, db
+    monkeypatch.setattr(config, "SERPAPI_KEY", "")
+    sid = _cotizar_lisboa(cliente)
+    s = db.uno("select ciudad from solicitudes where id=:i", i=sid)
+    assert s["ciudad"] == "Lisbon"
+    assert db.uno("select count(*) n from opciones where solicitud_id=:i and tipo='hotel'", i=sid)["n"] == 18
+
+
+def test_con_el_buscador_en_vivo_se_consulta_con_el_nombre_elegido(cliente, monkeypatch):
+    from app import config
+    from app.servicios import precios
+    consultas = []
+
+    def consultar(parametros, *a, **k):
+        consultas.append(parametros)
+        return {"properties": []}
+    monkeypatch.setattr(config, "SERPAPI_KEY", "clave-de-prueba")
+    monkeypatch.setattr(precios, "_consultar", consultar)
+    monkeypatch.setattr(precios, "_guardar", lambda *a, **k: None)
+    hoteles, origen = precios.buscar_hoteles("Lisbon", "2026-12-13", "2026-12-16", None, otros_nombres=["lisboa"])
+    assert [c["q"] for c in consultas if c.get("engine") == "google_hotels"] == ["Lisbon hotels"]
+    assert origen == "en vivo" and hoteles == []

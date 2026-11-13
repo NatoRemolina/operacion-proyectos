@@ -119,6 +119,19 @@ def lugar(valor) -> dict | None:
             "pais": str(datos.get("pais") or "").strip()[:80], "lat": lat, "lon": lon}
 
 
+def otros_nombres(sitio: dict | None) -> list[str]:
+    """Los nombres alternos del lugar elegido («Lisbon» también es «lisboa»), del lugar con ese nombre más cercano a
+    sus coordenadas. Sirven para encontrar una respuesta de hoteles guardada con el nombre en otro idioma."""
+    if not sitio:
+        return []
+    filas = [f for f in db.todos("select buscable, lat, lon from lugares where nombre=:n", n=sitio["nombre"])
+             if f["lat"] is not None and f["lon"] is not None]
+    cerca = min(filas, key=lambda f: geografia.distancia_km(sitio["lat"], sitio["lon"], f["lat"], f["lon"]), default=None)
+    if not cerca or geografia.distancia_km(sitio["lat"], sitio["lon"], cerca["lat"], cerca["lon"]) > 50:
+        return []
+    return [n for n in (cerca["buscable"] or "").split(" | ")[1:] if n]
+
+
 def lado(texto: str, codigos: str, lugar_elegido) -> dict:
     """Origen o destino de la cotización. Con aeropuertos marcados en el buscador: el lugar, la lista ordenada y el
     principal (el marcado más cercano al lugar, o el primero). Sin ellos, como antes: un aeropuerto por nombre o código.
@@ -198,6 +211,7 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         if not (math.isfinite(valor) and 0 <= valor <= tope):
             raise CotizacionInvalida(campo, texto)
     baterias_n = max(baterias_n, 0)
+    ciudad_escrita = bool(ciudad.strip())
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
     solicitado_por, viajero_nuevo = usuario["nombre"], viajero_nuevo.strip()[:80]  # quien consulta sale de la sesión
     # Todos viajan: quien cotiza viaja, salvo que gestión o administración marquen que es para otra persona.
@@ -230,7 +244,9 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         tarifas, origen_t = precios.tarifas_de_vuelo(desde_todos, hacia_todos, ida, regreso, v, sid)
         db.insertar("opciones", solicitud_id=sid, tipo="vuelo", titulo=" + ".join(v["numeros"]), precio=v["precio"],
                     moneda="USD", datos=v, tarifas={"lista": tarifas, "origen": origen_t}, origen_dato=origen_v, capturado=db.ahora())
-    hoteles, origen_h = precios.buscar_hoteles(sol["ciudad"], ida, regreso, sid)
+    # Si la persona no escribió la ciudad del hotel, sirve cualquier nombre del lugar elegido para lo guardado
+    alternos = [] if ciudad_escrita else otros_nombres(llega["lugar"])
+    hoteles, origen_h = precios.buscar_hoteles(sol["ciudad"], ida, regreso, sid, otros_nombres=alternos)
     hoteles = hoteles[:TOPE_HOTELES_GUARDADOS]
     for h in hoteles:
         db.insertar("opciones", solicitud_id=sid, tipo="hotel", titulo=h["nombre"], precio=h["total"], moneda="USD",
