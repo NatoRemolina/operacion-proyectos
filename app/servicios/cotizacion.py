@@ -454,6 +454,7 @@ def abrir_fuente(usuario: dict, sid: int, destino: str, hotel_id: int | None = N
 
 # ---------- página oficial del vendedor ----------
 TOPE_VENDEDOR_DIA = 20   # si la regla no existe: unas 10 aperturas (regreso y opciones de reserva)
+VALOR_VIEJO_VENDEDOR = "10"   # el tope de la primera versión; las bases que lo conservan pasan al vigente
 REGLA_VENDEDOR = ("enlace_vendedor_persona_dia", str(TOPE_VENDEDOR_DIA),
                   "Búsquedas pagas por persona y día del enlace a la página oficial del vendedor: el regreso y las opciones "
                   "de reserva, también las fallidas. El mismo itinerario dentro de la hora no vuelve a contar. Alcanzado, "
@@ -466,8 +467,12 @@ REUSO_VENDEDOR = timedelta(hours=1)
 
 def asegurar_reglas_vendedor() -> int:
     clave, valor, nota = REGLA_VENDEDOR
-    if db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
-        return 0
+    fila = db.uno("select id, valor from reglas where ambito='supuesto' and clave=:c", c=clave)
+    if fila:
+        if str(fila["valor"]).strip() != VALOR_VIEJO_VENDEDOR:
+            return 0   # el valor vigente o uno editado a mano: se respeta
+        db.actualizar("reglas", fila["id"], valor=valor, nota=nota)   # el valor de la primera versión (10) pasa al nuevo
+        return 1
     db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor, nota=nota,
                 fuente="Supuesto editable", confianza="supuesto", verificado="2026-11-13")
     return 1

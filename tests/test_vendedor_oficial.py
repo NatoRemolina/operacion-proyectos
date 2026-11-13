@@ -160,7 +160,7 @@ def test_tope_por_persona_y_dia_y_reutiliza_la_ultima_hora(piloto, buscador):
         assert r.status_code == 303 and r.headers["location"] == c["vuelos"][1]["fuente_url"]
         assert sum("booking_token" in p for p in llamadas) == 2
     finally:
-        db.ejecutar("update reglas set valor='10' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
+        db.ejecutar("update reglas set valor='20' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
 
 
 def test_permisos_todas_las_personas_que_ven_la_cotizacion(piloto, piloto2, gestor, anonimo, buscador):
@@ -178,6 +178,22 @@ def test_permisos_todas_las_personas_que_ven_la_cotizacion(piloto, piloto2, gest
 def test_las_reglas_del_tope_se_crean_con_la_migracion():
     db.ejecutar("delete from reglas where clave='enlace_vendedor_persona_dia'")
     assert cotizacion.asegurar_reglas_vendedor() == 1 and cotizacion.asegurar_reglas_vendedor() == 0
+
+
+# ---------- ronda 2 · punto 16: una base con el valor viejo (10) pasa a 20 ----------
+def test_el_tope_viejo_del_enlace_pasa_a_20():
+    cotizacion.asegurar_reglas_vendedor()
+    clave = "enlace_vendedor_persona_dia"
+    db.ejecutar("update reglas set valor='10' where ambito='supuesto' and clave=:c", c=clave)
+    try:
+        assert cotizacion.asegurar_reglas_vendedor() == 1
+        assert db.uno("select valor from reglas where ambito='supuesto' and clave=:c", c=clave)["valor"] == "20"
+        assert cotizacion.asegurar_reglas_vendedor() == 0
+        db.ejecutar("update reglas set valor='35' where ambito='supuesto' and clave=:c", c=clave)   # editado a mano: se respeta
+        assert cotizacion.asegurar_reglas_vendedor() == 0
+        assert db.uno("select valor from reglas where ambito='supuesto' and clave=:c", c=clave)["valor"] == "35"
+    finally:
+        db.ejecutar("update reglas set valor='20' where ambito='supuesto' and clave=:c", c=clave)
 
 
 # ---------- ronda 1 · punto 17: una respuesta rara del buscador manda a Google Flights ----------
