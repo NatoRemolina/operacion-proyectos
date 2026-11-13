@@ -4,8 +4,11 @@ Límites, a propósito:
 - agente de usuario honesto: dice que es un navegador sin pantalla y para qué lee;
 - solo navega dentro de `https://www.google.com/travel/flights` (y la misma página de Google si pide verificación);
 - no resuelve verificaciones ni acepta condiciones: si aparecen, queda `fallido` con el motivo;
-- nunca inicia sesión ni llena formularios. Lo único que toca es «elegir» un regreso cuando la página es la lista de
-  regresos de una ida ya elegida, para llegar a las opciones de reserva: un clic, el regreso más barato;
+- nunca inicia sesión, ni escribe en campos, ni acepta condiciones. Sus únicos clics: elegir el regreso (el de la
+  cotización si está en la página; si no, el más barato) para llegar a las opciones de reserva, desplegar «Other
+  booking options» y las tarifas de cada vendedor, y, solo en «ir a», el «Continue» de la tarifa pedida;
+- «ir a» intercepta el envío que Google arma al pulsar «Continue» (POST a `/travel/clk`), lo corta sin que salga del
+  servidor y lo devuelve una sola vez para que el navegador de la persona lo haga;
 - una lectura a la vez; con `ANALIZADOR=apagado` no abre nada.
 """
 import base64
@@ -34,6 +37,10 @@ ALTO_CAPTURA = 4000          # px: la reserva entera cabe; lo de más abajo (his
 TOPE_CAPTURA = 3_000_000     # bytes en base64: con los datos, la respuesta queda bajo 4 MB
 TOPE_RESPUESTA = 4_000_000
 OTRO_SITIO = "la página llevó a otro sitio"
+SIN_TARIFA = "no se encontró la tarifa"
+SIN_ENVIO = "Google no respondió al elegir la tarifa"
+CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for [\d,.]+ US dollars")
+VENDEDOR_O_TARIFA = re.compile(r"^[\w .,&'()+/-]{1,60}$")
 OTRA_PESTANA = "la página quiso abrir otra pestaña"
 
 _turno = threading.Lock()
@@ -45,10 +52,27 @@ def _resultado(estado: str, inicio: float, motivo: str | None = None, **extra) -
 
 
 def analizar(url: str, *, elegir_regreso: bool = True, servir=None, espera_ms: int = ESPERA_MS,
-             presupuesto_ms: int = PRESUPUESTO_MS) -> dict:
+             presupuesto_ms: int = PRESUPUESTO_MS, regreso: dict | None = None) -> dict:
     """{"estado": "listo" | "fallido", "motivo", "datos" (lo leído), "captura_png_b64", "url_final", "duracion_ms"}.
 
-    `servir(pagina)` registra respuestas propias para las pruebas: la página de ejemplo en lugar de internet."""
+    `regreso` ({"sale": "1:43 PM", "aerolinea": "American"}) es el de la cotización: si la página lo muestra, se elige
+    ese. `servir(pagina)` registra respuestas propias para las pruebas: la página de ejemplo en lugar de internet."""
+    return _con_turno(url, lambda u, inicio: _leer(u, inicio, elegir_regreso, servir, espera_ms, presupuesto_ms, regreso))
+
+
+def ir_a(url: str, vendedor: str, tarifa: str, *, servir=None, regreso: dict | None = None,
+         presupuesto_ms: int = PRESUPUESTO_MS) -> dict:
+    """Llega a la tarifa `tarifa` de `vendedor` y pulsa su «Continue»; devuelve el envío que Google iba a hacer sin
+    hacerlo: {"estado", "motivo", "url" (`https://www.google.com/travel/clk…`), "cuerpo", "vendedor", "tarifa",
+    "captura_previa_png_b64", "regreso_elegido", "duracion_ms"}. El cuerpo es de un solo uso: no se registra."""
+    if not (isinstance(vendedor, str) and VENDEDOR_O_TARIFA.match(vendedor) and isinstance(tarifa, str)
+            and VENDEDOR_O_TARIFA.match(tarifa)):
+        return _resultado("fallido", time.monotonic(), SIN_TARIFA)
+    pedido = {"vendedor": vendedor, "tarifa": tarifa}
+    return _con_turno(url, lambda u, inicio: _leer(u, inicio, True, servir, ESPERA_MS, presupuesto_ms, regreso, pedido))
+
+
+def _con_turno(url: str, leer) -> dict:
     inicio = time.monotonic()
     if os.environ.get("ANALIZADOR", "").strip().lower() == "apagado":
         return _resultado("fallido", inicio, "el analizador está apagado")
@@ -58,7 +82,7 @@ def analizar(url: str, *, elegir_regreso: bool = True, servir=None, espera_ms: i
     if not _turno.acquire(blocking=False):
         return _resultado("fallido", inicio, "el analizador está leyendo otra página; intenta en un minuto")
     try:
-        return _leer(url, inicio, elegir_regreso, servir, espera_ms, presupuesto_ms)
+        return leer(url, inicio)
     except Exception as e:  # noqa: BLE001 (un fallo del navegador es una lectura fallida, nunca una caída del servicio)
         return _resultado("fallido", inicio, f"error del navegador ({_primera_linea(e)})")
     finally:
@@ -84,10 +108,18 @@ def _con_parametros_fijos(url: str) -> str:
     return urlunsplit((p.scheme, p.netloc, p.path, urlencode([*PARAMETROS_FIJOS.items(), *parametros]), ""))
 
 
-def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int, presupuesto_ms: int) -> dict:
+def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int, presupuesto_ms: int,
+          regreso_cotizacion: dict | None = None, pedido_ir: dict | None = None) -> dict:
     from playwright.sync_api import Error, sync_playwright
 
-    fuera, abiertas = {}, []
+    fuera, abiertas, envio = {}, [], {}
+
+    def interceptar(ruta):
+        """El envío al vendedor (POST a /travel/clk): se guarda en memoria y se corta; nunca sale del servidor."""
+        pedido = ruta.request
+        if pedido_ir and pedido.method == "POST" and lector.url_envio(pedido.url) and not envio:
+            envio.update(url=pedido.url, cuerpo=pedido.post_data or "")
+        return ruta.abort()
 
     def solo_lista_blanca(ruta):
         from playwright.sync_api import Error
@@ -110,6 +142,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
             contexto = navegador.new_context(user_agent=AGENTE, locale="en-US", viewport={"width": 1280, "height": 1600})
             # la lista blanca vale para todo el contexto: también una pestaña que la página intente abrir
             contexto.route("**/*", solo_lista_blanca)
+            # registrada después, atiende antes: ningún envío a /travel/clk sale del navegador del servidor
+            contexto.route(re.compile(r"^https://(www\.)?google\.com/travel/clk"), interceptar)
             pagina = contexto.new_page()
 
             def otra_pestana(nueva):
@@ -130,6 +164,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
 
             def salida() -> str | None:
                 """Por qué ya no se puede leer: la pestaña salió de la lista blanca o la página abrió otra."""
+                if envio:
+                    return None   # el envío a /travel/clk se cortó a propósito: es lo que pide «ir a»
                 if abiertas:
                     return OTRA_PESTANA
                 destino = fuera.get("url") or ("" if lector.url_navegable(pagina.url) else pagina.url)
@@ -165,12 +201,18 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 return _resultado("fallido", inicio, motivo, url_final=pagina.url)
             regreso = None
             if not RESERVA.search(texto) and elegir_regreso:
-                regreso = _elegir_regreso(pagina, min(5000, restante()))
+                regreso = _elegir_regreso(pagina, min(5000, restante()), regreso_cotizacion)
                 if regreso:
                     # sin opciones de reserva a tiempo se lee lo que haya: `avisos` dirá que no las hubo
                     texto = _esperar(pagina, RESERVA, min(espera_ms, restante())) or pagina.inner_text("body")
             if salida():   # antes de leer y de capturar: nunca otro sitio ni una pestaña que se abrió
                 return _resultado("fallido", inicio, salida())
+            if RESERVA.search(texto) and _desplegar(pagina, restante):
+                texto = pagina.inner_text("body")
+            if salida():
+                return _resultado("fallido", inicio, salida())
+            if pedido_ir:
+                return _ir(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
             restante()
             etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
             datos = lector.leer(texto, etiquetas)
@@ -185,6 +227,57 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                               captura_png_b64=base64.b64encode(captura).decode())
         finally:
             navegador.close()
+
+
+def _desplegar(pagina, restante) -> bool:
+    """Clics que solo despliegan lo que ya está en la página: «Other booking options» y las tarifas de cada vendedor
+    («Show fare options on …»). No eligen nada. Devuelve si se desplegó algo."""
+    from playwright.sync_api import Error
+
+    hubo = False
+    for selector in ('[aria-label="Other booking options"]:not([aria-expanded="true"])', '[aria-label^="Show fare options on "]'):
+        botones = pagina.locator(selector)
+        for i in range(min(botones.count(), 12)):
+            try:
+                botones.nth(i).click(timeout=min(3000, restante()))
+                hubo = True
+            except Error:
+                pass   # un botón que ya no está (la página cambió): se sigue con lo que hay
+    if hubo:
+        pagina.wait_for_timeout(min(500, restante()))
+    return hubo
+
+
+def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) -> dict:
+    """Pulsa el «Continue» de la tarifa pedida y espera el envío interceptado. Captura la página antes del clic."""
+    from playwright.sync_api import Error
+
+    etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
+    indice = next((i for i, e in enumerate(etiquetas) if _es_continuar(e, pedido["vendedor"], pedido["tarifa"])), None)
+    if indice is None:
+        return _resultado("fallido", inicio, SIN_TARIFA, url_final=pagina.url)
+    previa = _captura(pagina, restante)
+    try:
+        pagina.locator("[aria-label]").nth(indice).click(timeout=min(5000, restante()))
+    except Error:
+        return _resultado("fallido", inicio, SIN_ENVIO, url_final=pagina.url)
+    fin = time.monotonic() + min(10_000, restante()) / 1000
+    while not envio and time.monotonic() < fin:
+        pagina.wait_for_timeout(100)
+    if not envio:
+        return _resultado("fallido", inicio, salida() or SIN_ENVIO, url_final=pagina.url)
+    return _resultado("listo", inicio, url=envio["url"], cuerpo=envio["cuerpo"], vendedor=pedido["vendedor"],
+                      tarifa=pedido["tarifa"], regreso_elegido=regreso, url_final=pagina.url,
+                      captura_previa_png_b64=base64.b64encode(previa).decode())
+
+
+def _es_continuar(etiqueta, vendedor: str, tarifa: str) -> bool:
+    """«Continue to book with American, Main Cabin for 1014 US dollars»; sin nombre de tarifa, vale «Tarifa»."""
+    m = CONTINUAR.match(lector.normal(etiqueta or ""))
+    if not m:
+        return False
+    return (m["vendedor"].strip().lower() == vendedor.strip().lower()
+            and (m["tarifa"] or "Tarifa").strip().lower() == tarifa.strip().lower())
 
 
 def _captura(pagina, restante) -> bytes:
@@ -221,13 +314,18 @@ def _esperar(pagina, patron: re.Pattern, plazo_ms: int = ESPERA_MS) -> str | Non
     return None
 
 
-def _elegir_regreso(pagina, plazo_ms: int = 5000) -> dict | None:
-    """En la lista de regresos de una ida ya elegida, abre el más barato (como la plataforma al decidir). Un clic."""
+def _elegir_regreso(pagina, plazo_ms: int = 5000, de_la_cotizacion: dict | None = None) -> dict | None:
+    """En la lista de regresos de una ida ya elegida, abre el de la cotización (misma hora de salida y aerolínea) si la
+    página lo muestra; si no, el más barato, como la plataforma al decidir. Un clic. `elegido_por` dice cuál fue."""
     etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
     opciones = lector.itinerarios(etiquetas)
     if not opciones:
         return None
-    barato = min(opciones, key=lambda o: o["precio"])
+    buscado = de_la_cotizacion or {}
+    iguales = [o for o in opciones if buscado.get("sale") and o.get("sale") == buscado["sale"]
+               and (not buscado.get("aerolinea") or (o.get("aerolinea") or "").lower() == buscado["aerolinea"].lower())]
+    barato = min(iguales or opciones, key=lambda o: o["precio"])
+    elegido_por = "cotizacion" if iguales else "precio"
     indice = etiquetas.index(barato["etiqueta"]) if barato["etiqueta"] in etiquetas else \
         next(i for i, e in enumerate(etiquetas) if (e or "")[:600] == barato["etiqueta"])
     from playwright.sync_api import Error
@@ -238,4 +336,4 @@ def _elegir_regreso(pagina, plazo_ms: int = 5000) -> dict | None:
         pagina.locator("[aria-label]").nth(indice).click(force=True, timeout=plazo_ms)
     except Error:
         return None
-    return {k: v for k, v in barato.items() if k != "etiqueta"}
+    return {**{k: v for k, v in barato.items() if k != "etiqueta"}, "elegido_por": elegido_por}

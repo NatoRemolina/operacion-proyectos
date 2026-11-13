@@ -26,7 +26,7 @@ ESCALA = re.compile(r"^(\d+ hr(?: \d+ min)?|\d+ min) ([A-Z]{3})\b")
 FIN_RESERVA = ("Fare and baggage fees", "Prices include required taxes", "Price insights", "Price history")
 DUPLICADO_ACCESIBLE = re.compile(r"^(First|Second|Third) checked bag costs ")
 SIN_INTERES = {"Hide options", "Show options", "More options", "Fewer options", "Airline", "Continue", "Book on Google",
-               "Travel agency", "Learn more"}
+               "Travel agency", "Learn more", "Other booking options"}
 
 
 def _ruta_segura(url) -> str | None:
@@ -55,7 +55,13 @@ def url_navegable(url) -> bool:
     """Adónde puede ir la pestaña mientras lee: `https://www.google.com/travel/...` (búsqueda, lista y reserva). La
     verificación (`/sorry/`) y el aviso de condiciones (`consent.google.com`) quedan fuera: se detectan, nunca se abren."""
     ruta = _ruta_segura(url)
-    return ruta is not None and ruta.startswith("/travel/")
+    return ruta is not None and ruta.startswith("/travel/") and not ruta.startswith("/travel/clk")
+
+
+def url_envio(url) -> bool:
+    """El envío que Google arma al pulsar «Continue»: `https://www.google.com/travel/clk…`. Solo ese se intercepta."""
+    ruta = _ruta_segura(url)
+    return ruta is not None and ruta.startswith("/travel/clk")
 
 
 def bloqueo(url_final: str, texto: str) -> str | None:

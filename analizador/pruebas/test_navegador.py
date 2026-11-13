@@ -153,3 +153,56 @@ def test_una_lectura_a_la_vez():
         assert navegador.analizar(URL)["motivo"].startswith("el analizador está leyendo otra página")
     finally:
         navegador._turno.release()
+
+
+# ---------- pieza 3b: todas las opciones e «Ir a…» ----------
+COMPLETA = {"https://www.google.com/travel/flights/reserva": "reserva_completa.html",
+            "https://www.google.com/travel/flights?": "regresos.html"}
+
+
+def test_elige_el_mismo_regreso_de_la_cotizacion():
+    r = navegador.analizar(URL, servir=_servir(dict(COMPLETA), []), regreso={"sale": "1:43 PM", "aerolinea": "American"})
+    assert r["estado"] == "listo", r["motivo"]
+    elegido = r["datos"]["regreso_elegido"]
+    assert (elegido["precio"], elegido["sale"], elegido["elegido_por"]) == (619, "1:43 PM", "cotizacion")
+    # sin ese regreso en la página, el más barato, y lo dice
+    r = navegador.analizar(URL, servir=_servir(dict(COMPLETA), []), regreso={"sale": "7:00 AM", "aerolinea": "Delta"})
+    assert (r["datos"]["regreso_elegido"]["precio"], r["datos"]["regreso_elegido"]["elegido_por"]) == (564, "precio")
+
+
+def test_despliega_y_lee_todos_los_vendedores_y_tarifas():
+    r = navegador.analizar(URL, servir=_servir(dict(COMPLETA), []))
+    assert r["estado"] == "listo", r["motivo"]
+    d = r["datos"]
+    assert [v["vendedor"] for v in d["vendedores"]] == ["American", "Expedia", "Priceline"]
+    assert [(t["vendedor"], t["nombre"], t["precio"]) for t in d["tarifas"]] == [
+        ("American", "Basic Economy", 619), ("American", "Main Cabin", 1014), ("Expedia", "Economy", 612),
+        ("Priceline", "Economy", 615)]
+
+
+@pytest.mark.parametrize("vendedor, tarifa, cuerpo", [("American", "Main Cabin", "u=AA-MAIN-UNSOLOUSO"),
+                                                       ("Expedia", "Economy", "u=EXP-ECO-UNSOLOUSO")])
+def test_ir_a_devuelve_el_envio_de_esa_tarifa_sin_mandarlo(vendedor, tarifa, cuerpo):
+    pedidos = []
+    r = navegador.ir_a(URL, vendedor, tarifa, servir=_servir(dict(COMPLETA), pedidos))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["url"].startswith("https://www.google.com/travel/clk/f") and r["cuerpo"].startswith(cuerpo)
+    assert base64.b64decode(r["captura_previa_png_b64"]).startswith(b"\x89PNG")
+    assert (r["vendedor"], r["tarifa"]) == (vendedor, tarifa)
+    assert not any("/travel/clk" in p for p in pedidos)          # la petición nunca salió del navegador del servidor
+
+
+def test_ir_a_una_tarifa_que_no_esta_falla():
+    r = navegador.ir_a(URL, "American", "First", servir=_servir(dict(COMPLETA), []))
+    assert (r["estado"], r["motivo"], r.get("cuerpo")) == ("fallido", navegador.SIN_TARIFA, None)
+
+
+def test_ir_a_con_redireccion_a_otro_dominio_falla():
+    r = navegador.ir_a(URL, "American", "Main Cabin",
+                       servir=_servir({"https://www.google.com/travel/flights?": "302 https://otro.example/x"}, []))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.OTRO_SITIO)
+
+
+def test_ir_a_solo_acepta_vendedor_y_tarifa_razonables():
+    assert navegador.ir_a(URL, "", "Main Cabin")["estado"] == "fallido"
+    assert navegador.ir_a(URL, "American" * 20, "Main Cabin")["estado"] == "fallido"
