@@ -89,6 +89,15 @@ def test_la_pagina_siempre_se_pide_en_ingles_ee_uu_y_dolares():
     assert pedidos[0] == "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=prueba"
 
 
+def test_toda_la_lectura_respeta_el_plazo_total():
+    import time
+    inicio = time.monotonic()
+    r = navegador.analizar(URL, servir=_servir({"https://www.google.com/": "sin_precios.html"}, []), espera_ms=60_000,
+                           presupuesto_ms=3_000)
+    assert (r["estado"], r["motivo"]) == ("fallido", "la página tardó demasiado en mostrar los precios")
+    assert time.monotonic() - inicio < 8   # el arranque del navegador incluido
+
+
 def test_una_verificacion_no_se_resuelve():
     r = navegador.analizar(URL, servir=_servir({"https://www.google.com/": "verificacion.html"}, []))
     assert (r["estado"], r["motivo"]) == ("fallido", lector.VERIFICACION) and r["captura_png_b64"] is None

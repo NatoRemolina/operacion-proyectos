@@ -19,8 +19,8 @@ from . import lector
 
 AGENTE = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/130.0 Safari/537.36 "
           "AnalizadorDePrecios/1.0 (lectura bajo demanda de una página pública para verificar un precio cotizado)")
-ESPERA_MS = 45_000          # para que aparezcan los precios (Google a veces tarda); nunca más que el presupuesto total
-PRESUPUESTO_MS = 50_000     # toda la lectura, con la captura, dentro del minuto de la función
+PRESUPUESTO_MS = 45_000     # toda la lectura (abrir, esperar, elegir el regreso, leer y capturar) en el minuto de la función
+ESPERA_MS = 45_000          # tope de cada espera de precios; cada paso descuenta del presupuesto total
 EN_LAMBDA = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 # En Lambda no hay /dev/shm grande ni varios procesos: Chromium corre en uno solo
 ARGUMENTOS = ["--disable-gpu", "--disable-dev-shm-usage", "--single-process", "--no-zygote"] if EN_LAMBDA else []
@@ -38,7 +38,8 @@ def _resultado(estado: str, inicio: float, motivo: str | None = None, **extra) -
             "agente": AGENTE, "duracion_ms": int((time.monotonic() - inicio) * 1000), **extra}
 
 
-def analizar(url: str, *, elegir_regreso: bool = True, servir=None, espera_ms: int = ESPERA_MS) -> dict:
+def analizar(url: str, *, elegir_regreso: bool = True, servir=None, espera_ms: int = ESPERA_MS,
+             presupuesto_ms: int = PRESUPUESTO_MS) -> dict:
     """{"estado": "listo" | "fallido", "motivo", "datos" (lo leído), "captura_png_b64", "url_final", "duracion_ms"}.
 
     `servir(pagina)` registra respuestas propias para las pruebas: la página de ejemplo en lugar de internet."""
@@ -51,7 +52,7 @@ def analizar(url: str, *, elegir_regreso: bool = True, servir=None, espera_ms: i
     if not _turno.acquire(blocking=False):
         return _resultado("fallido", inicio, "el analizador está leyendo otra página; intenta en un minuto")
     try:
-        return _leer(url, inicio, elegir_regreso, servir, espera_ms)
+        return _leer(url, inicio, elegir_regreso, servir, espera_ms, presupuesto_ms)
     except Exception as e:  # noqa: BLE001 (un fallo del navegador es una lectura fallida, nunca una caída del servicio)
         return _resultado("fallido", inicio, f"error del navegador ({_primera_linea(e)})")
     finally:
@@ -65,7 +66,7 @@ def _evidencia(pagina) -> dict:
     except Exception:  # noqa: BLE001 (la página puede estar cambiando: la evidencia es opcional)
         texto = ""
     try:
-        captura = base64.b64encode(pagina.screenshot(type="png")).decode()
+        captura = base64.b64encode(pagina.screenshot(type="png", timeout=2000)).decode()
     except Exception:  # noqa: BLE001
         captura = None
     return {"captura_png_b64": captura, "extracto": " ".join(texto.split())[:500] or None}
@@ -77,7 +78,7 @@ def _con_parametros_fijos(url: str) -> str:
     return urlunsplit((p.scheme, p.netloc, p.path, urlencode([*PARAMETROS_FIJOS.items(), *parametros]), ""))
 
 
-def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int) -> dict:
+def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int, presupuesto_ms: int) -> dict:
     from playwright.sync_api import Error, sync_playwright
 
     fuera = {}
@@ -96,17 +97,23 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int)
         try:
             contexto = navegador.new_context(user_agent=AGENTE, locale="en-US", viewport={"width": 1280, "height": 1600})
             pagina = contexto.new_page()
-            pagina.set_default_timeout(ESPERA_MS)
+
+            def restante() -> int:
+                """Lo que queda del plazo total; cada paso del navegador lo usa como su tiempo máximo."""
+                quedan = max(int(presupuesto_ms - (time.monotonic() - inicio) * 1000), 1)
+                pagina.set_default_timeout(quedan)
+                return quedan
+
+            restante()
             pagina.route("**/*", solo_lista_blanca)
             if servir:
                 servir(pagina)   # registrado después: atiende primero
             try:
-                pagina.goto(url, wait_until="domcontentloaded")
+                pagina.goto(url, wait_until="domcontentloaded", timeout=restante())
             except Error as e:
                 motivo = lector.CONSENTIMIENTO if "consent." in fuera.get("url", "") else \
                     f"no se pudo abrir la página ({_primera_linea(e)})"
                 return _resultado("fallido", inicio, motivo, url_final=fuera.get("url") or pagina.url)
-            restante = lambda: int(PRESUPUESTO_MS - (time.monotonic() - inicio) * 1000)  # noqa: E731
             texto = _esperar(pagina, LISTO, min(espera_ms, restante()))
             if texto is None:
                 motivo = lector.CONSENTIMIENTO if "consent." in fuera.get("url", "") else \
@@ -117,17 +124,18 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int)
                 return _resultado("fallido", inicio, motivo, url_final=pagina.url)
             regreso = None
             if not RESERVA.search(texto) and elegir_regreso:
-                regreso = _elegir_regreso(pagina)
+                regreso = _elegir_regreso(pagina, min(5000, restante()))
                 if regreso:
                     # sin opciones de reserva a tiempo se lee lo que haya: `avisos` dirá que no las hubo
                     texto = _esperar(pagina, RESERVA, min(espera_ms, restante())) or pagina.inner_text("body")
+            restante()
             etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
             datos = lector.leer(texto, etiquetas)
             datos["regreso_elegido"] = regreso
             if not datos["tarifas"] and not datos["itinerarios"]:
                 # para saber qué no se reconoció: unas pocas etiquetas con precio, sin datos de la persona
                 datos["muestra_etiquetas"] = [e[:300] for e in etiquetas if e and "dollar" in e][:3]
-            captura = pagina.screenshot(full_page=True, type="png")
+            captura = pagina.screenshot(full_page=True, type="png", timeout=restante())
             return _resultado("listo", inicio, datos=datos, url_final=pagina.url,
                               captura_png_b64=base64.b64encode(captura).decode())
         finally:
@@ -146,7 +154,7 @@ def _esperar(pagina, patron: re.Pattern, plazo_ms: int = ESPERA_MS) -> str | Non
     fin = time.monotonic() + plazo_ms / 1000
     while time.monotonic() < fin:
         try:
-            texto = pagina.inner_text("body", timeout=2000)
+            texto = pagina.inner_text("body", timeout=max(min(2000, int((fin - time.monotonic()) * 1000)), 1))
             if patron.search(texto):
                 return texto
         except Error:
@@ -155,7 +163,7 @@ def _esperar(pagina, patron: re.Pattern, plazo_ms: int = ESPERA_MS) -> str | Non
     return None
 
 
-def _elegir_regreso(pagina) -> dict | None:
+def _elegir_regreso(pagina, plazo_ms: int = 5000) -> dict | None:
     """En la lista de regresos de una ida ya elegida, abre el más barato (como la plataforma al decidir). Un clic."""
     etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
     opciones = lector.itinerarios(etiquetas)
@@ -169,7 +177,7 @@ def _elegir_regreso(pagina) -> dict | None:
     # En Google la fila clicable queda por encima del elemento con la etiqueta: se hace clic en su centro sin esperar a
     # que «nada lo tape» (lo que recibe el clic es la propia fila del vuelo). Un clic, con tiempo corto.
     try:
-        pagina.locator("[aria-label]").nth(indice).click(force=True, timeout=5000)
+        pagina.locator("[aria-label]").nth(indice).click(force=True, timeout=plazo_ms)
     except Error:
         return None
     return {k: v for k, v in barato.items() if k != "etiqueta"}

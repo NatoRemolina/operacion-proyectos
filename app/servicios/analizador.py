@@ -37,7 +37,8 @@ analisis_vuelo = db._tabla(
 
 VIGENCIA = timedelta(minutes=60)
 EN_CURSO = timedelta(minutes=2)      # una lectura que no terminó en este tiempo ya no va a terminar
-ESPERA_S = 55                         # la función del analizador tiene 60 s; CloudFront espera 60 s a la API
+ESPERA_S = 54   # la lectura cabe en 45 s (analizador/navegador.py); el margen cubre el arranque en frío de la función, siempre
+#                 por debajo de los 60 s de CloudFront
 TOPE_PERSONA, TOPE_TOTAL = 10, 40     # si las reglas no existen
 REGLAS = (
     ("analisis_persona_dia", str(TOPE_PERSONA), "Lecturas de la página del vuelo en Google Flights por persona y día. "
@@ -135,7 +136,7 @@ def _llamar(url: str) -> dict:
             return httpx.post(f"{modo[1]}/analizar", json={"url": url}, timeout=ESPERA_S).json()
         import boto3
         from botocore.config import Config
-        cliente = boto3.client("lambda", config=Config(read_timeout=ESPERA_S + 5, retries={"max_attempts": 0}))
+        cliente = boto3.client("lambda", config=Config(read_timeout=ESPERA_S, retries={"max_attempts": 0}))
         r = cliente.invoke(FunctionName=modo[1], Payload=json.dumps({"url": url}).encode())
         cuerpo = json.loads(r["Payload"].read() or b"{}")
         if r.get("FunctionError"):

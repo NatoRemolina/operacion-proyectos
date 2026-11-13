@@ -261,3 +261,11 @@ def test_una_respuesta_que_no_es_un_objeto_queda_como_lectura_fallida(piloto, do
     r = _pedir(piloto, c["id"], c["vuelos"][0]["id"])
     assert r.status_code == 200 and r.json()["estado"] == "fallido", r.text
     assert db.uno("select count(*) n from analisis_vuelo where estado='pendiente'")["n"] == 0
+
+
+# ---------- ronda 1 · punto 10: plazos ----------
+def test_los_plazos_caben_en_el_minuto_de_la_funcion_y_de_cloudfront():
+    from analizador import navegador
+    assert navegador.PRESUPUESTO_MS == 45_000 and navegador.ESPERA_MS <= navegador.PRESUPUESTO_MS
+    # la API espera la lectura completa más un margen, siempre por debajo de los 60 s de CloudFront
+    assert navegador.PRESUPUESTO_MS / 1000 < analizador.ESPERA_S < 55
