@@ -430,4 +430,38 @@ describe("Comparación de una cotización", () => {
     expect(await within(segunda!).findByText(/Llegaste al tope de lecturas de Google Flights de hoy/)).toBeInTheDocument();
     expect(within(segunda!).queryByText("Tarifas y qué incluye cada una")).toBeNull();
   });
+
+  it("si la lectura está en curso la sigue cada 3 s y, si no termina, lo dice", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const enCurso = { ...ANALISIS_EJEMPLO, estado: "pendiente" as const, datos: null, leido: null, reutilizado: true };
+      const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>().mockResolvedValue(enCurso);
+      const verAnalisis = vi.fn<CotizarRepository["verAnalisis"]>()
+        .mockResolvedValueOnce(enCurso)
+        .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, leido: "2026-11-13T15:10:00Z" });
+      renderizarConFuente(<PantallaCotizacion id={12} />, {
+        cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo, verAnalisis }),
+      });
+      const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+      await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+      expect(await within(tarjeta).findByText("Leyendo la página del vuelo…")).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(3000);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las/)).toBeInTheDocument();
+      expect(verAnalisis).toHaveBeenCalledTimes(2);
+      expect(verAnalisis).toHaveBeenCalledWith(12, RECOMENDADA.id, expect.anything());
+
+      // otra que nunca termina: tras 15 consultas deja de preguntar y lo dice
+      verAnalisis.mockReset();
+      verAnalisis.mockResolvedValue(enCurso);
+      const otra = screen.getByRole("group", { name: new RegExp(OTRA.numeros[0]!) });
+      await usuario.click(within(otra).getByRole("link", { name: /^Ver desglose/ }));
+      for (let i = 0; i < 17; i++) await vi.advanceTimersByTimeAsync(3000);
+      expect(verAnalisis).toHaveBeenCalledTimes(15);
+      expect(await within(otra).findByText("La lectura sigue en curso; vuelve a abrir el desglose en un momento.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

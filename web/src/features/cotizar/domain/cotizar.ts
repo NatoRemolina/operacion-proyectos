@@ -328,6 +328,8 @@ export interface CotizarRepository {
   registrarFuente(id: number, destino: DestinoFuente, objetivo?: ObjetivoFuente): Promise<void>;
   /** Lee la página del vuelo en Google Flights (unos segundos) o devuelve la lectura de menos de una hora. */
   analizarVuelo(id: number, vueloId: number): Promise<AnalisisVuelo>;
+  /** La última lectura del vuelo, para seguir una que está en curso. */
+  verAnalisis(id: number, vueloId: number, signal?: AbortSignal): Promise<AnalisisVuelo>;
 }
 
 // ---------- reglas del campo de lugar ----------

@@ -300,6 +300,7 @@ export function OpcionDeVuelo({
               <Desglose vuelo={vuelo} />
               <DetalleGoogle
                 pendiente={analisis.isPending}
+                agotado={analisis.agotado}
                 error={analisis.error ? "No hubo conexión con el servidor." : null}
                 analisis={analisis.data ?? null}
               />
@@ -351,13 +352,25 @@ function FichaTarifa({ t }: { t: TarifaLeida }) {
  */
 function DetalleGoogle({
   pendiente,
+  agotado = false,
   error,
   analisis,
 }: {
   pendiente: boolean;
+  /** Se siguió una lectura en curso hasta el límite y no terminó. */
+  agotado?: boolean;
   error: string | null;
   analisis: AnalisisVuelo | null;
 }) {
+  if (agotado) {
+    return (
+      <section aria-label="Detalle de Google Flights" className="flex flex-col gap-3 border-t border-linea pt-3">
+        <p role="status" className="text-sm text-texto-secundario">
+          La lectura sigue en curso; vuelve a abrir el desglose en un momento.
+        </p>
+      </section>
+    );
+  }
   const lectura = pendiente || analisis?.estado === "pendiente";
   return (
     <section aria-label="Detalle de Google Flights" className="flex flex-col gap-3 border-t border-linea pt-3">

@@ -203,9 +203,13 @@ export function useRegistrarFuente(id: number) {
  * Caso de uso «leer la página del vuelo»: se pide al abrir el desglose. Lo leído no cambia la comparación; un error de
  * red se muestra como lectura fallida, no interrumpe el desglose.
  */
+export const SEGUIMIENTO_MS = 3000;
+export const SEGUIMIENTO_INTENTOS = 15;
+
 export function useAnalisisVuelo(id: number, vueloId: number) {
   const repositorio = useCotizarRepository();
-  return useMutation<AnalisisVuelo, ErrorDeAplicacion, void>({
+  const personaId = usePersonaId();
+  const pedido = useMutation<AnalisisVuelo, ErrorDeAplicacion, void>({
     mutationFn: async () => {
       try {
         return await repositorio.analizarVuelo(id, vueloId);
@@ -214,4 +218,33 @@ export function useAnalisisVuelo(id: number, vueloId: number) {
       }
     },
   });
+  // Si otra persona (u otra pestaña) ya la está leyendo, la respuesta llega «pendiente»: se sigue cada 3 s, 15 veces
+  const queryClient = useQueryClient();
+  const enCurso = pedido.data?.estado === "pendiente";
+  // una consulta nueva por cada pedido: el conteo de intentos empieza de cero
+  const clave = claveDePersona(personaId, "cotizar", "analisis", id, vueloId, pedido.submittedAt);
+  const seguimiento = useQuery({
+    queryKey: clave,
+    queryFn: ({ signal }) => repositorio.verAnalisis(id, vueloId, signal),
+    enabled: enCurso,
+    retry: false,
+    refetchInterval: (q) =>
+      (q.state.data?.estado ?? "pendiente") === "pendiente" && q.state.dataUpdateCount < SEGUIMIENTO_INTENTOS
+        ? SEGUIMIENTO_MS
+        : false,
+  });
+  const { mutate, isPending, error } = pedido;
+  const pedir = useCallback(() => mutate(), [mutate]);
+  const consultas = queryClient.getQueryState(clave)?.dataUpdateCount ?? 0;
+  // se lee siempre: React Query solo vuelve a pintar por los campos que se leyeron
+  const buscando = seguimiento.isFetching;
+  const data = enCurso && seguimiento.data ? seguimiento.data : pedido.data;
+  return {
+    isPending,
+    error,
+    data,
+    mutate: pedir,
+    /** Se consultó 15 veces y la lectura sigue en curso. */
+    agotado: enCurso && data?.estado === "pendiente" && consultas >= SEGUIMIENTO_INTENTOS && !buscando,
+  };
 }

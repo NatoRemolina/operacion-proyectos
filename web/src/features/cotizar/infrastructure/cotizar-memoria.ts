@@ -215,6 +215,13 @@ export function crearCotizarMemoria(opciones: {
         throw new ErrorDeAplicacion("validacion", { campos: { vuelo_id: "Ese vuelo no es de esta cotización." } });
       }
     },
+    async verAnalisis(id, vueloId, signal) {
+      await esperar(latenciaMs, signal);
+      exigirSesion(sesion);
+      const vuelo = [...obtener(id).vuelos, ...obtener(id).descartados].find((v) => v.id === vueloId);
+      if (!vuelo) throw new ErrorDeAplicacion("no_encontrado");
+      return { ...(opciones.analisis ?? ANALISIS_EJEMPLO), opcion_id: vueloId, precio_buscador_usd: vuelo.precio_usd };
+    },
     async analizarVuelo(id, vueloId) {
       await esperar(latenciaBusqueda);
       exigirSesion(sesion);
