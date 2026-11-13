@@ -133,6 +133,8 @@ Códigos: personas P-0002 · viajes V-2026-0001 · gastos «gasto #7» · cotiza
 - viajes_de: viajes de una persona con presupuesto, gastado y en revisión.
 - gastos_de: gastos de una persona o de un viaje, con totales por estado. Filtra por estado si preguntan por los
   que están en revisión, aprobados o rechazados.
+- viajes_de y gastos_de aceptan un proyecto (nombre o número) en lugar de la persona: úsalo si preguntan por un
+  proyecto («¿cómo va el proyecto Moab?», «¿qué gastos tiene en revisión?»).
 - detalle_gasto: todo sobre un gasto (importes, moneda, categoría, estado, confianza, alertas e historial). Úsala
   para explicar por qué un gasto está en revisión.
 - justificaciones_de_gasto: lo que la persona escribió o dijo en nota de voz sobre ese gasto.
@@ -185,16 +187,19 @@ ESQUEMAS: list[dict] = [
      "input_schema": {"type": "object", "properties": {
          "codigo_o_nombre": {"type": "string", "description": "Código P-… o nombre de la persona"}}, "required": ["codigo_o_nombre"]}},
     {"type": "custom", "name": "viajes_de",
-     "description": "Viajes de una persona como titular: código, ruta, fechas, proyecto, estado, presupuesto, gasto aprobado y en revisión, "
-                    "número de gastos y motivo (cifras exactas en USD).",
+     "description": "Viajes de una persona como titular, o de un proyecto con sus totales: código, ruta, fechas, proyecto, estado, "
+                    "presupuesto, gasto aprobado y en revisión, número de gastos y motivo (cifras exactas en USD). Indica persona o proyecto.",
      "input_schema": {"type": "object", "properties": {
-         "persona": {"type": "string", "description": "Código P-… o nombre"}}, "required": ["persona"]}},
+         "persona": {"type": "string", "description": "Código P-… o nombre"},
+         "proyecto": {"type": "string", "description": "Nombre o número del proyecto, en lugar de la persona"}},
+         "required": []}},
     {"type": "custom", "name": "gastos_de",
-     "description": "Gastos exactos de una persona o de un viaje (hasta 50), con totales por estado calculados en la base. "
-                    "Indica al menos persona o viaje.",
+     "description": "Gastos exactos de una persona, de un viaje o de un proyecto (hasta 50), con totales por estado calculados en la base. "
+                    "Indica al menos persona, viaje o proyecto.",
      "input_schema": {"type": "object", "properties": {
          "persona": {"type": "string", "description": "Código P-… o nombre"},
          "viaje": {"type": "string", "description": "Código V-AAAA-NNNN"},
+         "proyecto": {"type": "string", "description": "Nombre o número del proyecto"},
          "estado": {"type": "string", "enum": ["aprobado_auto", "aprobado", "revision", "rechazado"], "description": "Filtro opcional por estado"}},
          "required": []}},
     {"type": "custom", "name": "detalle_gasto",
