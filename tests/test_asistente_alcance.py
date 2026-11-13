@@ -341,3 +341,32 @@ def test_una_pregunta_que_falla_a_mitad_no_queda_en_curso(mundo, monkeypatch):
         asistente.responder("¿Qué he reportado?", andres)
     fila = db.uno("select modo from asistente_consultas where id>:a and usuario_id=:u", a=antes, u=andres["id"])
     assert fila["modo"] == "fallida"   # cuenta para el tope, pero no queda «en curso»
+
+
+# ---------- el índice puede ir atrasado: cada ficha se comprueba contra la base ----------
+def test_una_ficha_atrasada_con_el_dueno_de_antes_no_se_usa(mundo):
+    """Si el índice todavía tiene una ficha con la persona o el proyecto anteriores, no sale: manda la base."""
+    andres, gl2 = mundo["andres"], mundo["gl2"]
+    memoria.Local().guardar([{"id": "prueba-atrasada-1", "tipo": "gasto", "entidad": "gastos", "entidad_id": gl2,
+                              "persona_id": andres["id"], "persona": viajes.codigo_persona(andres["id"]), "viaje_id": None, "viaje": None,
+                              "proyecto_id": 1, "fecha": "2026-12-09", "canal": None, "texto": "Ficha atrasada del taller lejano"}])
+    try:
+        for quien in ("andres", "gestor"):
+            res = asistente.ejecutar(asistente.Rastro(mundo[quien]), "buscar", {"texto": "ficha atrasada taller lejano"})
+            assert "Ficha atrasada" not in json.dumps(res, ensure_ascii=False), quien
+        admin = asistente.ejecutar(asistente.Rastro(_usuario("admin@demo.local")), "buscar", {"texto": "ficha atrasada taller lejano"})
+        assert "Ficha atrasada" in json.dumps(admin, ensure_ascii=False)
+    finally:
+        memoria.Local().borrar(["prueba-atrasada-1"])
+
+
+def test_los_mensajes_de_telegram_solo_los_ve_quien_los_escribio(mundo):
+    """Ninguna pantalla muestra al gestor los mensajes que otra persona le escribe al bot: el asistente tampoco."""
+    laura, vl = mundo["laura"], mundo["vl"]   # el viaje es del proyecto 1, que gestiona el gestor
+    db.insertar("telegram_mensajes", usuario_id=laura["id"], tipo="texto", texto="Mensaje reservado sobre el muelle norte",
+                viaje_id=vl["id"], estado="procesado", momento=db.ahora())
+    memoria.actualizar()
+    buscar = {"texto": "mensaje reservado muelle norte"}
+    assert "muelle" not in json.dumps(asistente.ejecutar(asistente.Rastro(mundo["gestor"]), "buscar", buscar), ensure_ascii=False)
+    assert "muelle" in json.dumps(asistente.ejecutar(asistente.Rastro(laura), "buscar", buscar), ensure_ascii=False)
+    assert "muelle" in json.dumps(asistente.ejecutar(asistente.Rastro(_usuario("admin@demo.local")), "buscar", buscar), ensure_ascii=False)
