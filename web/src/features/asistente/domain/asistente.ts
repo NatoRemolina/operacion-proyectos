@@ -1,7 +1,10 @@
+import type { Permiso } from "@/shared/domain/navegacion";
+
 /**
- * Asistente de administración: preguntas en lenguaje natural, por escrito o dictadas, que se responden con
- * cifras de la plataforma y citan de dónde salen. Quién responde lo decide el servidor (asesor, modelo o
- * consultas directas); la interfaz solo muestra cuál fue.
+ * Asistente: preguntas en lenguaje natural, por escrito o dictadas, que se responden con cifras de la
+ * plataforma y citan de dónde salen. Quién responde lo decide el servidor (asesor, modelo o consultas
+ * directas); la interfaz solo muestra cuál fue. Lo que se puede ver también lo decide el servidor, con la
+ * sesión: el colaborador ve lo suyo, el gestor además lo de sus proyectos y administración todo.
  */
 
 export type ModoAsistente = "asesor" | "modelo" | "determinista" | "tope";
@@ -36,7 +39,7 @@ export interface RespuestaAsistente {
 }
 
 export interface AsistenteRepository {
-  /** Solo administración. Con el asesor puede tardar hasta un minuto. */
+  /** Para los tres permisos, cada uno con su alcance. Con el asesor puede tardar hasta un minuto. */
   preguntar(pregunta: string, signal?: AbortSignal): Promise<RespuestaAsistente>;
   /** Pasa a texto una pregunta grabada (WAV). Vacío si no se entendió nada. */
   transcribir(audio: Blob, signal?: AbortSignal): Promise<string>;
@@ -79,11 +82,23 @@ export const MAX_GRABACION_S = 60;
 /** Desde aquí la espera se explica: el asesor puede estar consultando varias fuentes. */
 export const ESPERA_LARGA_S = 20;
 
-export const PREGUNTAS_SUGERIDAS = [
-  "¿Cómo van los indicadores?",
-  "¿Quién mencionó el parqueadero?",
-  "¿Cuál es el gasto real aprobado?",
-] as const;
+const PREGUNTAS_EMPRESA = ["¿Cómo van los indicadores?", "¿Quién mencionó el parqueadero?", "¿Cuál es el gasto real aprobado?"];
+const PREGUNTAS_PROPIAS = ["¿Cuánto me queda del presupuesto?", "¿Por qué mi gasto quedó en revisión?", "¿Qué me falta por justificar?"];
+
+/** Las mismas que ofrece la plataforma: administración pregunta por la empresa; los demás, por lo suyo. */
+export function preguntasSugeridas(permiso: Permiso): readonly string[] {
+  return permiso === "admin" ? PREGUNTAS_EMPRESA : PREGUNTAS_PROPIAS;
+}
+
+/** Qué se puede preguntar y qué se puede ver, en palabras de cada permiso. */
+export function bienvenidaDe(permiso: Permiso, conVoz = false): string {
+  if (permiso === "admin")
+    return `Pregunta por viajes, gastos, cotizaciones o indicadores${conVoz ? ", por escrito o con tu voz" : ""}. Cada respuesta cita de dónde salen los datos.`;
+  const voz = conVoz ? ", por escrito o con tu voz," : "";
+  if (permiso === "gestor")
+    return `Pregunta${voz} por tus viajes, tus gastos y tu presupuesto, y por los de los proyectos que gestionas. Solo ves lo tuyo y lo de los proyectos que gestionas.`;
+  return `Pregunta${voz} por tus viajes, tus gastos y tu presupuesto: cuánto te queda, por qué un gasto quedó en revisión y qué te falta por justificar. Solo ves lo tuyo.`;
+}
 
 export function rutaDeFuente(destino: DestinoFuente | null): string | null {
   if (!destino || !Number.isInteger(destino.id) || destino.id < 1) return null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bloquesDeTexto, duracionLegible, reloj, rutaDeFuente } from "./asistente";
+import { bienvenidaDe, bloquesDeTexto, duracionLegible, preguntasSugeridas, reloj, rutaDeFuente } from "./asistente";
 import { codificarWav } from "./audio";
 
 describe("rutaDeFuente", () => {
@@ -65,5 +65,21 @@ describe("codificarWav", () => {
     expect(vista.getInt16(46, true)).toBe(0x7fff);
     expect(vista.getInt16(48, true)).toBe(-0x8000);
     expect(vista.getInt16(50, true)).toBe(0x7fff);
+  });
+});
+
+describe("según el permiso", () => {
+  it("colaborador y gestor reciben preguntas sobre lo suyo; administración, las de la empresa", () => {
+    const propias = ["¿Cuánto me queda del presupuesto?", "¿Por qué mi gasto quedó en revisión?", "¿Qué me falta por justificar?"];
+    expect(preguntasSugeridas("colaborador")).toEqual(propias);
+    expect(preguntasSugeridas("gestor")).toEqual(propias);
+    expect(preguntasSugeridas("admin")).toContain("¿Cómo van los indicadores?");
+    expect(preguntasSugeridas("admin").some((p) => propias.includes(p))).toBe(false);
+  });
+
+  it("la bienvenida dice qué puede ver cada uno", () => {
+    expect(bienvenidaDe("colaborador")).toContain("Solo ves lo tuyo.");
+    expect(bienvenidaDe("gestor")).toContain("proyectos que gestionas");
+    expect(bienvenidaDe("admin")).toContain("indicadores");
   });
 });
