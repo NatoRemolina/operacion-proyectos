@@ -246,12 +246,28 @@ interface OpcionVuelo {
   recomendada: boolean; mas_barata: boolean;  // la más barata entre las que sirven, no entre las descartadas
   origen_dato: string | null;                 // "en vivo" | "guardado" | "guardado (otras fechas)"
   esperado_usd: Dinero; frente_esperado_pct: number | null;   // modelo de precios, si hay uno utilizable
+  total_con_hotel_usd: Dinero;                // vuelo + hotel recomendado (una suma, no todas las combinaciones); null sin hotel
+}
+
+interface LineaHotel {
+  concepto: string; valor_usd: Dinero;
+  origen: "buscador" | "supuesto";
+  tipo: "tarifa" | "tarifa_miembro" | "puntos";
 }
 
 interface OpcionHotel {
-  id: number; nombre: string; noche_usd: Dinero; total_usd: Dinero;
-  calificacion: number | null; clase: number | null; programa: string | null;
-  origen_dato: string | null; recomendada: boolean;
+  id: number; nombre: string; noche_usd: Dinero;
+  total_usd: Dinero;                          // tarifa del buscador para todas las noches
+  costo_total_usd: Dinero;                    // tarifa − tarifa de miembro − puntos (estos dos, solo con membresía)
+  lineas: LineaHotel[];
+  avisos: string[];                           // «Acumula solo con reserva directa», la oportunidad de inscribirse
+  calificacion: number | null; clase: number | null;
+  programa: string | null;                    // reconocido por la marca del nombre (Marriott Bonvoy, Hilton Honors...)
+  socio: boolean;                             // el viajero o la empresa tiene membresía de ese programa
+  descartado: string | null;                  // la razón (calificación bajo el mínimo), si no sirve
+  origen_dato: string | null;
+  recomendada: boolean;                       // menor costo total entre los que sirven
+  mas_barata: boolean;                        // menor tarifa entre los que sirven, si no es la recomendada
 }
 
 interface Cotizacion {
@@ -273,7 +289,9 @@ interface Cotizacion {
   recomendacion: string;                      // explicación determinista de la recomendada
   vuelos: OpcionVuelo[];                      // los que sirven, del menor al mayor costo total esperado
   descartados: OpcionVuelo[];
-  hoteles: OpcionHotel[];                     // del menor al mayor total
+  hoteles: OpcionHotel[];                     // los que sirven, del menor al mayor costo total (con la fidelización)
+  hoteles_descartados: OpcionHotel[];
+  hotel_recomendado_id: number | null;
   recomendada_id: number | null; mas_barata_id: number | null;
   decision: { id: number; vuelo_id: number; hotel_id: number | null; motivo: string | null; razones: string[];
               total_usd: Dinero;              // costo total esperado de lo decidido (con riesgo de cambio y millas)

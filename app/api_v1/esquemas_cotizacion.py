@@ -185,18 +185,34 @@ class OpcionVuelo(BaseModel):
     origen_dato: str | None = Field(description="`en vivo`, `guardado` o `guardado (otras fechas)`.")
     esperado_usd: Dinero = Field(description="Precio esperado según el modelo, si hay uno utilizable.")
     frente_esperado_pct: int | None
+    total_con_hotel_usd: Dinero = Field(description="Costo total esperado del vuelo más el del hotel recomendado (una suma, no "
+                                                    "todas las combinaciones); null sin hotel o si el vuelo está descartado.")
+
+
+class LineaHotel(BaseModel):
+    concepto: str
+    valor_usd: Dinero
+    origen: str = Field(description="De dónde sale: `buscador` o `supuesto`.")
+    tipo: Literal["tarifa", "tarifa_miembro", "puntos"]
 
 
 class OpcionHotel(BaseModel):
     id: int
     nombre: str
     noche_usd: Dinero
-    total_usd: Dinero
+    total_usd: Dinero = Field(description="Tarifa total del buscador para todas las noches.")
+    costo_total_usd: Dinero = Field(description="Tarifa − tarifa de miembro − puntos del programa (estos dos, solo con membresía "
+                                                "o si se supone la inscripción gratis).")
+    lineas: list[LineaHotel]
+    avisos: list[str] = Field(description="Entre ellos «Acumula solo con reserva directa» y la oportunidad de inscribirse.")
     calificacion: float | None
     clase: int | None
-    programa: str | None = Field(description="Programa de fidelización, solo con reserva directa.")
+    programa: str | None = Field(description="Programa de fidelización reconocido por la marca, solo con reserva directa.")
+    socio: bool = Field(description="El viajero o la empresa tiene membresía de ese programa.")
+    descartado: str | None = Field(description="Por qué no sirve (calificación bajo el mínimo); null si sirve.")
     origen_dato: str | None
-    recomendada: bool
+    recomendada: bool = Field(description="El de menor costo total entre los que sirven.")
+    mas_barata: bool = Field(description="El de menor tarifa entre los que sirven, si no es el recomendado.")
 
 
 class Equipo(BaseModel):
@@ -251,7 +267,9 @@ class Cotizacion(BaseModel):
     recomendacion: str = Field(description="Explicación de la recomendación (análisis determinista).")
     vuelos: list[OpcionVuelo] = Field(description="Los que sirven, del menor al mayor costo total esperado.")
     descartados: list[OpcionVuelo]
-    hoteles: list[OpcionHotel] = Field(description="Del menor al mayor total.")
+    hoteles: list[OpcionHotel] = Field(description="Los que sirven, del menor al mayor costo total (con la fidelización).")
+    hoteles_descartados: list[OpcionHotel]
+    hotel_recomendado_id: int | None
     recomendada_id: int | None
     mas_barata_id: int | None
     decision: DecisionCotizacion | None

@@ -341,6 +341,10 @@ def comparacion(sid: int) -> dict | None:
     hotel_mas_barato = hotel_barato if hotel_barato and hotel_barato["id"] != hotel_recomendado["id"] else None
     for h in hoteles:
         h["recomendado"], h["mas_barato"] = h is hotel_recomendado, h is hotel_mas_barato
+    # El viaje completo de cada vuelo con el hotel recomendado: una suma, no todas las combinaciones
+    for v in vuelos:
+        v["total_con_hotel"] = (round(v["ev"]["total"] + hotel_recomendado["ev"]["total"], 2)
+                                if hotel_recomendado and not v["ev"]["descartada"] else None)
     # El más barato de la comparación es el más barato entre los que sirven: frente a uno descartado (llega tarde, el
     # equipo no cabe) no hay ahorro que contar. Si el más barato de todos está descartado, se dice aparte.
     mas_barato = min(validos, key=lambda v: v["v"]["precio"]) if validos else None

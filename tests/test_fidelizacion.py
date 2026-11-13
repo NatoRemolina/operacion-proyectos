@@ -228,3 +228,40 @@ def test_la_decision_lleva_el_hotel_evaluado(cliente):
     fotos = db.todos("select * from elecciones where decision_id=:d and tipo='hotel' order by posicion", d=d["id"])
     assert [(f["opcion_id"], f["recomendada"], f["costo_esperado"]) for f in fotos] == [
         (tru["id"], 1, 219.31), (c["hoteles"][1]["id"], 0, 225.0)]
+
+
+# ---------- pieza 4: total del viaje visible ----------
+def test_cada_vuelo_suma_el_hotel_recomendado(cliente):
+    from app.servicios import cotizacion
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Independiente Centro", 225.0), _hotel("Tru by Hilton Las Vegas", 243.0)])
+    c = cotizacion.comparacion(sid)
+    assert all(v["total_con_hotel"] == round(v["ev"]["total"] + 219.31, 2) for v in c["vuelos"])
+    assert all(v.get("total_con_hotel") is None for v in c["descartados"])
+    pagina = cliente.get(f"/viajes/{sid}").text
+    assert "Total con el hotel recomendado" in pagina and "Tarifa de miembro (−5 %)" in pagina
+    assert "El más barato" in pagina and "Recomendado" in pagina
+
+
+def test_sin_hoteles_no_hay_total_con_hotel(cliente):
+    from app.servicios import cotizacion
+    c = cotizacion.comparacion(_cotizacion_con_hoteles(cliente, []))
+    assert c["hotel_recomendado"] is None and all(v["total_con_hotel"] is None for v in c["vuelos"])
+
+
+def test_la_api_expone_los_hoteles_evaluados(cliente):
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Barato y mal calificado", 150.0, calificacion=3.3),
+                                            _hotel("Independiente Centro", 225.0), _hotel("Tru by Hilton Las Vegas", 243.0)])
+    api = cliente.get(f"/api/v1/cotizaciones/{sid}").json()
+    tru, indep = api["hoteles"]
+    assert (tru["nombre"], tru["recomendada"], tru["mas_barata"], tru["socio"], tru["programa"]) == (
+        "Tru by Hilton Las Vegas", True, False, True, "Hilton Honors")
+    assert tru["total_usd"] == "243.00" and tru["costo_total_usd"] == "219.31"
+    assert [(l["tipo"], l["valor_usd"]) for l in tru["lineas"]] == [("tarifa", "243.00"), ("tarifa_miembro", "-12.15"),
+                                                                    ("puntos", "-11.54")]
+    assert "Acumula solo con reserva directa." in tru["avisos"] and tru["descartado"] is None
+    assert indep["mas_barata"] and not indep["recomendada"] and indep["costo_total_usd"] == "225.00"
+    assert api["hotel_recomendado_id"] == tru["id"]
+    assert [(h["nombre"], h["descartado"]) for h in api["hoteles_descartados"]] == [
+        ("Barato y mal calificado", "Calificación 3.3, por debajo del mínimo de 3.5.")]
+    v = api["vuelos"][0]
+    assert v["total_con_hotel_usd"] == f"{float(v['costo_total_usd']) + 219.31:.2f}"

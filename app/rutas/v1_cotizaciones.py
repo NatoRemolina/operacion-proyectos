@@ -216,15 +216,24 @@ def _vuelo(o: dict, c: dict) -> dict:
             "desglose": {f"{k}_usd": consultas.dinero(x) for k, x in suma.items()}, "lineas": lineas,
             "avisos": ev["avisos"], "descartada": ev["descartada"], "recomendada": recomendada,
             "mas_barata": bool(c["mas_barato"]) and c["mas_barato"]["id"] == o["id"], "origen_dato": o["origen_dato"],
-            "esperado_usd": consultas.dinero(o.get("esperado")), "frente_esperado_pct": o.get("frente_esperado")}
+            "esperado_usd": consultas.dinero(o.get("esperado")), "frente_esperado_pct": o.get("frente_esperado"),
+            "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel"))}
 
 
-def _hotel(i: int, o: dict) -> dict:
-    h = o["h"]
+def _tipo_linea_hotel(concepto: str) -> str:
+    return "tarifa_miembro" if concepto.startswith("Tarifa de miembro") else "puntos" if concepto.startswith("Puntos") else "tarifa"
+
+
+def _hotel(o: dict) -> dict:
+    h, ev = o["h"], o["ev"]
     return {"id": o["id"], "nombre": h.get("nombre") or "", "noche_usd": consultas.dinero(h.get("noche")),
-            "total_usd": consultas.dinero(h.get("total")), "calificacion": h.get("calificacion"),
+            "total_usd": consultas.dinero(h.get("total")), "costo_total_usd": consultas.dinero(ev["total"]),
+            "lineas": [{"concepto": l["concepto"], "valor_usd": consultas.dinero(l["valor"]), "origen": l["origen"],
+                        "tipo": _tipo_linea_hotel(l["concepto"])} for l in ev["lineas"]],
+            "avisos": ev["avisos"], "calificacion": h.get("calificacion"),
             "clase": int(h["clase"]) if h.get("clase") is not None else None, "programa": o["programa"],
-            "origen_dato": o["origen_dato"], "recomendada": i == 0}
+            "socio": ev["socio"], "descartado": ev["descartado"], "origen_dato": o["origen_dato"],
+            "recomendada": bool(o.get("recomendado")), "mas_barata": bool(o.get("mas_barato"))}
 
 
 def _lado_salida(sol: dict, nombre: str) -> dict:
@@ -257,7 +266,8 @@ def _cotizacion(yo: dict, sid: int) -> dict:
         "origen_dato": _origen_vuelos(sid), "aviso": c["aviso"], "fallos": [f["detalle"] for f in c["fallos"]],
         "recomendacion": agente.recomendar(c, solo_determinista=True)["texto"],
         "vuelos": [_vuelo(o, c) for o in c["vuelos"]], "descartados": [_vuelo(o, c) for o in c["descartados"]],
-        "hoteles": [_hotel(i, o) for i, o in enumerate(c["hoteles"])],
+        "hoteles": [_hotel(o) for o in c["hoteles"]], "hoteles_descartados": [_hotel(o) for o in c["hoteles_descartados"]],
+        "hotel_recomendado_id": c["hotel_recomendado"]["id"] if c["hotel_recomendado"] else None,
         "recomendada_id": c["vuelos"][0]["id"] if c["vuelos"] else None,
         "mas_barata_id": c["mas_barato"]["id"] if c["mas_barato"] else None,
         "decision": {"id": d["id"], "vuelo_id": d["vuelo_id"], "hotel_id": d["hotel_id"], "motivo": d["motivo"] or None,

@@ -1952,7 +1952,25 @@
             },
             "type": "array",
             "title": "Hoteles",
-            "description": "Del menor al mayor total."
+            "description": "Los que sirven, del menor al mayor costo total (con la fidelización)."
+          },
+          "hoteles_descartados": {
+            "items": {
+              "$ref": "#/components/schemas/OpcionHotel"
+            },
+            "type": "array",
+            "title": "Hoteles Descartados"
+          },
+          "hotel_recomendado_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Recomendado Id"
           },
           "recomendada_id": {
             "anyOf": [
@@ -2042,6 +2060,8 @@
           "vuelos",
           "descartados",
           "hoteles",
+          "hoteles_descartados",
+          "hotel_recomendado_id",
           "recomendada_id",
           "mas_barata_id",
           "decision",
@@ -2941,6 +2961,47 @@
         ],
         "title": "LineaCosto"
       },
+      "LineaHotel": {
+        "properties": {
+          "concepto": {
+            "type": "string",
+            "title": "Concepto"
+          },
+          "valor_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor Usd"
+          },
+          "origen": {
+            "type": "string",
+            "title": "Origen",
+            "description": "De dónde sale: `buscador` o `supuesto`."
+          },
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "tarifa",
+              "tarifa_miembro",
+              "puntos"
+            ],
+            "title": "Tipo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "concepto",
+          "valor_usd",
+          "origen",
+          "tipo"
+        ],
+        "title": "LineaHotel"
+      },
       "LineaPresupuesto": {
         "properties": {
           "concepto": {
@@ -3410,7 +3471,35 @@
                 "type": "null"
               }
             ],
-            "title": "Total Usd"
+            "title": "Total Usd",
+            "description": "Tarifa total del buscador para todas las noches."
+          },
+          "costo_total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Total Usd",
+            "description": "Tarifa − tarifa de miembro − puntos del programa (estos dos, solo con membresía o si se supone la inscripción gratis)."
+          },
+          "lineas": {
+            "items": {
+              "$ref": "#/components/schemas/LineaHotel"
+            },
+            "type": "array",
+            "title": "Lineas"
+          },
+          "avisos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Avisos",
+            "description": "Entre ellos «Acumula solo con reserva directa» y la oportunidad de inscribirse."
           },
           "calificacion": {
             "anyOf": [
@@ -3444,7 +3533,24 @@
               }
             ],
             "title": "Programa",
-            "description": "Programa de fidelización, solo con reserva directa."
+            "description": "Programa de fidelización reconocido por la marca, solo con reserva directa."
+          },
+          "socio": {
+            "type": "boolean",
+            "title": "Socio",
+            "description": "El viajero o la empresa tiene membresía de ese programa."
+          },
+          "descartado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descartado",
+            "description": "Por qué no sirve (calificación bajo el mínimo); null si sirve."
           },
           "origen_dato": {
             "anyOf": [
@@ -3459,7 +3565,13 @@
           },
           "recomendada": {
             "type": "boolean",
-            "title": "Recomendada"
+            "title": "Recomendada",
+            "description": "El de menor costo total entre los que sirven."
+          },
+          "mas_barata": {
+            "type": "boolean",
+            "title": "Mas Barata",
+            "description": "El de menor tarifa entre los que sirven, si no es el recomendado."
           }
         },
         "type": "object",
@@ -3468,11 +3580,17 @@
           "nombre",
           "noche_usd",
           "total_usd",
+          "costo_total_usd",
+          "lineas",
+          "avisos",
           "calificacion",
           "clase",
           "programa",
+          "socio",
+          "descartado",
           "origen_dato",
-          "recomendada"
+          "recomendada",
+          "mas_barata"
         ],
         "title": "OpcionHotel"
       },
@@ -3639,6 +3757,18 @@
               }
             ],
             "title": "Frente Esperado Pct"
+          },
+          "total_con_hotel_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Con Hotel Usd",
+            "description": "Costo total esperado del vuelo más el del hotel recomendado (una suma, no todas las combinaciones); null sin hotel o si el vuelo está descartado."
           }
         },
         "type": "object",
@@ -3663,7 +3793,8 @@
           "mas_barata",
           "origen_dato",
           "esperado_usd",
-          "frente_esperado_pct"
+          "frente_esperado_pct",
+          "total_con_hotel_usd"
         ],
         "title": "OpcionVuelo"
       },
