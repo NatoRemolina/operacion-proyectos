@@ -139,3 +139,25 @@ def test_el_gestor_no_ve_un_proyecto_que_no_gestiona(proyectos_con_revision):
     assert "error" in res
     res = asistente.ejecutar(asistente.Rastro(gestor), "gastos_de", {"proyecto": "2"})
     assert "error" in res
+
+
+# ---------- I-6: el Excel contable cubre por omisión el año en curso ----------
+def test_el_anio_en_curso_va_del_primero_de_enero_al_31_de_diciembre(monkeypatch):
+    from datetime import UTC, date, datetime
+
+    from app.servicios import contable
+    assert contable.anio_en_curso(date(2026, 2, 14)) == ("2026-01-01", "2026-12-31")
+    # a las 22:00 de Nueva York del 31 de diciembre, en UTC ya es el año siguiente: manda la zona de la empresa
+    monkeypatch.setattr(contable, "_ahora", lambda: datetime(2027, 1, 1, 3, 0, tzinfo=UTC))
+    assert contable.anio_en_curso() == ("2026-01-01", "2026-12-31")
+
+
+def test_sin_fechas_el_excel_es_del_anio_en_curso(cliente):
+    from app.servicios import contable
+    desde, hasta = contable.anio_en_curso()
+    assert desde.endswith("-01-01") and hasta.endswith("-12-31")
+    nombre = f'attachment; filename="libro_contable_{desde}_{hasta}.xlsx"'
+    assert cliente.get("/gastos/contable.xlsx").headers["content-disposition"] == nombre
+    assert cliente.get("/api/v1/gastos/contable").headers["content-disposition"] == nombre
+    lista = cliente.get("/gastos").text
+    assert f'name="desde" value="{desde}"' in lista and f'name="hasta" value="{hasta}"' in lista

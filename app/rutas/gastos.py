@@ -61,7 +61,7 @@ def gastos(request: Request, estado: str = "", aviso: str = ""):
                          left join documentos d on d.id=g.documento_id where {donde}{filtro} order by g.id desc""", e=estado, **p)
     return plantillas.TemplateResponse(request, "gastos.html", _ctx(
         gastos=filas, estado=estado, ind=_indicadores() if acceso.es_admin(_yo()) else None, aviso=aviso[:300],
-        mes=contable.mes_en_curso()))
+        mes=contable.anio_en_curso()))   # el periodo por omisión del Excel contable
 
 
 @router.get("/gastos/cargar", response_class=HTMLResponse)
@@ -75,11 +75,11 @@ def gastos_cargar(request: Request):
 
 @router.get("/gastos/contable.xlsx")
 def gastos_contable(request: Request, desde: str = "", hasta: str = "", proyecto: str = ""):
-    """Excel contable del periodo (por omisión, el mes en curso) con lo que la sesión puede ver. Va antes de
+    """Excel contable del periodo (por omisión, el año en curso) con lo que la sesión puede ver. Va antes de
     `/gastos/{gid}`: si no, «contable.xlsx» se leería como número de gasto. El proyecto llega como texto y se valida
     aquí, para que un valor mal escrito vuelva a la página con un aviso y no con un error en JSON."""
-    mes = contable.mes_en_curso()
-    desde, hasta = desde or mes[0], hasta or mes[1]
+    anio = contable.anio_en_curso()
+    desde, hasta = desde or anio[0], hasta or anio[1]
     try:
         pid = contable.proyecto_de_texto(proyecto)
         contenido = contable.libro(_yo(), desde, hasta, pid, enlace_base=contable.origen_publico(str(request.base_url)))

@@ -141,14 +141,14 @@ describe("Excel contable", () => {
     return screen.getByRole("region", { name: "Excel contable" });
   }
 
-  it("el botón abre el selector con el mes en curso y descarga ese periodo", async () => {
+  it("el botón abre el selector con el año en curso y descarga ese periodo", async () => {
     renderizarConFuente(<PantallaGastos />, { gastos: conLibro() });
     const panel = await abrir();
-    expect(within(panel).getByLabelText("Desde")).toHaveValue("2026-11-01");
-    expect(within(panel).getByLabelText("Hasta")).toHaveValue("2026-11-30");
+    expect(within(panel).getByLabelText("Desde")).toHaveValue("2026-01-01");
+    expect(within(panel).getByLabelText("Hasta")).toHaveValue("2026-12-31");
     expect(within(panel).getByRole("link", { name: "Descargar Excel contable" })).toHaveAttribute(
       "href",
-      "/api/v1/gastos/contable?desde=2026-11-01&hasta=2026-11-30",
+      "/api/v1/gastos/contable?desde=2026-01-01&hasta=2026-12-31",
     );
   });
 
@@ -167,7 +167,7 @@ describe("Excel contable", () => {
     renderizarConFuente(<PantallaGastos />, { gastos: conLibro() });
     const panel = await abrir();
     const hasta = within(panel).getByLabelText("Hasta");
-    fireEvent.change(hasta, { target: { value: "2026-10-01" } });
+    fireEvent.change(hasta, { target: { value: "2025-12-31" } });
     expect(within(panel).queryByRole("link", { name: "Descargar Excel contable" })).not.toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "Descargar Excel contable" })).toBeDisabled();
     expect(hasta).toHaveAccessibleDescription(/La fecha final no puede ser anterior a la inicial/);
