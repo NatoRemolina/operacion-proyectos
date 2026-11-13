@@ -117,10 +117,11 @@ def _lectura_lista(clave="AA1851_2026-12-08_2026-12-08_2026-12-11", creado="2026
     db.ejecutar("""create table if not exists analisis_vuelo (id integer primary key, opcion_id integer, solicitud_id integer,
                    usuario_id integer, clave text not null, url text not null, estado text not null, motivo text, datos text,
                    captura text, duracion_ms integer, creado text, terminado text)""")
-    db.ejecutar("""insert into analisis_vuelo (clave, url, estado, datos, creado, terminado)
-                   values (:c, 'https://www.google.com/travel/flights/booking', 'listo', :d, :t, :t)""",
-                c=clave, d=json.dumps(LECTURA), t=creado)
-    return db.uno("select max(id) i from analisis_vuelo")["i"]
+    aid = (db.uno("select max(id) i from analisis_vuelo")["i"] or 0) + 1   # el id explícito vale con y sin la tabla real
+    db.ejecutar("""insert into analisis_vuelo (id, clave, url, estado, datos, creado, terminado)
+                   values (:i, :c, 'https://www.google.com/travel/flights/booking', 'listo', :d, :t, :t)""",
+                i=aid, c=clave, d=json.dumps(LECTURA), t=creado)
+    return aid
 
 
 def test_extrae_la_lectura_de_la_pagina_y_las_respuestas_guardadas():

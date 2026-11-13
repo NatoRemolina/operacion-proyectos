@@ -315,3 +315,74 @@ def actualizar_si_toca() -> dict | None:
     except Exception as e:   # el tablero se muestra aunque la extracción falle; el fallo queda en la bitácora
         eventos.registrar("ofertas_tarifa", None, "extracción fallida", f"{type(e).__name__}: {str(e)[:200]}", "extractor")
         return None
+
+
+# ---------- limpieza al cargar ----------
+# La base guarda todo lo visto (trazabilidad); lo que no sirve para entrenar se descarta al leer y se cuenta por motivo,
+# para que cada modelo diga con qué datos se hizo y cuántos dejó fuera.
+MINIMO_GRUPO_ATIPICOS = 5      # con menos precios en la ruta y la tarifa no se juzga qué es raro
+DESVIOS_ATIPICO = 5            # distancia a la mediana, en desviaciones absolutas medianas (escaladas a desviación típica)
+ANTICIPACION_MAXIMA = 365
+
+
+def _mediana(valores: list[float]) -> float:
+    v = sorted(valores)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def depurar(filas: list[dict], clave_repetida=("origen", "destino", "ida", "regreso", "vuelos", "vendedor", "tarifa"),
+            grupo_atipico=("origen", "destino", "tarifa_normalizada")) -> tuple[list[dict], dict]:
+    """(filas útiles, informe). Descarta: sin precio, otra moneda, sin ruta o fecha, anticipación imposible, la misma
+    tarifa repetida el mismo día (queda la más reciente) y precios atípicos dentro de su ruta y tipo de tarifa."""
+    descartes: dict[str, int] = {}
+
+    def fuera(motivo: str):
+        descartes[motivo] = descartes.get(motivo, 0) + 1
+
+    validas = []
+    for f in filas:
+        try:
+            precio = float(f.get("precio")) if f.get("precio") is not None else None
+        except (TypeError, ValueError):
+            precio = None
+        anticipacion = f.get("anticipacion_dias", f.get("anticipacion"))
+        if not precio or precio <= 0:
+            fuera("sin precio")
+        elif (f.get("moneda") or "USD") != "USD":
+            fuera("otra moneda")
+        elif not (f.get("origen") and f.get("destino") and f.get("ida")):
+            fuera("sin ruta o fecha")
+        elif anticipacion is not None and not 0 <= anticipacion <= ANTICIPACION_MAXIMA:
+            fuera("anticipación imposible")
+        else:
+            validas.append(f)
+    ultimas: dict[tuple, dict] = {}
+    for f in sorted(validas, key=lambda x: str(x.get("momento") or x.get("capturado") or "")):
+        clave = (*(f.get(c) for c in clave_repetida), str(f.get("momento") or f.get("capturado") or "")[:10])
+        if clave in ultimas:
+            fuera("repetida el mismo día")
+        ultimas[clave] = f
+    unicas = list(ultimas.values())
+    grupos: dict[tuple, list[float]] = {}
+    for f in unicas:
+        grupos.setdefault(tuple(f.get(c) for c in grupo_atipico), []).append(float(f["precio"]))
+    limites = {}
+    for g, precios in grupos.items():
+        if len(precios) >= MINIMO_GRUPO_ATIPICOS:
+            m = _mediana(precios)
+            mad = _mediana([abs(p - m) for p in precios]) * 1.4826 or m * 0.05   # sin dispersión, un 5 % de la mediana
+            limites[g] = (m - DESVIOS_ATIPICO * mad, m + DESVIOS_ATIPICO * mad)
+    limpias = []
+    for f in unicas:
+        lim = limites.get(tuple(f.get(c) for c in grupo_atipico))
+        if lim and not lim[0] <= float(f["precio"]) <= lim[1]:
+            fuera("precio atípico")
+        else:
+            limpias.append(f)
+    return limpias, {"leidas": len(filas), "utiles": len(limpias), "descartes": descartes}
+
+
+def limpias() -> tuple[list[dict], dict]:
+    """Las tarifas vistas listas para entrenar o medir, con el informe de lo descartado. Solo lee."""
+    return depurar(db.todos("select * from ofertas_tarifa order by id"))
