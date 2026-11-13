@@ -113,3 +113,54 @@ def test_la_navegacion_tampoco_acepta_rutas_que_escapan():
     for url in ("https://www.google.com/travel/../search", "https://www.google.com/travel/%2e%2e/search",
                 "https://www.google.com/travel/flights/booking?x=\x07"):
         assert not lector.url_navegable(url), url
+
+
+# ---------- pieza 5: lector ampliado (vuelo, aerolínea y hotel) ----------
+def test_lee_el_detalle_de_cada_tramo_y_los_precios():
+    d = _leer("vuelo_completo.html")
+    ida, regreso = d["tramos"]
+    assert (ida["avion"], ida["numeros"], ida["cabina"]) == ("Boeing 737MAX 8 Passenger", ["AA 1851"], "Economy")
+    assert (ida["piernas"], ida["wifi"], ida["enchufes"]) == ("Average legroom (30 in)", "Wi-Fi for a fee", "In-seat power & USB outlets")
+    assert ida["retrasos"] == "Often delayed by 30+ min" and ida["emisiones"] == "269 kg CO2e"
+    assert ida["aeropuertos"] == ["9:48 AM · Miami International Airport (MIA)", "12:24 PM · Harry Reid International Airport (LAS)"]
+    assert regreso["numeros"] == ["AA 2410", "AA 1597"] and regreso["avion"] == "Airbus A321"
+    assert regreso["aviones"] == ["Airbus A321", "Boeing 737-800"]
+    (escala,) = regreso["detalle_escalas"]
+    assert "3 hr 5 min layover" in escala and regreso["nocturna"] is True and regreso["terminales"] == ["Terminal C"]
+    assert ida["nocturna"] is False
+    p = d["precios"]
+    assert (p["actual"], p["nivel"], p["rango"]) == (619.0, "typical", [410.0, 870.0])
+    assert p["historial"] == [{"cuando": "54 days ago", "precio": 612.0}, {"cuando": "40 days ago", "precio": 598.0},
+                              {"cuando": "26 days ago", "precio": 530.0}, {"cuando": "12 days ago", "precio": 415.0},
+                              {"cuando": "today", "precio": 619.0}]
+    assert {(t["vendedor"], t["nombre"]) for t in d["tarifas"]} >= {("American", "Main Cabin"), ("Expedia", "Economy")}
+
+
+def test_lee_la_pagina_de_la_aerolinea_con_impuestos():
+    texto, _ = lector.desde_html((EJEMPLO / "aerolinea.html").read_text(encoding="utf-8"))
+    a = lector.aerolinea(texto)
+    assert (a["total"], a["tarifa_base"], a["impuestos"]) == (748.80, 669.50, 79.30)
+    assert a["cabinas"] == ["Main"] and a["numeros"] == ["AA 1851", "AA 1597"]
+    assert a["ruta"] == "Miami, United States to Las Vegas, United States"
+
+
+def test_lee_la_ficha_del_hotel():
+    texto, _ = lector.desde_html((EJEMPLO / "hotel.html").read_text(encoding="utf-8"))
+    h = lector.hotel(texto)
+    assert (h["nombre"], h["calificacion"], h["resenas"]) == ("Flamingo Las Vegas Hotel & Casino", 4.1, 52318)
+    assert h["ubicacion"] == "3555 S Las Vegas Blvd, Las Vegas, NV 89109" and h["clase"] == "3-star hotel"
+    assert h["vendedores"] == [
+        {"vendedor": "Booking.com", "por_noche": 204.0, "total": 612.0, "incluye": ["Free cancellation until Dec 6"], "oficial": False},
+        {"vendedor": "Expedia.com", "por_noche": 209.0, "total": 627.0, "incluye": ["Breakfast included"], "oficial": False},
+        {"vendedor": "Flamingo Las Vegas", "por_noche": 199.0, "total": 597.0, "incluye": ["Non-refundable"], "oficial": True}]
+    assert h["habitaciones"] == [{"tipo": "Standard Room, 2 Queen Beds", "precio": 199.0, "incluye": ["Free cancellation"]},
+                                 {"tipo": "Go Room, 1 King Bed", "precio": 239.0, "incluye": ["Breakfast included"]}]
+    assert h["servicios"] == ["Free Wi-Fi", "Pool", "Fitness center", "Paid parking", "Restaurant", "Air conditioning"]
+
+
+def test_el_hotel_solo_abre_google_hotels():
+    assert lector.url_permitida_hotel("https://www.google.com/travel/search?q=Flamingo%20from%202026-12-08&hl=en")
+    assert lector.url_permitida_hotel("https://www.google.com/travel/hotels/entity/ChkIabc?hl=en")
+    for malo in ("https://www.google.com/travel/flights?tfs=x", "https://www.google.com/search?q=hotel",
+                 "http://www.google.com/travel/search?q=x", "https://www.booking.com/hotel/us/flamingo.html"):
+        assert not lector.url_permitida_hotel(malo), malo
