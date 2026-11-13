@@ -1,0 +1,166 @@
+{
+ "precio_total": 619.0,
+ "tramos": [
+  {
+   "fecha": "Tue, Dec 8",
+   "sale": "9:48 AM",
+   "llega": "12:24 PM",
+   "aerolinea": "American",
+   "duracion": "5 hr 36 min",
+   "ruta": "MIA–LAS",
+   "escalas": "Nonstop",
+   "detalle_escalas": [],
+   "emisiones": "269 kg CO2e"
+  },
+  {
+   "fecha": "Fri, Dec 11",
+   "sale": "6:00 AM",
+   "llega": "1:43 PM",
+   "aerolinea": "American",
+   "duracion": "4 hr 43 min",
+   "ruta": "LAS–MIA",
+   "escalas": "Nonstop",
+   "detalle_escalas": [],
+   "emisiones": "221 kg CO2e"
+  }
+ ],
+ "vendedores": [
+  {
+   "vendedor": "American",
+   "aerolinea": true,
+   "precio_desde": 619.0
+  }
+ ],
+ "tarifas": [
+  {
+   "nombre": "Basic Economy",
+   "precio": 619.0,
+   "equipaje": [
+    "1 free carry-on",
+    "1st checked bag: $110"
+   ],
+   "cambios": [
+    "No ticket changes"
+   ],
+   "reembolso": [
+    "No refunds"
+   ],
+   "otras": [
+    "Seat selection for a fee",
+    "Standard seat",
+    "Priority boarding for a fee"
+   ],
+   "vendedor": "American"
+  },
+  {
+   "nombre": "Main Cabin",
+   "precio": 1014.0,
+   "equipaje": [
+    "1 free carry-on",
+    "1st checked bag: $100"
+   ],
+   "cambios": [
+    "Free change, possible fare difference"
+   ],
+   "reembolso": [
+    "No refunds"
+   ],
+   "otras": [
+    "Free seat selection",
+    "Extra legroom available for a fee",
+    "Priority boarding for a fee"
+   ],
+   "vendedor": "American"
+  },
+  {
+   "nombre": "Main Plus",
+   "precio": 1226.0,
+   "equipaje": [
+    "1 free carry-on",
+    "1st checked bag free"
+   ],
+   "cambios": [
+    "Free change, possible fare difference"
+   ],
+   "reembolso": [
+    "No refunds"
+   ],
+   "otras": [
+    "Free seat selection",
+    "Extra legroom",
+    "Priority boarding for a fee"
+   ],
+   "vendedor": "American"
+  },
+  {
+   "nombre": "Main Select",
+   "precio": 1284.0,
+   "equipaje": [
+    "1 free carry-on",
+    "1st checked bag: $100"
+   ],
+   "cambios": [
+    "Free change, possible fare difference"
+   ],
+   "reembolso": [
+    "Full refunds"
+   ],
+   "otras": [
+    "Free seat selection",
+    "Extra legroom",
+    "Priority boarding"
+   ],
+   "vendedor": "American"
+  }
+ ],
+ "equipaje": [
+  "1 free carry-on",
+  "1st checked bag free",
+  "1st checked bag: $100",
+  "1st checked bag: $110"
+ ],
+ "cambios": [
+  "Free change, possible fare difference",
+  "No ticket changes"
+ ],
+ "reembolso": [
+  "Full refunds",
+  "No refunds"
+ ],
+ "escalas": [
+  {
+   "ruta": "MIA–LAS",
+   "escalas": "Nonstop",
+   "detalle": []
+  },
+  {
+   "ruta": "LAS–MIA",
+   "escalas": "Nonstop",
+   "detalle": []
+  }
+ ],
+ "itinerarios": [],
+ "notas": [
+  "Fare and baggage fees apply to your entire trip. American bag policy For non-refundable fare options, taxes may be refundable.",
+  "Prices include required taxes + fees for 1 adult. Optional charges and bag fees may apply."
+ ],
+ "avisos": [],
+ "regreso_elegido": {
+  "tipo": "round trip",
+  "escalas": "Nonstop",
+  "aerolinea": "American",
+  "desde": "Harry Reid International Airport",
+  "sale": "6:00 AM",
+  "fecha_sale": "Friday, December 11",
+  "hasta": "Miami International Airport",
+  "llega": "1:43 PM",
+  "fecha_llega": "Friday, December 11",
+  "duracion": "4 hr 43 min",
+  "precio": 564.0,
+  "equipaje": [
+   "1 carry-on bag included",
+   "0 checked bags included"
+  ],
+  "detalle_escalas": []
+ }
+}

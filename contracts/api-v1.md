@@ -465,6 +465,9 @@ Solo administración, como la pantalla `/admin/kpis`: otra cuenta recibe 403 `FO
 ### `GET /kpis/exportar.csv?que=kpis|consultas|personas`
 El mismo CSV de la pantalla con los filtros comunes, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Otro valor de `que`: 422.
 
+### `GET /kpis/rutas-frecuentes?n=10`
+200 `RutasFrecuentes`: las `n` rutas (1 a 50; otro valor: 422) con más cotizaciones y viajes de los últimos 90 días. Por ruta: `por_anticipacion` (mediana en USD por tramo de días: `0-7`, `8-21`, `22-45`, `46+`), `mediana`, `volatilidad` (desviación absoluta mediana), `tendencia` (`sube`, `baja` o `estable` según el historial diario), `prima_flexibilidad` (tarifa con cambio gratis o maleta incluida menos la básica del mismo itinerario, en USD y %), `aerolinea_agencia` y `senal` (`por debajo`, `dentro` o `por encima` del rango habitual; orientativa, no predice). `null` donde no hay datos. Además `exactitud` (MAE y MAPE del precio esperado, en total, por ruta y por mes, y `contra_pagado` cuando hay compras; sin datos, `mensaje` «sin datos todavía»), `tarifas_vistas`, `pocos_datos` y `aviso`. Antes de responder pone al día las tarifas vistas, como mucho cada 10 minutos. Solo administración.
+
 ## Monitoreo
 
 Solo administración, como `/admin/monitoreo`: otra cuenta recibe 403 `FORBIDDEN`. Mismos filtros que los KPIs. Las cifras salen del catálogo de métricas (`app/servicios/metricas.py`), la misma definición de la pantalla.

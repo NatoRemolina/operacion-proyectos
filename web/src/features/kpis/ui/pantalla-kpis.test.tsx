@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderizarConFuente } from "@/test/renderizar";
 import { KpisRepositoryProvider } from "../application/kpis";
 import type { KpisRepository } from "../domain/kpis";
-import { FICHA_EJEMPLO, TABLERO_EJEMPLO } from "../infrastructure/ejemplo-kpis";
+import { FICHA_EJEMPLO, RUTAS_FRECUENTES_EJEMPLO, TABLERO_EJEMPLO } from "../infrastructure/ejemplo-kpis";
 import { crearKpisMemoria } from "../infrastructure/kpis-memoria";
 import { PantallaFichaPersona } from "./pantalla-ficha-persona";
 import { PantallaKpis } from "./pantalla-kpis";
@@ -91,5 +91,30 @@ describe("Ficha de una persona", () => {
   it("una persona que no existe lo dice", async () => {
     montar(<PantallaFichaPersona id={99} />, crearKpisMemoria({ tablero: TABLERO_EJEMPLO, fichas: [FICHA_EJEMPLO] }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});
+
+describe("Rutas frecuentes y precios", () => {
+  it("muestra cada ruta con la mediana por anticipación, la prima, aerolínea o agencia, la tendencia y la señal", async () => {
+    montar(<PantallaKpis filtros={SIN} />, crearKpisMemoria({ tablero: TABLERO_EJEMPLO }));
+    const seccion = await screen.findByRole("region", { name: "Rutas frecuentes y precios" });
+    expect(await within(seccion).findByText("Cifras demostrativas")).toBeInTheDocument();
+    expect(within(seccion).getAllByText("MIA → LAS").length).toBeGreaterThan(0);
+    expect(within(seccion).getAllByText(/aerolínea .*13.* más barata/).length).toBeGreaterThan(0);
+    expect(within(seccion).getAllByText("sube 6,4 %").length).toBeGreaterThan(0);
+    expect(within(seccion).getAllByText("Dentro del rango").length).toBeGreaterThan(0);
+    expect(within(seccion).getAllByText("Por encima del rango").length).toBeGreaterThan(0);
+    expect(within(seccion).getByRole("region", { name: "Exactitud del precio esperado" })).toBeInTheDocument();
+  });
+
+  it("sin decisiones con precio esperado dice «sin datos todavía»", async () => {
+    const vacio = {
+      ...RUTAS_FRECUENTES_EJEMPLO,
+      rutas: [],
+      exactitud: { filas: 0, mae: null, mape: null, mensaje: "sin datos todavía", por_ruta: [], por_mes: [], contra_pagado: null },
+    };
+    montar(<PantallaKpis filtros={SIN} />, crearKpisMemoria({ tablero: TABLERO_EJEMPLO, rutas: vacio }));
+    expect(await screen.findByText("sin datos todavía")).toBeInTheDocument();
+    expect(screen.getByText(/Todavía no hay cotizaciones/)).toBeInTheDocument();
   });
 });

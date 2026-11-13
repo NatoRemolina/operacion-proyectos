@@ -1,4 +1,4 @@
-import type { FichaPersona, Kpi, TableroKpis } from "../domain/kpis";
+import type { FichaPersona, Kpi, RutasFrecuentes, TableroKpis } from "../domain/kpis";
 
 /** Datos de ejemplo con la forma de la API, para pruebas. */
 export const KPI_EJEMPLO: Kpi = {
@@ -97,4 +97,53 @@ export const FICHA_EJEMPLO: FichaPersona = {
   ],
   gastos_por_estado: [],
   gastos_por_canal: [],
+};
+
+export const RUTAS_FRECUENTES_EJEMPLO: RutasFrecuentes = {
+  dias: 90,
+  rutas: [
+    {
+      ruta: "MIA → LAS",
+      origen: "MIA",
+      destino: "LAS",
+      cotizaciones: 6,
+      viajes: 2,
+      observaciones: 76,
+      por_anticipacion: { "0-7": 512, "8-21": 433, "22-45": 401, "46+": 388 },
+      mediana: 420,
+      volatilidad: 58,
+      tendencia: { cambio_pct: 6.4, sentido: "sube" },
+      prima_flexibilidad: { usd: 130, pct: 28.4, pares: 3 },
+      aerolinea_agencia: { aerolinea: 458, agencia: 471, diferencia_usd: 13, pares: 2 },
+      senal: { valor: "dentro", referencia: "rango propio (p25–p75)", rango: [380, 470], precio: 458 },
+    },
+    {
+      ruta: "MAD → LIS",
+      origen: "MAD",
+      destino: "LIS",
+      cotizaciones: 3,
+      viajes: 1,
+      observaciones: 40,
+      por_anticipacion: { "8-21": 145, "46+": 98 },
+      mediana: 120,
+      volatilidad: 22,
+      tendencia: null,
+      prima_flexibilidad: null,
+      aerolinea_agencia: null,
+      senal: { valor: "por encima", referencia: "rango típico de Google", rango: [90, 140], precio: 166 },
+    },
+  ],
+  exactitud: {
+    filas: 18,
+    mae: 61.2,
+    mape: 14.3,
+    mensaje: null,
+    por_ruta: [{ ruta: "MIA → LAS", filas: 12, mae: 55.1, mape: 12.9 }],
+    por_mes: [{ mes: "2026-11", filas: 18, mae: 61.2, mape: 14.3 }],
+    contra_pagado: null,
+  },
+  tarifas_vistas: 24,
+  pocos_datos: true,
+  aviso:
+    "Con pocos datos las cifras son demostrativas: describen lo visto en las cotizaciones y búsquedas guardadas, no el mercado. La señal compara el último precio visto con el rango habitual de la ruta y no predice el precio futuro.",
 };

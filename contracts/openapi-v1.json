@@ -2866,6 +2866,74 @@
         }
       }
     },
+    "/api/v1/kpis/rutas-frecuentes": {
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Rutas",
+        "description": "Las rutas más cotizadas y viajadas de los últimos 90 días con sus precios, y la exactitud del precio esperado.",
+        "operationId": "rutas_api_v1_kpis_rutas_frecuentes_get",
+        "parameters": [
+          {
+            "name": "n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Cuántas rutas.",
+              "default": 10,
+              "title": "N"
+            },
+            "description": "Cuántas rutas."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RutasFrecuentes"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/servicio/gastos/{id}/soporte": {
       "get": {
         "tags": [
@@ -4273,6 +4341,56 @@
           "creado"
         ],
         "title": "ActividadGasto"
+      },
+      "AerolineaFrenteAgencia": {
+        "properties": {
+          "aerolinea": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aerolinea"
+          },
+          "agencia": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agencia"
+          },
+          "diferencia_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diferencia Usd",
+            "description": "Agencia menos aerolínea en el mismo itinerario (mediana)."
+          },
+          "pares": {
+            "type": "integer",
+            "title": "Pares"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aerolinea",
+          "agencia",
+          "diferencia_usd",
+          "pares"
+        ],
+        "title": "AerolineaFrenteAgencia"
       },
       "AeropuertoSugerido": {
         "properties": {
@@ -6147,6 +6265,127 @@
         ],
         "title": "ErrorBuzon"
       },
+      "ErrorPrecioEsperado": {
+        "properties": {
+          "filas": {
+            "type": "integer",
+            "title": "Filas"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "mape": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mape"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filas",
+          "mae",
+          "mape"
+        ],
+        "title": "ErrorPrecioEsperado"
+      },
+      "ErrorPrecioPorMes": {
+        "properties": {
+          "filas": {
+            "type": "integer",
+            "title": "Filas"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "mape": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mape"
+          },
+          "mes": {
+            "type": "string",
+            "title": "Mes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filas",
+          "mae",
+          "mape",
+          "mes"
+        ],
+        "title": "ErrorPrecioPorMes"
+      },
+      "ErrorPrecioPorRuta": {
+        "properties": {
+          "filas": {
+            "type": "integer",
+            "title": "Filas"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "mape": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mape"
+          },
+          "ruta": {
+            "type": "string",
+            "title": "Ruta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filas",
+          "mae",
+          "mape",
+          "ruta"
+        ],
+        "title": "ErrorPrecioPorRuta"
+      },
       "EstadoTelegram": {
         "properties": {
           "vinculado": {
@@ -6323,6 +6562,84 @@
           "viaje"
         ],
         "title": "EvidenciaPersona"
+      },
+      "ExactitudModelo": {
+        "properties": {
+          "filas": {
+            "type": "integer",
+            "title": "Filas"
+          },
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "mape": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mape"
+          },
+          "mensaje": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mensaje",
+            "description": "«sin datos todavía» cuando no hay decisiones con precio esperado."
+          },
+          "por_ruta": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorPrecioPorRuta"
+            },
+            "type": "array",
+            "title": "Por Ruta"
+          },
+          "por_mes": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorPrecioPorMes"
+            },
+            "type": "array",
+            "title": "Por Mes"
+          },
+          "contra_pagado": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorPrecioEsperado"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Frente a lo pagado, cuando hay compras registradas."
+          }
+        },
+        "type": "object",
+        "required": [
+          "filas",
+          "mae",
+          "mape",
+          "mensaje",
+          "por_ruta",
+          "por_mes",
+          "contra_pagado"
+        ],
+        "title": "ExactitudModelo"
       },
       "FallaBuscador": {
         "properties": {
@@ -9350,6 +9667,44 @@
         ],
         "title": "PreguntaAsistente"
       },
+      "PrimaFlexibilidad": {
+        "properties": {
+          "usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd"
+          },
+          "pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct"
+          },
+          "pares": {
+            "type": "integer",
+            "title": "Pares",
+            "description": "Itinerarios con tarifa básica y flexible a la vez: sobre cuántos se calcula."
+          }
+        },
+        "type": "object",
+        "required": [
+          "usd",
+          "pct",
+          "pares"
+        ],
+        "title": "PrimaFlexibilidad"
+      },
       "ProyectoOpcion": {
         "properties": {
           "id": {
@@ -10284,6 +10639,229 @@
         "title": "RevisionGasto",
         "description": "Una revisión de administración. Los campos de datos que no se mandan se conservan como están."
       },
+      "RutaFrecuente": {
+        "properties": {
+          "ruta": {
+            "type": "string",
+            "title": "Ruta"
+          },
+          "origen": {
+            "type": "string",
+            "title": "Origen"
+          },
+          "destino": {
+            "type": "string",
+            "title": "Destino"
+          },
+          "cotizaciones": {
+            "type": "integer",
+            "title": "Cotizaciones"
+          },
+          "viajes": {
+            "type": "integer",
+            "title": "Viajes"
+          },
+          "observaciones": {
+            "type": "integer",
+            "title": "Observaciones"
+          },
+          "por_anticipacion": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Por Anticipacion",
+            "description": "Mediana por tramo de días de anticipación: 0-7, 8-21, 22-45 y 46+."
+          },
+          "mediana": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mediana"
+          },
+          "volatilidad": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volatilidad",
+            "description": "Desviación absoluta mediana, en USD."
+          },
+          "tendencia": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TendenciaRuta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prima_flexibilidad": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrimaFlexibilidad"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aerolinea_agencia": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AerolineaFrenteAgencia"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "senal": {
+            "$ref": "#/components/schemas/SenalPrecio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ruta",
+          "origen",
+          "destino",
+          "cotizaciones",
+          "viajes",
+          "observaciones",
+          "por_anticipacion",
+          "mediana",
+          "volatilidad",
+          "tendencia",
+          "prima_flexibilidad",
+          "aerolinea_agencia",
+          "senal"
+        ],
+        "title": "RutaFrecuente"
+      },
+      "RutasFrecuentes": {
+        "properties": {
+          "dias": {
+            "type": "integer",
+            "title": "Dias",
+            "description": "Ventana de cotizaciones y viajes con que se ordenan las rutas."
+          },
+          "rutas": {
+            "items": {
+              "$ref": "#/components/schemas/RutaFrecuente"
+            },
+            "type": "array",
+            "title": "Rutas"
+          },
+          "exactitud": {
+            "$ref": "#/components/schemas/ExactitudModelo"
+          },
+          "tarifas_vistas": {
+            "type": "integer",
+            "title": "Tarifas Vistas",
+            "description": "Filas de `ofertas_tarifa` útiles tras la limpieza."
+          },
+          "pocos_datos": {
+            "type": "boolean",
+            "title": "Pocos Datos",
+            "description": "Verdadero si las cifras son demostrativas por falta de volumen."
+          },
+          "aviso": {
+            "type": "string",
+            "title": "Aviso"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dias",
+          "rutas",
+          "exactitud",
+          "tarifas_vistas",
+          "pocos_datos",
+          "aviso"
+        ],
+        "title": "RutasFrecuentes"
+      },
+      "SenalPrecio": {
+        "properties": {
+          "valor": {
+            "type": "string",
+            "enum": [
+              "por debajo",
+              "dentro",
+              "por encima",
+              "sin datos"
+            ],
+            "title": "Valor"
+          },
+          "referencia": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencia",
+            "description": "Rango propio (p25–p75) o rango típico de Google."
+          },
+          "rango": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rango"
+          },
+          "precio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio",
+            "description": "Mediana de lo visto el último día con datos."
+          }
+        },
+        "type": "object",
+        "required": [
+          "valor"
+        ],
+        "title": "SenalPrecio"
+      },
       "Sesion": {
         "properties": {
           "persona": {
@@ -10658,6 +11236,30 @@
           "filas"
         ],
         "title": "Tendencia"
+      },
+      "TendenciaRuta": {
+        "properties": {
+          "cambio_pct": {
+            "type": "number",
+            "title": "Cambio Pct",
+            "description": "Cambio de la mediana entre la primera y la segunda mitad del historial diario."
+          },
+          "sentido": {
+            "type": "string",
+            "enum": [
+              "sube",
+              "baja",
+              "estable"
+            ],
+            "title": "Sentido"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cambio_pct",
+          "sentido"
+        ],
+        "title": "TendenciaRuta"
       },
       "Titular": {
         "properties": {

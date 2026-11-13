@@ -192,11 +192,71 @@ export interface FichaPersona {
 
 export type ExportableKpis = "kpis" | "consultas" | "personas";
 
+/** Rutas frecuentes y precios. Mismo contrato que `GET /api/v1/kpis/rutas-frecuentes`; importes en USD. */
+export type TramoAnticipacion = "0-7" | "8-21" | "22-45" | "46+";
+export const TRAMOS_ANTICIPACION: readonly TramoAnticipacion[] = ["0-7", "8-21", "22-45", "46+"];
+export type ValorSenal = "por debajo" | "dentro" | "por encima" | "sin datos";
+
+export interface RutaFrecuente {
+  readonly ruta: string;
+  readonly origen: string;
+  readonly destino: string;
+  readonly cotizaciones: number;
+  readonly viajes: number;
+  readonly observaciones: number;
+  readonly por_anticipacion: Partial<Record<TramoAnticipacion, number | null>>;
+  readonly mediana: number | null;
+  readonly volatilidad: number | null;
+  readonly tendencia: { readonly cambio_pct: number; readonly sentido: "sube" | "baja" | "estable" } | null;
+  readonly prima_flexibilidad: { readonly usd: number | null; readonly pct: number | null; readonly pares: number } | null;
+  readonly aerolinea_agencia: {
+    readonly aerolinea: number | null;
+    readonly agencia: number | null;
+    readonly diferencia_usd: number | null;
+    readonly pares: number;
+  } | null;
+  readonly senal: {
+    readonly valor: ValorSenal;
+    readonly referencia?: string | null;
+    readonly rango?: readonly (number | null)[] | null;
+    readonly precio?: number | null;
+  };
+}
+
+export interface ErrorPrecioEsperado {
+  readonly filas: number;
+  readonly mae: number | null;
+  readonly mape: number | null;
+}
+
+export interface RutasFrecuentes {
+  readonly dias: number;
+  readonly rutas: readonly RutaFrecuente[];
+  readonly exactitud: ErrorPrecioEsperado & {
+    readonly mensaje: string | null;
+    readonly por_ruta: readonly (ErrorPrecioEsperado & { readonly ruta: string })[];
+    readonly por_mes: readonly (ErrorPrecioEsperado & { readonly mes: string })[];
+    readonly contra_pagado: ErrorPrecioEsperado | null;
+  };
+  readonly tarifas_vistas: number;
+  readonly pocos_datos: boolean;
+  readonly aviso: string;
+}
+
+/** Texto de la tendencia: «sube 10 %», «estable». */
+export function textoTendencia(t: RutaFrecuente["tendencia"]): string {
+  if (!t) return "—";
+  if (t.sentido === "estable") return "estable";
+  return `${t.sentido} ${Math.abs(t.cambio_pct).toLocaleString("es-CO", { maximumFractionDigits: 1 })} %`;
+}
+
 export interface KpisRepository {
   /** Solo administración; para otro permiso falla con «prohibido». */
   tablero(filtros: FiltrosTablero, signal?: AbortSignal): Promise<TableroKpis>;
   /** Todo lo de una persona y su línea de tiempo. «no_encontrado» si no existe. */
   ficha(id: number, signal?: AbortSignal): Promise<FichaPersona>;
+  /** Rutas frecuentes con sus precios y la exactitud del modelo. Solo administración. */
+  rutasFrecuentes(signal?: AbortSignal): Promise<RutasFrecuentes>;
   /** Dirección del CSV con los filtros, o `null` si la fuente de datos no exporta (demostración). */
   urlExportar(que: ExportableKpis, filtros: FiltrosTablero): string | null;
 }

@@ -29,3 +29,13 @@ export function useFichaPersona(id: number) {
   });
   return { ...consulta, error: consulta.error as ErrorDeAplicacion | null };
 }
+
+export function useRutasFrecuentes() {
+  const repositorio = useKpisRepository();
+  const personaId = usePersonaId();
+  const consulta = useQuery({
+    queryKey: claveDePersona(personaId, "kpis", "rutas-frecuentes"),
+    queryFn: ({ signal }) => repositorio.rutasFrecuentes(signal),
+  });
+  return { ...consulta, error: consulta.error as ErrorDeAplicacion | null };
+}

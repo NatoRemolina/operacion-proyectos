@@ -296,7 +296,7 @@ def test_el_openapi_versionado_coincide_con_la_api():
                  ("get", "/resumen"), ("post", "/viajes/{id}/estado"),
                  ("get", "/documentos/{id}/contenido"), ("post", "/asistente"), ("post", "/asistente/voz"),
                  ("get", "/servicio/gastos/{id}/soporte")}
-    esperadas |= {("get", "/kpis"), ("get", "/kpis/personas/{id}"), ("get", "/kpis/exportar.csv")}
+    esperadas |= {("get", "/kpis"), ("get", "/kpis/personas/{id}"), ("get", "/kpis/exportar.csv"), ("get", "/kpis/rutas-frecuentes")}
     esperadas |= {("get", "/monitoreo"), ("get", "/monitoreo/exportar.csv")}
     esperadas |= {("get", "/vuelos"), ("post", "/vuelos/{tramo_id}/actualizar")}
     esperadas |= {("get", "/proyectos"), ("post", "/proyectos"), ("get", "/proyectos/{id}"), ("post", "/proyectos/{id}"),

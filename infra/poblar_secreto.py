@@ -46,6 +46,7 @@ CLAVES = [
     "ORIGENES_WEB", "INTERFAZ_ANTIGUA",
     "PROVEEDOR_LUGARES",
     "N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRETO", "URL_PUBLICA", "SOPORTE_ENLACE_SECRETO",   # avisos firmados a n8n; sin ellas quedan apagados
+    "RECOLECTOR",
 ]
 OBLIGATORIAS = ("DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_KEY")   # sin ellas la función no arranca (app/config.py)
 # Tienen que venir en el archivo: el webhook (paso 6 de docs/despliegue.md) se registra con ese mismo archivo, y si
