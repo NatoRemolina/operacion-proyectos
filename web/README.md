@@ -5,9 +5,10 @@ vuelos y hoteles con desglose y decidir), **mis viajes**, **mis gastos** (cargar
 ver su estado real y descargar el **Excel contable** de lo que cada permiso puede ver) y, para administración,
 **resumen, aprobación de viajes** (con la reconfirmación del precio) y **revisión de gastos**. En todas las
 pantallas privadas hay un **asistente IA** flotante, con dictado por voz, que responde a cada permiso solo
-sobre lo que puede ver (`docs/asistente.md`). Lo que todavía no tiene (corregir los datos leídos de un gasto,
-aprobar con excepción, KPIs, monitoreo, reglas, proyectos y usuarios) sigue en las pantallas de
-administración, y la web enlaza allí cuando hace falta.
+sobre lo que puede ver (`docs/asistente.md`). Lo que todavía no tiene (Proyectos, Usuarios, Mi cuenta, la revisión
+completa de un gasto, Reglas, KPIs, Monitoreo y el tablero de vuelos) sigue en las pantallas de
+administración, y la web enlaza allí cuando hace falta: para administración, Proyectos y Usuarios están
+en la sección «Administración» del menú, que los abre en otra pestaña y avisa que piden ingresar aparte.
 
 La web consume solo la API v1 descrita en [`contracts/api-v1.md`](../contracts/api-v1.md); no tiene acceso a
 ninguna base de datos.
@@ -154,12 +155,12 @@ se desborda a 360 px. Son comprobaciones hechas con capturas y pruebas, no una c
 
 ## Pruebas
 
-`npm test` corre **262 pruebas en 33 archivos** con Vitest y Testing Library (medido el 13 de noviembre
-de 2026; todas pasan). Por grupo:
+`npm test` corre **273 pruebas en 34 archivos** con Vitest y Testing Library (medido el 13 de noviembre
+de 2026 sobre `bf33d50`; todas pasan). Por grupo:
 
 - **Adaptadores HTTP** (`*-http.test.ts`, `cliente-http.test.ts`): cada uno ante 200, 401, 404, JSON
   inválido o con otra forma, fallo de red, CSRF e `Idempotency-Key` en las escrituras, y 413.
-- **Dominio y casos de uso** (`cotizar.test.ts`, `gastos.test.ts`, `asistente.test.ts`,
+- **Dominio y casos de uso** (`cotizar.test.ts`, `gastos.test.ts`, `asistente.test.ts`, `sesion.test.tsx`,
   `navegacion.test.ts`, `configuracion.test.ts`, `gastos-memoria.test.ts`).
 - **Pantallas** (`pantalla-*.test.tsx`, `decision-viaje`, `detalle-gasto`, `revision-gasto`,
   `justificacion-gasto`, `formulario-entrar`, `marco-privado`, `zona-privada`, `migas-coherentes`):

@@ -184,14 +184,14 @@ Son tres cifras distintas, y es correcto que no coincidan.
 | | Comparación | Ficha de la decisión | Presupuesto del viaje |
 |---|---|---|---|
 | Para qué | Ordenar y recomendar vuelos y hoteles | El costo total esperado de lo elegido | Lo que se espera pagar; contra él se validan los gastos |
-| Dónde | `costo.evaluar` (vuelos), `costo.evaluar_hotel` (hoteles) y el total del viaje con el hotel recomendado | `decisiones.total`, calculado en `cotizacion.decidir` | `viajes.presupuesto_de` |
+| Dónde | `costo.evaluar` (vuelos), `costo.evaluar_hotel` (hoteles) y el total del viaje con el hotel recomendado | `decisiones.total`, calculado en `cotizacion.decidir`: el total de la comparación del vuelo y el hotel elegidos, más el carro | `viajes.presupuesto_de` |
 | Precio del tiquete, equipaje de mano y maleta | Sí | Sí | Sí |
 | Riesgo de cambio de fecha (probabilidad × costo) | Sí | Sí | **No**: es valor esperado |
 | Millas del viajero y de la cuenta de empresa (restan) | Sí | Sí | **No**: es valor esperado |
 | Traslado por carretera (taxi o combustible) | Sí | Sí | Sí: se pagará, aunque sea un supuesto |
 | Tarifa del hotel | Sí | Sí | Sí |
 | Tarifa de miembro del hotel (resta) | Sí, con membresía | Sí, con membresía | Sí, con membresía: es un descuento que se paga de menos |
-| Puntos del programa del hotel (restan) | Sí, con membresía: ordenan los hoteles | **No** | **No**: es valor esperado, como las millas |
+| Puntos del programa del hotel (restan) | Sí, con membresía: ordenan los hoteles | Sí, con membresía, marcados como valor esperado (`valor_esperado`) | **No**: es valor esperado, como las millas |
 | Carro de alquiler | **No** | Sí | Sí |
 | Viáticos (días del viaje × `viaticos_dia_usd`) | No | No | Sí |
 
@@ -207,8 +207,8 @@ Por eso un viaje con un costo esperado de 980 USD puede tener un presupuesto de 
 
 **Hoteles** (`costo.evaluar_hotel`):
 
-- El programa se reconoce por la **marca** que aparece en el nombre del hotel (`costo.programa_hotel`): Marriott Bonvoy, Hilton Honors (Hampton, DoubleTree…), World of Hyatt, IHG One Rewards (Holiday Inn, Crowne Plaza…) y ALL Accor (Novotel, Ibis…). Marcas, puntos por USD, valor del punto y descuento de miembro son reglas editables con su fuente y confianza «supuesto».
-- La tarifa de miembro y los puntos **solo restan con membresía** (los puntos, solo en la comparación: no entran en la ficha ni en el presupuesto) del viajero o de la empresa en ese programa, o si la regla `inscripcion_gratis_hotel` vale «sí» (por defecto «no»). Sin ellas, inscribirse aparece como oportunidad.
+- El programa se reconoce por la **marca** que aparece en el nombre del hotel (`costo.programa_hotel`): Marriott Bonvoy, Hilton Honors (Hampton, DoubleTree…), World of Hyatt, IHG One Rewards (Holiday Inn, Crowne Plaza…) y ALL Accor (Novotel, Ibis…). Marcas, puntos por USD, valor del punto y descuento de miembro son reglas editables con su fuente y confianza «supuesto». Una marca que también es ciudad o nombre de hoteles independientes (Pullman, Fairmont) se marca «(al inicio)» y solo cuenta si el nombre del hotel empieza con ella.
+- La tarifa de miembro y los puntos **solo restan con membresía** del viajero o de la empresa en ese programa, o si la regla `inscripcion_gratis_hotel` vale «sí» (por defecto «no»). Sin ellas, inscribirse aparece como oportunidad. Los puntos restan en la comparación y en la ficha, pero no en el presupuesto (sección 8).
 - Los hoteles se ordenan por **costo total** (tarifa, tarifa de miembro y puntos) y el primero es el **hotel recomendado**; el más barato se marca aparte si no es el mismo.
 - Un hotel con **calificación por debajo de 3,5** (`hotel_calificacion_minima`) se descarta con su razón. Sin calificación no se descarta: falta el dato, no es un mal hotel.
 - La membresía de hotel de la semilla (Andrés Molina en Hilton Honors) y las de aerolínea son inventadas y se rotulan «Dato de ejemplo».

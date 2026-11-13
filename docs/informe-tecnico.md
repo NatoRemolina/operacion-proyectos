@@ -17,7 +17,7 @@ Es un **producto mínimo viable** que resuelve los dos retos de la prueba sobre 
 | Decisión con su porqué, viaje con código y presupuesto, aprobación con reconfirmación del precio, monitoreo del vuelo el día del viaje | Monitoreo del vuelo con tarea programada (hoy solo con el tablero abierto) |
 | Gastos por web, celular, API, correo (`.eml` y `.html` subidos) y Telegram; lectura automática, 20 motivos de revisión, aprobación sin intervención, revisión versionada, justificaciones con voz | Buzón de correo real; Telegram con el bot de producción |
 | Excel contable, KPIs con semáforo, analítica, monitoreo, asistente con fuentes citadas para los tres permisos | Automatizaciones con n8n (diseñadas en [`n8n/automatizaciones.md`](n8n/automatizaciones.md)) |
-| Web nueva en Next.js para cotizar, viajes, gastos, aprobación y revisión | Corregir un gasto, aprobar con excepción, KPIs, monitoreo, reglas, proyectos y usuarios en la web nueva (siguen en las pantallas de administración) |
+| Web nueva en Next.js para cotizar, viajes, gastos, aprobación y revisión | Proyectos, Usuarios, Mi cuenta, la revisión completa de un gasto (corregir los datos leídos y aprobar con excepción), Reglas, KPIs, Monitoreo y el tablero de vuelos en la web nueva (siguen en las pantallas de administración) |
 
 **Qué es real, qué es simulado y qué es supuesto**
 
@@ -83,7 +83,7 @@ make entorno-web
 
 ## 3. Modelo de datos
 
-El diagrama entidad-relación, los identificadores (`P-0007`, `V-2026-0012`), las reglas que hace cumplir la base y la migración están en [`datos.md`](datos.md). La aplicación declara **36 tablas** y siete vistas analíticas; el asistente para colaborador y gestor suma una más, `asistente_dictados` (el cupo de dictados por voz).
+El diagrama entidad-relación, los identificadores (`P-0007`, `V-2026-0012`), las reglas que hace cumplir la base y la migración están en [`datos.md`](datos.md). La aplicación declara **37 tablas** y siete vistas analíticas.
 
 Atributos de las tablas que el diagrama de `datos.md` no detalla:
 
@@ -104,6 +104,7 @@ Atributos de las tablas que el diagrama de `datos.md` no detalla:
 | `fichas_rag` | Índice local del asistente y copia de lo enviado a Pinecone | `ficha_id`, `tipo`, `entidad`, `entidad_id`, `persona_id`, `viaje_id`, `proyecto_id`, `fecha`, `canal`, `texto`, `normalizado` |
 | `indice_rag` | Qué versión de cada ficha tiene cada destino | `destino` (`local` o `pinecone`), `entidad`, `entidad_id`, `ficha_id`, `huella`, `indexado_en` |
 | `llamadas_modelo` | Cada llamada al modelo y cada sesión del asesor | `uso`, `modelo`, tokens de entrada y salida, latencia, estado, error, `costo_usd` |
+| `asistente_dictados` | Un cupo de dictado por voz reservado antes de transcribir: es lo que cuenta el tope del día | `usuario_id`, `momento` |
 
 **Estados del gasto:** `procesando`, `revision`, `aprobado_auto`, `aprobado` y `rechazado` ([`regla-de-negocio.md`](regla-de-negocio.md), sección 1). No hay restricción CHECK sobre `gastos.estado`; sí sobre `viajes.estado` y `usuarios.rol`.
 
@@ -156,13 +157,13 @@ Atributos de las tablas que el diagrama de `datos.md` no detalla:
 
 ## 5. Pruebas y calidad
 
-Cifras medidas el 13 de noviembre de 2026 sobre el commit `7d645f6` más esta documentación:
+Cifras medidas el 13 de noviembre de 2026 sobre `bf33d50`, el código de `union-publicacion` que llega a `main` con esta documentación:
 
 | Conjunto | Orden | Resultado |
 |---|---|---|
-| Python (pytest, SQLite temporal y servicios simulados) | `.venv/bin/python -m pytest -q` | 703 pruebas en 42 archivos: **700 pasan, 3 se omiten** (dos necesitan el PostgreSQL de Docker en el puerto 5433 y una, Docker para el ensayo de vuelta atrás) |
+| Python (pytest, SQLite temporal y servicios simulados) | `.venv/bin/python -m pytest -q` | 777 pruebas en 44 archivos: **774 pasan, 3 se omiten** (dos necesitan el PostgreSQL de Docker en el puerto 5433 y una, Docker para el ensayo de vuelta atrás) |
 | Linter de Python | `.venv/bin/python -m ruff check .` | Sin hallazgos |
-| Web (Vitest) | `cd web && npx vitest run` | **262 pruebas en 33 archivos, todas pasan** |
+| Web (Vitest) | `cd web && npx vitest run` | **273 pruebas en 34 archivos, todas pasan** |
 | Infraestructura (pruebas de las pilas de CDK) | `cd infra && npm test` | **37 pruebas en 12 grupos, todas pasan** |
 
 Qué cubren las de Python: permisos por rol (con una prueba de humo de cada página para cada rol), la regla del viaje, la validación de gastos, la integridad (envíos idempotentes, transacciones, revisión versionada), el buscador mundial, el monitoreo del vuelo, las métricas contra un conjunto conocido, el borde de la API v1, el asistente y su asesor, Telegram con un bot simulado y el comportamiento detrás de CloudFront. `make probar-postgres` corre las mismas contra un PostgreSQL nuevo en Docker; los cambios que tocan la base se prueban además en un proyecto de Supabase de pruebas ([`convenciones.md`](convenciones.md)).
@@ -244,7 +245,7 @@ Qué cubren las de Python: permisos por rol (con una prueba de humo de cada pág
 - El dinero se guarda en coma flotante; las reglas validan con decimales exactos.
 - Con pocos datos, varios indicadores muestran el método y no conclusiones; el ahorro es un valor esperado.
 - El pie de página dice «Datos: Supabase» con cualquier PostgreSQL, también el local.
-- La web nueva no cubre todavía corregir un gasto, aprobar con excepción, KPIs, monitoreo, reglas, proyectos y usuarios.
+- La web nueva no cubre todavía Proyectos, Usuarios, Mi cuenta, la revisión completa de un gasto (corregir los datos leídos y aprobar con excepción), Reglas, KPIs, Monitoreo y el tablero de vuelos: viven en las pantallas de administración, con su propia sesión (desde la web, Proyectos y Usuarios se abren en otra pestaña).
 - La CSP de las pantallas de administración permite scripts en línea.
 
 ## 10. Hoja de ruta

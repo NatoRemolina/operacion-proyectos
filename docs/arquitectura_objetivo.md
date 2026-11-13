@@ -46,7 +46,7 @@ Tablas sin dueño claro, que hay que decidir antes de separar:
 
 | Cruce | Cantidad | Ejemplo |
 |---|---|---|
-| Claves foráneas entre dominios | 20 de 39 (el 12 de noviembre eran 16 de 29) | `gastos.viaje_id` → `viajes`; `viajes.usuario_id` → `usuarios`; `justificaciones.usuario_id` → `usuarios` |
+| Claves foráneas entre dominios | 21 de 40 (el 12 de noviembre eran 16 de 29) | `gastos.viaje_id` → `viajes`; `viajes.usuario_id` → `usuarios`; `justificaciones.usuario_id` → `usuarios` |
 | Consultas que deciden algo | 4 | `viajes.lista` suma `gastos` para resolver a qué viaje va un gasto |
 | Consultas de pantallas | 11 | Inicio, Mi cuenta, tablero de proyecto, contadores del menú |
 | Consultas analíticas | 8 | Las vistas `v_h_*` y el monitoreo |
