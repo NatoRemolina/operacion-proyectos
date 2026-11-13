@@ -187,13 +187,17 @@ def _lista_sql(valores) -> str:
     return ", ".join("'" + v.replace("'", "''") + "'" for v in valores)
 
 
-def filas(usuario: dict, desde, hasta, proyecto_id: int | None = None, estados=ESTADOS_LIBRO) -> list[dict]:
-    """Los gastos del libro con lo que lleva cada columna, ya limitados al alcance de la persona."""
-    inicio, fin = periodo(desde, hasta)
+def _estados(estados) -> tuple:
     estados = tuple(estados)
     if not estados or any(e not in consultas.ESTADO_GASTO for e in estados):
         raise ValueError("Hay un estado de gasto que no existe.")
-    _proyecto(usuario, proyecto_id)
+    return estados
+
+
+def _filas(usuario: dict, inicio: date, fin: date, proyecto: dict | None, estados: tuple) -> list[dict]:
+    """Los gastos del libro con lo que lleva cada columna, ya limitados al alcance de la persona. `proyecto` es el
+    del filtro, ya comprobado contra el permiso (se lee una sola vez, en `libro`)."""
+    proyecto_id = proyecto["id"] if proyecto else None
     donde, p = acceso.alcance(usuario, "g")
     marcas = {f"_e{i}": e for i, e in enumerate(estados)}
     donde += f" and g.fecha>=:_desde and g.fecha<=:_hasta and g.estado in ({', '.join(':' + m for m in marcas)})"
@@ -378,9 +382,9 @@ def libro(usuario: dict, desde, hasta, proyecto_id: int | None = None, estados=E
     que no gestiona), con un texto para la persona.
     """
     inicio, fin = periodo(desde, hasta)
-    estados = tuple(estados)
-    datos = filas(usuario, inicio, fin, proyecto_id, estados)
+    estados = _estados(estados)
     proyecto = _proyecto(usuario, proyecto_id)
+    datos = _filas(usuario, inicio, fin, proyecto, estados)
     mapa = cuentas()
     enlace_base = (enlace_base or "").rstrip("/")
     wb = Workbook()

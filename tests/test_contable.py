@@ -499,3 +499,19 @@ def test_el_mes_en_curso_se_cuenta_en_la_zona_de_la_empresa(monkeypatch, sesione
     assert contable.mes_en_curso() == ("2026-11-01", "2026-11-30")
     r = sesiones["a"].get(f"{V1}/gastos/contable")
     assert r.status_code == 200 and "libro_contable_2026-11-01_2026-11-30.xlsx" in r.headers["content-disposition"]
+
+
+def test_el_proyecto_del_filtro_se_lee_una_sola_vez(mundo):
+    from sqlalchemy import event
+    lecturas = []
+
+    def anotar(_conexion, _cursor, sql, *_):
+        if "from proyectos where id" in " ".join(sql.split()):
+            lecturas.append(sql)
+
+    event.listen(db.motor, "before_cursor_execute", anotar)
+    try:
+        assert _ids(contable.libro(mundo["g"], DESDE, HASTA, proyecto_id=P_A)) == {mundo["vuelo_a"], mundo["comida_b"]}
+    finally:
+        event.remove(db.motor, "before_cursor_execute", anotar)
+    assert len(lecturas) == 1
