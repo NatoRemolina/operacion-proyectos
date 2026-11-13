@@ -52,12 +52,23 @@ Las claves se escriben solo en esos archivos; nunca en un chat, un ticket ni un 
 
 1. Respaldo fresco justo antes (pasos 1 y 2).
 2. Migración, `comprobar_supabase` y prueba rápida: entrar, ver viajes, cargar un recibo.
-3. **Vuelta atrás, decidida de antemano:** si algo falla, restaurar `base.dump` sobre el proyecto publicado y volver a desplegar la versión anterior de la aplicación. Esta restauración se hace a mano y con la aplicación detenida, porque reemplaza datos de producción:
-   ```
-   docker run --rm -i -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGSSLMODE=require postgres:17 \
-     pg_restore --no-owner --no-privileges --clean --if-exists -d postgres < base.dump
-   ```
-   con las variables `PG*` del proyecto publicado cargadas en la terminal. Con el tamaño actual tarda menos de un minuto. Los recibos se vuelven a subir solo si se borró alguno.
+3. **Vuelta atrás, decidida de antemano:** si algo falla, restaurar `base.dump` sobre el proyecto publicado y volver a desplegar la versión anterior de la aplicación. Esta restauración se hace a mano y con la aplicación detenida, porque reemplaza datos de producción. Con las variables `PG*` del proyecto publicado cargadas en la terminal (puerto 5432, el agrupador de sesión) y `RESPALDO` apuntando a la carpeta de la copia:
+   1. **Guardar el estado fallido** con `make respaldar` (otra carpeta): lo que se borra en el paso siguiente queda recuperable.
+   2. **Borrar lo que la copia no trae.** La migración añade tablas con claves foráneas hacia las de antes (`envios_soporte`, `envios_cotizacion`, `tramos_vuelo`, `cargos`…) y vistas nuevas; mientras existan, `pg_restore --clean` no puede borrar las tablas de antes, termina con errores y deja la base mezclada. La lista se genera comparando las tablas del código con las del manifiesto, así que incluye sola cada tabla nueva:
+      ```
+      python -m datos.respaldar vuelta-atras --respaldo "$RESPALDO" > vuelta_atras.sql
+      docker run --rm -i -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE=postgres -e PGSSLMODE=require postgres:17 \
+        psql -v ON_ERROR_STOP=1 --single-transaction -q < vuelta_atras.sql
+      ```
+      Conviene leer `vuelta_atras.sql` antes de correrlo: solo trae `drop view` de las vistas del código y `drop table` de las tablas que la copia no tiene.
+   3. **Restaurar en una sola transacción**: si algo falla, no cambia nada de lo que restaura y se puede repetir tras corregir.
+      ```
+      docker run --rm -i -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGSSLMODE=require postgres:17 \
+        pg_restore --no-owner --no-privileges --clean --if-exists --single-transaction --exit-on-error -d postgres < "$RESPALDO/base.dump"
+      ```
+   4. **Comprobar** que los conteos coinciden con el manifiesto (`python -m datos.comprobar_supabase` y la tabla `filas` de `manifiesto.json`).
+
+   Con el tamaño actual tarda menos de un minuto. Los recibos se vuelven a subir solo si se borró alguno. El procedimiento está probado en PostgreSQL con una migración que añade tablas y cambia la restricción de permisos (`tests/test_vuelta_atras.py`, con `PRUEBAS_POSTGRES_SERVIDOR`): sin el paso 2 la restauración falla y, por ser una sola transacción, no deja nada a medias.
 
 ## Después: respaldo con la plataforma en uso
 

@@ -1,15 +1,20 @@
-.env
-.env.*
-.venv
-.git
-infra
-tests
-docs
-datos/local.db
-datos/archivos
+# Imagen de la API: solo entra lo que copia el Dockerfile (requirements.txt, app/ y datos/). La web (web/ tiene su
+# propia imagen y su .dockerignore), la infraestructura, los documentos y cualquier archivo local de la carpeta
+# (configuración, enunciado, cachés) quedan fuera de la imagen y del activo que CDK sube al desplegar.
+*
+!requirements.txt
+!app
+!app/**
+!datos
+!datos/**
+
+# Dentro de app/ y datos/: lo que tampoco se versiona (ver .gitignore). Lo nuevo sin versionar lo detiene
+# infra/lib/app-stack.ts al desplegar.
 **/__pycache__
-*.pyc
-*.md
-*.pdf
-# Los recibos de ejemplo sí van en la imagen: la demostración en Docker los procesa
-!datos/ejemplos/*.pdf
+**/*.pyc
+**/.DS_Store
+**/.env
+**/.env.*
+**/*.db
+**/*.sqlite3
+datos/archivos
