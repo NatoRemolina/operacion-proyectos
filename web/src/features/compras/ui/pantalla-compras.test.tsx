@@ -5,6 +5,7 @@ import { renderizarConFuente } from "@/test/renderizar";
 import { ComprasRepositoryProvider } from "../application/compras";
 import type { ComprasRepository } from "../domain/compras";
 import { crearComprasMemoria } from "../infrastructure/compras-memoria";
+import { EVIDENCIA_EJEMPLO } from "@/features/cotizar/infrastructure/ejemplo-evidencia";
 import { COMPRA_EJEMPLO } from "../infrastructure/ejemplo-compras";
 import { PantallaCompras } from "./pantalla-compras";
 
@@ -77,6 +78,14 @@ describe("Bandeja de compras", () => {
     await usuario.click(within(form).getByRole("button", { name: "Registrar la compra" }));
     expect(await within(detalle).findByText("Comprada a American · QX7Z2P")).toBeInTheDocument();
     expect(within(detalle).getByText(/diferencia/)).toHaveTextContent(/3[.,]30/);
+  });
+
+  it("la ficha muestra la evidencia guardada de la decisión (pieza 5)", async () => {
+    const usuario = userEvent.setup();
+    montar(crearComprasMemoria({ compras: [{ ...COMPRA_EJEMPLO, evidencia: EVIDENCIA_EJEMPLO }], permiso: "admin" }));
+    const detalle = await abrir(usuario);
+    expect(within(detalle).getByRole("region", { name: /Evidencia guardada a las \d{2}:\d{2}/ })).toBeInTheDocument();
+    expect(within(detalle).getByRole("table", { name: "Precios del seguimiento" })).toBeInTheDocument();
   });
 
   it("sin solicitudes lo dice", async () => {

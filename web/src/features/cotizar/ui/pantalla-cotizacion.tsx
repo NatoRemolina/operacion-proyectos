@@ -29,6 +29,7 @@ import {
   type OpcionVuelo,
 } from "../domain/cotizar";
 import { Horario, Leyenda, OpcionDeVuelo, nombreVuelo, pesoTotal } from "./opcion-vuelo";
+import { EvidenciaDeCotizacion } from "./evidencia-guardada";
 
 
 export function PantallaCotizacion({ id }: { id: number }) {
@@ -288,6 +289,7 @@ function DecisionGuardada({
           {d.aviso}
         </p>
       ) : null}
+      <EvidenciaDeCotizacion id={c.id} />
       <p className="text-sm">
         {pendiente
           ? "Administración revisa el presupuesto. Cuando lo apruebe, podrás cargar los gastos del viaje."

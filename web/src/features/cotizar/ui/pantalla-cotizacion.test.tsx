@@ -63,6 +63,20 @@ describe("Comparación de una cotización", () => {
     expect(screen.queryByRole("button", { name: /Guardar decisión/ })).not.toBeInTheDocument();
   });
 
+  it("la decisión guardada muestra la evidencia que guardó el trabajador (pieza 5)", async () => {
+    const decidida: Cotizacion = {
+      ...COTIZACION_MOAB,
+      estado: "decidido",
+      decision: { id: 3, vuelo_id: RECOMENDADA.id, hotel_id: null, motivo: null, razones: [], total_usd: "980.00",
+        siguio_recomendacion: true, creado: "2026-11-12T20:00:00Z", aviso: null },
+      viaje: { id: 31, codigo: "V-2026-0031", estado: "pendiente_aprobacion", estado_texto: "Pendiente de aprobación",
+        presupuesto_usd: "1240.58" },
+    };
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(decidida) });
+    const evidencia = await screen.findByRole("region", { name: /Evidencia guardada a las \d{2}:\d{2}/ });
+    expect(within(evidencia).getAllByRole("link", { name: /Captura de página completa/ }).length).toBeGreaterThan(0);
+  });
+
   it("compara por costo total esperado: recomendada primero, la más barata marcada, origen del dato y descartes", async () => {
     const usuario = userEvent.setup();
     renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB) });

@@ -1,3 +1,4 @@
+import type { Evidencia } from "@/features/cotizar/domain/cotizar";
 import type { Dinero } from "@/shared/domain/tipos";
 
 /** La solicitud de compra del tiquete: nace al decidir y la lleva administración (nunca la de su propio viaje). */
@@ -57,6 +58,8 @@ export interface CompraDetalle extends Compra {
     readonly captura_url: string | null;
     readonly aviso_precio: string | null;
   } | null;
+  /** La evidencia guardada de la decisión (pieza 5): capturas del vuelo y del hotel y el seguimiento de precios. */
+  readonly evidencia: Evidencia | null;
 }
 
 export interface RegistroCompra {

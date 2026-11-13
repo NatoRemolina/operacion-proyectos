@@ -329,6 +329,39 @@ export interface AnalisisVuelo {
   readonly captura_url: string | null;
 }
 
+// ---------- evidencia guardada de la decisión (pieza 5) ----------
+export interface CapturaEvidencia {
+  readonly id: number;
+  readonly tipo: "vuelo" | "hotel";
+  readonly motivo: "decision" | "seguimiento" | "compra";
+  readonly estado: "pendiente" | "en_curso" | "lista" | "fallida";
+  readonly fallo: string | null;
+  readonly intentos: number;
+  readonly creado: string | null;
+  /** Cuándo se guardó (UTC). */
+  readonly terminado: string | null;
+  /** Todo lo leído: `google`, `aerolinea` u `hotel`. Forma libre: lo muestra el detalle completo. */
+  readonly datos: Readonly<Record<string, unknown>> | null;
+  /** Direcciones completas de las capturas de página completa (PNG). */
+  readonly imagenes: readonly string[];
+  /** Dirección completa del texto visible (text/plain). */
+  readonly texto_url: string | null;
+}
+
+export interface PuntoSeguimiento {
+  readonly momento: string | null;
+  readonly motivo: "decision" | "seguimiento" | "compra";
+  readonly precio_google_usd: Dinero;
+  readonly total_aerolinea_usd: Dinero;
+}
+
+export interface Evidencia {
+  readonly estado: "sin_evidencia" | "guardando" | "guardada";
+  readonly guardada: string | null;
+  readonly capturas: readonly CapturaEvidencia[];
+  readonly seguimiento: readonly PuntoSeguimiento[];
+}
+
 export interface CotizarRepository {
   /** Proyectos, quién puede viajar y razones de la decisión, según el permiso de la persona. */
   formulario(signal?: AbortSignal): Promise<FormularioCotizacion>;
@@ -350,6 +383,8 @@ export interface CotizarRepository {
   verAnalisis(id: number, vueloId: number, signal?: AbortSignal): Promise<AnalisisVuelo>;
   /** Las opciones de reserva del buscador ya guardadas para el itinerario (primera capa del desglose). */
   opcionesBuscador(id: number, vueloId: number, signal?: AbortSignal): Promise<OpcionesBuscador>;
+  /** La evidencia que guarda el trabajador al decidir, cada día hasta la compra y al comprar. */
+  evidencia(id: number, signal?: AbortSignal): Promise<Evidencia>;
 }
 
 // ---------- reglas del campo de lugar ----------

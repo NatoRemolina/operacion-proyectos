@@ -5,6 +5,7 @@ import {
   type AnalisisVuelo,
   type Cotizacion,
   type CotizarRepository,
+  type Evidencia,
   type FormularioCotizacion,
   type ListaLugares,
   type LugarSugerido,
@@ -13,6 +14,7 @@ import {
 } from "../domain/cotizar";
 
 import { ANALISIS_EJEMPLO } from "./ejemplo-analisis";
+import { EVIDENCIA_EJEMPLO, SIN_EVIDENCIA } from "./ejemplo-evidencia";
 
 const CARRETERA = { factor: 1.3, velocidad_kmh: 70 };
 
@@ -50,6 +52,8 @@ export function crearCotizarMemoria(opciones: {
   latenciaBusquedaMs?: number;
   /** Lo que responde la lectura de Google Flights (por omisión, la del ejemplo de Miami → Las Vegas). */
   analisis?: AnalisisVuelo;
+  /** La evidencia de una cotización decidida (por omisión, la del ejemplo); sin decisión, sin evidencia. */
+  evidencia?: Evidencia;
 }): CotizarRepository {
   const { formulario, lugares = [], lugaresGoogle = [], guardadas = [], sesion, latenciaMs = 0 } = opciones;
   const latenciaBusqueda = opciones.latenciaBusquedaMs ?? latenciaMs;
@@ -236,6 +240,11 @@ export function crearCotizarMemoria(opciones: {
       }
       const datos = ANALISIS_EJEMPLO.datos!;
       return { estado: "listo" as const, consultado: null, tarifas: conIrA(id, vueloId, datos.tarifas), vendedores: datos.vendedores };
+    },
+    async evidencia(id, signal) {
+      await esperar(latenciaMs, signal);
+      exigirSesion(sesion);
+      return obtener(id).decision ? (opciones.evidencia ?? EVIDENCIA_EJEMPLO) : SIN_EVIDENCIA;
     },
     async verAnalisis(id, vueloId, signal) {
       await esperar(latenciaMs, signal);
