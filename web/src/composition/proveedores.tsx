@@ -6,6 +6,7 @@ import { AdministracionRepositoryProvider } from "@/features/administracion/appl
 import { AsistenteRepositoryProvider } from "@/features/asistente/application/asistente";
 import { AuthRepositoryProvider } from "@/features/auth/application/sesion";
 import { CotizarRepositoryProvider } from "@/features/cotizar/application/cotizar";
+import { CuentaRepositoryProvider } from "@/features/cuenta/application/cuenta";
 import { GastosRepositoryProvider } from "@/features/gastos/application/gastos";
 import { ProyectosRepositoryProvider } from "@/features/proyectos/application/proyectos";
 import { UsuariosRepositoryProvider } from "@/features/usuarios/application/usuarios";
@@ -37,8 +38,10 @@ export function Proveedores({ fuente, children }: { fuente: FuenteDatos; childre
                   <AsistenteRepositoryProvider repositorio={repositorios.asistente}>
                     <ProyectosRepositoryProvider repositorio={repositorios.proyectos}>
                       <UsuariosRepositoryProvider repositorio={repositorios.usuarios}>
-                        {repositorios.demo ? <AvisoDemo /> : null}
-                        {children}
+                        <CuentaRepositoryProvider repositorio={repositorios.cuenta}>
+                          {repositorios.demo ? <AvisoDemo /> : null}
+                          {children}
+                        </CuentaRepositoryProvider>
                       </UsuariosRepositoryProvider>
                     </ProyectosRepositoryProvider>
                   </AsistenteRepositoryProvider>

@@ -11,6 +11,9 @@ import { crearCotizarMemoria } from "@/features/cotizar/infrastructure/cotizar-m
 import { COTIZACION_MOAB, LUGARES_EJEMPLO, SOLO_GOOGLE } from "@/features/cotizar/infrastructure/ejemplo-moab";
 import { crearAuthHttp } from "@/features/auth/infrastructure/auth-http";
 import { crearAuthMemoria } from "@/features/auth/infrastructure/auth-memoria";
+import type { CuentaRepository } from "@/features/cuenta/domain/cuenta";
+import { crearCuentaHttp } from "@/features/cuenta/infrastructure/cuenta-http";
+import { crearCuentaMemoria } from "@/features/cuenta/infrastructure/cuenta-memoria";
 import type { GastosRepository } from "@/features/gastos/domain/gastos";
 import { crearGastosHttp } from "@/features/gastos/infrastructure/gastos-http";
 import { crearGastosMemoria } from "@/features/gastos/infrastructure/gastos-memoria";
@@ -38,6 +41,7 @@ export interface Repositorios {
   asistente: AsistenteRepository;
   proyectos: ProyectosRepository;
   usuarios: UsuariosRepository;
+  cuenta: CuentaRepository;
   demo: ModoDemo | null;
 }
 
@@ -89,6 +93,16 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
       proyectos: crearProyectosMemoria({ sesion, latenciaMs }),
       // Usuarios es solo de administración: con la cuenta de demostración responde «sin permiso», como la API.
       usuarios: crearUsuariosMemoria({ sesion, latenciaMs }),
+      cuenta: crearCuentaMemoria({
+        cuenta: {
+          persona: CUENTA_DEMO.persona,
+          rol_texto: "colaborador",
+          telegram: { vinculado: false, usuario: null, canal_activo: false },
+        },
+        clave: CUENTA_DEMO.clave,
+        sesion,
+        latenciaMs,
+      }),
       demo: {
         cuentas: [
           { correo: CUENTA_DEMO.persona.correo, clave: CUENTA_DEMO.clave, descripcion: "Piloto" },
@@ -106,6 +120,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     asistente: crearAsistenteHttp(cliente),
     proyectos: crearProyectosHttp(cliente),
     usuarios: crearUsuariosHttp(cliente),
+    cuenta: crearCuentaHttp(cliente),
     demo: null,
   };
 }
