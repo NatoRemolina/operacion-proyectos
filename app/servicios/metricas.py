@@ -314,6 +314,7 @@ def uso_modelo(f: dict) -> dict:
         return (x["tokens_entrada"] or 0) / 1e6 * p_ent + (x["tokens_salida"] or 0) / 1e6 * p_sal
 
     por_uso = {}
+    filas = [x for x in filas if x["error"] != "en curso"]  # reservas de sesiones abiertas: aún no son llamadas terminadas
     for u in sorted({x["uso"] for x in filas}):
         g = [x for x in filas if x["uso"] == u]
         bien = [x for x in g if x["estado_http"] == 200 and not x["error"]]

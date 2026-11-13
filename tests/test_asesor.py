@@ -741,6 +741,14 @@ def test_las_categorias_del_mensaje_de_sistema_salen_de_la_configuracion(monkeyp
     """Una categoría nueva en `config.CATEGORIAS` llega a las instrucciones del asesor sin tocar el texto."""
     assert f"Categorías: {asesor.lista_categorias()}." in asesor.SISTEMA
     assert all(c in asesor.SISTEMA for c in config.CATEGORIAS)
-    monkeypatch.setattr(config, "CATEGORIAS", {**config.CATEGORIAS, "transporte_terrestre": "Transporte terrestre",
-                                               "compras_proyecto": "Compras del proyecto"})
-    assert asesor.lista_categorias().endswith("transporte_terrestre, compras_proyecto")
+    monkeypatch.setattr(config, "CATEGORIAS", {**config.CATEGORIAS, "categoria_de_prueba": "Categoría de prueba"})
+    assert asesor.lista_categorias().endswith(", categoria_de_prueba")
+
+
+def test_monitoreo_no_cuenta_como_fallida_una_sesion_en_curso():
+    """La reserva de una sesión abierta queda con error «en curso»: no es una llamada fallida ni terminada."""
+    antes = metricas.uso_modelo({})["por_uso"].get("asesor", {"llamadas": 0, "fallidas": 0})
+    db.insertar("llamadas_modelo", momento=db.ahora(), uso="asesor", modelo="asesor", tokens_entrada=0, tokens_salida=0,
+                latencia_ms=0, estado_http=0, error="en curso", costo_usd="0.05")
+    despues = metricas.uso_modelo({})["por_uso"].get("asesor", {"llamadas": 0, "fallidas": 0})
+    assert (despues["llamadas"], despues["fallidas"]) == (antes["llamadas"], antes["fallidas"])
