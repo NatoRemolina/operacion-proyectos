@@ -8,6 +8,8 @@ En local:  python -m app.tareas
 """
 import time
 
+from fastapi import FastAPI
+
 from .servicios import capturas
 
 POR_CORRIDA = 10
@@ -34,6 +36,20 @@ def manejador(evento, contexto) -> dict:
     r = procesar()
     print(f"tareas: {r}", flush=True)
     return r
+
+
+# En AWS, el adaptador web de Lambda arranca este servidor y le reenvía el evento programado como POST /events
+aplicacion = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@aplicacion.get("/salud")
+def salud() -> dict:
+    return {"estado": "ok"}
+
+
+@aplicacion.post("/events")
+def evento() -> dict:
+    return manejador({}, None)
 
 
 if __name__ == "__main__":

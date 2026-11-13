@@ -6,7 +6,7 @@ describe("analizador de la página del vuelo (Google Flights)", () => {
   const { api } = sintetizar();
   const funciones = propiedades(api, "AWS::Lambda::Function");
   const analizador = funciones.find((f) => f.Environment?.Variables?.ANALIZADOR === "encendido");
-  const web = funciones.find((f) => f.Environment?.Variables?.ANALIZADOR_FUNCION);
+  const web = funciones.find((f) => f.Environment?.Variables?.ANALIZADOR_FUNCION && !f.Environment?.Variables?.TAREAS);
 
   test("es una función aparte con su propia imagen, un minuto como máximo y memoria propia", () => {
     assert.ok(analizador, "falta la función del analizador");
@@ -26,12 +26,12 @@ describe("analizador de la página del vuelo (Google Flights)", () => {
     assert.deepEqual(Object.keys(analizador.Environment.Variables).sort(), ["ANALIZADOR", "HOME"]);
   });
 
-  test("la API sabe a quién llamar y tiene permiso para invocarla; nadie más", () => {
+  test("la API y el trabajador saben a quién llamar y tienen permiso para invocarla; nadie más", () => {
     assert.deepEqual(web.Environment.Variables.ANALIZADOR_FUNCION, { Ref: Object.keys(api.findResources("AWS::Lambda::Function"))
       .find((id) => api.findResources("AWS::Lambda::Function")[id].Properties.Environment?.Variables?.ANALIZADOR === "encendido") });
     const politicas = propiedades(api, "AWS::IAM::Policy").flatMap((p) => p.PolicyDocument.Statement);
     const invocar = politicas.filter((s) => [s.Action].flat().includes("lambda:InvokeFunction"));
-    assert.equal(invocar.length, 1);
+    assert.equal(invocar.length, 2, "la API y el trabajador de capturas (Tareas)");
     assert.equal(propiedades(api, "AWS::Lambda::Url").length, 1, "el analizador no tiene dirección pública");
   });
 });

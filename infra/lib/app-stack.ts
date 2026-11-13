@@ -1,6 +1,8 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as acciones from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as events from "aws-cdk-lib/aws-events";
+import * as destinos from "aws-cdk-lib/aws-events-targets";
 import { Platform } from "aws-cdk-lib/aws-ecr-assets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
@@ -98,6 +100,33 @@ export class AppStack extends Stack {
     analizador.grantInvoke(web);
     web.addEnvironment("ANALIZADOR_FUNCION", analizador.functionName);
 
+    // Trabajador de capturas (pieza 5): la imagen de la API con otro punto de entrada. El adaptador web de Lambda
+    // reenvía el evento programado (no HTTP) a `POST /events` de `app/tareas.py`, que toma de a una las capturas
+    // pendientes con el turno del analizador. Su propio rol: leer el secreto e invocar al analizador. Sin dirección.
+    const tareas = new lambda.DockerImageFunction(this, "Tareas", {
+      code: lambda.DockerImageCode.fromImageAsset(raiz, {
+        platform: Platform.LINUX_ARM64,
+        cmd: ["sh", "-c", "exec uvicorn app.tareas:aplicacion --host 0.0.0.0 --port ${PORT}"],
+      }),
+      architecture: lambda.Architecture.ARM_64,
+      memorySize: 1024,
+      timeout: Duration.minutes(15),   // hasta 10 capturas por corrida; app/tareas.py no empieza una sin margen
+      logGroup: new logs.LogGroup(this, "RegistroTareas", {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
+      environment: {
+        SECRETO_ARN: props.secreto.secretArn, ENTORNO: "nube", TAREAS: "capturas",
+        ANALIZADOR_FUNCION: analizador.functionName,
+      },
+    });
+    props.secreto.grantRead(tareas);
+    analizador.grantInvoke(tareas);
+    new events.Rule(this, "CapturasCadaQuinceMinutos", {
+      schedule: events.Schedule.rate(Duration.minutes(15)),
+      targets: [new destinos.LambdaFunction(tareas, { retryAttempts: 0 })],   // la cola reintenta; EventBridge no
+    });
+
     const caliente = this.node.tryGetContext("caliente") === "1";
     const vivo = web.addAlias("vivo", { provisionedConcurrentExecutions: caliente ? 1 : undefined });
 
@@ -115,6 +144,7 @@ export class AppStack extends Stack {
     alarma("FallosDeLaFuncion", web.metricErrors({ period: Duration.minutes(5) }), 1);
     alarma("PeticionesRechazadas", web.metricThrottles({ period: Duration.minutes(5) }), 1);
     alarma("Lentitud", web.metricDuration({ period: Duration.minutes(5), statistic: "p95" }), 20000, 2);
+    alarma("FallosDelTrabajador", tareas.metricErrors({ period: Duration.minutes(15) }), 1);
 
     // Con el adaptador web, un 500 de la aplicación es una invocación correcta para Lambda: FallosDeLaFuncion no lo
     // ve. Se cuentan los errores que la propia aplicación escribe (app/web.py) y las respuestas 5xx de la dirección.
@@ -131,5 +161,6 @@ export class AppStack extends Stack {
     new CfnOutput(this, "Url", { value: url.url });
     new CfnOutput(this, "Funcion", { value: web.functionName });
     new CfnOutput(this, "FuncionAnalizador", { value: analizador.functionName });
+    new CfnOutput(this, "FuncionTareas", { value: tareas.functionName });
   }
 }

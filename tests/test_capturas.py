@@ -233,3 +233,14 @@ def test_las_tablas_y_reglas_tienen_su_migracion():
     assert "capturas" in db.TABLAS
     db.ejecutar("delete from reglas where clave in ('seguimiento_diario', 'capturas_dia')")
     assert capturas.asegurar_reglas() == 2 and capturas.asegurar_reglas() == 0
+
+
+def test_el_adaptador_de_lambda_llega_por_post_events(cola, monkeypatch):
+    """La imagen de la API corre con el adaptador web de Lambda: el evento programado llega como POST /events."""
+    llamadas = []
+    monkeypatch.setattr(tareas, "procesar", lambda: llamadas.append(1) or {"seguimiento": 0, "procesadas": 0, "listas": 0})
+    c = TestClient(tareas.aplicacion)
+    assert c.get("/salud").status_code == 200
+    r = c.post("/events", json={"source": "aws.events"})
+    assert r.status_code == 200 and r.json()["procesadas"] == 0 and llamadas == [1]
+    assert c.get("/docs").status_code == 404 and c.get("/openapi.json").status_code == 404
