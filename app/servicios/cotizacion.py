@@ -26,6 +26,9 @@ envios_cotizacion = db._tabla(
 )
 VIGENCIA_ENVIO = timedelta(minutes=5)   # más que una búsqueda en vivo; pasado esto, quien la tenía ya no va a terminar
 DECISIONES_EN_VIVO_DIA = 10   # la regla `decisiones_en_vivo_dia` lo cambia
+# El buscador trae unos 20 por página: se guardan todos y se recorta solo después de ordenar por costo total
+TOPE_HOTELES_GUARDADOS = 40
+HOTELES_A_MOSTRAR = 12
 AVISO_TOPE_DECISION = ("Se alcanzó el tope de decisiones con consulta en vivo de hoy: el regreso y la tarifa salen de lo "
                        "guardado o quedan supuestos.")
 
@@ -228,11 +231,12 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         db.insertar("opciones", solicitud_id=sid, tipo="vuelo", titulo=" + ".join(v["numeros"]), precio=v["precio"],
                     moneda="USD", datos=v, tarifas={"lista": tarifas, "origen": origen_t}, origen_dato=origen_v, capturado=db.ahora())
     hoteles, origen_h = precios.buscar_hoteles(sol["ciudad"], ida, regreso, sid)
-    for h in hoteles[:12]:
+    hoteles = hoteles[:TOPE_HOTELES_GUARDADOS]
+    for h in hoteles:
         db.insertar("opciones", solicitud_id=sid, tipo="hotel", titulo=h["nombre"], precio=h["total"], moneda="USD",
                     datos=h, tarifas=None, origen_dato=origen_h, capturado=db.ahora())
     db.actualizar("solicitudes", sid, estado="comparando")
-    eventos.registrar("solicitud", sid, "opciones guardadas", f"{len(vuelos)} vuelos y {min(len(hoteles), 12)} hoteles", "aplicación")
+    eventos.registrar("solicitud", sid, "opciones guardadas", f"{len(vuelos)} vuelos y {len(hoteles)} hoteles", "aplicación")
     registrar_ahorro(sid)
     return sid
 
@@ -341,6 +345,9 @@ def comparacion(sid: int) -> dict | None:
     hotel_recomendado = hoteles[0] if hoteles else None
     hotel_barato = min(hoteles, key=lambda h: h["h"]["total"]) if hoteles else None
     hotel_mas_barato = hotel_barato if hotel_barato and hotel_barato["id"] != hotel_recomendado["id"] else None
+    # Se muestran los mejores por costo total; el más barato por tarifa sigue a la vista aunque quede más abajo
+    if len(hoteles) > HOTELES_A_MOSTRAR:
+        hoteles = hoteles[:HOTELES_A_MOSTRAR] + ([hotel_mas_barato] if hotel_mas_barato in hoteles[HOTELES_A_MOSTRAR:] else [])
     for h in hoteles:
         h["recomendado"], h["mas_barato"] = h is hotel_recomendado, h is hotel_mas_barato
     # El viaje completo de cada vuelo con el hotel recomendado: una suma, no todas las combinaciones
