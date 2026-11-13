@@ -28,7 +28,8 @@ PERFIL_SIN_CARGO = "Viajero"
 
 # Rutas que no piden sesión, y prefijos reservados al administrador
 PUBLICAS = ("/static", "/entrar", "/salud", "/telegram/webhook")
-API_V1, API_V1_PUBLICAS = "/api/v1", ("/api/v1/auth/login",)
+# `/api/v1/servicio/` no pide sesión: cada endpoint exige su clave de servicio (ver `app/rutas/v1_servicio.py`)
+API_V1, API_V1_PUBLICAS = "/api/v1", ("/api/v1/auth/login", "/api/v1/servicio/")
 SOLO_ADMIN = ("/admin", "/analitica", "/flujo", "/reglas", "/api", "/docs", "/openapi.json", "/gastos/ejemplos")
 
 _hasher = PasswordHasher()

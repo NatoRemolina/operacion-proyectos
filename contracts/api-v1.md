@@ -366,6 +366,16 @@ Cuerpo JSON `{"destino": "vuelos"}` o `{"destino": "hoteles", "hotel_id": 90}` (
 - La URL siempre la arma el servidor: el cuerpo no acepta `url` (422). Un `hotel_id` que no es de la cotización: 422 con `fields.hotel_id`.
 - La abre quien ve la cotización (también el gestor del proyecto); a los demás, 404.
 
+## Integraciones (clave de servicio)
+
+Las rutas bajo `/api/v1/servicio/` son para integraciones como n8n, no para personas: no usan cookie ni `X-CSRF-Token`. Cada petición lleva `X-Clave-Servicio: isk_…`, una clave de servicio creada por administración (`python -m datos.claves_servicio crear n8n --permiso soportes:leer`), que se muestra una sola vez y se guarda como huella. Sin clave, con una clave inexistente o revocada: 401 `UNAUTHENTICATED`; con una clave sin el permiso de la operación: 403 `FORBIDDEN`. Lo que hace la clave queda en la bitácora con su nombre (por ejemplo, «n8n»). Configuración del flujo: `docs/n8n/README.md`.
+
+### `GET /servicio/gastos/{id}/soporte?vence=…&firma=…`
+Permiso `soportes:leer` y, además, el enlace firmado que trae el aviso `gasto.registrado` (vence a los 15 minutos): un enlace filtrado no sirve sin la clave, y la clave sola no recorre los soportes por número. Sin enlace, con la firma alterada, con otro gasto o con el vencimiento cambiado: 403 `LINK_INVALID`; vencido: 403 `LINK_EXPIRED`. Responde el archivo original del soporte, con su tipo, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto no existe o no tiene soporte.
+
+### Aviso saliente `gasto.registrado`
+No es un endpoint de la API sino lo que la plataforma envía a `N8N_WEBHOOK_URL` cada vez que se registra un gasto, por cualquier canal (apagado si faltan `N8N_WEBHOOK_URL`, `N8N_WEBHOOK_SECRETO` o, fuera de local, `URL_PUBLICA`). POST JSON compacto con las cabeceras `X-Inflight-Evento: gasto.registrado`, `X-Inflight-Entrega: <uuid>` (se repite en los reintentos) y `X-Inflight-Firma: t=<segundos unix>,v1=<hex>`, donde `hex = HMAC-SHA256(N8N_WEBHOOK_SECRETO, "<t>.<cuerpo>")`. Cuerpo: `evento`, `entrega`, `gasto_id`, `viaje` (código o `null`), `proyecto`, `fecha`, `comercio`, `total` (`"54.00"` o `null`), `moneda`, `enlace_soporte` y `enlace_vence_en_segundos`. Tiempo de espera: 2 s para conectar y 3 s en total; un fallo no afecta el registro del gasto y el aviso se reintenta con espera creciente (1, 5, 30, 120 y 720 minutos) al registrarse el siguiente gasto o con `python -m datos.avisos reintentar`; después queda como `fallido` en `avisos_salientes`.
+
 ## Fuera de este contrato (siguientes fases)
 
 Reproceso de una lectura fallida y las pantallas de analítica de precios y flujo de la información, que siguen en la plataforma anterior. La hoja de ruta está en `docs/informe-tecnico.md`.

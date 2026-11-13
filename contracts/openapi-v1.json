@@ -46,7 +46,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -210,7 +210,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -295,7 +295,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -337,7 +337,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -389,7 +389,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -943,7 +943,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1005,7 +1005,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1056,7 +1056,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1242,7 +1242,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1378,7 +1378,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1513,7 +1513,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1594,7 +1594,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1687,7 +1687,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1921,7 +1921,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1984,7 +1984,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2099,7 +2099,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2213,7 +2213,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2322,7 +2322,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2408,7 +2408,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2468,7 +2468,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2606,7 +2606,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2729,7 +2729,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2792,7 +2792,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2854,7 +2854,135 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/servicio/gastos/{id}/soporte": {
+      "get": {
+        "tags": [
+          "integraciones"
+        ],
+        "summary": "Soporte",
+        "description": "El soporte original de un gasto, para guardarlo fuera de la plataforma. Se entrega como archivo adjunto, sin caché.\n\nHacen falta las dos cosas: la clave de servicio y el enlace firmado del aviso, que vence a los 15 minutos.\nUn enlace filtrado no sirve sin la clave, y la clave sola no recorre los soportes por número.",
+        "operationId": "soporte_api_v1_servicio_gastos__id__soporte_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "vence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Del enlace firmado que trae el aviso `gasto.registrado`.",
+              "title": "Vence"
+            },
+            "description": "Del enlace firmado que trae el aviso `gasto.registrado`."
+          },
+          {
+            "name": "firma",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Del enlace firmado que trae el aviso.",
+              "title": "Firma"
+            },
+            "description": "Del enlace firmado que trae el aviso."
+          },
+          {
+            "name": "X-Clave-Servicio",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Clave de servicio con el permiso `soportes:leer`.",
+              "title": "X-Clave-Servicio"
+            },
+            "description": "Clave de servicio con el permiso `soportes:leer`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "El archivo original del soporte",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {},
+              "application/pdf": {},
+              "message/rfc822": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
             "content": {
               "application/json": {
                 "schema": {
@@ -2930,7 +3058,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2990,7 +3118,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3065,7 +3193,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3160,7 +3288,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3254,7 +3382,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3339,7 +3467,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3424,7 +3552,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3485,7 +3613,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3535,7 +3663,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3610,7 +3738,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3853,7 +3981,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -3940,7 +4068,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {
@@ -4005,7 +4133,7 @@
             }
           },
           "403": {
-            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
             "content": {
               "application/json": {
                 "schema": {

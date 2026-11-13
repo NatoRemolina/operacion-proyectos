@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from .. import config, db
-from . import almacen, dinero, envios, eventos, extraccion, llm, revision, validacion
+from . import almacen, avisos, dinero, envios, eventos, extraccion, llm, revision, validacion
 
 
 class SoporteRechazado(ValueError):
@@ -176,7 +176,9 @@ def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, 
         raise   # otro proceso recuperó el envío y ya dejó el gasto en revisión
     except Exception:
         envios.marcar_interrumpido(gid)   # nunca queda «procesando» para siempre
+        avisos.gasto_registrado(gid)      # el soporte quedó guardado: también se avisa
         raise
+    avisos.gasto_registrado(gid)   # apagado sin N8N_WEBHOOK_URL; un fallo del destino no afecta el registro
     return gid
 
 
