@@ -375,7 +375,7 @@ def h_persona(r: Rastro, codigo_o_nombre: str = "", **_) -> dict:
     (cv, pv), (cg, pg) = r.alcance.sql("v"), r.alcance.sql("g")
     n = db.uno(f"""select (select count(*) from viajes v where v.usuario_id=:u and {cv}) viajes,
                           (select count(*) from gastos g where (g.usuario_id=:u or g.viaje_id in (select id from viajes where usuario_id=:u))
-                           and {cg}) gastos""", u=p["id"], **pv, **pg)
+                           and {cg}) gastos""", u=p["id"], **{**pv, **pg})   # las dos condiciones comparten parámetros
     return {**{k: p[k] for k in ("codigo", "nombre", "rol", "activa")}, "viajes": n["viajes"], "gastos": n["gastos"]}
 
 

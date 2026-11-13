@@ -298,3 +298,13 @@ def test_el_tope_de_dictados_vale_para_el_colaborador(mundo, monkeypatch):
     monkeypatch.setattr(asistente, "tope_dictados", lambda: 10_000)
     assert asistente.transcribir_pregunta(b"audio", "audio/webm", andres) == "¿Cuánto me queda del presupuesto?"
     assert llamadas[-1]["uso"] == "dictado" and llamadas[-1]["entidad_id"] == andres["id"]   # cuenta para su tope
+
+
+def test_la_herramienta_persona_responde_a_colaborador_y_gestor_con_su_alcance(mundo):
+    andres = viajes.codigo_persona(mundo["andres"]["id"])
+    propio = asistente.ejecutar(asistente.Rastro(mundo["andres"]), "persona", {"codigo_o_nombre": andres})
+    assert propio["codigo"] == andres and propio["viajes"] >= 1 and propio["gastos"] >= 1
+    laura = viajes.codigo_persona(mundo["laura"]["id"])
+    del_gestor = asistente.ejecutar(asistente.Rastro(mundo["gestor"]), "persona", {"codigo_o_nombre": laura})
+    todo = asistente.ejecutar(asistente.Rastro(_usuario("admin@demo.local")), "persona", {"codigo_o_nombre": laura})
+    assert del_gestor["codigo"] == laura and del_gestor["viajes"] < todo["viajes"]   # el viaje del proyecto 2 no cuenta

@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from app import config, db
-from app.servicios import asesor, asistente, llm, metricas, viajes
+from app.servicios import acceso, asesor, asistente, llm, metricas, viajes
 
 CLAVE = "clave-secreta-de-prueba"
 _ids = itertools.count(1)
@@ -651,8 +651,10 @@ def test_el_asesor_responde_al_colaborador_solo_con_lo_suyo(con_asesor, piloto_c
     assert {f"#{g}" for g in piloto_con_gastos["gastos"]} <= {g["gasto"] for g in resultados[4]["gastos"]}   # sin nombrar a nadie, lo suyo
     enviado = json.dumps(resultados, ensure_ascii=False)
     assert "Hotel Ajeno" not in enviado and "444.44" not in enviado and "secreta" not in enviado
-    assert {(f["tipo"], f["id"]) for f in r["fuentes"]} <= {("gasto", g) for g in piloto_con_gastos["gastos"]} | {
-        ("viaje", piloto_con_gastos["viaje"]["id"]), ("persona", piloto_con_gastos["id"])}
+    (cg, pg), (cv, pv) = acceso.alcance(piloto, "g"), acceso.alcance(piloto, "v")
+    visibles = ({("gasto", g["id"]) for g in db.todos(f"select g.id from gastos g where {cg}", **pg)}
+                | {("viaje", v["id"]) for v in db.todos(f"select v.id from viajes v where {cv}", **pv)} | {("persona", piloto["id"])})
+    assert {(f["tipo"], f["id"]) for f in r["fuentes"]} <= visibles and ("gasto", ajeno) not in visibles
 
 
 def test_el_mensaje_de_sistema_dice_para_quien_responde():
