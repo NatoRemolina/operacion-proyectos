@@ -166,3 +166,60 @@ def test_la_nota_de_voz_ajena_o_de_otro_gasto_responde_404(anonimo, piloto2, cli
     _error(cliente.get(f"{V1}/gastos/{otro['id']}/justificaciones/{nota_de_voz}/audio"), 404, "NOT_FOUND")
     escrita = justificaciones.registrar(recibo["id"], _persona("piloto@demo.local"), "web", "Taxi al aeropuerto con el equipo")
     _error(cliente.get(f"{V1}/gastos/{recibo['id']}/justificaciones/{escrita}/audio"), 404, "NOT_FOUND")
+
+
+# ---------- el recorrido dice si hubo correcciones (QA M-14) ----------
+def _gasto_de_viaje(v: dict, comercio: str, total: float = 20) -> int:
+    return db.insertar("gastos", viaje_id=v["id"], proyecto_id=v["proyecto_id"], viajero_id=v["viajero_id"], usuario_id=v["usuario_id"],
+                       comercio=comercio, fecha=v["ida"], categoria="otros", total=total, moneda="USD", confianza=1.0,
+                       estado="revision", creado=db.ahora(), version=0)
+
+
+def _ultimo_paso(gid: int) -> str:
+    return db.uno("select paso from eventos where entidad='gasto' and entidad_id=:i order by id desc limit 1", i=gid)["paso"]
+
+
+def _revisar(c: TestClient, gid: int, **cuerpo):
+    r = c.post(f"{V1}/gastos/{gid}/revision", json=cuerpo, headers=_csrf(c))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_aprobar_sin_cambios_deja_aprobado_sin_corregido(cliente, nuevo_viaje):
+    gid = _gasto_de_viaje(nuevo_viaje(), "Sonda aprobar sin cambios")
+    assert _revisar(cliente, gid, version=0, accion="aprobar")["estado"] == "aprobado"
+    assert _ultimo_paso(gid) == "aprobado en revisión"
+
+
+def test_aprobar_con_cambios_deja_corregido_y_aprobado(cliente, nuevo_viaje):
+    gid = _gasto_de_viaje(nuevo_viaje(), "Sonda aprobar con cambios")
+    _revisar(cliente, gid, version=0, accion="aprobar", comercio="Sonda corregida a mano")
+    assert _ultimo_paso(gid) == "corregido y aprobado"
+
+
+def test_mandar_los_mismos_datos_no_cuenta_como_correccion(cliente, nuevo_viaje):
+    v = nuevo_viaje()
+    gid = _gasto_de_viaje(v, "Sonda mismos datos")
+    _revisar(cliente, gid, version=0, accion="aprobar", comercio="Sonda mismos datos", total="20.00", moneda="usd", viaje_id=v["id"])
+    assert _ultimo_paso(gid) == "aprobado en revisión"
+
+
+def test_guardar_sin_cambios_no_dice_corregido(cliente, nuevo_viaje):
+    gid = _gasto_de_viaje(nuevo_viaje(), "Sonda guardar sin cambios")
+    assert _revisar(cliente, gid, version=0, accion="guardar")["estado"] == "revision"
+    assert _ultimo_paso(gid) == "revisado, sigue en revisión"
+
+
+def test_lo_aprobado_sin_cambios_cuenta_como_aprobado_en_revision(cliente, nuevo_viaje):
+    """El Excel contable, el tiempo hasta aprobar y la memoria del asistente leen la bitácora: el paso nuevo cuenta igual."""
+    from datetime import date
+
+    from app.servicios import contable, memoria, metricas
+    v = nuevo_viaje()
+    gid = _gasto_de_viaje(v, "Sonda Excel sin cambios")
+    _revisar(cliente, gid, version=0, accion="aprobar")
+    dia = date.fromisoformat(v["ida"])
+    fila = next(f for f in contable._filas(_persona("admin@demo.local"), dia, dia, None, ("aprobado",)) if f["id"] == gid)
+    assert fila["aprobado_en_revision"]   # el Excel dice quién lo aprobó, no «automática»
+    assert {"aprobado en revisión", "revisado, sigue en revisión"} <= set(memoria.EVENTOS_RELEVANTES)
+    assert "aprobado en revisión" in metricas.PASOS_APROBACION

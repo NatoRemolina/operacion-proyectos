@@ -43,6 +43,7 @@ ESTADO_GASTO = {"aprobado_auto": "aprobado automático", "aprobado": "aprobado",
 # Pasos de la bitácora que cuentan algo de la persona o del viaje; los demás (lecturas, consultas) son ruido
 EVENTOS_RELEVANTES = ("presupuesto aprobado", "presupuesto rechazado", "presupuesto actualizado", "viaje reabierto", "viaje cerrado",
                       "enviado a revisión", "rechazado en revisión", "corregido y aprobado", "corregido, sigue en revisión",
+                      "aprobado en revisión", "revisado, sigue en revisión",
                       "aprobado con excepción", "asignado a viaje")
 
 

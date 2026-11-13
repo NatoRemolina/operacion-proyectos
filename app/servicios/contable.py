@@ -43,7 +43,7 @@ CUENTAS = {
 SIN_CUENTA = "Sin cuenta asignada"
 
 # Pasos de la bitácora que dejan un gasto aprobado, según quién lo aprobó
-APROBADO_EN_REVISION = ("corregido y aprobado", "aprobado con excepción")
+APROBADO_EN_REVISION = ("corregido y aprobado", "aprobado en revisión", "aprobado con excepción")
 APROBADO_POR_REGLAS = ("aprobado sin intervención", "asignado a viaje")
 APROBACION_AUTOMATICA = "Automática (reglas de validación)"
 
