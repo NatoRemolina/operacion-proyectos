@@ -2,10 +2,12 @@
 contables...). Cada regla tiene fuente, confianza y fecha de verificación, y se edita sin tocar el código.
 
 La misma lógica para la pantalla de administración (`/reglas`) y la API v1 (`/api/v1/reglas`):
-- una regla numérica sigue siendo numérica: «1,08» se guarda como 1.08; «80 USD», un negativo o un no finito se rechazan;
+- una regla numérica sigue siendo numérica: dígitos con un separador decimal («1,08» se guarda como 1.08); «80 USD», un
+  negativo, un exponente o un no finito se rechazan, y «1,000» se pregunta (¿mil o uno?) en vez de adivinar;
 - cada edición deja el evento «regla editada» con el valor anterior y el nuevo.
 """
 import math
+import re
 
 from .. import db
 from . import eventos
@@ -14,6 +16,12 @@ PREFIJO_CUENTA = "cuenta_contable_"   # el mismo de `contable.PREFIJO_CUENTA`: s
 # Orden y nombre de los grupos; un ámbito que no esté aquí va al final con su propio nombre
 GRUPOS = {"aerolinea": "Aerolíneas", "hotel": "Programas de hotel", "bateria": "Baterías", "supuesto": "Supuestos",
           "kpi": "Metas de los KPI", "cuenta_contable": "Cuentas contables"}
+
+
+# Un valor numérico: dígitos con, a lo sumo, un separador decimal (punto o coma). Sin signo, exponente ni guiones bajos
+NUMERO = re.compile(r"\d+(?:[.,]\d+)?")
+MILES_AMBIGUOS = re.compile(r"\d{1,3},\d{3}")
+AMBIGUO = "¿Mil o uno? Escribe 1000 o 1.0"
 
 
 class ReglaInvalida(ValueError):
@@ -65,10 +73,11 @@ def editar(rid: int, valor: str, quien: str) -> dict:
         raise LookupError("No existe esa regla.")
     valor = (valor or "").strip()
     if es_numero(actual["valor"]):
-        normal = valor.replace(",", ".")
-        if not es_numero(normal) or float(normal) < 0:
+        if MILES_AMBIGUOS.fullmatch(valor):   # «1,000»: ¿mil, o uno con tres decimales? Se pregunta en vez de adivinar
+            raise ReglaInvalida(AMBIGUO)
+        if not NUMERO.fullmatch(valor):
             raise ReglaInvalida(f"«{valor[:30]}» no es un número válido para {actual['clave']}. No se guardó.")
-        valor = normal
+        valor = valor.replace(",", ".")
     db.actualizar("reglas", rid, valor=valor, verificado=db.ahora()[:10])
     eventos.registrar("regla", rid, "regla editada", f"{actual['clave']}: {actual['valor']} → {valor[:80]}", quien)
     return _con_tipo(db.uno("select * from reglas where id=:i", i=rid))

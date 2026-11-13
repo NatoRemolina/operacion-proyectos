@@ -51,20 +51,19 @@ export interface ReglasRepository {
 
 export const VALOR_MAXIMO = 500;
 
-function numeroValido(texto: string): boolean {
-  const limpio = texto.trim().replace(",", ".");
-  if (!/^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(limpio)) return false;
-  const numero = Number(limpio);
-  return Number.isFinite(numero) && numero >= 0;
-}
+/** Dígitos con, a lo sumo, un separador decimal (punto o coma): la misma regla que el servidor. */
+const NUMERO = /^\d+(?:[.,]\d+)?$/;
+/** «1,000»: ¿mil, o uno con tres decimales? Se pregunta en vez de adivinar. */
+const MILES_AMBIGUOS = /^\d{1,3},\d{3}$/;
+export const AMBIGUO = "¿Mil o uno? Escribe 1000 o 1.0";
 
 /** `null` si el valor sirve para la regla; si no, el mismo texto que daría el servidor. */
 export function problemaDeValor(regla: Regla, valor: string): string | null {
-  if (valor.trim().length > VALOR_MAXIMO) return `El valor no puede pasar de ${VALOR_MAXIMO} caracteres.`;
-  if (regla.numerica && !numeroValido(valor)) {
-    return `«${valor.trim().slice(0, 30)}» no es un número válido para ${regla.clave}. No se guardó.`;
-  }
-  return null;
+  const limpio = valor.trim();
+  if (limpio.length > VALOR_MAXIMO) return `El valor no puede pasar de ${VALOR_MAXIMO} caracteres.`;
+  if (!regla.numerica) return null;
+  if (MILES_AMBIGUOS.test(limpio)) return AMBIGUO;
+  return NUMERO.test(limpio) ? null : `«${limpio.slice(0, 30)}» no es un número válido para ${regla.clave}. No se guardó.`;
 }
 
 /** Lo que se envía: sin espacios en los extremos; en una regla numérica, con punto decimal. */

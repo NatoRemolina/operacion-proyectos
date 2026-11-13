@@ -13,8 +13,17 @@ describe("valor de una regla", () => {
     expect(valorParaEnviar(NUMERICA, " 0,25 ")).toBe("0.25");
   });
 
-  it.each(["80 USD", "-1", "", "nan", "Infinity"])("una regla numérica no acepta «%s»", (valor) => {
+  it.each(["80 USD", "-1", "", "nan", "Infinity", "1_000", "-0", "1e3", "1.2.3"])("una regla numérica no acepta «%s»", (valor) => {
     expect(problemaDeValor(NUMERICA, valor)).toMatch(/no es un número válido para tolerancia_presupuesto/);
+  });
+
+  it.each(["1,000", "12,500"])("«%s» se pregunta en vez de adivinar si son miles", (valor) => {
+    expect(problemaDeValor(NUMERICA, valor)).toBe("¿Mil o uno? Escribe 1000 o 1.0");
+  });
+
+  it.each([["1,5", "1.5"], ["12", "12"], ["1,0000", "1.0000"]])("«%s» es claro y se envía como %s", (valor, enviado) => {
+    expect(problemaDeValor(NUMERICA, valor)).toBeNull();
+    expect(valorParaEnviar(NUMERICA, valor)).toBe(enviado);
   });
 
   it("una regla de texto acepta texto y se envía sin espacios en los extremos", () => {

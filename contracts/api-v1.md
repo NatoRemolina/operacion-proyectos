@@ -421,7 +421,7 @@ interface CatalogoReglas {
 ### `POST /reglas/{id}`
 Cuerpo JSON `{"valor": "0.25"}` (hasta 500 caracteres) y `X-CSRF-Token`. 200 `Regla` con el valor nuevo y `verificado` de hoy.
 
-- Una regla numérica sigue siendo numérica: se acepta la coma decimal («0,25» se guarda «0.25»); un texto, un negativo, un vacío o un valor no finito responden 422 `VALIDATION_ERROR` con `fields.valor` y no se guarda nada.
+- Una regla numérica sigue siendo numérica: solo dígitos con, a lo sumo, un separador decimal (`^\d+(?:[.,]\d+)?$`; «0,25» se guarda «0.25»). Un texto, un negativo, un exponente («1e3»), guiones bajos («1_000») o un vacío responden 422 `VALIDATION_ERROR` con `fields.valor` y no se guarda nada. «1,000» (de uno a tres dígitos, coma y tres dígitos) es ambiguo: 422 con «¿Mil o uno? Escribe 1000 o 1.0».
 - Una regla de texto guarda el texto sin espacios al principio ni al final.
 - Deja el evento «regla editada» con el valor anterior y el nuevo. 404 si la regla no existe.
 

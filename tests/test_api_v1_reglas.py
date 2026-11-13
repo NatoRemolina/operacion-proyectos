@@ -148,3 +148,25 @@ def test_la_pantalla_de_reglas_valida_igual_que_la_api(cliente, numerica):
     assert r.status_code == 303 and "Regla%20guardada" in r.headers["location"]
     assert _regla("supuesto", "tolerancia_presupuesto")["valor"] == "0.3"
     assert "tolerancia_presupuesto" in cliente.get("/reglas").text
+
+
+# ---------- ronda 1: un número sin ambigüedad ----------
+@pytest.mark.parametrize("valor", ["1_000", "-0", "1e3", "1.2.3", "0x10"])
+def test_una_regla_numerica_solo_acepta_digitos_con_un_separador_decimal(cliente, numerica, valor):
+    cuerpo = _error(_editar(cliente, numerica["id"], valor), 422, "VALIDATION_ERROR")
+    assert "no es un número válido" in cuerpo["error"]["fields"]["valor"]
+    assert _regla("supuesto", "tolerancia_presupuesto")["valor"] == numerica["valor"]
+
+
+@pytest.mark.parametrize("valor", ["1,000", "12,500"])
+def test_una_coma_de_miles_se_pregunta_en_vez_de_adivinar(cliente, numerica, valor):
+    cuerpo = _error(_editar(cliente, numerica["id"], valor), 422, "VALIDATION_ERROR")
+    assert cuerpo["error"]["fields"]["valor"] == "¿Mil o uno? Escribe 1000 o 1.0"
+    assert _regla("supuesto", "tolerancia_presupuesto")["valor"] == numerica["valor"]
+
+
+@pytest.mark.parametrize("valor, guardado", [("1,5", "1.5"), ("12", "12"), ("0.125", "0.125"), ("1,0000", "1.0000")])
+def test_los_numeros_claros_se_guardan(cliente, numerica, valor, guardado):
+    r = _editar(cliente, numerica["id"], valor)
+    assert r.status_code == 200, r.text
+    assert r.json()["valor"] == guardado
