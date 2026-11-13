@@ -448,6 +448,30 @@ interface AnalisisVuelo {
 ### `GET /cotizaciones/{id}/analisis/{analisis_id}/captura`
 200 `image/png` con la captura de la página leída (hasta 4000 px de alto), `no-store`. Se ve desde cualquier cotización que tenga ese itinerario, aunque la lectura la pidiera otra. Lo ajeno o sin captura: 404.
 
+### `GET /cotizaciones/{id}/evidencia` (pieza 5)
+200 `Evidencia`: la evidencia completa de la decisión vigente, que guarda el trabajador programado (`app/tareas.py`) sin que la decisión espere. Una captura del vuelo (Google Flights con el detalle de cada tramo, y la página de la aerolínea con el total y los impuestos) y otra del hotel elegido (Google Hotels) al decidir; una del vuelo cada día hasta la compra o la ida; una final al registrar la compra.
+
+```ts
+interface Evidencia {
+  estado: "sin_evidencia" | "guardando" | "guardada";   // guardando: «Guardando la evidencia del vuelo…»
+  guardada: string | null;                              // «Evidencia guardada a las HH:MM» (UTC, ISO 8601)
+  capturas: {
+    id: number; tipo: "vuelo" | "hotel"; motivo: "decision" | "seguimiento" | "compra";
+    estado: "pendiente" | "en_curso" | "lista" | "fallida"; fallo: string | null; intentos: number;
+    creado: string | null; terminado: string | null;
+    datos: { google?: object; aerolinea?: object; hotel?: object } | null;   // todo lo leído
+    imagenes: string[];      // GET …/evidencia/{captura_id}/imagen/{n}: PNG de página completa
+    texto_url: string | null; // GET …/evidencia/{captura_id}/texto: text/plain, hasta 300 KB
+  }[];
+  seguimiento: { momento: string | null; motivo: string; precio_google_usd: Dinero; total_aerolinea_usd: Dinero }[];
+}
+```
+
+Solo con permiso de ver la cotización (lo ajeno, 404; sin sesión, 401). Imágenes y texto con `Cache-Control: private, no-store` y `nosniff`. `GET /compras/{id}` trae la misma `evidencia`.
+
+### `GET /cotizaciones/{id}/evidencia/{captura_id}/imagen/{n}` y `…/texto`
+La captura `n` (0 a 9) en `image/png` y el texto visible completo en `text/plain`, de una captura `lista` de esa cotización. Lo demás: 404.
+
 ## Fuera de este contrato (siguientes fases)
 
 Reproceso de una lectura fallida y las pantallas de analítica de precios y flujo de la información, que siguen en la plataforma anterior. La hoja de ruta está en `docs/informe-tecnico.md`.

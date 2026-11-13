@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .esquemas import Dinero, RespuestaError
+from .esquemas_cotizacion import Evidencia
 
 EstadoCompra = Literal["solicitada", "en_analisis", "se_comprara", "no_se_comprara", "comprada", "cancelada"]
 
@@ -80,6 +81,7 @@ class CompraDetalle(Compra):
     vuelo: VueloCompra | None
     clics: list[ClicFuente]
     analisis: dict | None = Field(description="La última lectura de la página del vuelo (forma de `AnalisisVuelo`).")
+    evidencia: Evidencia | None = Field(None, description="La evidencia guardada de la decisión (forma de `Evidencia`).")
 
 
 class ListaCompras(BaseModel):

@@ -237,6 +237,224 @@
         }
       }
     },
+    "/api/v1/cotizaciones/{id}/evidencia": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Ver Evidencia",
+        "description": "La evidencia completa de lo decidido (pieza 5): capturas del vuelo (Google Flights y la aerolínea) y del hotel,\nal decidir, cada día hasta la compra y al comprar. Las hace el trabajador; mientras tanto, `guardando`.",
+        "operationId": "ver_evidencia_api_v1_cotizaciones__id__evidencia_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Evidencia"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}/evidencia/{captura_id}/imagen/{n}": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Imagen Evidencia",
+        "operationId": "imagen_evidencia_api_v1_cotizaciones__id__evidencia__captura_id__imagen__n__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "captura_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Captura Id"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9,
+              "minimum": 0,
+              "title": "N"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Captura de página completa",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}/evidencia/{captura_id}/texto": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Texto Evidencia",
+        "operationId": "texto_evidencia_api_v1_cotizaciones__id__evidencia__captura_id__texto_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "captura_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Captura Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "El texto visible completo",
+            "content": {
+              "text/plain": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/cotizaciones/{id}/vuelos/{opcion_id}/reserva": {
       "get": {
         "tags": [
@@ -5782,6 +6000,130 @@
         ],
         "title": "CambioRol"
       },
+      "CapturaEvidencia": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "vuelo",
+              "hotel"
+            ],
+            "title": "Tipo"
+          },
+          "motivo": {
+            "type": "string",
+            "enum": [
+              "decision",
+              "seguimiento",
+              "compra"
+            ],
+            "title": "Motivo",
+            "description": "Al decidir, el seguimiento diario o al comprar."
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "pendiente",
+              "en_curso",
+              "lista",
+              "fallida"
+            ],
+            "title": "Estado"
+          },
+          "fallo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallo",
+            "description": "Por qué no se pudo (con `fallida`, o el último intento si sigue pendiente)."
+          },
+          "intentos": {
+            "type": "integer",
+            "title": "Intentos"
+          },
+          "creado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creado"
+          },
+          "terminado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminado",
+            "description": "Cuándo se guardó (UTC, ISO 8601)."
+          },
+          "datos": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datos",
+            "description": "Todo lo leído: `google` (tramos, reserva, precios), `aerolinea` (total, impuestos, cabinas, números) u `hotel` (vendedores, habitaciones, servicios)."
+          },
+          "imagenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Imagenes",
+            "description": "Capturas de página completa (PNG), con permiso de ver la cotización."
+          },
+          "texto_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Url",
+            "description": "El texto visible completo (text/plain, hasta 300 KB)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tipo",
+          "motivo",
+          "estado",
+          "fallo",
+          "intentos",
+          "creado",
+          "terminado",
+          "datos",
+          "imagenes",
+          "texto_url"
+        ],
+        "title": "CapturaEvidencia",
+        "description": "Una captura completa (pieza 5): lo que se leyó del vuelo (Google Flights y la aerolínea) o del hotel elegido."
+      },
       "Cargo": {
         "properties": {
           "id": {
@@ -6493,6 +6835,17 @@
             ],
             "title": "Analisis",
             "description": "La última lectura de la página del vuelo (forma de `AnalisisVuelo`)."
+          },
+          "evidencia": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evidencia"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "La evidencia guardada de la decisión (forma de `Evidencia`)."
           }
         },
         "type": "object",
@@ -8068,6 +8421,56 @@
           "quien"
         ],
         "title": "EventoPersona"
+      },
+      "Evidencia": {
+        "properties": {
+          "estado": {
+            "type": "string",
+            "enum": [
+              "sin_evidencia",
+              "guardando",
+              "guardada"
+            ],
+            "title": "Estado",
+            "description": "`guardando`: hay capturas pendientes o en curso («Guardando la evidencia del vuelo…»)."
+          },
+          "guardada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guardada",
+            "description": "Cuándo se guardó la última captura lista («Evidencia guardada a las HH:MM»)."
+          },
+          "capturas": {
+            "items": {
+              "$ref": "#/components/schemas/CapturaEvidencia"
+            },
+            "type": "array",
+            "title": "Capturas"
+          },
+          "seguimiento": {
+            "items": {
+              "$ref": "#/components/schemas/PuntoSeguimiento"
+            },
+            "type": "array",
+            "title": "Seguimiento",
+            "description": "Un punto por captura lista del vuelo, en orden."
+          }
+        },
+        "type": "object",
+        "required": [
+          "estado",
+          "guardada",
+          "capturas",
+          "seguimiento"
+        ],
+        "title": "Evidencia",
+        "description": "La evidencia guardada de la decisión vigente: capturas del vuelo y del hotel, y la línea de precios del seguimiento."
       },
       "EvidenciaPersona": {
         "properties": {
@@ -11500,6 +11903,62 @@
           "diferencia_usd"
         ],
         "title": "ProyectoResumen"
+      },
+      "PuntoSeguimiento": {
+        "properties": {
+          "momento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Momento"
+          },
+          "motivo": {
+            "type": "string",
+            "enum": [
+              "decision",
+              "seguimiento",
+              "compra"
+            ],
+            "title": "Motivo"
+          },
+          "precio_google_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Google Usd",
+            "description": "El precio que mostraba Google Flights."
+          },
+          "total_aerolinea_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Aerolinea Usd",
+            "description": "El total que mostraba la página de la aerolínea, con impuestos."
+          }
+        },
+        "type": "object",
+        "required": [
+          "momento",
+          "motivo",
+          "precio_google_usd",
+          "total_aerolinea_usd"
+        ],
+        "title": "PuntoSeguimiento"
       },
       "PuntoTendencia": {
         "properties": {

@@ -294,6 +294,8 @@ def test_el_openapi_versionado_coincide_con_la_api():
                  ("get", "/lugares"), ("get", "/cotizaciones/formulario"), ("post", "/cotizaciones"), ("get", "/cotizaciones/{id}"), ("post", "/cotizaciones/{id}/decision"),
                  ("post", "/cotizaciones/{id}/fuente"), ("post", "/cotizaciones/{id}/vuelos/{opcion_id}/analisis"),
                  ("get", "/cotizaciones/{id}/vuelos/{opcion_id}/analisis"), ("get", "/cotizaciones/{id}/analisis/{analisis_id}/captura"),
+                 ("get", "/cotizaciones/{id}/evidencia"), ("get", "/cotizaciones/{id}/evidencia/{captura_id}/imagen/{n}"),
+                 ("get", "/cotizaciones/{id}/evidencia/{captura_id}/texto"),
                  ("get", "/cotizaciones/{id}/vuelos/{vuelo_id}/vendedor"), ("post", "/cotizaciones/{id}/vuelos/{opcion_id}/ir"),
                  ("get", "/cotizaciones/{id}/vuelos/{opcion_id}/ir"), ("get", "/cotizaciones/{id}/vuelos/{opcion_id}/reserva"),
                  ("get", "/compras"), ("get", "/compras/{id}"), ("post", "/compras/{id}/estado"), ("post", "/compras/{id}/registro"),

@@ -395,6 +395,38 @@ class AnalisisVuelo(BaseModel):
                                                 "fallida, salvo si pidió verificación.")
 
 
+class CapturaEvidencia(BaseModel):
+    """Una captura completa (pieza 5): lo que se leyó del vuelo (Google Flights y la aerolínea) o del hotel elegido."""
+    id: int
+    tipo: Literal["vuelo", "hotel"]
+    motivo: Literal["decision", "seguimiento", "compra"] = Field(description="Al decidir, el seguimiento diario o al comprar.")
+    estado: Literal["pendiente", "en_curso", "lista", "fallida"]
+    fallo: str | None = Field(description="Por qué no se pudo (con `fallida`, o el último intento si sigue pendiente).")
+    intentos: int
+    creado: str | None
+    terminado: str | None = Field(description="Cuándo se guardó (UTC, ISO 8601).")
+    datos: dict | None = Field(description="Todo lo leído: `google` (tramos, reserva, precios), `aerolinea` (total, "
+                                           "impuestos, cabinas, números) u `hotel` (vendedores, habitaciones, servicios).")
+    imagenes: list[str] = Field(description="Capturas de página completa (PNG), con permiso de ver la cotización.")
+    texto_url: str | None = Field(description="El texto visible completo (text/plain, hasta 300 KB).")
+
+
+class PuntoSeguimiento(BaseModel):
+    momento: str | None
+    motivo: Literal["decision", "seguimiento", "compra"]
+    precio_google_usd: Dinero = Field(description="El precio que mostraba Google Flights.")
+    total_aerolinea_usd: Dinero = Field(description="El total que mostraba la página de la aerolínea, con impuestos.")
+
+
+class Evidencia(BaseModel):
+    """La evidencia guardada de la decisión vigente: capturas del vuelo y del hotel, y la línea de precios del seguimiento."""
+    estado: Literal["sin_evidencia", "guardando", "guardada"] = Field(
+        description="`guardando`: hay capturas pendientes o en curso («Guardando la evidencia del vuelo…»).")
+    guardada: str | None = Field(description="Cuándo se guardó la última captura lista («Evidencia guardada a las HH:MM»).")
+    capturas: list[CapturaEvidencia]
+    seguimiento: list[PuntoSeguimiento] = Field(description="Un punto por captura lista del vuelo, en orden.")
+
+
 NombreVendedor = Annotated[str, Field(min_length=1, max_length=60, pattern=r"^[\w .,&'()+/-]+$")]
 
 

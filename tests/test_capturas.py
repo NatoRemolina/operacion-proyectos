@@ -244,3 +244,34 @@ def test_el_adaptador_de_lambda_llega_por_post_events(cola, monkeypatch):
     r = c.post("/events", json={"source": "aws.events"})
     assert r.status_code == 200 and r.json()["procesadas"] == 0 and llamadas == [1]
     assert c.get("/docs").status_code == 404 and c.get("/openapi.json").status_code == 404
+
+
+# ---------- pantallas: la evidencia, solo con permiso ----------
+def test_la_evidencia_se_ve_en_la_cotizacion_y_en_la_compra_solo_con_permiso(piloto, piloto2, cliente, anonimo, cola):
+    cot = _cotizar(piloto)
+    _decidir(piloto, cot)
+    e = piloto.get(f"{V1}/cotizaciones/{cot['id']}/evidencia").json()
+    assert e["estado"] == "guardando" and e["guardada"] is None
+    assert [(c["tipo"], c["estado"]) for c in e["capturas"]] == [("vuelo", "pendiente"), ("hotel", "pendiente")]
+    tareas.procesar(hoy="2026-11-20")
+    e = piloto.get(f"{V1}/cotizaciones/{cot['id']}/evidencia").json()
+    assert e["estado"] == "guardada" and e["guardada"]
+    vuelo = e["capturas"][0]
+    assert vuelo["datos"]["aerolinea"]["impuestos"] == 79.30 and len(vuelo["imagenes"]) == 2
+    assert e["seguimiento"] == [{"momento": vuelo["terminado"], "motivo": "decision", "precio_google_usd": None,
+                                 "total_aerolinea_usd": "748.80"}]
+    img = piloto.get(vuelo["imagenes"][0])
+    assert img.status_code == 200 and img.headers["content-type"] == "image/png" and img.content.startswith(b"\x89PNG")
+    assert img.headers["Cache-Control"] == "private, no-store"
+    texto = piloto.get(vuelo["texto_url"])
+    assert texto.status_code == 200 and texto.headers["content-type"].startswith("text/plain") and "Your trip total" in texto.text
+    # de otra persona: no existe; sin sesión: 401
+    for ruta in (f"{V1}/cotizaciones/{cot['id']}/evidencia", vuelo["imagenes"][0], vuelo["texto_url"]):
+        assert piloto2.get(ruta).status_code == 404, ruta
+        assert anonimo.get(ruta).status_code == 401, ruta
+    assert piloto.get(vuelo["imagenes"][0].rsplit("/", 1)[0] + "/9").status_code == 404
+    # administración la ve en la ficha de la compra
+    compra = db.uno("select c.id from compras c join viajes v on v.id=c.viaje_id where v.solicitud_id=:s and c.activa=1", s=cot["id"])
+    detalle = cliente.get(f"{V1}/compras/{compra['id']}").json()
+    assert detalle["evidencia"]["estado"] == "guardada" and len(detalle["evidencia"]["capturas"]) == 2
+    assert cliente.get(vuelo["imagenes"][0]).status_code == 200

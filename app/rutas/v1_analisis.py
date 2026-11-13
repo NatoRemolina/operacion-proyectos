@@ -17,11 +17,12 @@ from ..api_v1.esquemas_cotizacion import (
     ENTERO_MAXIMO,
     AnalisisVuelo,
     EnvioVendedor,
+    Evidencia,
     OpcionesBuscador,
     PedidoIrA,
     errores_cotizacion,
 )
-from ..servicios import acceso, analizador, consultas, cotizacion, precios
+from ..servicios import acceso, almacen, analizador, capturas, consultas, cotizacion, precios
 from . import v1_cotizaciones
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
@@ -97,6 +98,67 @@ def captura(id: int = Id(), analisis_id: int = Id(), yo: dict = Depends(persona)
         raise _no_encontrado()
     return Response(contenido, media_type="image/png",
                     headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+
+
+# ---------- pieza 5: la evidencia guardada de la decisión ----------
+def evidencia(sid: int) -> dict:
+    """Las capturas de la decisión vigente (al decidir, el seguimiento y la compra) y la línea de precios del vuelo."""
+    d = db.uno("select id from decisiones where solicitud_id=:s order by id desc limit 1", s=sid)
+    filas = [f for f in capturas.de_la_cotizacion(sid) if d and f["decision_id"] == d["id"]]
+    base = f"{PREFIJO}/cotizaciones/{sid}/evidencia"
+    lista = [{"id": f["id"], "tipo": f["tipo"], "motivo": f["motivo"], "estado": f["estado"], "fallo": f["fallo"],
+              "intentos": f["intentos"], "creado": consultas.instante(f["creado"]), "terminado": consultas.instante(f["terminado"]),
+              "datos": f["datos"] if f["estado"] == "lista" else None,
+              "imagenes": [f"{base}/{f['id']}/imagen/{n}" for n in range(len(f["imagenes"]))] if f["estado"] == "lista" else [],
+              "texto_url": f"{base}/{f['id']}/texto" if f["estado"] == "lista" and f["texto"] else None} for f in filas]
+    listas = [c for c in lista if c["estado"] == "lista"]
+    seguimiento = [{"momento": c["terminado"], "motivo": c["motivo"],
+                    "precio_google_usd": consultas.dinero(((c["datos"] or {}).get("google") or {}).get("precio_total")),
+                    "total_aerolinea_usd": consultas.dinero(((c["datos"] or {}).get("aerolinea") or {}).get("total"))}
+                   for c in listas if c["tipo"] == "vuelo"]
+    estado = "guardando" if any(c["estado"] in ("pendiente", "en_curso") for c in lista) else \
+        "guardada" if listas else "sin_evidencia"
+    return {"estado": estado, "guardada": max((c["terminado"] for c in listas if c["terminado"]), default=None),
+            "capturas": lista, "seguimiento": sorted(seguimiento, key=lambda p: p["momento"] or "")}
+
+
+def _captura_de(sid: int, captura_id: int) -> dict:
+    f = db.uno("select * from capturas where id=:c and solicitud_id=:s and estado='lista'", c=captura_id, s=sid)
+    if not f:
+        raise _no_encontrado()
+    return f
+
+
+PRIVADO = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
+
+
+@router.get("/cotizaciones/{id}/evidencia", response_model=Evidencia, responses=errores_cotizacion(401, 404, 422))
+def ver_evidencia(id: int = Id(), yo: dict = Depends(persona)):
+    """La evidencia completa de lo decidido (pieza 5): capturas del vuelo (Google Flights y la aerolínea) y del hotel,
+    al decidir, cada día hasta la compra y al comprar. Las hace el trabajador; mientras tanto, `guardando`."""
+    _visible(yo, id)
+    return evidencia(id)
+
+
+@router.get("/cotizaciones/{id}/evidencia/{captura_id}/imagen/{n}", response_class=Response, responses={
+    **errores_cotizacion(401, 404, 422), 200: {"description": "Captura de página completa", "content": {"image/png": {}}}})
+def imagen_evidencia(id: int = Id(), captura_id: int = Id(), n: int = Path(ge=0, le=9), yo: dict = Depends(persona)):
+    _visible(yo, id)
+    claves = db.de_json(_captura_de(id, captura_id)["imagenes"], []) or []
+    contenido = almacen.leer(claves[n]) if n < len(claves) else None
+    if contenido is None:
+        raise _no_encontrado()
+    return Response(contenido, media_type="image/png", headers=PRIVADO)
+
+
+@router.get("/cotizaciones/{id}/evidencia/{captura_id}/texto", response_class=Response, responses={
+    **errores_cotizacion(401, 404, 422), 200: {"description": "El texto visible completo", "content": {"text/plain": {}}}})
+def texto_evidencia(id: int = Id(), captura_id: int = Id(), yo: dict = Depends(persona)):
+    _visible(yo, id)
+    texto = _captura_de(id, captura_id)["texto"]
+    if not texto:
+        raise _no_encontrado()
+    return Response(texto, media_type="text/plain; charset=utf-8", headers=PRIVADO)
 
 
 # ---------- primera capa del desglose: lo del buscador ----------
