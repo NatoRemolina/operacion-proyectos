@@ -79,7 +79,7 @@ def prima_flexibilidad(tarifas: list[dict]) -> dict | None:
     usd, pct = [], []
     for grupo in _por_itinerario(tarifas).values():
         basicas = [t["precio"] for t in grupo if t["tarifa_normalizada"] == "basica"]
-        flexibles = [t["precio"] for t in grupo if t["tarifa_normalizada"] != "basica"
+        flexibles = [t["precio"] for t in grupo if t["tarifa_normalizada"] in ("estandar", "flexible", "premium")
                      and (t.get("cambios") == "gratis" or t.get("maleta_usd") == 0)]
         if basicas and flexibles:
             b, f = min(basicas), min(flexibles)

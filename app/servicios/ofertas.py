@@ -48,8 +48,11 @@ ofertas_tarifa = db._tabla(
     Column("anticipacion_dias", Integer), Column("dia_semana", Integer), Column("noches", Integer),
     # La tarifa tal como llegó (JSON): si la normalización mejora, se rehace desde aquí sin volver a buscar
     Column("crudo", Text),
+    # Lo que no se pudo clasificar (JSON con las líneas y la tarifa sin tipo) y si la lectura fue completa o parcial
+    Column("sin_reconocer", Text), Column("normalizacion", Text),
     _valores("fuente", FUENTES), _valores("tarifa_normalizada", TARIFAS), _valores("cambios", CAMBIOS),
     _valores("reembolso", REEMBOLSOS), _valores("asiento", ASIENTOS), _valores("tramo", TRAMOS),
+    _valores("normalizacion", ("completa", "parcial")),
 )
 
 INDICES = [  # nombre, columnas, único
@@ -108,11 +111,11 @@ def cambios(lineas) -> str | None:
     for t in _bajo(lineas):
         if "change" not in t:
             continue
-        if "free change" in t or "no change fee" in t:
+        if re.search(r"free (ticket )?changes?|no change fee", t):
             return "gratis"
-        if t.startswith("no ") or "not allowed" in t or "non-changeable" in t:
+        if t.startswith("no ") or "not allowed" in t or re.search(r"non-?changeable", t):
             return "no"
-        if "fee" in t or _importe(t):
+        if "fee" in t or _importe(t) is not None:
             return "cargo"
     return None
 
@@ -121,7 +124,7 @@ def reembolso(lineas) -> str | None:
     for t in _bajo(lineas):
         if "refund" not in t:
             continue
-        if t.startswith("no ") or "non-refundable" in t or "not refundable" in t:
+        if t.startswith("no ") or re.search(r"non-?refundable|not refundable", t):
             return "no"
         if "partial" in t or "fee" in t:
             return "parcial"
@@ -134,20 +137,22 @@ def asiento(lineas) -> str | None:
     for t in _bajo(lineas):
         if "seat selection" not in t:
             continue
-        if "fee" in t or "paid" in t:
+        if "fee" in t or "paid" in t or _importe(t) is not None:
             return "cargo"
         if "free" in t or "included" in t:
             return "incluido"
     return None
 
 
-_PREMIUM = re.compile(r"business|first|premium|polaris|suite|upper class")
-_FLEXIBLE = re.compile(r"flex|refundable|plus flex")
-_BASICA = re.compile(r"basic|light|lite|saver|hand baggage|no bag")
+_PREMIUM = re.compile(r"business|first|premium|polaris|suite|upper class|delta one|\bmint\b|club world")
+_FLEXIBLE = re.compile(r"flex|refundable")
+_BASICA = re.compile(r"\bbasic\b|\blight\b|\blite\b|saver|hand baggage|no bag")
+_ESTANDAR = re.compile(r"\bmain\b|economy|standard|classic|coach|\bvalue\b|regular|\bsmart\b|\bplus\b|comfort")
 
 
-def tarifa_normalizada(nombre: str | None, cambios_: str | None, reembolso_: str | None) -> str:
-    """basica | estandar | flexible | premium. Primero el nombre de la tarifa; si no lo dice, sus condiciones."""
+def tarifa_normalizada(nombre: str | None, cambios_: str | None, reembolso_: str | None) -> str | None:
+    """basica | estandar | flexible | premium, o vacía si no se reconoce (queda marcada en `sin_reconocer`). Primero el
+    nombre de la tarifa; si no lo dice, sus condiciones."""
     n = (nombre or "").lower()
     if _PREMIUM.search(n):
         return "premium"
@@ -155,7 +160,32 @@ def tarifa_normalizada(nombre: str | None, cambios_: str | None, reembolso_: str
         return "flexible"
     if _BASICA.search(n) or cambios_ == "no":
         return "basica"
-    return "estandar"
+    if _ESTANDAR.search(n):
+        return "estandar"
+    return None
+
+
+def no_reconocidas(lineas_equipaje, lineas_condiciones) -> list[str]:
+    """Las líneas que hablan de equipaje, cambios, reembolso o elección de asiento y no se pudieron clasificar. Las que
+    hablan de otra cosa (espacio para las piernas, embarque, wifi) no se clasifican y quedan solo en el crudo."""
+    fuera = []
+    for linea in lineas_equipaje or []:
+        t = str(linea).strip().lower()
+        if "carry-on" in t:
+            entendida = equipaje([linea])[0] is not None
+        elif "checked bag" in t:
+            ordinal = _ORDINAL.search(t)
+            entendida = bool(ordinal and ordinal.group(1) != "1") or _sin_incluir(t) or equipaje([linea])[1] is not None
+        else:
+            entendida = False
+        if not entendida:
+            fuera.append(str(linea))
+    for linea in lineas_condiciones or []:
+        t = str(linea).strip().lower()
+        if ("change" in t and cambios([linea]) is None) or ("refund" in t and "change" not in t and reembolso([linea]) is None) \
+                or ("seat selection" in t and asiento([linea]) is None):
+            fuera.append(str(linea))
+    return fuera
 
 
 # ---------- extractor ----------
@@ -187,10 +217,13 @@ def _fila(base: dict, nombre, precio, vendedor, es_aerolinea, lineas_equipaje, l
         precio = None   # se guarda igual, con su crudo: la limpieza la deja fuera al entrenar («sin precio»)
     mano, maleta = equipaje(lineas_equipaje)
     c, r = cambios(lineas_condiciones), reembolso(lineas_condiciones)
-    return {**base, "ordinal": ordinal, "tramo": tramo, "tarifa": nombre or "Tarifa", "vendedor": vendedor or "", "es_aerolinea": es_aerolinea, "precio": precio,
-            "tarifa_normalizada": tarifa_normalizada(nombre, c, r), "equipaje_mano": mano, "maleta_usd": maleta,
+    tipo = tarifa_normalizada(nombre, c, r)
+    sin = ([f"tarifa «{nombre or 'sin nombre'}»"] if tipo is None else []) + no_reconocidas(lineas_equipaje, lineas_condiciones)
+    return {**base, "ordinal": ordinal, "tramo": tramo, "tarifa": nombre or "Tarifa", "vendedor": vendedor or "",
+            "es_aerolinea": es_aerolinea, "precio": precio, "tarifa_normalizada": tipo, "equipaje_mano": mano, "maleta_usd": maleta,
             "cambios": c, "reembolso": r, "asiento": asiento(lineas_condiciones),
-            "crudo": json.dumps(crudo, ensure_ascii=False)}
+            "sin_reconocer": json.dumps(sin, ensure_ascii=False) if sin else None,
+            "normalizacion": "parcial" if sin else "completa", "crudo": json.dumps(crudo, ensure_ascii=False)}
 
 
 def _de_respuesta(origen_fila: str, clave: str, datos: dict, creado: str | None) -> list[dict]:

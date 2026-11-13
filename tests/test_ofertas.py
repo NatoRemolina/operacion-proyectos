@@ -22,7 +22,7 @@ def test_la_tabla_existe_con_sus_indices():
     assert {"momento", "fuente", "solicitud_id", "opcion_id", "analisis_id", "busqueda_clave", "origen", "destino", "ida",
             "regreso", "vuelos", "aerolinea", "vendedor", "es_aerolinea", "tarifa", "tarifa_normalizada", "precio", "moneda",
             "equipaje_mano", "maleta_usd", "cambios", "reembolso", "asiento", "anticipacion_dias", "dia_semana",
-            "noches", "crudo", "ordinal", "tramo"} <= columnas
+            "noches", "crudo", "ordinal", "tramo", "sin_reconocer", "normalizacion"} <= columnas
     indices = {i["name"] for i in inspect(db.motor).get_indexes("ofertas_tarifa")}
     assert {"ix_ofertas_tarifa_ruta_ida", "ux_ofertas_tarifa_origen"} <= indices and "ux_ofertas_tarifa_unica" not in indices
 
@@ -86,13 +86,14 @@ def test_equipaje(lineas, esperado):
     (["Change fee: $75"], "cargo"),
     (["Changes for a fee"], "cargo"),
     (["Seat selection for a fee"], None),
+    (["Free ticket changes"], "gratis"),
 ])
 def test_cambios(lineas, esperado):
     assert ofertas.cambios(lineas) == esperado
 
 
 @pytest.mark.parametrize("lineas, esperado", [
-    (["No refunds"], "no"), (["Non-refundable"], "no"), (["Full refunds"], "total"), (["Fully refundable"], "total"),
+    (["No refunds"], "no"), (["Non-refundable"], "no"), (["Nonrefundable"], "no"), (["Full refunds"], "total"), (["Fully refundable"], "total"),
     (["Partial refunds"], "parcial"), (["Refund for a fee"], "parcial"), (["Free change, possible fare difference"], None),
 ])
 def test_reembolso(lineas, esperado):
@@ -102,6 +103,7 @@ def test_reembolso(lineas, esperado):
 @pytest.mark.parametrize("lineas, esperado", [
     (["Free seat selection"], "incluido"), (["Seat selection included"], "incluido"),
     (["Seat selection for a fee"], "cargo"), (["Paid seat selection"], "cargo"), (["Standard seat"], None),
+    (["Seat selection: $25"], "cargo"),
 ])
 def test_asiento(lineas, esperado):
     assert ofertas.asiento(lineas) == esperado
@@ -113,6 +115,8 @@ def test_asiento(lineas, esperado):
     ("Main Select", "gratis", "total", "flexible"), ("Economy Flex", None, None, "flexible"),
     ("Business", "gratis", "total", "premium"), ("Premium Economy", None, None, "premium"), ("First", None, None, "premium"),
     ("Tarifa", "no", None, "basica"),
+    ("Delta One", None, None, "premium"), ("Mint", None, None, "premium"), ("Main Plus", "gratis", "no", "estandar"),
+    ("Elite", None, None, None), ("Tarifa", None, None, None),     # sin reconocer: vacía, no «estandar»
 ])
 def test_tarifa_normalizada(nombre, cambios_, reembolso_, esperado):
     assert ofertas.tarifa_normalizada(nombre, cambios_, reembolso_) == esperado
@@ -253,3 +257,23 @@ def test_r1_3_dos_opciones_iguales_del_mismo_vendedor_y_el_regreso_por_separado_
     filas = db.todos("select ordinal, tramo, vendedor, precio from ofertas_tarifa where busqueda_clave=:c order by ordinal, tramo", c=clave)
     assert [(f["ordinal"], f["tramo"], f["vendedor"], f["precio"]) for f in filas] == [
         (0, "ida_vuelta", "Kiwi.com", 400), (1, "ida_vuelta", "Kiwi.com", 430), (2, "ida", "Spirit", 120), (2, "regreso", "Frontier", 95)]
+
+
+def test_r1_5_lo_no_reconocido_queda_marcado():
+    raro = {"together": {"book_with": "Aerolínea Rara", "airline": True, "price": 300, "option_title": "Elite",
+                         "extensions": ["Refunds: ask the airline", "Extra legroom", "Change fee: $75"],
+                         "baggage_prices": ["Bags: see airline", "1st checked bag: $40"]}}
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7005.json"
+    _guardar_respuesta(clave, _respuesta(opciones=[raro]), "2026-11-04 10:00:00")
+    ofertas.actualizar()
+    fila = db.uno("select * from ofertas_tarifa where busqueda_clave=:c", c=clave)
+    assert fila["normalizacion"] == "parcial" and fila["tarifa_normalizada"] is None
+    assert json.loads(fila["sin_reconocer"]) == ["tarifa «Elite»", "Bags: see airline", "Refunds: ask the airline"]
+    assert fila["cambios"] == "cargo" and fila["maleta_usd"] == 40
+
+
+def test_r1_5_una_tarifa_entendida_queda_completa():
+    _lectura_lista(clave="AA1851_2026-12-08_2026-12-08_2026-12-11", creado="2026-11-12 17:00:00")
+    ofertas.actualizar()
+    basica = db.uno("select * from ofertas_tarifa where fuente='pagina' and tarifa='Basic Economy' order by id desc limit 1")
+    assert basica["normalizacion"] == "completa" and basica["sin_reconocer"] is None
