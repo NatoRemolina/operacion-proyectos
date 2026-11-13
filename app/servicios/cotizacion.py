@@ -9,6 +9,7 @@ import json
 import math
 import re
 from datetime import UTC, date, datetime, timedelta
+from urllib.parse import parse_qsl, urlsplit
 
 from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
@@ -448,6 +449,83 @@ def abrir_fuente(usuario: dict, sid: int, destino: str, hotel_id: int | None = N
         url, que = precios.enlace_hoteles(_ciudad_hotel(sol), sol["ida"], sol["regreso"]), FUENTES["hoteles"]
     eventos.registrar("solicitud", sid, "fuente abierta", f"{que}: {url}", f"{canal} · {usuario['nombre']}")
     return url
+
+
+# ---------- página oficial del vendedor ----------
+TOPE_VENDEDOR_DIA = 10   # si la regla no existe
+REGLA_VENDEDOR = ("enlace_vendedor_persona_dia", str(TOPE_VENDEDOR_DIA),
+                  "Aperturas de la página oficial del vendedor por persona y día que consultan el buscador (opciones de "
+                  "reserva). El mismo itinerario dentro de la hora no cuenta. Alcanzado, «Ver desglose» lleva a Google Flights.")
+DOMINIOS_SALIDA = frozenset({"www.google.com", "google.com"})   # el envío va a Google, que redirige al vendedor
+REUSO_VENDEDOR = timedelta(hours=1)
+
+
+def asegurar_reglas_vendedor() -> int:
+    clave, valor, nota = REGLA_VENDEDOR
+    if db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
+        return 0
+    db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor, nota=nota,
+                fuente="Supuesto editable", confianza="supuesto", verificado="2026-11-13")
+    return 1
+
+
+def _salida_permitida(url) -> bool:
+    if not isinstance(url, str):
+        return False
+    try:
+        p = urlsplit(url)
+        puerto = p.port
+    except ValueError:
+        return False
+    return (p.scheme == "https" and p.hostname in DOMINIOS_SALIDA and puerto is None and not p.username and not p.password
+            and not any(ord(ch) < 33 for ch in url))
+
+
+def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int) -> dict:
+    """Adónde lleva «Ver desglose»: la página oficial del vendedor del itinerario (`{"tipo": "envio", "url", "campos",
+    "vendedor"}`) o, si no se puede, la página del vuelo en Google Flights (`{"tipo": "google", "url"}`).
+
+    Elige la aerolínea si vende el itinerario; si no, el primer vendedor. La dirección sale siempre del buscador y
+    solo hacia la lista blanca. El `booking_request` no se guarda: la bitácora dice quién, qué opción, qué vendedor y
+    a qué dominio. Quien llama comprueba antes que la persona ve la cotización. LookupError si el vuelo no es de ella."""
+    sol = db.uno("select * from solicitudes where id=:i", i=sid)
+    o = db.uno("select * from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=vuelo_id, s=sid) if sol else None
+    if not o:
+        raise LookupError(vuelo_id)
+    vuelo = db.de_json(o["datos"], {}) or {}
+    numeros = " + ".join(vuelo.get("numeros") or [])
+    google = {"tipo": "google", "url": fuente_vuelo(sol, vuelo)}
+
+    def anotar(texto: str):
+        eventos.registrar("solicitud", sid, "página oficial abierta", f"{numeros} (opción {vuelo_id}): {texto}"[:500],
+                          f"api v1 · {usuario['nombre']}")
+
+    if not config.SERPAPI_KEY:
+        anotar("sin clave del buscador · Google Flights")
+        return google
+    desde_todos, hacia_todos = codigos(sol, "origen"), codigos(sol, "destino")
+    _, _, n_origen, n_destino = precios.ruta(desde_todos, hacia_todos)
+    numeros_clave = "".join(n.replace(" ", "") for n in vuelo.get("numeros") or [])
+    nombre = f"reserva_{n_origen}_{n_destino}_{sol['ida']}_{sol['regreso']}_{numeros_clave}.json"   # la clave que anota precios
+    hace_una_hora = (datetime.now(UTC) - REUSO_VENDEDOR).strftime("%Y-%m-%d %H:%M:%S")
+    repetido = db.uno("""select id from consultas_buscador where tipo='vendedor' and usuario_id=:u and clave=:c
+                         and momento>=:h limit 1""", u=usuario["id"], c=nombre, h=hace_una_hora)
+    if not repetido:
+        hechas = db.uno("""select count(distinct clave) n from consultas_buscador where tipo='vendedor' and usuario_id=:u
+                           and momento>=:h""", u=usuario["id"], h=db.ahora()[:10])["n"]
+        if hechas >= int(costo.supuesto(costo.catalogo(), REGLA_VENDEDOR[0], TOPE_VENDEDOR_DIA)):
+            anotar("tope del día alcanzado · Google Flights")
+            return google
+    regreso = precios.vuelo_regreso(vuelo, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
+    opciones = precios.reserva_en_vivo(vuelo, regreso, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid) if regreso else []
+    validas = [x for x in opciones if _salida_permitida(x["url"])]
+    elegida = next((x for x in validas if x["aerolinea"]), validas[0] if validas else None)
+    if not elegida:
+        anotar(f"{'sin opciones de reserva' if not opciones else 'vendedor fuera de la lista blanca'} · Google Flights")
+        return google
+    anotar(f"{elegida['vendedor']}, {'aerolínea' if elegida['aerolinea'] else 'agencia'} · {urlsplit(elegida['url']).hostname}")
+    campos = parse_qsl(elegida["post_data"] or "", keep_blank_values=True)
+    return {"tipo": "envio", "url": elegida["url"], "campos": campos, "vendedor": elegida["vendedor"]}
 
 
 # ---------- decidir ----------

@@ -371,7 +371,7 @@ describe("Comparación de una cotización", () => {
     expect(screen.getByRole("radio", { name: `Tru by Hilton Moab, costo total ${dinero("243.00")}` })).not.toBeChecked();
   });
 
-  it("al abrir el desglose abre el vuelo en Google Flights con el mismo enlace y muestra lo leído de la página", async () => {
+  it("al abrir el desglose abre la página oficial del vendedor con el mismo enlace y muestra lo leído de la página", async () => {
     const usuario = userEvent.setup();
     const registrarFuente = vi.fn<CotizarRepository["registrarFuente"]>().mockResolvedValue(undefined);
     let responder: (a: typeof ANALISIS_EJEMPLO) => void = () => {};
@@ -383,12 +383,18 @@ describe("Comparación de una cotización", () => {
     });
     const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
     const ver = within(tarjeta).getByRole("link", { name: /^Ver desglose/ });
-    expect(ver).toHaveAttribute("href", RECOMENDADA.fuente_url);
+    expect(ver).toHaveAttribute("href", RECOMENDADA.vendedor_url);
     expect(ver).toHaveAttribute("target", "_blank");
     expect(ver).toHaveAttribute("rel", "noopener noreferrer");
     await usuario.click(ver);
-    expect(registrarFuente).toHaveBeenLastCalledWith(12, "vuelos", { vueloId: RECOMENDADA.id });
+    expect(registrarFuente).not.toHaveBeenCalled();   // el rastro del clic al vendedor lo deja el servidor
     expect(analizarVuelo).toHaveBeenCalledWith(12, RECOMENDADA.id);
+    // Google Flights queda como segundo enlace del vuelo, con su propio rastro
+    const google = within(tarjeta).getByRole("link", { name: /^Ver en Google Flights \(United UA 1047/ });
+    expect(google).toHaveAttribute("href", RECOMENDADA.fuente_url);
+    expect(google).toHaveAttribute("rel", "noopener noreferrer");
+    await usuario.click(google);
+    expect(registrarFuente).toHaveBeenLastCalledWith(12, "vuelos", { vueloId: RECOMENDADA.id });
     // el desglose del buscador se ve enseguida; la lectura llega después
     expect(within(tarjeta).getByRole("table", { name: /Desglose del costo total esperado/ })).toBeInTheDocument();
     expect(within(tarjeta).getByRole("status")).toHaveTextContent("Leyendo la página del vuelo…");

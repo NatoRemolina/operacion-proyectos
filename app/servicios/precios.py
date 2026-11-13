@@ -446,6 +446,37 @@ def opciones_reserva(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list
     return tarifas, origen_dato, datos.get("baggage_prices") or {}
 
 
+def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
+                    regreso: str, solicitud_id: int | None = None) -> list[dict]:
+    """Opciones de reserva del itinerario consultadas ahora, con el `booking_request` de cada vendedor (`url` y
+    `post_data`): el pedido de un solo uso que lleva a su página oficial.
+
+    El `booking_request` vive solo en lo que devuelve esta función: la respuesta se guarda sin él (`_guardar`), la
+    bitácora y el registro de la consulta no lo llevan. Si el mismo pedido se repite dentro de la hora, el buscador lo
+    sirve de su caché sin cobrarlo. [] sin clave, sin `booking_token` del regreso o si la consulta falla."""
+    if not (config.SERPAPI_KEY and (vuelo_regreso_ or {}).get("booking")):
+        return []
+    origen, destino, n_origen, n_destino = ruta(origenes, destinos)
+    clave = _clave_vuelo(vuelo_ida)
+    inicio, nombre = time.perf_counter(), f"reserva_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
+    try:
+        datos = _consultar({"engine": "google_flights", "departure_id": origen, "arrival_id": destino, "outbound_date": ida,
+                            "return_date": regreso, "booking_token": vuelo_regreso_["booking"]},
+                           "solicitud", solicitud_id, f"página oficial de {clave}")
+    except Exception as e:  # noqa: BLE001 (se anota solo el tipo: el mensaje podría traer datos de la reserva)
+        _anotar("vendedor", nombre, "fallida", solicitud_id, inicio, error=type(e).__name__)
+        return []
+    _guardar(nombre, datos)
+    opciones = []
+    for o in datos.get("booking_options") or []:
+        t = (o.get("together") or o.get("departing") or {}) if isinstance(o, dict) else {}
+        pedido = t.get("booking_request") if isinstance(t.get("booking_request"), dict) else {}
+        opciones.append({"vendedor": t.get("book_with") or "el vendedor", "aerolinea": bool(t.get("airline")),
+                         "precio": t.get("price"), "url": pedido.get("url"), "post_data": pedido.get("post_data")})
+    _anotar("vendedor", nombre, "en vivo", solicitud_id, inicio, [o["precio"] for o in opciones if o["precio"]])
+    return opciones
+
+
 def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, vuelo: dict,
                      solicitud_id: int | None = None, permitir_en_vivo: bool = False):
     """Familias tarifarias de un vuelo. Devuelve (tarifas, origen del dato).

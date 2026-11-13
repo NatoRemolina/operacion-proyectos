@@ -102,6 +102,7 @@ const vueloSchema = z.object({
   frente_esperado_pct: z.number().int().nullable(),
   total_con_hotel_usd: dineroSchema,
   fuente_url: z.string(),
+  vendedor_url: z.string(),
 });
 
 const hotelSchema = z.object({
@@ -255,6 +256,13 @@ const analisisSchema = z.object({
 const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), url: z.string() });
 
 export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
+  // La API da sus rutas con el prefijo; la web las abre contra la misma base que el resto de peticiones
+  const absoluta = (ruta: string) => cliente.url(ruta.replace(/^\/api\/v1(?=\/)/, ""));
+  const conRutas = (c: Cotizacion): Cotizacion => ({
+    ...c,
+    vuelos: c.vuelos.map((v) => ({ ...v, vendedor_url: absoluta(v.vendedor_url) })),
+    descartados: c.descartados.map((v) => ({ ...v, vendedor_url: absoluta(v.vendedor_url) })),
+  });
   return {
     formulario(signal) {
       return cliente.get("/cotizaciones/formulario", formularioSchema, { signal });
@@ -263,18 +271,18 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       const ruta = `/lugares${consulta({ q: texto.trim(), google: conGoogle ? 1 : null, limite: 8 })}`;
       return cliente.get(ruta, listaLugaresSchema, { signal });
     },
-    cotizar(pedido, claveIdempotencia) {
-      return cliente.postJson("/cotizaciones", pedido, cotizacionSchema, {
+    async cotizar(pedido, claveIdempotencia) {
+      return conRutas(await cliente.postJson("/cotizaciones", pedido, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
-      });
+      }));
     },
-    obtener(id, signal) {
-      return cliente.get(`/cotizaciones/${id}`, cotizacionSchema, { signal });
+    async obtener(id, signal) {
+      return conRutas(await cliente.get(`/cotizaciones/${id}`, cotizacionSchema, { signal }));
     },
-    decidir(id, decision, claveIdempotencia) {
-      return cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema, {
+    async decidir(id, decision, claveIdempotencia) {
+      return conRutas(await cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
-      });
+      }));
     },
     async registrarFuente(id, destino, objetivo) {
       const cuerpo = { destino, vuelo_id: objetivo?.vueloId ?? null, hotel_id: objetivo?.hotelId ?? null };
@@ -283,7 +291,7 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
     async analizarVuelo(id, vueloId): Promise<AnalisisVuelo> {
       const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema);
       // La API da la ruta con su prefijo; la web la pide a la misma base que el resto
-      return { ...a, captura_url: a.captura_url ? cliente.url(a.captura_url.replace(/^\/api\/v1(?=\/)/, "")) : null };
+      return { ...a, captura_url: a.captura_url ? absoluta(a.captura_url) : null };
     },
   };
 }

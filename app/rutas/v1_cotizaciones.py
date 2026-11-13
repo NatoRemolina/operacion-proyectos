@@ -4,9 +4,12 @@ La lógica es la misma de las pantallas (`app/servicios/cotizacion.py`). Ver una
 a quien viaja, al gestor del proyecto y a administración (`acceso.puede_ver`); decidirla, solo a los tres primeros
 sin el gestor (`acceso.es_propio`). Lo que no se ve responde 404.
 """
+import html
+import secrets
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Header, Path, Query, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
@@ -178,6 +181,51 @@ def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escr
     return {"destino": datos.destino, "url": url}
 
 
+# ---------- página oficial del vendedor ----------
+SITIOS_PERMITIDOS = {"same-origin", "same-site", "none"}
+
+
+def _pagina_envio(destino: dict) -> HTMLResponse:
+    """Página mínima que envía el pedido de un solo uso del vendedor a Google, que redirige a su página oficial."""
+    nonce = secrets.token_urlsafe(16)
+    vendedor = html.escape(destino["vendedor"])
+    campos = "".join(f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in destino["campos"])
+    cuerpo = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">'
+              f"<title>Abriendo la página de {vendedor}…</title></head><body>"
+              f'<form id="envio" method="post" action="{html.escape(destino["url"])}">{campos}'
+              f'<p>Abriendo la página oficial de {vendedor}… <button type="submit">Continuar</button></p></form>'
+              f'<script nonce="{nonce}">document.getElementById("envio").submit();</script></body></html>')
+    destino_csp = "https://www.google.com https://google.com"
+    return HTMLResponse(cuerpo, headers={
+        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": f"default-src 'none'; script-src 'nonce-{nonce}'; form-action {destino_csp}; "
+                                   "base-uri 'none'; frame-ancestors 'none'"})
+
+
+@router.get("/cotizaciones/{id}/vuelos/{vuelo_id}/vendedor", response_class=HTMLResponse, responses={
+    **errores_cotizacion(401, 403, 404, 422),
+    200: {"description": "Página mínima que envía el pedido del vendedor a Google (redirige a su página oficial)",
+          "content": {"text/html": {}}},
+    303: {"description": "Sin página oficial disponible: la página del vuelo en Google Flights"}})
+def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1, le=ENTERO_MAXIMO), yo: dict = Depends(persona)):
+    """Lo abre «Ver desglose» en otra pestaña: la página oficial del vendedor del itinerario (la aerolínea si lo vende).
+
+    El pedido de un solo uso (`booking_request`) solo viaja en esta respuesta: no se guarda en ninguna parte. Sin clave
+    del buscador, sin opciones de reserva o con el tope del día (`enlace_vendedor_persona_dia`), 303 a Google Flights.
+    Una navegación desde otro sitio (`Sec-Fetch-Site: cross-site`) recibe 403: no gasta el cupo de nadie."""
+    if request.headers.get("sec-fetch-site", "none") not in SITIOS_PERMITIDOS:
+        raise ErrorApi(403, "FORBIDDEN", "Abre la página del vendedor desde la plataforma.")
+    if not acceso.puede_ver(yo, _fila(id)):
+        raise _no_encontrado()
+    try:
+        destino = cotizacion.enlace_vendedor(yo, id, vuelo_id)
+    except LookupError as e:
+        raise _no_encontrado() from e
+    if destino["tipo"] == "google":
+        return RedirectResponse(destino["url"], status_code=303, headers={"Cache-Control": "no-store"})
+    return _pagina_envio(destino)
+
+
 # ---------- decidir ----------
 @router.post("/cotizaciones/{id}/decision", response_model=Cotizacion, responses=errores_cotizacion(401, 403, 404, 409, 422))
 def decidir(datos: NuevaDecision, id: int = IdCotizacion, yo: dict = Depends(escritura)):
@@ -235,7 +283,8 @@ def _vuelo(o: dict, c: dict) -> dict:
             "avisos": ev["avisos"], "descartada": ev["descartada"], "recomendada": recomendada,
             "mas_barata": bool(c["mas_barato"]) and c["mas_barato"]["id"] == o["id"], "origen_dato": o["origen_dato"],
             "esperado_usd": consultas.dinero(o.get("esperado")), "frente_esperado_pct": o.get("frente_esperado"),
-            "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel")), "fuente_url": cotizacion.fuente_vuelo(c["sol"], v)}
+            "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel")), "fuente_url": cotizacion.fuente_vuelo(c["sol"], v),
+            "vendedor_url": f"{PREFIJO}/cotizaciones/{c['sol']['id']}/vuelos/{o['id']}/vendedor"}
 
 
 def _tipo_linea_hotel(concepto: str) -> str:

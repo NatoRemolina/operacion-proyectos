@@ -197,6 +197,7 @@ class OpcionVuelo(BaseModel):
                                                     "todas las combinaciones); null sin hotel o si el vuelo está descartado.")
     fuente_url: str = Field(description="Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida (si "
                                         "el vuelo no trae sus tramos completos, la búsqueda sin elegir).")
+    vendedor_url: str = Field(description="Ruta de la API que abre la página oficial del vendedor (navegación en otra pestaña).")
 
 
 class LineaHotel(BaseModel):

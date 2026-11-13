@@ -149,11 +149,11 @@ export function OpcionDeVuelo({
   const [abierto, setAbierto] = useState(false);
   const registrarFuente = useRegistrarFuente(cotizacionId);
   const analisis = useAnalisisVuelo(cotizacionId, vuelo.id);
-  // Abrir el desglose abre también la página del vuelo en Google Flights (el mismo enlace, en otra pestaña) y pide
-  // leerla. El servidor reutiliza una lectura de menos de una hora: volver a abrir no gasta otra.
+  // Abrir el desglose abre también la página oficial del vendedor (el mismo enlace, en otra pestaña; el servidor deja
+  // el rastro del clic) y pide leer la página del vuelo en Google Flights. El servidor reutiliza una lectura de menos
+  // de una hora: volver a abrir no gasta otra.
   function abrirDesglose() {
     setAbierto(true);
-    registrarFuente("vuelos", { vueloId: vuelo.id });
     if (!analisis.isPending) analisis.mutate();
   }
   const titulo = useId();
@@ -261,12 +261,12 @@ export function OpcionDeVuelo({
           </button>
         ) : (
           <a
-            href={vuelo.fuente_url}
+            href={vuelo.vendedor_url}
             target="_blank"
             rel="noopener noreferrer"
             aria-expanded={false}
             aria-controls={desglose}
-            aria-label="Ver desglose (abre también el vuelo en Google Flights en otra pestaña)"
+            aria-label="Ver desglose (abre también la página oficial del vendedor en otra pestaña)"
             onClick={abrirDesglose}
             onAuxClick={(e) => {
               if (e.button === 1) abrirDesglose();
@@ -280,6 +280,20 @@ export function OpcionDeVuelo({
             <span aria-hidden="true">↗</span>
           </a>
         )}
+        <a
+          href={vuelo.fuente_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Ver en Google Flights (${nombreVuelo(vuelo)}), se abre en otra pestaña`}
+          onClick={() => registrarFuente("vuelos", { vueloId: vuelo.id })}
+          onAuxClick={(e) => {
+            if (e.button === 1) registrarFuente("vuelos", { vueloId: vuelo.id });
+          }}
+          className={`ml-3 inline-flex min-h-11 items-center gap-1 px-1 text-sm text-texto-secundario underline underline-offset-3 hover:text-texto ${PRESIONAR}`}
+        >
+          Ver en Google Flights
+          <span aria-hidden="true">↗</span>
+        </a>
         <div id={desglose} className={abierto ? "mt-2 flex flex-col gap-4" : ""}>
           {abierto ? (
             <>

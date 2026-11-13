@@ -283,8 +283,9 @@ def permisos_de_vistas(vistas):
 
 
 def migrar() -> dict:
-    from app.servicios import analizador, envios, revision  # noqa: F401  (registran sus tablas y columnas)
-    hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas()}
+    from app.servicios import analizador, cotizacion, envios, revision  # noqa: F401  (registran sus tablas y columnas)
+    hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas(),
+              "reglas_vendedor": cotizacion.asegurar_reglas_vendedor()}
     _indices()
     if not config.ES_SQLITE:
         hechos.update(_restricciones_postgres())

@@ -262,6 +262,7 @@ interface OpcionVuelo {
   esperado_usd: Dinero; frente_esperado_pct: number | null;   // modelo de precios, si hay uno utilizable
   total_con_hotel_usd: Dinero;                // vuelo + hotel recomendado (una suma, no todas las combinaciones); null sin hotel
   fuente_url: string;                         // este vuelo en Google Flights: la búsqueda con su ida elegida
+  vendedor_url: string;                       // ruta que abre la página oficial del vendedor (GET …/vendedor)
 }
 
 interface LineaHotel {
@@ -366,6 +367,15 @@ Cuerpo JSON `{"destino": "vuelos"}` (con `"vuelo_id": 76`, la página de ese vue
 - **Fuente de los precios.** `fuente_url` es el `search_metadata.google_flights_url` de la respuesta guardada del buscador para esa ruta y esas fechas; si falta, se construye con los aeropuertos y las fechas (la misma forma `tfs` que usa el buscador). En hoteles, el enlace guardado no trae fechas: se toma su texto de búsqueda y se le añaden («Moab hotels from 2026-12-08 to 2026-12-11»), y cada hotel lleva la búsqueda con su nombre. Solo se aceptan enlaces `https://www.google.com/travel/...` sin credenciales ni puerto; un enlace guardado que no cumpla se reemplaza por el construido. El enlace siempre lleva las fechas de la cotización: si el precio mostrado salió de una respuesta guardada de otras fechas (`origen` «guardado (otras fechas)»), Google puede mostrar otro precio. Sin ciudad guardada, los hoteles se buscan con el destino.
 - La URL siempre la arma el servidor: el cuerpo no acepta `url` (422). Un `vuelo_id` o `hotel_id` que no es de la cotización: 422 con `fields.vuelo_id` o `fields.hotel_id`.
 - La abre quien ve la cotización (también el gestor del proyecto); a los demás, 404.
+
+### `GET /cotizaciones/{id}/vuelos/{vuelo_id}/vendedor`
+Navegación en otra pestaña (la abre «Ver desglose»), no una llamada de datos. Responde 200 `text/html`: una página mínima que envía por POST el pedido de un solo uso del vendedor (`booking_request` del buscador: `url` y `post_data`) a Google, que redirige a la página oficial del vendedor con ese itinerario. Elige la aerolínea si vende el itinerario; si no, el primer vendedor.
+
+- Para llegar al pedido: el regreso del vuelo (guardado o 1 búsqueda) y las opciones de reserva con su `booking_token` (1 búsqueda; el buscador sirve gratis la misma dentro de la hora).
+- El `booking_request` **solo viaja en esta respuesta**: no se guarda en la base, en el respaldo ni en los registros (la respuesta del buscador se guarda sin él). Cabeceras `no-store`, `Referrer-Policy: no-referrer` y una CSP con `default-src 'none'`, el script por `nonce` y `form-action` solo hacia `https://www.google.com`.
+- Lista blanca de salida: `https://www.google.com` o `https://google.com`, sin credenciales ni puerto. Fuera de ella, o sin clave del buscador, sin opciones de reserva o con el tope del día (regla `enlace_vendedor_persona_dia`, 10 itinerarios distintos por persona; el mismo dentro de la hora no cuenta): **303** a la página del vuelo en Google Flights.
+- La abre **toda persona que ve la cotización** (también el gestor del proyecto); lo ajeno, 404; sin sesión, 401. Una navegación desde otro sitio (`Sec-Fetch-Site: cross-site`) recibe 403: no gasta el cupo de nadie.
+- Cada apertura deja en la bitácora de la cotización el paso `página oficial abierta`: quién, opción, vendedor (aerolínea o agencia) y dominio de salida, o por qué fue a Google Flights.
 
 ### `POST /cotizaciones/{id}/vuelos/{opcion_id}/analisis`
 Con `X-CSRF-Token` y sin cuerpo. Lee la página del vuelo en Google Flights (la búsqueda de la cotización con la ida de ese vuelo elegida; el analizador elige el regreso más barato para llegar a las opciones de reserva) y responde 200 `AnalisisVuelo`. Tarda unos segundos (hasta 55); la web muestra «Leyendo la página del vuelo…» mientras tanto.

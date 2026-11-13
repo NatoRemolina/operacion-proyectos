@@ -142,6 +142,8 @@ export interface OpcionVuelo {
   readonly total_con_hotel_usd: Dinero;
   /** Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida. */
   readonly fuente_url: string;
+  /** Dirección completa que abre la página oficial del vendedor del itinerario (en otra pestaña). */
+  readonly vendedor_url: string;
 }
 
 export interface LineaHotel {
