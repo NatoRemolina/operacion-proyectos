@@ -11,6 +11,7 @@ import { useKpisRepository, useTableroKpis } from "../application/kpis";
 import { formatearValor, type ExportableKpis, type FilaPersona, type FiltrosTablero as Filtros, type TableroKpis } from "../domain/kpis";
 import { FiltrosTablero } from "./filtros-tablero";
 import { SemaforoKpi, TablaPares, TablaSimple, TarjetaKpi, TARJETA, pct, usd } from "./piezas";
+import { SeccionRutasFrecuentes } from "./rutas-frecuentes";
 
 const EXPORTAR: readonly { que: ExportableKpis; texto: string }[] = [
   { que: "kpis", texto: "Indicadores" },
@@ -283,6 +284,7 @@ function Contenido({ t, filtros }: { t: TableroKpis; filtros: Filtros }) {
       ))}
       <Tendencia t={t} hasta={filtros.hasta} />
       <Cotizacion t={t} />
+      <SeccionRutasFrecuentes />
       <Gastos t={t} />
       <Personas t={t} />
       <Exportar filtros={filtros} />
