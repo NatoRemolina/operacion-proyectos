@@ -145,7 +145,35 @@ Desde `$PUBLICAR`, como el resto.
 
 | Qué falla | Qué se hace |
 |---|---|
-| La API | Volver al commit anterior en una carpeta limpia y `npx cdk deploy OperacionApp "${CDK_CTX[@]}"`. La migración no se deshace con esto |
+| La API | Volver atrás **solo el código** de la API, con la infraestructura del commit nuevo (abajo). La migración no se deshace con esto |
 | La web | Las pantallas de administración siguen en `admin.software.`. Si hace falta retirar la web: `(cd infra && npx cdk destroy OperacionWeb "${CDK_CTX[@]}")`, que borra solo lo que creó la pila (distribuciones, certificado, los registros de `software.` y `admin.software.`, el bucket y la función). La zona, el raíz y `www` no se tocan |
 | La base | `docs/respaldo.md`, «Vuelta atrás»: guardar el estado fallido, borrar lo que la copia no trae (`"$PY" -m datos.respaldar vuelta-atras`) y restaurar en una sola transacción, con la aplicación detenida |
 | El secreto | Secrets Manager guarda la versión anterior (`AWSPREVIOUS`). Lo más simple es volver a cargar el archivo anterior con el paso 3 |
+
+### Vuelta atrás de la API: solo el código
+
+**No se despliega OperacionApp desde el commit anterior.** Las pilas de ese commit no sirven:
+
+- quitarían la exportación de la dirección de la API que OperacionWeb importa, y CloudFormation rechaza el cambio;
+- antes desplegarían su propia OperacionBase, que con `-c correo` crea otro presupuesto («Presupuesto»), y quedarían dos;
+- Lambda no conserva las versiones anteriores de la imagen, así que mover el alias `vivo` tampoco sirve.
+
+Se vuelve atrás el código de la API (`app/`, `datos/`, `requirements.txt` y `Dockerfile`) y se mantiene la infraestructura del commit nuevo. Desde `$PRINCIPAL`, con `NUEVO` el commit publicado que falla y `ANTERIOR` el que funcionaba:
+
+```
+VUELTA=/Users/nato/Documents/GitHub/inflight-vuelta-atras
+git -C "$PRINCIPAL" worktree add -b vuelta-atras-api "$VUELTA" "$NUEVO"
+cd "$VUELTA"
+git restore --source="$ANTERIOR" --staged --worktree -- app datos requirements.txt Dockerfile
+git commit -m "Vuelta atrás del código de la API a $ANTERIOR"
+(cd infra && npm ci)
+(cd infra && npx cdk diff OperacionApp --exclusively "${CDK_CTX[@]}")
+(cd infra && npx cdk deploy OperacionApp --exclusively "${CDK_CTX[@]}")
+curl -s -o /dev/null -w "%{http_code}\n" "${URL_API}salud"        # 200
+```
+
+- **`git restore --source`** deja esas carpetas exactamente como en `ANTERIOR`, y **borra** también los archivos que se añadieron después. `git checkout ANTERIOR -- …` los dejaría, y un módulo nuevo de `app/rutas/` se cargaría solo.
+- **El commit** es local (rama `vuelta-atras-api`, sin push), y hace falta porque la síntesis de OperacionApp se niega a empaquetar cambios sin versionar.
+- **`--exclusively`** despliega solo OperacionApp, sin su dependencia OperacionBase. El `cdk diff` debe mostrar solo el cambio de imagen de la función: ni la exportación, ni las alarmas, ni `ORIGENES_WEB`.
+- **La base** queda como la dejó la migración: la versión anterior de la API tiene que funcionar con ese esquema. Si no, primero se vuelve atrás la base (fila «La base»).
+- **Comprobación:** `/salud` responde 200, y en `https://admin.software.nataliaremolinarodriguez.com` se entra y se abre la bandeja de viajes. Al terminar, `git -C "$PRINCIPAL" worktree remove "$VUELTA"`; la rama queda como registro de lo publicado.
