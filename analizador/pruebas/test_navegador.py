@@ -119,6 +119,18 @@ def test_salir_de_la_lista_blanca_termina_en_fallido_sin_captura(paginas, motivo
     assert all(p.startswith("https://www.google.com/travel/") for p in pedidos)   # solo se sirvió lo de la lista blanca
 
 
+# ---------- ronda 1 · punto 14: la respuesta de Lambda no pasa de 6 MB ----------
+def test_la_captura_de_una_pagina_muy_alta_queda_acotada():
+    import json
+    import struct
+    r = navegador.analizar(URL, servir=_servir({"https://www.google.com/travel/flights": "reserva_larga.html"}, []))
+    assert r["estado"] == "listo", r["motivo"]
+    png = base64.b64decode(r["captura_png_b64"])
+    ancho, alto = struct.unpack(">II", png[16:24])
+    assert ancho == 1280 and alto <= navegador.ALTO_CAPTURA
+    assert len(json.dumps(r).encode()) < navegador.TOPE_RESPUESTA
+
+
 def test_una_verificacion_no_se_resuelve():
     r = navegador.analizar(URL, servir=_servir({"https://www.google.com/": "verificacion.html"}, []))
     assert (r["estado"], r["motivo"]) == ("fallido", lector.VERIFICACION) and r["captura_png_b64"] is None

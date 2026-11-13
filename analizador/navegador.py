@@ -30,6 +30,9 @@ LISTO = re.compile(r"Booking options[\s\S]*\$\d|(Returning|Departing) flights[\s
 PARAMETROS_FIJOS = {"hl": "en", "gl": "us", "curr": "USD"}   # lo que sabe leer el lector: inglés, EE. UU. y dólares
 RESERVA = re.compile(r"Booking options[\s\S]*\$\d")
 
+ALTO_CAPTURA = 4000          # px: la reserva entera cabe; lo de más abajo (historia de precios) no hace falta
+TOPE_CAPTURA = 3_000_000     # bytes en base64: con los datos, la respuesta queda bajo 4 MB
+TOPE_RESPUESTA = 4_000_000
 OTRO_SITIO = "la página llevó a otro sitio"
 OTRA_PESTANA = "la página quiso abrir otra pestaña"
 
@@ -175,13 +178,26 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
             if not datos["tarifas"] and not datos["itinerarios"]:
                 # para saber qué no se reconoció: unas pocas etiquetas con precio, sin datos de la persona
                 datos["muestra_etiquetas"] = [e[:300] for e in etiquetas if e and "dollar" in e][:3]
-            captura = pagina.screenshot(full_page=True, type="png", timeout=restante())
+            captura = _captura(pagina, restante)
             if salida():
                 return _resultado("fallido", inicio, salida())
             return _resultado("listo", inicio, datos=datos, url_final=pagina.url,
                               captura_png_b64=base64.b64encode(captura).decode())
         finally:
             navegador.close()
+
+
+def _captura(pagina, restante) -> bytes:
+    """Captura PNG de la página, con el alto acotado: la respuesta síncrona de Lambda no puede pasar de 6 MB. Si aun
+    así queda grande (una página muy cargada), se repite más corta."""
+    alto_pagina = pagina.evaluate("() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)")
+    alto = min(int(alto_pagina or 0) or ALTO_CAPTURA, ALTO_CAPTURA)
+    while True:
+        png = pagina.screenshot(full_page=True, type="png", timeout=restante(),
+                                clip={"x": 0, "y": 0, "width": 1280, "height": alto})
+        if len(png) * 4 // 3 < TOPE_CAPTURA or alto <= 1000:
+            return png
+        alto //= 2
 
 
 def _primera_linea(error: Exception) -> str:
