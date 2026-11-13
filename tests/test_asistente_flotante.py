@@ -168,3 +168,9 @@ def test_la_ruta_comun_sin_sesion_o_desde_otro_sitio(anonimo, piloto):
     assert r.status_code == 401 and r.json()["sesion"] == "vencida"
     for cabecera in ({"Origin": "https://sitio-ajeno.example"}, {"Sec-Fetch-Site": "cross-site"}):
         assert piloto.post("/asistente", data={"pregunta": "¿Qué gastos hay?"}, headers={**JSON, **cabecera}).status_code == 403
+
+
+def test_los_modos_de_la_reserva_tienen_texto_legible():
+    from app.rutas.asistente import modo_visible
+    assert modo_visible("en_curso") == ("Respondiendo…", "azul")
+    assert modo_visible("fallida") == ("Sin respuesta: falló", "aviso")

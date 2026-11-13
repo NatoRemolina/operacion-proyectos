@@ -29,7 +29,9 @@ MENU = [{"texto": "Asistente", "href": "/admin/asistente", "orden": 66, "rol": "
 
 # Cómo se presenta cada vía de respuesta: (texto del chip, clase). La página y el asistente flotante usan lo mismo.
 MODOS = {"asesor": ("Asesor con herramientas", "ok"), "modelo": ("Modelo de lenguaje con herramientas", "ok"),
-         "determinista": ("Sin modelo: consultas directas", "azul"), "tope": ("Tope diario alcanzado", "aviso")}
+         "determinista": ("Sin modelo: consultas directas", "azul"), "tope": ("Tope diario alcanzado", "aviso"),
+         # una pregunta reserva su cupo «en curso» y queda «fallida» si algo la corta a mitad
+         "en_curso": ("Respondiendo…", "azul"), "fallida": ("Sin respuesta: falló", "aviso")}
 
 
 def modo_visible(modo: str) -> tuple[str, str]:
