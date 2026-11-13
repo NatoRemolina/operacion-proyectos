@@ -84,10 +84,16 @@ export const ESPERA_LARGA_S = 20;
 
 const PREGUNTAS_EMPRESA = ["¿Cómo van los indicadores?", "¿Quién mencionó el parqueadero?", "¿Cuál es el gasto real aprobado?"];
 const PREGUNTAS_PROPIAS = ["¿Cuánto me queda del presupuesto?", "¿Por qué mi gasto quedó en revisión?", "¿Qué me falta por justificar?"];
+const PREGUNTAS_GESTOR = [
+  "¿Cómo va el presupuesto de mi proyecto?",
+  "¿Qué gastos de mi proyecto están en revisión?",
+  "¿Qué me falta por justificar?",
+];
 
-/** Las mismas que ofrece la plataforma: administración pregunta por la empresa; los demás, por lo suyo. */
+/** Las mismas que ofrece la plataforma: administración pregunta por la empresa, el gestor por sus proyectos y el colaborador por lo suyo. */
 export function preguntasSugeridas(permiso: Permiso): readonly string[] {
-  return permiso === "admin" ? PREGUNTAS_EMPRESA : PREGUNTAS_PROPIAS;
+  if (permiso === "admin") return PREGUNTAS_EMPRESA;
+  return permiso === "gestor" ? PREGUNTAS_GESTOR : PREGUNTAS_PROPIAS;
 }
 
 /** Qué se puede preguntar y qué se puede ver, en palabras de cada permiso. */

@@ -26,6 +26,9 @@ envios_cotizacion = db._tabla(
 )
 VIGENCIA_ENVIO = timedelta(minutes=5)   # más que una búsqueda en vivo; pasado esto, quien la tenía ya no va a terminar
 DECISIONES_EN_VIVO_DIA = 10   # la regla `decisiones_en_vivo_dia` lo cambia
+# El buscador trae unos 20 por página: se guardan todos y se recorta solo después de ordenar por costo total
+TOPE_HOTELES_GUARDADOS = 40
+HOTELES_A_MOSTRAR = 12
 AVISO_TOPE_DECISION = ("Se alcanzó el tope de decisiones con consulta en vivo de hoy: el regreso y la tarifa salen de lo "
                        "guardado o quedan supuestos.")
 
@@ -116,6 +119,19 @@ def lugar(valor) -> dict | None:
             "pais": str(datos.get("pais") or "").strip()[:80], "lat": lat, "lon": lon}
 
 
+def otros_nombres(sitio: dict | None) -> list[str]:
+    """Los nombres alternos del lugar elegido («Lisbon» también es «lisboa»), del lugar con ese nombre más cercano a
+    sus coordenadas. Sirven para encontrar una respuesta de hoteles guardada con el nombre en otro idioma."""
+    if not sitio:
+        return []
+    filas = [f for f in db.todos("select buscable, lat, lon from lugares where nombre=:n", n=sitio["nombre"])
+             if f["lat"] is not None and f["lon"] is not None]
+    cerca = min(filas, key=lambda f: geografia.distancia_km(sitio["lat"], sitio["lon"], f["lat"], f["lon"]), default=None)
+    if not cerca or geografia.distancia_km(sitio["lat"], sitio["lon"], cerca["lat"], cerca["lon"]) > 50:
+        return []
+    return [n for n in (cerca["buscable"] or "").split(" | ")[1:] if n]
+
+
 def lado(texto: str, codigos: str, lugar_elegido) -> dict:
     """Origen o destino de la cotización. Con aeropuertos marcados en el buscador: el lugar, la lista ordenada y el
     principal (el marcado más cercano al lugar, o el primero). Sin ellos, como antes: un aeropuerto por nombre o código.
@@ -195,6 +211,7 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         if not (math.isfinite(valor) and 0 <= valor <= tope):
             raise CotizacionInvalida(campo, texto)
     baterias_n = max(baterias_n, 0)
+    ciudad_escrita = bool(ciudad.strip())
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
     solicitado_por, viajero_nuevo = usuario["nombre"], viajero_nuevo.strip()[:80]  # quien consulta sale de la sesión
     # Todos viajan: quien cotiza viaja, salvo que gestión o administración marquen que es para otra persona.
@@ -227,12 +244,15 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         tarifas, origen_t = precios.tarifas_de_vuelo(desde_todos, hacia_todos, ida, regreso, v, sid)
         db.insertar("opciones", solicitud_id=sid, tipo="vuelo", titulo=" + ".join(v["numeros"]), precio=v["precio"],
                     moneda="USD", datos=v, tarifas={"lista": tarifas, "origen": origen_t}, origen_dato=origen_v, capturado=db.ahora())
-    hoteles, origen_h = precios.buscar_hoteles(sol["ciudad"], ida, regreso, sid)
-    for h in hoteles[:12]:
+    # Si la persona no escribió la ciudad del hotel, sirve cualquier nombre del lugar elegido para lo guardado
+    alternos = [] if ciudad_escrita else otros_nombres(llega["lugar"])
+    hoteles, origen_h = precios.buscar_hoteles(sol["ciudad"], ida, regreso, sid, otros_nombres=alternos)
+    hoteles = hoteles[:TOPE_HOTELES_GUARDADOS]
+    for h in hoteles:
         db.insertar("opciones", solicitud_id=sid, tipo="hotel", titulo=h["nombre"], precio=h["total"], moneda="USD",
                     datos=h, tarifas=None, origen_dato=origen_h, capturado=db.ahora())
     db.actualizar("solicitudes", sid, estado="comparando")
-    eventos.registrar("solicitud", sid, "opciones guardadas", f"{len(vuelos)} vuelos y {min(len(hoteles), 12)} hoteles", "aplicación")
+    eventos.registrar("solicitud", sid, "opciones guardadas", f"{len(vuelos)} vuelos y {len(hoteles)} hoteles", "aplicación")
     registrar_ahorro(sid)
     return sid
 
@@ -341,6 +361,9 @@ def comparacion(sid: int) -> dict | None:
     hotel_recomendado = hoteles[0] if hoteles else None
     hotel_barato = min(hoteles, key=lambda h: h["h"]["total"]) if hoteles else None
     hotel_mas_barato = hotel_barato if hotel_barato and hotel_barato["id"] != hotel_recomendado["id"] else None
+    # Se muestran los mejores por costo total; el más barato por tarifa sigue a la vista aunque quede más abajo
+    if len(hoteles) > HOTELES_A_MOSTRAR:
+        hoteles = hoteles[:HOTELES_A_MOSTRAR] + ([hotel_mas_barato] if hotel_mas_barato in hoteles[HOTELES_A_MOSTRAR:] else [])
     for h in hoteles:
         h["recomendado"], h["mas_barato"] = h is hotel_recomendado, h is hotel_mas_barato
     # El viaje completo de cada vuelo con el hotel recomendado: una suma, no todas las combinaciones

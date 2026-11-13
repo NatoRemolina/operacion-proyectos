@@ -1,6 +1,6 @@
 # ADR 0002 · Hospedaje de la web Next.js en AWS
 
-Estado: aceptada · Fecha: 12 de noviembre de 2026 · Resuelve una decisión abierta del ADR 0001 (anillo 4)
+Estado: aceptada y publicada · Fecha: 12 de noviembre de 2026 · Resuelve una decisión abierta del ADR 0001 (anillo 4)
 
 ## Contexto
 
@@ -45,10 +45,10 @@ La web no tiene secretos: llama a la API con `NEXT_PUBLIC_API_BASE=/api/v1`, una
 | Pieza | Cómo |
 |---|---|
 | Registro del dominio | `nataliaremolinarodriguez.com`, registrado en Route 53 (un `.com` cuesta unos 15 USD al año) |
-| Zona DNS | Una zona alojada en Route 53 (0,50 USD al mes más centavos por consultas; las que apuntan a CloudFront no se cobran). **La creó la dueña y es suya:** la pila la importa por su identificador y nunca la crea ni la borra |
+| Zona DNS | Una zona alojada en Route 53 (0,50 USD al mes más centavos por consultas; las que apuntan a CloudFront no se cobran). **Es de la cuenta y existía antes:** la pila la importa por su identificador y nunca la crea ni la borra |
 | Nombres | La web en `software.nataliaremolinarodriguez.com`; las pantallas actuales en `admin.software.nataliaremolinarodriguez.com`. El subdominio es una variable del despliegue (`-c subdominio=`, por omisión `software`) |
 | Certificado | ACM en `us-east-1`, pedido y validado por CDK en la propia zona, solo para esos dos nombres: sin pasos a mano. Gratis |
-| Registros | *Alias* A y AAAA de los dos nombres hacia su distribución. **El dominio raíz y `www` no se tocan:** quedan para la página personal de la dueña, y la pila rechaza un subdominio `www` |
+| Registros | *Alias* A y AAAA de los dos nombres hacia su distribución. **El dominio raíz y `www` no se tocan:** quedan para otro sitio, y la pila rechaza un subdominio `www` |
 | Configuración | `ORIGENES_WEB` con el dominio de la web: con dominio la fija la pila de la API; sin dominio va en el secreto |
 
 **Sin las variables del dominio**, el mismo stack publica en la dirección gratuita de CloudFront (`https://<id>.cloudfront.net`), con HTTPS incluido y el mismo comportamiento de sesión y CSRF. El dominio se activa con dos variables del despliegue (`-c dominio=… -c zonaId=…`, que van juntas); sin ellas no se crean certificado ni registros, y la zona nunca se crea.
@@ -79,7 +79,7 @@ Mejoras posibles, sin hacer: que el asistente reciba el plazo que le queda y cor
 - Las pantallas actuales siguen disponibles para administración en su subdominio, con su propia sesión, mientras la web nueva las reemplaza. **La sesión de `software.` no vale en `admin.software.`:** la cookie `__Host-sesion` queda atada al nombre exacto que la creó y no se comparte entre subdominios. Pasar a administración, por ejemplo desde los enlaces de la web a Proyectos, Usuarios o la revisión completa de un gasto, pide entrar otra vez.
 - **Un navegador que no manda `Sec-Fetch-Site` recibe 403 en los formularios de administración.** Detrás de CloudFront, `Host` es el de la dirección de función, y `mismo_origen` (`app/servicios/acceso.py:244`) solo acepta un `Origin` igual a `Host` cuando falta esa cabecera. Todos los navegadores actuales la mandan (Chrome y Edge desde 2019, Firefox desde 2021, Safari desde la versión 16.4, de 2023), así que hoy solo afecta a navegadores viejos. La web nueva no tiene el problema: `origen_permitido` (`:255`) acepta además los orígenes de `ORIGENES_WEB`. Se corregiría de la misma forma: que `mismo_origen` acepte también un `Origin` declarado (el de `admin.` en la configuración). Otra opción es que una función de CloudFront pase el nombre que pidió el visitante en una cabecera propia y la aplicación compare `Origin` con ella, confiando en esa cabecera solo cuando la petición viene de CloudFront.
 - La web suma una función con arranque en frío. Se mide en el primer despliegue; si molesta, se reserva concurrencia mínima, igual que con el backend.
-- **Nada de esto se despliega hasta que la dueña declare el producto final.** La entrega del 13 de noviembre se demuestra en local con Docker.
+- **Está publicado:** la web en `software.nataliaremolinarodriguez.com` y administración en `admin.software.nataliaremolinarodriguez.com`, con las tres pilas de `infra/` (estado y operación en `docs/produccion.md`). La entrega del 13 de noviembre se puede demostrar ahí o en local con Docker.
 
 ## Pendiente de comprobar al implementar
 

@@ -164,7 +164,7 @@ export class WebStack extends Stack {
       ?? route53.HostedZone.fromHostedZoneAttributes(this, "Zona", { hostedZoneId: dominio.zonaId, zoneName: dominio.raiz });
   }
 
-  /** Alias A y AAAA de los dos subdominios. El raíz y `www` quedan para la página personal de la dueña. */
+  /** Alias A y AAAA de los dos subdominios. El raíz y `www` quedan para la página personal de la titular del dominio. */
   private registros(dominio: Dominio, web: cloudfront.Distribution, admin: cloudfront.Distribution) {
     const zona = this.zona(dominio);
     const prohibidos = [dominio.raiz, `www.${dominio.raiz}`];

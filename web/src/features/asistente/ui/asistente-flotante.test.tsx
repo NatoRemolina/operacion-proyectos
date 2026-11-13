@@ -41,8 +41,9 @@ describe("Asistente flotante", () => {
     expect(within(panel).getByText(/Solo ves lo tuyo/)).toBeInTheDocument();
     expect(within(panel).queryByText(/proyectos que gestionas/) !== null).toBe(permiso === "gestor");
     expect(within(panel).queryByRole("button", { name: "¿Cómo van los indicadores?" })).toBeNull();
-    await usuario.click(within(panel).getByRole("button", { name: "¿Cuánto me queda del presupuesto?" }));
-    expect(preguntar).toHaveBeenCalledWith("¿Cuánto me queda del presupuesto?");
+    const sugerida = permiso === "gestor" ? "¿Cómo va el presupuesto de mi proyecto?" : "¿Cuánto me queda del presupuesto?";
+    await usuario.click(within(panel).getByRole("button", { name: sugerida }));
+    expect(preguntar).toHaveBeenCalledWith(sugerida);
     expect(await within(panel).findByText("Te quedan 120,00 USD.")).toBeInTheDocument();
   });
 
@@ -66,6 +67,29 @@ describe("Asistente flotante", () => {
     await usuario.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Asistente IA" })).toBeNull();
     expect(boton).toHaveFocus();
+  });
+
+  it("con el panel abierto, Tab y Mayús+Tab no salen de él", async () => {
+    const usuario = userEvent.setup();
+    renderizarConFuente(
+      <>
+        <button type="button">Otro botón de la página</button>
+        <AsistenteFlotante />
+        <button type="button">Botón de la página</button>
+      </>,
+      { asistente: crearAsistenteMemoria({ responder: () => respuesta() }), permiso: "admin", personaId: 7 },
+    );
+    await usuario.click(screen.getByRole("button", { name: "Asistente IA" }));
+    const panel = screen.getByRole("dialog", { name: "Asistente IA" });
+    expect(panel).toHaveAttribute("aria-modal", "true");
+    for (let i = 0; i < 12; i++) {
+      await usuario.tab();
+      expect(panel).toContainElement(document.activeElement as HTMLElement);
+    }
+    for (let i = 0; i < 12; i++) {
+      await usuario.tab({ shift: true });
+      expect(panel).toContainElement(document.activeElement as HTMLElement);
+    }
   });
 
   it("una pregunta sugerida se responde con formato, modo, duración y fuentes enlazadas, sin perder el foco", async () => {

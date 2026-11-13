@@ -1,12 +1,12 @@
 # ADR 0001 · Arquitectura objetivo y migración por anillos
 
-Estado: aceptada · Fecha: 12 de noviembre de 2026
+Estado: aceptada · Fecha: 12 de noviembre de 2026 · Estado de los anillos al 13 de noviembre de 2026
 
 ## Contexto
 
 La plataforma nació como una sola aplicación FastAPI con pantallas servidas por el backend, una sola base PostgreSQL (Supabase en la nube, SQLite en local) y un despliegue en una función de AWS Lambda. Resuelve los dos retos de la prueba (cotización de viajes y gastos por proyecto) sobre un eje común: el viaje.
 
-El plan fullstack fija un objetivo distinto:
+La arquitectura objetivo definida para la plataforma es distinta:
 
 - una web Next.js con TypeScript que consume una API JSON versionada;
 - un API Gateway delante;
@@ -19,35 +19,35 @@ El mapa de acoplamientos (`docs/arquitectura_objetivo.md`) muestra que hoy esos 
 
 Migrar **por anillos, estrangulando la aplicación actual** en lugar de reescribirla. La aplicación actual sigue funcionando en cada paso; se le van sacando capacidades por el borde. Nunca hay dos escritores del mismo dato, y nada se llama «microservicio» mientras comparta tablas o despliegue.
 
-| Anillo | Qué se construye | Fases del plan | Estado |
-|---|---|---|---|
-| 0 · Contrato y borde | API JSON v1 dentro de la aplicación actual; gateway local delante; errores uniformes, token CSRF, permisos por registro | F1, F2, M0, M1 parcial | En curso |
-| 1 · Web nueva | Next.js consume solo la API v1; las pantallas actuales quedan de respaldo | F3 a F6 | En curso: cotizar y decidir, mis viajes y mis gastos, y la aprobación de viajes y la revisión de gastos de administración; el resto sigue en las pantallas actuales |
-| 2 · Fronteras de datos | Esquemas privados (`org`, `viajes`, `gastos`) con un rol y una credencial por dominio; se cortan los cruces | M1 completa | Pendiente |
-| 3 · Servicios reales | Gastos sale primero (base, migraciones, almacenamiento y proceso propios; outbox, inbox y saga de presupuesto); luego Viajes; queda Organización | M2, M3 | Pendiente |
-| 4 · Nube | Gateway administrado, una función por servicio con su secreto, temas y colas, hospedaje de la web, dominio | F10 | Pendiente |
+| Anillo | Qué se construye | Estado al 13 de noviembre |
+|---|---|---|
+| 0 · Contrato y borde | API JSON v1 dentro de la aplicación actual; gateway local delante; errores uniformes, token CSRF, permisos por registro | Hecho: contrato `contracts/api-v1.md` y su OpenAPI, gateway Caddy en local y CloudFront en la nube |
+| 1 · Web nueva | Next.js consume solo la API v1; las pantallas actuales quedan de respaldo | En curso: cotizar y decidir, viajes, gastos con el Excel contable, el asistente para los tres permisos, y la aprobación de viajes y la revisión de gastos de administración. Proyectos, Usuarios, Mi cuenta, la revisión completa de un gasto (corregir los datos leídos y aprobar con excepción), Reglas, KPIs, Monitoreo y el tablero de vuelos siguen en las pantallas de administración |
+| 2 · Fronteras de datos | Esquemas privados (`org`, `viajes`, `gastos`) con un rol y una credencial por dominio; se cortan los cruces | Pendiente |
+| 3 · Servicios reales | Gastos sale primero (base, migraciones, almacenamiento y proceso propios; outbox, inbox y saga de presupuesto); luego Viajes; queda Organización | Pendiente. Ya existe la transacción real con el viaje bloqueado, que era su condición previa |
+| 4 · Nube | Gateway administrado, una función por servicio con su secreto, temas y colas, hospedaje de la web, dominio | Hecho en parte: la web y la API están publicadas en AWS detrás de CloudFront, con dominio propio, certificado y alarmas ([ADR 0002](0002-hospedaje-de-la-web.md), `docs/produccion.md`). Faltan una función por servicio, temas y colas |
 
 El orden lo justifica una sola razón: **el contrato y el gateway son lo único que permite mover después un servicio sin que la web se entere**. Separar datos antes de tener contrato obligaría a reescribir las pantallas dos veces.
 
 ### Datos: primero esquemas, después bases
 
-La separación empieza con tres esquemas privados en el mismo PostgreSQL, cada uno con su rol y su credencial; un servicio no puede leer las tablas de otro (prueba MS-01 del plan). Cuando eso funcione y los cruces estén cortados, cada esquema se muda a su propia base. Mientras tanto se declara como **etapa de transición**: un esquema privado aísla el acceso, pero no la disponibilidad ni la restauración.
+La separación empieza con tres esquemas privados en el mismo PostgreSQL, cada uno con su rol y su credencial; un servicio no puede leer las tablas de otro, y una prueba automática debe comprobarlo. Cuando eso funcione y los cruces estén cortados, cada esquema se muda a su propia base. Mientras tanto se declara como **etapa de transición**: un esquema privado aísla el acceso, pero no la disponibilidad ni la restauración.
 
 ### Entorno local
 
-`docker-compose.yml` levanta PostgreSQL, la aplicación, la web y un gateway Caddy. El gateway publica un solo origen (`127.0.0.1:8088`): `/api/v1/*` va a la API y el resto a la web. Es la misma forma que tendrá en la nube con un API Gateway administrado. El entorno local nunca lee `.env`, que apunta a la base real.
+`docker-compose.yml` levanta PostgreSQL, la aplicación, la web y un gateway Caddy. El gateway publica un solo origen (`127.0.0.1:8088`): `/api/v1/*` va a la API y el resto a la web. Es la misma forma que tiene en la nube, donde CloudFront hace de gateway ([ADR 0002](0002-hospedaje-de-la-web.md)). El entorno local nunca lee `.env`, que apunta a la base real.
 
 ## Consecuencias
 
-- La entrega del viernes 13 es la etapa de transición: una sola base, una sola aplicación, con contrato, gateway y web nueva funcionando en local. Se presenta así, sin llamarla microservicios.
+- La entrega del viernes 13 es la etapa de transición: una sola base, una sola aplicación, con contrato, gateway y web nueva, publicadas en AWS y también en local con Docker. Se presenta así, sin llamarla microservicios.
 - Mientras convivan las pantallas actuales y la web nueva, **toda regla vive en un servicio que ambas llaman**; la API v1 no copia lógica de las rutas de pantallas.
 - El control del presupuesto es el corte más difícil: hoy Gastos decide sumando su propia tabla contra el límite de Viajes. En el anillo 3 pasa a un libro de reservas y consumos dueño de Viajes, coordinado con una saga.
-- Las transacciones hoy se confirman sentencia a sentencia. Antes del anillo 3 hace falta una unidad de trabajo con transacción real (frente `integridad`).
+- Registrar, asignar viaje y aprobar un gasto ya se hacen en una transacción real con el viaje bloqueado (`db.transaccion`, `db.bloquear_viaje`); el resto de las operaciones sigue en confirmación automática. Al separar servicios ese bloqueo deja de servir y lo reemplaza la saga.
 - El dinero sigue en coma flotante; pasar a decimales exactos se hace antes de separar servicios.
 
 ## Decisiones abiertas
 
-Se registrarán como ADR propios antes del anillo 4:
+Se registran como ADR propios a medida que se resuelven:
 
 | Tema | Opciones a evaluar |
 |---|---|

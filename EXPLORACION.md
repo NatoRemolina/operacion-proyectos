@@ -2,6 +2,8 @@
 
 Documento vivo. Continúa el [ANALISIS.md](ANALISIS.md): aquí se registran las ideas que se exploran, las que se descartan y por qué, y las decisiones que se van cerrando. Inicio: 11 de noviembre de 2026.
 
+> **Bitácora con fecha.** Cada sección refleja el momento en que se escribió; las notas «Estado al 13 de noviembre» dicen qué cambió después. El estado vigente está en el [informe técnico](docs/informe-tecnico.md) y la regla de negocio en [`docs/regla-de-negocio.md`](docs/regla-de-negocio.md).
+
 ## 1. Decisiones cerradas
 
 | Fecha | Decisión | Motivo |
@@ -9,12 +11,12 @@ Documento vivo. Continúa el [ANALISIS.md](ANALISIS.md): aquí se registran las 
 | 11 nov | Entrega: viernes 13 de noviembre de 2026, en la mañana | Plazo fijado por la empresa |
 | 11 nov | Tecnología: Python + FastAPI + SQLite, interfaz web servida por el mismo backend | Un solo comando para ejecutar; fácil para quien evalúa |
 | 11 nov | Extracción con un modelo de lenguaje multimodal por API; la clave va en `.env` fuera del repositorio | Ya hay clave disponible |
-| 11 nov | La documentación es entregable de primer orden y se escribe para que sirva de contexto a personas y a agentes | Lo pidió el entrevistador: alimenta el sistema central de la empresa (ver 2.1) |
+| 11 nov | La documentación es entregable de primer orden y se escribe para que sirva de contexto a quien lea | Se pidió en la entrevista: alimenta el sistema central de la empresa (ver 2.1) |
 | 11 nov | Escenarios de prueba en Estados Unidos y Europa, con pilotos de dron como viajeros | Es la operación real de la empresa (ver 2.1) |
-| 11 nov | Reto 1: se entrega una demo que funciona, no solo una propuesta | Decisión de la candidata |
+| 11 nov | Reto 1: se entrega una demo que funciona, no solo una propuesta | Decisión propia |
 | 11 nov | Reto 1: precios reales obtenidos por extracción (Apify, ver 4.5), con resultados guardados de respaldo y cada dato marcado como en vivo, guardado o simulado | Ataca "reducir el tiempo de búsqueda"; el respaldo permite ejecutar la demo sin cuenta y cubre fallos el día de la presentación |
 | 11 nov | Reto 1: SerpApi como fuente principal de precios; Apify queda de respaldo; Firecrawl para el catálogo de reglas (ver 7.4) | La prueba real mostró que entrega tarifas, equipaje y condiciones de cambio, que el extractor de Apify no trae |
-| 11 nov | Una sola aplicación web con los dos retos; datos en Postgres de Supabase (SQLite cuando no hay conexión) y despliegue previsto en AWS. Reemplaza la decisión de usar solo SQLite | Pedido de la candidata: producto visible, con monitoreo del recorrido de los datos |
+| 11 nov | Una sola aplicación web con los dos retos; datos en Postgres de Supabase (SQLite cuando no hay conexión) y despliegue previsto en AWS. Reemplaza la decisión de usar solo SQLite | Decisión propia: producto visible, con monitoreo del recorrido de los datos |
 | 11 nov | Antes de construir se explora a fondo y todo queda documentado dentro del repositorio | Parte de lo evaluado es el proceso y el razonamiento |
 
 ## 2. Tiempo disponible
@@ -33,7 +35,7 @@ Consecuencia: la exploración tiene que cerrarse hoy, y cada idea debe pasar el 
 
 ## 2.1 Contexto de la empresa
 
-Fuente: explicación verbal del entrevistador (audio de unos 8 minutos, 11 de noviembre). Marcas: **[Entrevista]** es lo dicho con claridad; **[Por confirmar]** es lo que no se entendió bien en la grabación o es deducción propia.
+Fuente: explicación verbal en la entrevista (audio de unos 8 minutos, 11 de noviembre). Marcas: **[Entrevista]** es lo dicho con claridad; **[Por confirmar]** es lo que no se entendió bien en la grabación o es deducción propia.
 
 **Qué hace la empresa**
 - Servicios de marketing para el sector inmobiliario (*real estate*), sobre todo imagen y video aéreo. [Entrevista]
@@ -49,15 +51,15 @@ Fuente: explicación verbal del entrevistador (audio de unos 8 minutos, 11 de no
 **Por qué existe la vacante** [Entrevista]
 - Los desarrollos del área son de mediano y largo plazo, pero la operación sigue siendo manual y los pilotos y editores no tienen tiempo para levantar información.
 - Se abren varias vacantes para personas que entren a la operación (en este caso, Gestión de Proyectos y Finanzas), conozcan sus grupos de trabajo, necesidades y dolores, y entreguen **soluciones rápidas, en semanas**.
-- **Todo lo que se construya debe quedar documentado**, con su resultado: esa documentación semanal se usa como contexto para los agentes con los que el área de desarrollo construye el sistema central.
-- Ejemplo que dio el entrevistador: Finanzas tiene problemas para registrar los gastos por proyecto. Es el Reto 2.
+- **Todo lo que se construya debe quedar documentado**, con su resultado: esa documentación semanal se usa como contexto para construir el sistema central.
+- Ejemplo dado en la entrevista: Finanzas tiene problemas para registrar los gastos por proyecto. Es el Reto 2.
 
 **Qué valora quien evalúa** (segundo y tercer audio, 11 de noviembre) [Entrevista]
 - **Cuestionar el proceso, no solo automatizarlo**: "si Gestión de Proyectos dice que para llegar al resultado pasa por A, B, C y D, y tú ves que B y C se pueden obviar y llegar de A a D con una herramienta, bienvenido sea". Se espera proactividad.
 - **Pequeñas ganancias**: herramientas pequeñas que hagan el día a día más fácil mientras llega el sistema operativo. No se pide una plataforma.
 - **Aterrizar necesidades a un alcance tecnológico**: la persona hace parte del equipo operativo, entiende sus necesidades y las traduce.
-- **Dejar registro**: "sin contexto no existen las mejores soluciones"; cada pequeña ganancia deja documentación que alimenta a los agentes del área de desarrollo.
-- **La IA es bienvenida y ya se usa en la operación**: el ejemplo que dio fue un piloto que, en un proyecto de 600 imágenes en Las Vegas con entrega en dos a tres semanas, le enseñó a un asistente de IA a hacer el pegado de fotogramas (*stitching*) y multiplicó el avance en una noche. Después el área de desarrollo lo convirtió en herramienta formal.
+- **Dejar registro**: "sin contexto no existen las mejores soluciones"; cada pequeña ganancia deja documentación que alimenta el trabajo del área de desarrollo.
+- **La IA es bienvenida y ya se usa en la operación**: el ejemplo que dio fue un piloto que, en un proyecto de 600 imágenes en Las Vegas con entrega en dos a tres semanas, le enseñó a una herramienta de IA a hacer el pegado de fotogramas (*stitching*) y multiplicó el avance en una noche. Después el área de desarrollo lo convirtió en herramienta formal.
 - **La prueba es un caso que les ocurre hoy**, de interpretación libre, y después se **socializa**: habrá que presentarla y explicarla.
 
 Lo que esto añade al plan:
@@ -75,11 +77,11 @@ Lo que esto añade al plan:
 | Gastos típicos | Genéricos | Vuelo, hotel, alquiler de carro, combustible, peajes y parqueo, comidas; posibles permisos o tasas de vuelo [Por confirmar] |
 | Qué es un "proyecto" | Sin definir | Una grabación en una ciudad para un cliente, con plazo de semanas (ejemplo: Las Vegas, 600 imágenes) |
 | Programas de fidelización | LATAM Pass, LifeMiles, Marriott | Faltan los de aerolíneas, hoteles y alquiler de carros de Estados Unidos y Europa, incluidos los programas para empresas pequeñas; hay que verificarlos en fuentes oficiales |
-| Documentación | Entregable secundario | Entregable de primer orden: debe servir como contexto para agentes que construirán el sistema central |
+| Documentación | Entregable secundario | Entregable de primer orden: debe servir como contexto para construir el sistema central |
 | Destino de la solución | Herramienta independiente | Herramienta puente: útil ya, y con datos y reglas fáciles de migrar al sistema central |
 
 **Consecuencias de diseño**
-- Cada solución lleva una ficha estable y estructurada (problema, usuarios, flujo, modelo de datos, reglas de negocio, supuestos, resultado medido), pensada para que la lea tanto una persona como un agente.
+- Cada solución lleva una ficha estable y estructurada (problema, usuarios, flujo, modelo de datos, reglas de negocio, supuestos, resultado medido), pensada para que sirva de contexto a quien la lea.
 - El modelo de datos y las reglas de negocio se documentan aparte del código, y los datos se pueden exportar completos.
 - Los documentos de prueba deben parecerse a los de la operación real: recibos en inglés y en otros idiomas europeos, importes en USD y EUR, formatos de fecha distintos, impuestos como *sales tax* e IVA, propinas.
 - Se prefiere lo pequeño y terminado sobre lo amplio: la empresa busca soluciones de semanas.
@@ -133,7 +135,7 @@ Estado: **propuesta** (por discutir), **aceptada**, **descartada**.
 | # | Idea | Valor | Costo | Estado |
 |---|---|---|---|---|
 | D.1 | **Mapa antes y después** de cada proceso: pasos actuales, pasos que desaparecen, pasos que quedan, tiempo estimado por gasto o por viaje | Responde directo a "de A a D sin pasar por B y C" | Bajo | Propuesta |
-| D.2 | **Ficha de contexto por solución**, con estructura fija (problema, usuarios, flujo, modelo de datos, reglas de negocio, supuestos, resultado medido) | Es el registro que la empresa quiere dar como contexto a sus agentes | Bajo | Propuesta |
+| D.2 | **Ficha de contexto por solución**, con estructura fija (problema, usuarios, flujo, modelo de datos, reglas de negocio, supuestos, resultado medido) | Es el registro que la empresa quiere usar como contexto para su sistema central | Bajo | Propuesta |
 | D.3 | **Guion de demostración** de cinco a siete minutos, con un caso de principio a fin (un viaje a una grabación y sus gastos) | La prueba se socializa después de entregarla | Bajo | Propuesta |
 
 ### 4.3 Puentes entre los dos retos
@@ -170,7 +172,7 @@ Estado: aceptada el 11 de noviembre. No se ha ejecutado ningún extractor todav�
 3. **Canales del Reto 2**: ¿carga web + buzón simulado + página para celular?
 4. ~~A qué se dedica la empresa y dónde opera~~: resuelto el 11 de noviembre, ver 2.1. La verificación de programas de fidelización y reglas de baterías está en 7.1.
 5. **Forma de entrega**: ¿repositorio privado, archivo comprimido, video de demostración? El enunciado es confidencial, lo que afecta si `ENUNCIADO.md` se versiona y dónde se aloja el repositorio.
-6. **Mención de las herramientas de IA**: el enunciado pide explicar cuáles se usaron (punto 4 del envío, redactado por la candidata). Hay que decidir dónde vive ese texto y qué se nombra en los archivos versionados.
+6. **Explicación de las herramientas usadas**: el enunciado pide explicarlas (punto 4 del envío, redactado por la persona que presenta la prueba). Hay que decidir dónde vive ese texto.
 
 ## 6. Ideas descartadas
 
@@ -299,6 +301,8 @@ Al cierre del 11 de noviembre:
 | Despliegue en AWS | Pendiente; hay `Dockerfile`, sin probar |
 | Medición de exactitud, documentos de `docs/`, guion | Pendiente |
 
+> **Estado al 13 de noviembre.** Supabase está conectado y la migración aplicada en la base publicada; la plataforma está desplegada en AWS con dominio propio ([`docs/produccion.md`](docs/produccion.md)); la medición de exactitud está escrita y pendiente de correr con la clave del modelo ([`docs/exactitud-lectura.md`](docs/exactitud-lectura.md)); los documentos están en `docs/` y el guion de demostración en el README.
+
 Resultado del caso de ejemplo (Miami a Las Vegas, piloto con cuatro baterías de 77 Wh, maleta, 25 % de probabilidad de cambio, llegada antes de las 18:00): el buscador pone primero un vuelo de 279 USD con escala; por costo total esperado gana el vuelo directo en tarifa estándar (561 USD esperados frente a 566), y cuatro opciones se descartan por llegar tarde. La diferencia es pequeña y depende de supuestos editables; lo que aporta la herramienta es que la comparación queda explícita.
 
 ## 9. Ampliación: datos, modelo, analítica y agente
@@ -355,9 +359,9 @@ Ajustes que pidió la conexión remota: modo de confirmación automática para q
 
 Sin configuración, la aplicación sigue usando SQLite y carpeta local, de modo que quien evalúe puede ejecutarla sin cuenta.
 
-## 10. Visión del producto (audio de la candidata, 11 nov)
+## 10. Visión del producto (nota de voz, 11 nov)
 
-Fuente: nota de voz de unos siete minutos en la que la candidata explica la idea completa. Transcripción automática; lo marcado **[Por confirmar]** no se oyó con claridad.
+Fuente: nota de voz de unos siete minutos en la que la persona que presenta la prueba explica la idea completa. Transcripción automática; lo marcado **[Por confirmar]** no se oyó con claridad.
 
 **Recorrido que describe**
 
@@ -389,3 +393,5 @@ Fuente: nota de voz de unos siete minutos en la que la candidata explica la idea
 | Despliegue | Pendiente |
 
 **Lectura.** La idea coincide con la arquitectura actual y corrige el orden correcto del aprendizaje: primero reglas y agente, después modelo, cuando existan elecciones reales. Lo que falta para que la plataforma cuente esa historia completa son tres piezas: usuarios con rol, motivo estructurado de la decisión y conjunto de datos etiquetado.
+
+> **Estado al 13 de noviembre.** Las tres piezas están hechas: cuentas con contraseña propia y tres permisos (colaborador, gestor y administración), con el cargo aparte; la decisión guarda las razones marcadas y si se siguió la recomendación; y cada opción mostrada queda en `elecciones` con la marca de cuál se eligió. La analítica es solo para administración y la plataforma está desplegada ([`docs/produccion.md`](docs/produccion.md)). Sigue faltando la pantalla para declarar prioridades en lenguaje llano.

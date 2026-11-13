@@ -58,7 +58,7 @@ def test_colaborador_y_gestor_ven_la_burbuja_con_lo_suyo(request, quien):
     assert r.status_code == 200 and 'id="asistente-flotante"' in r.text and 'aria-controls="af-panel"' in r.text
     assert '<script src="/static/asistente_flotante.js?v=' in r.text
     assert 'data-ruta="/asistente"' in r.text and 'href="/admin/asistente"' not in r.text   # la página completa es de administración
-    assert all(f'data-pregunta="{p}"' in r.text for p in asistente.SUGERIDAS["persona"])
+    assert all(f'data-pregunta="{p}"' in r.text for p in asistente.SUGERIDAS["gestor" if quien == "gestor" else "persona"])
     assert not any(p in r.text for p in asistente.SUGERIDAS["admin"])
     assert "Solo ves lo tuyo" in r.text and ("proyectos que gestionas" in r.text) == (quien == "gestor")
     yo = db.uno("select id from usuarios where correo=:c", c=f"{quien}@demo.local")

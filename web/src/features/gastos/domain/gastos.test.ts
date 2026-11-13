@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { etiquetaCategoria, mesEnCurso, problemaDePeriodo, validarArchivo } from "./gastos";
+import { anioEnCurso, etiquetaCategoria, problemaDePeriodo, validarArchivo } from "./gastos";
 
 describe("archivo del recibo", () => {
   it("el tope es el mismo que el del servidor (4,5 MB, no 4,5 MiB)", () => {
@@ -28,10 +28,11 @@ describe("archivo del recibo", () => {
 });
 
 describe("periodo del Excel contable", () => {
-  it("por omisión es el mes en curso, del primer al último día, en la fecha local", () => {
-    expect(mesEnCurso(new Date(2026, 1, 14, 23, 59))).toEqual({ desde: "2026-02-01", hasta: "2026-02-28" });
-    expect(mesEnCurso(new Date(2028, 1, 3))).toEqual({ desde: "2028-02-01", hasta: "2028-02-29" });
-    expect(mesEnCurso(new Date(2026, 11, 31))).toEqual({ desde: "2026-12-01", hasta: "2026-12-31" });
+  it("por omisión es el año en curso, del 1 de enero al 31 de diciembre, en la hora de la empresa", () => {
+    expect(anioEnCurso(new Date("2026-02-14T12:00:00Z"))).toEqual({ desde: "2026-01-01", hasta: "2026-12-31" });
+    // 22:00 del 31 de diciembre en Nueva York: en UTC ya es el año siguiente
+    expect(anioEnCurso(new Date("2027-01-01T03:00:00Z"))).toEqual({ desde: "2026-01-01", hasta: "2026-12-31" });
+    expect(anioEnCurso(new Date("2027-01-01T06:00:00Z"))).toEqual({ desde: "2027-01-01", hasta: "2027-12-31" });
   });
 
   it("exige las dos fechas y que la final no sea anterior a la inicial, como el servidor", () => {

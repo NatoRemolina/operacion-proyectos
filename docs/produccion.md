@@ -70,7 +70,7 @@ Todo está en `docs/despliegue.md`, con la vuelta atrás de cada parte. Desplega
 ## Pendientes para operar con más garantías
 
 - **Desplegar con un usuario propio con MFA,** no con el usuario raíz de la cuenta. Mejor aún: desde la integración continua, con un rol y aprobación manual.
-- **Topes para el agente de cotización y la lectura de recibos** (auditoría, H-29 y H-30).
+- **Topes para el agente de cotización y la lectura de recibos.** Tienen plazo y tope de tokens de salida por llamada, pero no un tope de gasto por día como el del asesor (`asesor_usd_dia`).
 - **Una regla de limpieza de imágenes viejas** en ECR.
 - **Un respaldo nocturno automático** de la base (`docs/respaldo.md`, opción B).
 - **Un ambiente previo a producción** en AWS.

@@ -405,3 +405,28 @@ def test_una_etiqueta_sin_cierre_no_se_traga_el_resto_de_la_confirmacion():
     texto = extraccion.html_a_texto(b"<html><body><p>Hotel Uno</p><embed src='x.swf'><p>Total USD 99.00</p>"
                                     b"<svg/><p>Pagado con Visa</p></body></html>")
     assert texto.splitlines() == ["Hotel Uno", "Total USD 99.00", "Pagado con Visa"]
+
+
+# ---------- el original de un correo se ve, no se abre como MIME crudo ----------
+def test_el_original_de_un_eml_con_adjunto_muestra_el_adjunto(cliente, viaje_aprobado, modelo):
+    pdf = _pdf("Factura original", "TOTAL EUR 375.24")
+    gid = _subir_web(cliente, viaje_aprobado["id"], "reserva.eml", _correo([(PNG, "image/png", "logo.png"),
+                                                                            (pdf, "application/pdf", "factura.pdf")]))
+    r = cliente.get(f"/gastos/{gid}/soporte")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf" and r.content == pdf
+    assert r.headers["content-disposition"] == "inline"
+    doc = db.uno("select documento_id from gastos where id=:i", i=gid)["documento_id"]
+    r = cliente.get(f"{V1}/documentos/{doc}/contenido")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf" and r.content == pdf
+    assert r.headers["content-security-policy"].startswith("default-src 'none'")
+
+
+def test_el_original_de_un_eml_sin_adjunto_es_el_texto_del_correo(cliente, viaje_aprobado, modelo):
+    correo = _correo([], asunto="Su tiquete MIA-LIS", cuerpo="Total pagado USD 581.00")
+    gid = _subir_web(cliente, viaje_aprobado["id"], "tiquete.eml", correo)
+    doc = db.uno("select documento_id from gastos where id=:i", i=gid)["documento_id"]
+    for r in (cliente.get(f"/gastos/{gid}/soporte"), cliente.get(f"{V1}/documentos/{doc}/contenido")):
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+        assert r.text.startswith("De: Reservas <reservas@hotel-ejemplo.test>\nAsunto: Su tiquete MIA-LIS\n")
+        assert "Total pagado USD 581.00" in r.text
+        assert "Content-Type:" not in r.text and "MIME-Version" not in r.text

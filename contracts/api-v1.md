@@ -174,7 +174,7 @@ Parámetros: `viaje_id`, `estado` (opcionales), `limite`, `cursor`. Mismo alcanc
 ### `GET /gastos/contable`
 El Excel contable: un `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) con `Content-Disposition: attachment; filename="libro_contable_<desde>_<hasta>[_proyecto_<id>].xlsx"`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. Lo genera `app/servicios/contable.py`.
 
-- Parámetros: `desde` y `hasta` (`AAAA-MM-DD`, por la fecha del recibo, ambos incluidos; por omisión, el mes en curso en la hora de Nueva York, `America/New_York`: es un supuesto, la zona de la empresa, para que la nube, que corre en UTC, no proponga el mes siguiente desde las 19:00 o 20:00 del último día) y `proyecto_id` (opcional, de 1 a 2147483647; fuera de ese rango, 422).
+- Parámetros: `desde` y `hasta` (`AAAA-MM-DD`, por la fecha del recibo, ambos incluidos; por omisión, el año en curso, del 1 de enero al 31 de diciembre, en la hora de Nueva York, `America/New_York`: es un supuesto, la zona de la empresa, para que la nube, que corre en UTC, no proponga el año siguiente desde las 19:00 o 20:00 del 31 de diciembre) y `proyecto_id` (opcional, de 1 a 2147483647; fuera de ese rango, 422).
 - Entran los gastos `aprobado` y `aprobado_auto` que la persona puede ver: administración, todos; quien gestiona, los de sus proyectos y los suyos; el resto, solo los suyos.
 - Hoja «Gastos», una fila por gasto: n.º, fecha, viaje, proyecto, código y nombre de la persona, proveedor, categoría, cuenta contable, base, impuesto (vacío si la lectura no lo trae), propina, total, moneda, tasa a USD, total USD, estado, quién aprobó y cuándo (UTC), alertas o excepción y el enlace al gasto en la plataforma. Hoja «Resumen»: totales por proyecto, por cuenta y por moneda, y los parámetros del libro (fechas, filtros, quién lo generó y cuándo).
 - La cuenta contable sale de un mapa categoría → cuenta editable en «Reglas y supuestos» (claves `cuenta_contable_<categoría>`, ámbito `supuesto`).
@@ -210,7 +210,7 @@ Los campos de datos que no se mandan se conservan; los importes van como cadena.
 Cuerpo JSON `{"texto": string}` (3 a 2.000 caracteres) y `X-CSRF-Token`. Añade para qué fue el gasto, con las palabras de la persona. 201 `GastoDetalle` con la justificación nueva al final. Solo justifica quien hizo el gasto o quien viaja: un gasto que la persona ve pero no es suyo (el gestor, administración) responde 403 `FORBIDDEN`; uno que no ve, 404. Texto vacío o muy corto: 422. Las notas de voz entran por la web o por Telegram; ver `docs/justificaciones.md`.
 
 ### `GET /documentos/{id}/contenido`
-El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `application/pdf`; un correo se entrega como `text/plain`), `Content-Disposition: inline` (una confirmación HTML se guarda reducida a texto plano, sin código ni enlaces, y se entrega como `text/plain` con `Content-Disposition: attachment`), `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto al que pertenece no es visible.
+El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `application/pdf`; de un correo `.eml` se entrega su adjunto si es un PDF o una foto, y si no tiene, su texto como `text/plain` con De, Asunto, Fecha y el cuerpo, nunca el MIME crudo), `Content-Disposition: inline` (una confirmación HTML se guarda reducida a texto plano, sin código ni enlaces, y se entrega como `text/plain` con `Content-Disposition: attachment`), `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto al que pertenece no es visible.
 
 ### `POST /asistente`
 Para los tres permisos, cada uno con el alcance de su sesión: el colaborador ve sus viajes y sus gastos; el gestor, además, los de los proyectos que gestiona; administración, todo. El alcance lo pone la sesión, nunca la pregunta: un viaje, un gasto o una persona fuera de él se responde como si no existiera y no aparece entre las fuentes, y los indicadores de toda la empresa son solo para administración. Sin sesión, 401; 403 solo por `CSRF_INVALID`, `ORIGIN_NOT_ALLOWED` o una sesión sin un permiso válido (`FORBIDDEN`). Cuerpo `{"pregunta": "..."}` (1 a 500 caracteres; solo espacios es 422) y `X-CSRF-Token`. Sigue la misma vía que la plataforma: asesor (agente con herramientas), modelo con herramientas o consultas directas, con el mismo tope diario por persona y el mismo rastro en `asistente_consultas`. Con el asesor puede tardar hasta un minuto.
@@ -357,7 +357,7 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 
 ## Fuera de este contrato (siguientes fases)
 
-Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
+Reproceso de una lectura fallida y las pantallas de analítica de precios y flujo de la información, que siguen en la plataforma anterior. La hoja de ruta está en `docs/informe-tecnico.md`.
 
 ## Revisión completa de gastos
 
@@ -424,6 +424,53 @@ Cuerpo JSON `{"valor": "0.25"}` (hasta 500 caracteres) y `X-CSRF-Token`. 200 `Re
 - Una regla numérica sigue siendo numérica: se acepta la coma decimal («0,25» se guarda «0.25»); un texto, un negativo, un vacío o un valor no finito responden 422 `VALIDATION_ERROR` con `fields.valor` y no se guarda nada.
 - Una regla de texto guarda el texto sin espacios al principio ni al final.
 - Deja el evento «regla editada» con el valor anterior y el nuevo. 404 si la regla no existe.
+
+## KPIs
+
+Solo administración, como la pantalla `/admin/kpis`: otra cuenta recibe 403 `FORBIDDEN`. Las cifras salen de la misma definición que la pantalla y que `/api/metricas` (`app/servicios/kpis.py`). Filtros comunes: `proyecto_id` (0 o ausente: todos), `desde` y `hasta` (`AAAA-MM-DD`; una fecha que no es válida se ignora, como en la pantalla).
+
+### `GET /kpis`
+200 `TableroKpis`:
+
+- `kpis`: cada indicador de los dos retos con `valor` (número en su `unidad`, o `null` sin datos), `meta`, `alerta`, `sentido` (`mayor` o `menor` es mejor), `estado` (`verde`, `ambar`, `rojo`, `sin datos` o `fuera de rango`), `responsable`, `formula` y `principal`. `fuera de rango` es un valor imposible para el indicador (días u horas negativos, una proporción sobre 100 %): un dato malo que hay que revisar, nunca en meta. El ahorro sí puede ser negativo.
+- `resumen`: cuántos hay en cada estado (`verde`, `ambar`, `rojo`, `sin_datos`, `fuera_de_rango`). `tendencia`: los principales semana a semana (8 semanas, de lunes a domingo, hasta `hasta` u hoy).
+- `cotizacion` y `gastos`: los desgloses de la pantalla. Los conteos van como `{etiqueta, valor}`.
+- `personas` (una fila por cuenta con lo suyo) y `por_cargo`. `proyectos` y `retos` sirven para armar los filtros y los títulos.
+
+### `GET /kpis/personas/{id}`
+200 `FichaPersona`: datos de la cuenta (sin contraseña), totales, indicadores de la persona, cotizaciones, viajes, gastos, evidencias y `eventos`, la línea de tiempo con los hechos sobre lo suyo (200 como máximo, del más reciente). Deja el evento «ficha consultada». Una persona que no existe: 404.
+
+### `GET /kpis/exportar.csv?que=kpis|consultas|personas`
+El mismo CSV de la pantalla con los filtros comunes, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Otro valor de `que`: 422.
+
+## Monitoreo
+
+Solo administración, como `/admin/monitoreo`: otra cuenta recibe 403 `FORBIDDEN`. Mismos filtros que los KPIs. Las cifras salen del catálogo de métricas (`app/servicios/metricas.py`), la misma definición de la pantalla.
+
+### `GET /monitoreo?pestana=viajes|gastos|busquedas|modelo|cupos|auditoria|calidad`
+200 `PestanaMonitoreo` (sin `pestana`: gastos; otra: 422). Cada pestaña llega lista para mostrar:
+
+- `cifras`: `{etiqueta, valor, unidad, pie}`; `valor` es `null` sin datos.
+- `tablas`: `{titulo, columnas, filas, vacio, nota, barras}`. Cada columna dice su `unidad` (`USD`, `%`) si es una cifra. Una celda es texto, número, `null` o un enlace `{texto, href}` a una página de la web (`/viajes/7`). `barras` marca las tablas cuya segunda columna se puede dibujar (embudo, gasto por categoría).
+- `exportar`: las vistas de la pestaña que se pueden descargar.
+- La pestaña Modelo incluye el costo del asesor, con su tope diario (supuesto `asesor_usd_dia`). La Auditoría no se filtra por proyecto.
+
+### `GET /monitoreo/exportar.csv?vista=v_h_…`
+El mismo CSV de la pantalla con los filtros, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Solo las vistas de la capa analítica (`v_h_viaje`, `v_h_gasto`, `v_h_busqueda`, `v_h_decision`, `v_h_lectura`, `v_h_evento`, `v_h_consulta`); otra: 422.
+
+## Vuelos
+
+Estado de cada tramo de los viajes aprobados, el día del viaje. Solo administración, como el tablero de `/admin/viajes`: otra cuenta (también quien viaja) recibe 403 `FORBIDDEN`. Las reglas (ventana, caché, topes y avisos al viajero) son las de `app/servicios/monitoreo_vuelos.py`.
+
+### `GET /vuelos?fecha=AAAA-MM-DD`
+200 `VuelosDelDia` con `tramos`. Sin fecha (o con una no válida): los de hoy (UTC) más los de ayer o mañana que están en su ventana.
+
+- Pensado para pedirse cada 15 s con la pestaña visible: cada tramo se consulta solo dentro de su ventana (desde 3 h antes de la salida hasta la llegada), con caché y topes por tramo, viaje y día; fuera de eso responde lo último conocido.
+- Cada tramo: estado (`estado` y `estado_texto`), `retraso` en minutos, `terminal` y `puerta`, horas locales programadas y estimadas, `no_llega` (con el retraso no llega a la hora límite de la grabación), `omitida` (por qué no se consultó la última vez) y `aviso` (el último aviso al viajero).
+- `origen`: `en vivo` o `guardado`; `origen_texto`: «En vivo» o «Estado de ejemplo» (la respuesta guardada del repositorio, que se usa sin clave del buscador o si la consulta falla). Null si el tramo nunca trajo datos.
+
+### `POST /vuelos/{tramo_id}/actualizar`
+Con `X-CSRF-Token`, sin cuerpo. «Actualizar ahora»: salta la caché (una vez por minuto), nunca la ventana ni los topes. 200 `ResultadoActualizacion` con `consultado`, `motivo` si no consultó, `mensaje` en palabras y el `tramo` actualizado. Un tramo que no existe: 404.
 
 ## Buzón de correo (simulado)
 

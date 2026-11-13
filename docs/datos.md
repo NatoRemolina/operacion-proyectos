@@ -2,6 +2,8 @@
 
 La base es relacional (PostgreSQL en la nube, SQLite en local, con el mismo código). El eje es el **viaje**: une la cotización con los gastos.
 
+La regla de negocio completa (estados, permisos, motivos de revisión, umbrales) está en [`regla-de-negocio.md`](regla-de-negocio.md). Aquí está el modelo de datos y dónde la hace cumplir la base. Los atributos de las tablas que el diagrama no detalla están en el [informe técnico](informe-tecnico.md), sección 3.
+
 ```
 persona ──► cotización ──► decisión ──► VIAJE ──► gastos y evidencias
                                           ▲
@@ -133,7 +135,7 @@ erDiagram
     int proyecto_id FK
     int usuario_id FK
     float total_usd
-    text estado
+    text estado "procesando, revision, aprobado_auto, aprobado o rechazado; sin CHECK en la base"
     text motivos "códigos de alerta"
     int version "NOT NULL, sube con cada cambio del gasto; la revisión compara la que vio quien revisa"
     text motivo_rechazo "por qué se rechazó, aparte de las alertas"
@@ -214,15 +216,15 @@ Se calculan a partir de la clave primaria, así que no pueden repetirse ni queda
 | El viaje pertenece a quien viaja | Clave foránea `viajes.usuario_id` | `viajes.titular_de` |
 | El presupuesto es lo que se espera pagar: compras de la decisión más viáticos por día | — | `viajes.presupuesto_de` |
 | Estados válidos del viaje | Restricción `ck_viajes_estado` | `viajes.TRANSICIONES` |
-| Solo administración aprueba, rechaza, reabre o cierra | — | `viajes.cambiar_estado`, `acceso.nivel` |
+| Solo administración aprueba, rechaza, reabre o cierra | — | `viajes.cambiar_estado`, que comprueba `acceso.es_admin` |
 | Con el presupuesto aprobado la decisión no cambia sin reabrir | — | `viajes.bloquea_decision` |
-| Todo gasto pertenece a un viaje aprobado; si no, se guarda y va a revisión | Clave foránea `gastos.viaje_id` | `validacion.revisar`: `sin_viaje`, `viaje_no_aprobado`, `viaje_cerrado`, `fuera_del_viaje`, `presupuesto_superado` |
+| Todo gasto pertenece a un viaje aprobado; si no, se guarda y va a revisión | Clave foránea `gastos.viaje_id` | `validacion.revisar`: `sin_viaje`, `viaje_no_aprobado`, `viaje_cerrado`, `fuera_del_viaje`, `presupuesto_superado`; una compra anterior al viaje (vuelo, hotel, carro, compras del proyecto) solo avisa con `compra_anticipada` |
 | A qué viaje va un gasto | — | `viajes.resolver_para_gasto`: el indicado, el fijado, el que está en curso, el próximo aprobado |
 | Permisos válidos: `colaborador`, `gestor`, `admin` | Restricción `ck_usuarios_rol` | `acceso.ROLES` |
 | El cargo no da permisos; es opcional | `usuarios.cargo_id`, clave foránea a `cargos` | `acceso.asignar_cargo` |
 | Nombre de cargo único; un cargo con personas asignadas no se borra, se desactiva | `cargos.nombre` único | `acceso.crear_cargo`, `acceso.cambiar_cargo` |
 | Toda cuenta tiene perfil de viajero | `usuarios.viajero_id` | `acceso.crear_usuario`, `acceso.crear_perfil_viajero` |
-| Nadie aprueba ni rechaza su propio presupuesto, ni revisa sus propios gastos; el intento queda en la bitácora | — | `viajes.cambiar_estado`, `viajes.impedir_autoaprobacion` |
+| Nadie aprueba ni rechaza su propio presupuesto, ni revisa sus propios gastos; el intento queda en la bitácora. Reabrir y cerrar lo propio sí se permite | — | Viaje: `viajes.cambiar_estado`. Gasto: `viajes.revision_permitida`, llamada desde `revision.guardar`. Bitácora: `viajes.impedir_autoaprobacion` |
 | El traslado por carretera suma al costo, a la hora límite y al presupuesto; a menos de `traslado_minimo_km` no se suma | — | `costo.traslado` |
 | Un código de aeropuerto marcado debe existir en los datos locales o en `aeropuertos_google` | — | `geografia.aeropuertos_conocidos` |
 | El autocompletado de Google respeta `tope_autocompletado_mes` y `tope_autocompletado_persona_dia` | — | `geografia._tope_alcanzado` |
@@ -251,7 +253,7 @@ El permiso (`usuarios.rol`) decide qué se puede hacer. El cargo (`cargos`) dice
 | Permiso | Ve | Puede |
 |---|---|---|
 | Colaborador (antes piloto) | Sus cotizaciones, viajes, gastos y evidencias | Cotizar, decidir sus viajes, cargar gastos (web, celular, Telegram) |
-| Gestor de proyecto | Lo suyo y todo lo de los proyectos que gestiona | Lo mismo que el colaborador sobre lo suyo; lo ajeno, solo lectura |
+| Gestor de proyecto | Lo suyo y todo lo de los proyectos que gestiona | Lo mismo que el colaborador y, en los proyectos que gestiona, cotizar y decidir por otras personas (`cotizacion.puede_decidir`). No aprueba viajes ni revisa gastos, ni justifica gastos ajenos |
 | Administrador | Todo | Aprobar presupuestos, revisar gastos, administrar cuentas y cargos, monitorear. No aprueba lo propio |
 
 Todas las cuentas viajan: cotizan, reciben viajes a su nombre y reportan gastos.

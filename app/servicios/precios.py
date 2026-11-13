@@ -535,8 +535,29 @@ def estado_vuelo(numero: str, fecha: str, solicitud_id: int | None = None) -> di
     return {**r, "origen": origen_dato} if r else None
 
 
-def buscar_hoteles(ciudad: str, entrada: str, salida: str, solicitud_id: int | None = None):
-    """Devuelve (lista de hoteles, origen del dato)."""
+def _hoteles_con_otro_nombre(nombres, entrada: str, salida: str):
+    """Respuesta guardada con otro nombre del mismo lugar («Lisbon» elegido en la lista, «lisboa» en el archivo).
+    Primero las mismas fechas (archivo o tabla compartida) y después otras fechas (solo archivos). Devuelve (datos,
+    clave, mismas fechas) o None."""
+    slugs = [s for s in dict.fromkeys(_slug(n) for n in nombres) if s]
+    if not slugs:
+        return None
+    archivos = {p.name for p in config.DIR_RESPALDO.glob("hoteles_*.json")}
+    claves = archivos | {f["clave"] for f in db.todos("select distinct clave from busquedas where clave like 'hoteles_%'")}
+    for s in slugs:
+        if (clave := f"hoteles_{s}_{entrada}_{salida}.json") in claves and (datos := _leer(clave)) is not None:
+            return datos, clave, True
+    fechas = re.compile(r"\d{4}-\d\d-\d\d_\d{4}-\d\d-\d\d\.json")
+    for s in slugs:
+        otros = sorted(a for a in archivos if a.startswith(f"hoteles_{s}_") and fechas.fullmatch(a[len(f"hoteles_{s}_"):]))
+        if otros:
+            return json.loads((config.DIR_RESPALDO / otros[0]).read_text()), otros[0], False
+    return None
+
+
+def buscar_hoteles(ciudad: str, entrada: str, salida: str, solicitud_id: int | None = None, otros_nombres=()):
+    """Devuelve (lista de hoteles, origen del dato). `otros_nombres` son los alternos del lugar elegido: solo se usan
+    para encontrar una respuesta guardada cuando no hay consulta en vivo; la consulta en vivo usa `ciudad`."""
     inicio, nombre, fallo = time.perf_counter(), f"hoteles_{_slug(ciudad)}_{entrada}_{salida}.json", None
     datos, origen_dato, clave = _leer(nombre), "guardado", nombre
     if datos is None and config.SERPAPI_KEY:
@@ -549,10 +570,9 @@ def buscar_hoteles(ciudad: str, entrada: str, salida: str, solicitud_id: int | N
         except Exception as e:
             datos, fallo = None, e
             _anotar("hoteles", nombre, "fallida", solicitud_id, inicio, error=e)
-    if datos is None:
-        otros = sorted(config.DIR_RESPALDO.glob(f"hoteles_{_slug(ciudad)}_*.json"))
-        if otros:
-            datos, origen_dato, clave = json.loads(otros[0].read_text()), "guardado (otras fechas)", otros[0].name
+    if datos is None and (otro := _hoteles_con_otro_nombre([ciudad, *otros_nombres], entrada, salida)):
+        datos, clave, mismas_fechas = otro
+        origen_dato = "guardado" if mismas_fechas else "guardado (otras fechas)"
     if datos is None:
         if not fallo:
             _anotar("hoteles", nombre, "fallida", solicitud_id, inicio, error=SIN_DATOS)

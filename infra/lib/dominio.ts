@@ -4,9 +4,9 @@ import { Node } from "constructs";
 export const SUBDOMINIO_POR_OMISION = "software";
 
 export interface Dominio {
-  /** El dominio raíz de la dueña. La pila nunca escribe registros en él ni en `www`. */
+  /** El dominio raíz de la titular de la cuenta. La pila nunca escribe registros en él ni en `www`. */
   raiz: string;
-  /** La zona alojada de Route 53, creada a mano por la dueña. Se importa: la pila no la crea ni la borra. */
+  /** La zona alojada de Route 53, creada a mano por la titular de la cuenta. Se importa: la pila no la crea ni la borra. */
   zonaId: string;
   web: string;
   admin: string;
