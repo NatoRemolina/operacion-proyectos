@@ -5,7 +5,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import db
-from ..servicios import acceso, eventos, viajes
+from ..servicios import acceso, eventos, usuarios, viajes
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -19,41 +19,23 @@ MENU = [{"texto": "Usuarios y roles", "href": "/admin/usuarios", "orden": 91, "r
         {"texto": "Reglas y supuestos", "href": "/reglas", "orden": 92, "rol": "admin", "grupo": "Administración"}]
 
 
-# ---------- administración de usuarios ----------
+# ---------- administración de usuarios: la regla vive en `app/servicios/usuarios.py` ----------
 @router.get("/admin/usuarios", response_class=HTMLResponse)
 def usuarios_pagina(request: Request, aviso: str = ""):
     return plantillas.TemplateResponse(request, "usuarios.html", _ctx(
         aviso=aviso[:200], roles=acceso.ROLES,
         nombre_rol=acceso.NOMBRE_ROL, codigo=viajes.codigo_persona,
         cargos=acceso.cargos(solo_activos=False), cargos_activos=acceso.cargos(),
-        miembros={m["usuario_id"]: m["proyectos"] for m in _proyectos_por_gestor()},
-        usuarios=db.todos("""select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, v.nombre viajero, u.telegram_usuario, u.telegram_chat_id,
-                             u.cargo_id, c.nombre cargo, (select max(ultima) from sesiones s where s.usuario_id=u.id) ultima
-                             from usuarios u left join viajeros v on v.id=u.viajero_id left join cargos c on c.id=u.cargo_id
-                             order by u.id""")))
-
-
-def _proyectos_por_gestor() -> list[dict]:
-    salida: dict[int, list[int]] = {}
-    for m in db.todos("select usuario_id, proyecto_id from proyecto_miembros order by proyecto_id"):
-        salida.setdefault(m["usuario_id"], []).append(m["proyecto_id"])
-    return [{"usuario_id": u, "proyectos": p} for u, p in salida.items()]
-
-
-def _admins_activos(excepto: int = 0) -> int:
-    return db.uno("select count(*) n from usuarios where rol='admin' and activo=1 and id<>:i", i=excepto)["n"]
+        miembros=usuarios.proyectos_por_gestor(), usuarios=usuarios.lista()))
 
 
 @router.post("/admin/usuarios")
 def usuario_crear(correo: str = Form(...), nombre: str = Form(""), rol: str = Form("colaborador"), clave: str = Form(...),
                   viajero_id: int = Form(0), cargo_id: int = Form(0)):
     try:
-        uid = acceso.crear_usuario(correo, nombre, rol, clave, viajero_id or None, cargo_id or None)
+        usuarios.crear(correo, nombre, rol, clave, viajero_id or None, cargo_id or None, _yo())
     except ValueError as e:
         return RedirectResponse(f"/admin/usuarios?aviso={quote(str(e))}", status_code=303)
-    cargo = db.uno("select c.nombre from usuarios u join cargos c on c.id=u.cargo_id where u.id=:i", i=uid)
-    eventos.registrar("usuario", uid, "cuenta creada", f"{correo.strip().lower()} · {rol} · {cargo['nombre'] if cargo else 'sin cargo'}",
-                      _yo()["nombre"])
     return RedirectResponse("/admin/usuarios?aviso=Cuenta+creada.", status_code=303)
 
 
@@ -64,45 +46,20 @@ def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clav
     if not u:
         return NO_ENCONTRADO
     aviso = "Hecho."
-    if accion == "rol" and rol in acceso.ROLES:
-        if u["rol"] == "admin" and rol != "admin" and (uid == _yo()["id"] or not _admins_activos(uid)):
-            aviso = "No puedes quitarte tu propio rol ni dejar la plataforma sin administradores."
-        else:
-            db.actualizar("usuarios", uid, rol=rol)
-            if u["rol"] == "gestor" and rol != "gestor":   # deja de gestionar: pierde también sus proyectos
-                db.ejecutar("delete from proyecto_miembros where usuario_id=:u", u=uid)
-            acceso.cerrar_todas(uid)
-            eventos.registrar("usuario", uid, "rol cambiado", f"{u['correo']}: {u['rol']} → {rol}", _yo()["nombre"])
-    elif accion == "estado":
-        quiere = (0 if u["activo"] else 1) if activo not in ("0", "1") else int(activo)   # el formulario dice el estado deseado
-        if quiere == u["activo"]:
-            aviso = f"Sin cambios: la cuenta de {u['nombre']} ya estaba {'activa' if quiere else 'desactivada'}."
-        elif not quiere and (uid == _yo()["id"] or (u["rol"] == "admin" and not _admins_activos(uid))):
-            aviso = "No puedes desactivar tu propia cuenta ni al último administrador."
-        else:
-            db.actualizar("usuarios", uid, activo=quiere, fallos=0, bloqueado_hasta=None)
-            acceso.cerrar_todas(uid)
-            eventos.registrar("usuario", uid, "cuenta reactivada" if quiere else "cuenta desactivada", u["correo"], _yo()["nombre"])
-            aviso = f"Cuenta de {u['nombre']} {'reactivada' if quiere else 'desactivada'}; sus sesiones abiertas se cerraron."
-    elif accion == "cargo":   # el cargo no da permisos: no hace falta cerrar las sesiones
-        try:
-            acceso.asignar_cargo(uid, cargo_id or None)
-            aviso = f"Cargo de {u['nombre']} actualizado."
-        except ValueError as e:
-            aviso = str(e)
-    elif accion == "proyectos":
-        validos = {p["id"] for p in db.todos("select id from proyectos")}
-        db.ejecutar("delete from proyecto_miembros where usuario_id=:u", u=uid)
-        db.insertar_varios("proyecto_miembros", [{"usuario_id": uid, "proyecto_id": p, "papel": "gestor", "creado": db.ahora()}
-                                                 for p in sorted(set(proyectos_ids) & validos)])
-        eventos.registrar("usuario", uid, "proyectos asignados", f"{u['correo']}: {sorted(set(proyectos_ids) & validos)}", _yo()["nombre"])
-    elif accion == "clave":
-        if len(clave) < 10:
-            aviso = "La contraseña debe tener al menos 10 caracteres."
-        else:
-            db.actualizar("usuarios", uid, clave_hash=acceso.hash_clave(clave), fallos=0, bloqueado_hasta=None)
-            acceso.cerrar_todas(uid)
-            eventos.registrar("usuario", uid, "contraseña restablecida", u["correo"], _yo()["nombre"])
+    try:
+        if accion == "rol" and rol in acceso.ROLES:
+            usuarios.cambiar_rol(u, rol, _yo())
+        elif accion == "estado":
+            quiere = (0 if u["activo"] else 1) if activo not in ("0", "1") else int(activo)   # el formulario dice el estado deseado
+            aviso = usuarios.cambiar_estado(u, bool(quiere), _yo())
+        elif accion == "cargo":
+            aviso = usuarios.cambiar_cargo(u, cargo_id or None)
+        elif accion == "proyectos":
+            usuarios.asignar_proyectos(u, proyectos_ids, _yo())
+        elif accion == "clave":
+            usuarios.restablecer_clave(u, clave, _yo())
+    except ValueError as e:
+        aviso = str(e)
     return RedirectResponse(f"/admin/usuarios?aviso={quote(aviso)}", status_code=303)
 
 

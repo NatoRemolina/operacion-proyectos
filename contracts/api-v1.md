@@ -357,7 +357,7 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 
 ## Fuera de este contrato (siguientes fases)
 
-Reproceso de una lectura fallida, usuarios, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
+Reproceso de una lectura fallida, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
 
 ## Proyectos
 
@@ -401,3 +401,54 @@ Solo administración. Mismo cuerpo y validación que el alta; se mandan todos lo
 
 ### `GET /proyectos/{id}/exportar.csv`
 Los gastos del proyecto en CSV (`text/csv`, `Content-Disposition: attachment; filename="gastos_proyecto_<id>.csv"`): el mismo archivo que la pantalla actual. Mismo alcance que el tablero; lo ajeno responde 404.
+
+## Usuarios y cargos
+
+Solo administración: colaborador y gestor reciben 403 `FORBIDDEN` en todo. Lo que hace hoy `/admin/usuarios`, con la misma regla (`app/servicios/usuarios.py`) y los mismos eventos (`cuenta creada`, `rol cambiado`, `cuenta desactivada`/`reactivada`, `cargo asignado`, `proyectos asignados`, `contraseña restablecida`, `cargo creado`/`renombrado`/`desactivado`/`reactivado`). Las escrituras llevan `X-CSRF-Token`; un campo de más responde 422. Una cuenta o un cargo inexistente: 404.
+
+```ts
+interface Usuario {
+  id: number; codigo: string;             // "P-0004"
+  correo: string; nombre: string;
+  rol: Rol; rol_texto: string;           // "gestor de proyecto"
+  cargo: { id: number; nombre: string } | null;     // no da permisos
+  proyectos: { id: number; nombre: string }[];     // los que gestiona
+  activo: boolean;
+  telegram: { vinculado: boolean; usuario: string | null };
+  ultima_sesion: string | null;  creado: string | null;   // instantes UTC
+}
+interface ResultadoUsuario { usuario: Usuario; mensaje: string }
+interface Cargo { id: number; nombre: string; activo: boolean; personas: number }
+```
+
+La contraseña (inicial o restablecida) nunca sale en una respuesta.
+
+### `GET /usuarios`
+Parámetros `limite` y `cursor`. Todas las cuentas, activas o no, la más reciente primero. `{"items": Usuario[], "siguiente"}`.
+
+### `POST /usuarios`
+Cuerpo `{"correo", "nombre", "rol", "clave", "cargo_id": number | null}`. 201 `ResultadoUsuario`. El correo se guarda en minúsculas y sin espacios; la cuenta recibe su perfil de viajero. 422 con el campo en `fields`: `correo` sin `@` o ya usado, `rol` que no es `colaborador`, `gestor` ni `admin`, `clave` de menos de 10 caracteres, `cargo_id` inexistente o desactivado.
+
+### `POST /usuarios/{id}/rol`
+Cuerpo `{"rol"}`. Cierra las sesiones abiertas de la cuenta (el permiso nuevo exige entrar de nuevo); quien deja de ser gestor pierde sus proyectos. Nadie se quita su propio rol de administración ni deja la plataforma sin ella: 409 `INVALID_STATE` con el motivo en `message`. Rol desconocido: 422 `fields.rol`.
+
+### `POST /usuarios/{id}/estado`
+Cuerpo `{"activo": boolean}`. Desactivar cierra sus sesiones; reactivar limpia el bloqueo por intentos. Si ya estaba así responde 200 con «Sin cambios…» en `mensaje`. Nadie desactiva su propia cuenta ni a la última administración activa: 409 `INVALID_STATE`.
+
+### `POST /usuarios/{id}/cargo`
+Cuerpo `{"cargo_id": number | null}`. El cargo no da permisos: no cierra sesiones. Cargo inexistente o desactivado: 422 `fields.cargo_id`.
+
+### `POST /usuarios/{id}/proyectos`
+Cuerpo `{"proyectos_ids": number[]}`: reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo tienen efecto con el permiso de gestor.
+
+### `POST /usuarios/{id}/clave`
+Cuerpo `{"clave"}` (10 caracteres o más; si no, 422 `fields.clave`). Cierra sus sesiones y limpia el bloqueo por intentos.
+
+### `GET /cargos`
+`{"items": Cargo[]}`: el catálogo completo, sin paginar, por nombre.
+
+### `POST /cargos`
+Cuerpo `{"nombre"}`. 201 `Cargo`. Al menos 3 letras y sin repetir otro (sin importar mayúsculas): si no, 422 `fields.nombre`.
+
+### `POST /cargos/{id}`
+Cuerpo `{"nombre"?, "activo"?}`: renombra o activa/desactiva; lo que no se manda no cambia. Un cargo nunca se borra: quien lo tiene lo conserva aunque se desactive. 200 `Cargo`.

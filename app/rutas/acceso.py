@@ -1,12 +1,12 @@
 """Ingreso, inicio según el rol y la cuenta de cada persona."""
 import os
-from urllib.parse import quote
+from urllib.parse import quote, quote_plus
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import config, db
-from ..servicios import acceso, eventos, telegram, viajes
+from ..servicios import acceso, eventos, telegram, usuarios, viajes
 from ..web import (
     _ctx,
     _indicadores,
@@ -113,12 +113,8 @@ def mi_cuenta_telegram(request: Request, accion: str = Form("vincular")):
 def mi_cuenta_clave(request: Request, actual: str = Form(""), nueva: str = Form("")):
     """Exige la contraseña actual. Al cambiarla se cierran las demás sesiones y esta se renueva."""
     yo = _yo()
-    hash_actual = db.uno("select clave_hash from usuarios where id=:i", i=yo["id"])["clave_hash"]
-    if not acceso._coincide(hash_actual, actual):
-        return RedirectResponse("/mi-cuenta?aviso=La+contrase%C3%B1a+actual+no+coincide.", status_code=303)
-    if len(nueva) < 10 or nueva == actual:
-        return RedirectResponse("/mi-cuenta?aviso=La+nueva+contrase%C3%B1a+debe+tener+al+menos+10+caracteres+y+ser+distinta.", status_code=303)
-    db.actualizar("usuarios", yo["id"], clave_hash=acceso.hash_clave(nueva))
-    acceso.cerrar_todas(yo["id"])
-    eventos.registrar("usuario", yo["id"], "contraseña cambiada por la persona", "", yo["nombre"])
+    try:
+        usuarios.cambiar_mi_clave(yo, actual, nueva)
+    except usuarios.DatosInvalidos as e:
+        return RedirectResponse(f"/mi-cuenta?aviso={quote_plus(str(e))}", status_code=303)
     return acceso.abrir_sesion(RedirectResponse("/mi-cuenta?aviso=Contrase%C3%B1a+cambiada.+Se+cerraron+tus+otras+sesiones.", status_code=303), yo["id"])
