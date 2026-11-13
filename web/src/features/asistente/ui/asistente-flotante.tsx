@@ -40,9 +40,10 @@ function Asistente() {
   const [texto, setTexto] = useState("");
   const [transcribiendo, setTranscribiendo] = useState(false);
   const [avisoVoz, setAvisoVoz] = useState<string | null>(null);
-  const [vistos, setVistos] = useState(0);
   const [conVoz] = useState(vozSoportada);
   const { mensajes, esperandoDesde, preguntar, reiniciar, cuenta } = useConversacion();
+  // Lo recuperado de la pestaña ya se leyó: solo lo que llegue con el panel cerrado cuenta como nuevo.
+  const [vistos, setVistos] = useState(() => mensajes.length);
   const transcribir = useTranscribir();
   const boton = useRef<HTMLButtonElement>(null);
   const campo = useRef<HTMLTextAreaElement>(null);

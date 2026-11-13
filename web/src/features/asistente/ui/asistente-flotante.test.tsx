@@ -137,14 +137,17 @@ describe("Asistente flotante", () => {
         null,
         { id: "a", rol: "persona", texto: "¿Qué pasó?", porVoz: true, estado: "esperando" },
         { id: "b", rol: "desconocido" },
+        { id: "c", rol: "asistente", respuesta: respuesta({ texto: "Respuesta anterior.", fuentes: [] }) },
       ]),
     );
     const usuario = userEvent.setup();
     montar();
+    expect(screen.queryByText("El asistente respondió. Abre el asistente para leerlo.")).toBeNull(); // lo recuperado no es nuevo
     await usuario.click(screen.getByRole("button", { name: "Asistente IA" }));
     expect(screen.getByText("¿Qué pasó?")).toBeInTheDocument();
     expect(screen.getByText("Dictado por voz")).toBeInTheDocument();
     expect(screen.getByText("Sin respuesta: la página se recargó antes de que terminara.")).toBeInTheDocument();
+    expect(screen.getByText("Respuesta anterior.")).toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Empezar una conversación nueva" }));
     expect(screen.getByText("¿En qué te ayudo?")).toBeInTheDocument();
     expect(JSON.parse(window.sessionStorage.getItem("asistente:v1:7") ?? "null")).toEqual([]);
