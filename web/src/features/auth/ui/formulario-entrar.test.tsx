@@ -20,11 +20,11 @@ describe("Formulario de ingreso", () => {
     const usuario = userEvent.setup();
     render(<Montaje />);
 
-    await usuario.type(screen.getByLabelText("Correo corporativo"), "ana@empresa.com");
+    await usuario.type(screen.getByLabelText("Correo"), "ana@empresa.com");
     await usuario.type(screen.getByLabelText("Contraseña"), "incorrecta");
     await usuario.click(screen.getByRole("button", { name: "Ingresar" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("El correo o la contraseña no son correctos.");
-    expect(screen.getByLabelText("Correo corporativo")).toHaveValue("ana@empresa.com");
+    expect(screen.getByLabelText("Correo")).toHaveValue("ana@empresa.com");
   });
 });

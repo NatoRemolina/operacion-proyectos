@@ -38,6 +38,10 @@
   --material: rgb(255 255 255 / 0.92);
   --radio: 0.75rem;
   --ancho-contenido: 60rem;
+  /* Portada: papel de carta aeronáutica. Texto 15:1, texto secundario 6,5:1 y marca 4,9:1 sobre él. */
+  --carta: #e6eff1;
+  --carta-linea: rgb(0 114 127 / 0.14);
+  --carta-relieve: rgb(0 114 127 / 0.22);
 }
 
 /* Contraste preferido: separadores y textos secundarios más definidos. */
@@ -47,6 +51,8 @@
     --borde-campo: #4b5563;
     --texto-secundario: #2f3a45;
     --sobre-grafito-suave: #e6ecf0;
+    --carta-linea: rgb(0 114 127 / 0.3);
+    --carta-relieve: rgb(0 114 127 / 0.4);
   }
 }
 
@@ -84,6 +90,7 @@
   --color-neutro: var(--neutro);
   --color-neutro-suave: var(--neutro-suave);
   --color-velo: var(--velo);
+  --color-carta: var(--carta);
   --radius-tarjeta: var(--radio);
   --container-contenido: var(--ancho-contenido);
   --font-sans: var(--font-mulish), ui-sans-serif, system-ui, sans-serif;
@@ -113,6 +120,8 @@
   /* Profundidad: la tarjeta apenas se separa del fondo; lo que flota (avisos, diálogos, menú) se separa más. */
   --shadow-tarjeta: 0 1px 2px rgb(17 28 36 / 0.05), 0 2px 6px rgb(17 28 36 / 0.04);
   --shadow-flotante: 0 4px 12px -2px rgb(17 28 36 / 0.12), 0 16px 40px -8px rgb(17 28 36 / 0.24);
+  /* Hoja que sube sobre la portada en el celular: la sombra cae hacia arriba. */
+  --shadow-hoja: 0 -10px 30px -14px rgb(17 28 36 / 0.22);
   --text-base--line-height: 1.5;
   --text-sm--letter-spacing: 0.005em;
   --text-xs--letter-spacing: 0.02em;
@@ -253,5 +262,166 @@
   to {
     opacity: 1;
     translate: 0 0;
+  }
+}
+
+/*
+ * Portada de entrada: una sola secuencia, una vez, de unos 3,5 s. Se dibuja la ruta, llega a Moab, nace el
+ * viaje, un recibo se lee y queda aprobado, y la ejecución del viaje avanza con ese gasto. Solo opacidad,
+ * transformaciones y el trazo. El estado normal de cada pieza es el final: con movimiento reducido no hay
+ * animación y se ve todo terminado desde el principio.
+ */
+@layer components {
+  /* La carta se desvanece hacia los bordes en vez de cortarse en seco. */
+  .portada-mapa {
+    -webkit-mask: linear-gradient(to right, #0000, #000 10%, #000 90%, #0000),
+      linear-gradient(to bottom, #0000, #000 14%, #000 86%, #0000);
+    -webkit-mask-composite: source-in;
+    mask: linear-gradient(to right, #0000, #000 10%, #000 90%, #0000),
+      linear-gradient(to bottom, #0000, #000 14%, #000 86%, #0000);
+    mask-composite: intersect;
+  }
+  .portada-trazo {
+    stroke-dasharray: 1 1;
+    animation: portada-trazo 1.2s cubic-bezier(0.45, 0, 0.25, 1) 0.2s both;
+  }
+  .portada-llegada {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: portada-llegada 0.35s var(--ease-salida) 1.3s both;
+  }
+  .portada-ping {
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: portada-ping 1s ease-out 1.45s forwards; /* oculto hasta que llega la ruta */
+  }
+  .portada-aparece {
+    animation: portada-aparece 0.5s var(--ease-salida) both;
+  }
+  .portada-recibo {
+    /* Borde inferior dentado del papel térmico. */
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 12px 100%;
+    mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 12px 100%;
+  }
+  .portada-sombra-recibo {
+    filter: drop-shadow(0 2px 3px rgb(17 28 36 / 0.1)) drop-shadow(0 12px 24px rgb(17 28 36 / 0.16));
+  }
+  /* Lo que se leyó del recibo queda resaltado. */
+  .portada-campo {
+    isolation: isolate;
+  }
+  .portada-campo::before {
+    content: "";
+    position: absolute;
+    inset: -1px -5px;
+    z-index: -1;
+    border-radius: 3px;
+    background: var(--marca-suave);
+    animation: portada-entra 0.25s ease-out both;
+    animation-delay: inherit;
+  }
+  .portada-lectura {
+    opacity: 0;
+    background: linear-gradient(to bottom, transparent 70%, rgb(0 114 127 / 0.12) 97%, var(--marca) 97%);
+    animation: portada-lectura 0.8s cubic-bezier(0.4, 0, 0.6, 1) 2.2s forwards;
+  }
+  .portada-sello {
+    rotate: -4deg;
+    animation: portada-sello 0.3s var(--ease-salida) 3s both;
+  }
+  .portada-ejecucion {
+    transform-origin: left center;
+    animation: portada-ejecucion 0.6s var(--ease-salida) 3.2s both;
+  }
+  .portada-cifra-antes {
+    opacity: 0;
+    animation: portada-se-va 0.25s ease-out 3.2s both;
+  }
+  .portada-cifra-despues {
+    animation: portada-entra 0.25s ease-out 3.2s both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .portada-ilustracion *,
+    .portada-ilustracion *::before {
+      animation: none !important;
+    }
+  }
+}
+
+@keyframes portada-trazo {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes portada-llegada {
+  from {
+    opacity: 0;
+    scale: 0.3;
+  }
+}
+
+@keyframes portada-ping {
+  from {
+    opacity: 0.7;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 2.4;
+  }
+}
+
+@keyframes portada-aparece {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
+@keyframes portada-entra {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes portada-se-va {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes portada-lectura {
+  0% {
+    opacity: 1;
+    translate: 0 -100%;
+  }
+  85% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  100% {
+    opacity: 0;
+    translate: 0 0;
+  }
+}
+
+@keyframes portada-sello {
+  from {
+    opacity: 0;
+    scale: 1.25;
+  }
+}
+
+@keyframes portada-ejecucion {
+  from {
+    scale: 0.2 1;
   }
 }

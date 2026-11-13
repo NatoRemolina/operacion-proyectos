@@ -6,17 +6,36 @@ import { TEXTO_PERMISO, type EntradaMenu, type Permiso } from "@/shared/domain/n
 import { AvisosProvider } from "./aviso-emergente";
 import { PRESIONAR } from "./movimiento";
 
-export function Marca({ tamano = "grande" }: { tamano?: "grande" | "pequena" }) {
+/** Sobre qué fondo va la marca: la barra grafito o una superficie clara (la portada). */
+type FondoMarca = "grafito" | "claro";
+
+export function Marca({ tamano = "grande", fondo = "grafito" }: { tamano?: "grande" | "pequena"; fondo?: FondoMarca }) {
   return (
     <p className="leading-none">
       <span className={`block font-extrabold tracking-wide ${tamano === "grande" ? "text-2xl" : "text-lg"}`}>
         INFLIGHT
       </span>
-      <span className="mt-2 block text-[0.7rem] font-semibold tracking-[0.3em] text-sobre-grafito-suave">
+      <span
+        className={`mt-2 block text-[0.7rem] font-semibold tracking-[0.3em] ${
+          fondo === "grafito" ? "text-sobre-grafito-suave" : "text-texto-secundario"
+        }`}
+      >
         SOLUTIONS
       </span>
     </p>
   );
+}
+
+/**
+ * Sello junto al logotipo: la plataforma es una propuesta para la prueba técnica, no el sitio oficial de la
+ * empresa. Visible en la portada; discreto en la barra lateral.
+ */
+export function SelloPropuesta({ fondo = "grafito" }: { fondo?: FondoMarca }) {
+  const tono =
+    fondo === "grafito"
+      ? "border-sobre-grafito-suave/40 px-2 py-0.5 text-[0.7rem] text-sobre-grafito-suave"
+      : "border-marca/40 bg-superficie/70 px-3 py-1.5 text-xs text-marca-oscura";
+  return <p className={`inline-block rounded-full border font-semibold ${tono}`}>Propuesta · prueba técnica</p>;
 }
 
 function esActivo(enlace: EntradaMenu, ruta: string): boolean {
@@ -163,7 +182,10 @@ export function MarcoPrivado({
 
         <aside inert={abierto} className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
           <Marca />
-          <nav aria-label="Principal" className="mt-10">
+          <div className="mt-3">
+            <SelloPropuesta />
+          </div>
+          <nav aria-label="Principal" className="mt-8">
             <ListaMenu enlaces={enlaces} rutaActual={rutaActual} />
           </nav>
           <div className="mt-auto pt-6">
@@ -208,6 +230,9 @@ export function MarcoPrivado({
               <button type="button" className={BOTON_OSCURO} onClick={cerrar}>
                 Cerrar menú
               </button>
+            </div>
+            <div className="mt-3">
+              <SelloPropuesta />
             </div>
             <nav aria-label="Menú" className="mt-8" ref={panel}>
               <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
