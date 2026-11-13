@@ -42,8 +42,15 @@ export function formatearRango(ida: string, regreso: string): string {
   return `${formatearFecha(ida)} – ${formatearFecha(regreso)}`;
 }
 
+/** La base guarda los instantes en UTC sin zona («AAAA-MM-DD HH:MM:SS»): sin zona se leen como UTC, no como hora local. */
+function instanteUtc(iso: string): Date {
+  const texto = iso.trim().replace(" ", "T");
+  const conZona = /([zZ]|[+-]\d{2}:?\d{2})$/.test(texto) || !texto.includes("T");
+  return new Date(conZona ? texto : `${texto}Z`);
+}
+
 export function formatearInstante(iso: string): string {
-  const fecha = new Date(iso);
+  const fecha = instanteUtc(iso);
   if (Number.isNaN(fecha.getTime())) return iso;
   return new Intl.DateTimeFormat(LOCALE, { dateStyle: "medium", timeStyle: "short" }).format(fecha);
 }
