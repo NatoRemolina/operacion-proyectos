@@ -20,11 +20,11 @@ Las tres pilas de `infra/`:
 - **Archivos locales, fuera de git:**
   - `.env.supabase-publicada`: la base publicada por el agrupador de **sesión (puerto 5432)**, para el respaldo y la migración (`docs/respaldo.md`).
   - `.env.produccion`: lo que va al secreto. La misma base, el almacenamiento, el buscador, el modelo, el asesor, Pinecone y Telegram. `ORIGENES_WEB` solo hace falta si se publica sin dominio (paso 5).
-- **El contexto de CDK, igual en todas las órdenes** (el correo es obligatorio: sin él la síntesis se detiene):
+- **El contexto de CDK, igual en todas las órdenes** (el correo es obligatorio: sin él la síntesis se detiene). Va en un arreglo, que se expande igual en zsh y en bash; reemplazar `CORREO_DE_AVISOS`:
   ```
-  CDK_CTX="-c correo=<correo de avisos> -c dominio=nataliaremolinarodriguez.com -c zonaId=Z0731422246SUYEGG2Z5R"
+  CDK_CTX=(-c correo=CORREO_DE_AVISOS -c dominio=nataliaremolinarodriguez.com -c zonaId=Z0731422246SUYEGG2Z5R)
   ```
-  El subdominio es `software` por omisión (`-c subdominio=` lo cambia; nunca puede ser `www`). Sin `-c dominio` ni `-c zonaId`, la web queda en las direcciones gratuitas `https://<id>.cloudfront.net`.
+  y en cada orden `"${CDK_CTX[@]}"`. Una sola cadena (`CDK_CTX="-c …"` usada como `$CDK_CTX`) no se parte en zsh, la terminal de macOS: CDK recibiría una clave rara y la pila se detiene avisándolo. El subdominio es `software` por omisión (`-c subdominio=` lo cambia; nunca puede ser `www`). Sin `-c dominio` ni `-c zonaId`, la web queda en las direcciones gratuitas `https://<id>.cloudfront.net`.
 
 ## 1. Respaldo
 
@@ -66,7 +66,7 @@ El ensayo muestra las claves que subiría, sin valores y sin contactar AWS. La c
 
 ```
 cd infra && npm ci
-npx cdk diff OperacionBase OperacionApp OperacionWeb $CDK_CTX
+npx cdk diff OperacionBase OperacionApp OperacionWeb "${CDK_CTX[@]}"
 ```
 
 Qué debe mostrar:
@@ -80,13 +80,13 @@ Sin la aprobación de la dueña sobre este diff, no se sigue.
 ## 5. Despliegue, una pila a la vez
 
 ```
-npx cdk deploy OperacionBase $CDK_CTX
-npx cdk deploy OperacionApp $CDK_CTX
+npx cdk deploy OperacionBase "${CDK_CTX[@]}"
+npx cdk deploy OperacionApp "${CDK_CTX[@]}"
 FUNCION=$(aws cloudformation describe-stacks --stack-name OperacionApp --query "Stacks[0].Outputs[?OutputKey=='Funcion'].OutputValue" --output text)
 URL_API=$(aws cloudformation describe-stacks --stack-name OperacionApp --query "Stacks[0].Outputs[?OutputKey=='Url'].OutputValue" --output text)
 aws lambda delete-function-concurrency --function-name "$FUNCION"
 curl -s -o /dev/null -w "%{http_code}\n" "${URL_API}salud"        # 200
-npx cdk deploy OperacionWeb $CDK_CTX
+npx cdk deploy OperacionWeb "${CDK_CTX[@]}"
 ```
 
 - **La suscripción por correo** llega como un mensaje de AWS con un enlace: hay que confirmarla, o las alarmas no avisan.
@@ -119,7 +119,7 @@ El bot apunta a la dirección de la función de la API (`<Url>/telegram/webhook`
 
 | Qué falla | Qué se hace |
 |---|---|
-| La API | Volver al commit anterior en una carpeta limpia y `npx cdk deploy OperacionApp $CDK_CTX`. La migración no se deshace con esto |
-| La web | Las pantallas de administración siguen en `admin.software.`. Si hace falta retirar la web: `npx cdk destroy OperacionWeb $CDK_CTX`, que borra solo lo que creó la pila (distribuciones, certificado, los registros de `software.` y `admin.software.`, el bucket y la función). La zona, el raíz y `www` no se tocan |
+| La API | Volver al commit anterior en una carpeta limpia y `npx cdk deploy OperacionApp "${CDK_CTX[@]}"`. La migración no se deshace con esto |
+| La web | Las pantallas de administración siguen en `admin.software.`. Si hace falta retirar la web: `npx cdk destroy OperacionWeb "${CDK_CTX[@]}"`, que borra solo lo que creó la pila (distribuciones, certificado, los registros de `software.` y `admin.software.`, el bucket y la función). La zona, el raíz y `www` no se tocan |
 | La base | `docs/respaldo.md`, «Vuelta atrás»: guardar el estado fallido, borrar lo que la copia no trae (`python -m datos.respaldar vuelta-atras`) y restaurar en una sola transacción, con la aplicación detenida |
 | El secreto | Secrets Manager guarda la versión anterior (`AWSPREVIOUS`). Lo más simple es volver a cargar el archivo anterior con el paso 3 |

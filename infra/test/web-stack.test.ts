@@ -121,6 +121,12 @@ describe("contexto del dominio", () => {
     assert.throws(() => sintetizar({ zonaId: ZONA }), /dominio/);
   });
 
+  test("un contexto mal partido se detiene en vez de publicar sin dominio", () => {
+    // Lo que llega cuando la terminal no parte "$CTX" en palabras (zsh): una sola clave con espacios
+    assert.throws(() => sintetizar({ "-c dominio": `${DOMINIO} -c zonaId=${ZONA}` }), /contexto/);
+    assert.throws(() => sintetizar({ "dominio ": DOMINIO }), /contexto/);
+  });
+
   test("el subdominio sale de -c subdominio y por omisión es software", () => {
     const { web } = sintetizar({ ...CON_DOMINIO, subdominio: "pruebas" });
     const nombres = new Set(propiedades(web, "AWS::Route53::RecordSet").map((r) => r.Name));
