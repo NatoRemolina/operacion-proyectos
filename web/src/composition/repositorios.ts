@@ -20,6 +20,9 @@ import { crearViajesMemoria } from "@/features/viajes/infrastructure/viajes-memo
 import type { KpisRepository } from "@/features/kpis/domain/kpis";
 import { crearKpisHttp } from "@/features/kpis/infrastructure/kpis-http";
 import { crearKpisMemoria } from "@/features/kpis/infrastructure/kpis-memoria";
+import type { MonitoreoRepository } from "@/features/monitoreo/domain/monitoreo";
+import { crearMonitoreoHttp } from "@/features/monitoreo/infrastructure/monitoreo-http";
+import { crearMonitoreoMemoria } from "@/features/monitoreo/infrastructure/monitoreo-memoria";
 import type { FuenteDatos } from "@/config/configuracion";
 import type { ModoDemo } from "@/shared/application/modo";
 import { crearClienteHttp } from "@/shared/infrastructure/cliente-http";
@@ -34,6 +37,7 @@ export interface Repositorios {
   administracion: AdministracionRepository;
   asistente: AsistenteRepository;
   kpis: KpisRepository;
+  monitoreo: MonitoreoRepository;
   demo: ModoDemo | null;
 }
 
@@ -83,6 +87,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
       asistente: crearAsistenteMemoria({ sesion, latenciaMs }),
       // Tablero de administración: la cuenta de demostración no lo ve, como en la API.
       kpis: crearKpisMemoria({ sesion, latenciaMs }),
+      monitoreo: crearMonitoreoMemoria({ sesion, latenciaMs }),
       demo: {
         cuentas: [
           { correo: CUENTA_DEMO.persona.correo, clave: CUENTA_DEMO.clave, descripcion: "Piloto" },
@@ -99,6 +104,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     administracion: crearAdministracionHttp(cliente),
     asistente: crearAsistenteHttp(cliente),
     kpis: crearKpisHttp(cliente),
+    monitoreo: crearMonitoreoHttp(cliente),
     demo: null,
   };
 }

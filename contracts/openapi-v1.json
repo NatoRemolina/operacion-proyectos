@@ -1596,6 +1596,229 @@
         }
       }
     },
+    "/api/v1/monitoreo": {
+      "get": {
+        "tags": [
+          "monitoreo"
+        ],
+        "summary": "Pestana",
+        "description": "Las cifras y tablas de una pestaña con los filtros. La auditoría no se filtra por proyecto, como en la pantalla.",
+        "operationId": "pestana_api_v1_monitoreo_get",
+        "parameters": [
+          {
+            "name": "pestana",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "viajes",
+                "gastos",
+                "busquedas",
+                "modelo",
+                "cupos",
+                "auditoria",
+                "calidad"
+              ],
+              "type": "string",
+              "description": "Sin pestaña: gastos.",
+              "default": "gastos",
+              "title": "Pestana"
+            },
+            "description": "Sin pestaña: gastos."
+          },
+          {
+            "name": "proyecto_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0 o ausente: todos los proyectos.",
+              "default": 0,
+              "title": "Proyecto Id"
+            },
+            "description": "0 o ausente: todos los proyectos."
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Desde"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Hasta"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PestanaMonitoreo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/monitoreo/exportar.csv": {
+      "get": {
+        "tags": [
+          "monitoreo"
+        ],
+        "summary": "Exportar",
+        "description": "El mismo CSV de la pantalla con los filtros. Deja el evento «exportación».",
+        "operationId": "exportar_api_v1_monitoreo_exportar_csv_get",
+        "parameters": [
+          {
+            "name": "vista",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "v_h_viaje",
+                "v_h_gasto",
+                "v_h_busqueda",
+                "v_h_decision",
+                "v_h_lectura",
+                "v_h_evento",
+                "v_h_consulta"
+              ],
+              "type": "string",
+              "description": "Un hecho de la capa analítica.",
+              "title": "Vista"
+            },
+            "description": "Un hecho de la capa analítica."
+          },
+          {
+            "name": "proyecto_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0 o ausente: todos los proyectos.",
+              "default": 0,
+              "title": "Proyecto Id"
+            },
+            "description": "0 o ausente: todos los proyectos."
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Desde"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Hasta"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/resumen": {
       "get": {
         "tags": [
@@ -2158,6 +2381,85 @@
         ],
         "title": "CambioEstadoViaje",
         "description": "Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."
+      },
+      "Cifra": {
+        "properties": {
+          "etiqueta": {
+            "type": "string",
+            "title": "Etiqueta"
+          },
+          "valor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor",
+            "description": "Null si no hay datos."
+          },
+          "unidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidad",
+            "description": "`%`, `USD`, `h`, `s`... o null si es un conteo."
+          },
+          "pie": {
+            "type": "string",
+            "title": "Pie"
+          }
+        },
+        "type": "object",
+        "required": [
+          "etiqueta",
+          "valor",
+          "unidad",
+          "pie"
+        ],
+        "title": "Cifra"
+      },
+      "Columna": {
+        "properties": {
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          },
+          "unidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidad",
+            "description": "`USD` o `%` si la columna es una cifra con unidad."
+          },
+          "fin": {
+            "type": "boolean",
+            "title": "Fin",
+            "description": "Cifra: se alinea a la derecha."
+          }
+        },
+        "type": "object",
+        "required": [
+          "texto",
+          "unidad",
+          "fin"
+        ],
+        "title": "Columna"
       },
       "CorreoDelSoporte": {
         "properties": {
@@ -3155,6 +3457,25 @@
           "pct"
         ],
         "title": "EjecucionViaje"
+      },
+      "Enlace": {
+        "properties": {
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          },
+          "href": {
+            "type": "string",
+            "title": "Href",
+            "description": "Ruta de la web, por ejemplo `/viajes/7`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "texto",
+          "href"
+        ],
+        "title": "Enlace"
       },
       "Equipo": {
         "properties": {
@@ -5531,6 +5852,116 @@
         ],
         "title": "Persona"
       },
+      "PestanaDisponible": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "enum": [
+              "viajes",
+              "gastos",
+              "busquedas",
+              "modelo",
+              "cupos",
+              "auditoria",
+              "calidad"
+            ],
+            "title": "Clave"
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clave",
+          "titulo"
+        ],
+        "title": "PestanaDisponible"
+      },
+      "PestanaMonitoreo": {
+        "properties": {
+          "pestana": {
+            "type": "string",
+            "enum": [
+              "viajes",
+              "gastos",
+              "busquedas",
+              "modelo",
+              "cupos",
+              "auditoria",
+              "calidad"
+            ],
+            "title": "Pestana"
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "nota": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nota"
+          },
+          "pestanas": {
+            "items": {
+              "$ref": "#/components/schemas/PestanaDisponible"
+            },
+            "type": "array",
+            "title": "Pestanas"
+          },
+          "filtros": {
+            "$ref": "#/components/schemas/Filtros"
+          },
+          "proyectos": {
+            "items": {
+              "$ref": "#/components/schemas/Opcion"
+            },
+            "type": "array",
+            "title": "Proyectos"
+          },
+          "cifras": {
+            "items": {
+              "$ref": "#/components/schemas/Cifra"
+            },
+            "type": "array",
+            "title": "Cifras"
+          },
+          "tablas": {
+            "items": {
+              "$ref": "#/components/schemas/Tabla"
+            },
+            "type": "array",
+            "title": "Tablas"
+          },
+          "exportar": {
+            "items": {
+              "$ref": "#/components/schemas/VistaExportable"
+            },
+            "type": "array",
+            "title": "Exportar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pestana",
+          "titulo",
+          "nota",
+          "pestanas",
+          "filtros",
+          "proyectos",
+          "cifras",
+          "tablas",
+          "exportar"
+        ],
+        "title": "PestanaMonitoreo"
+      },
       "PreguntaAsistente": {
         "properties": {
           "pregunta": {
@@ -6217,6 +6648,78 @@
           "csrf_token"
         ],
         "title": "Sesion"
+      },
+      "Tabla": {
+        "properties": {
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "columnas": {
+            "items": {
+              "$ref": "#/components/schemas/Columna"
+            },
+            "type": "array",
+            "title": "Columnas"
+          },
+          "filas": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Enlace"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Filas"
+          },
+          "vacio": {
+            "type": "string",
+            "title": "Vacio",
+            "description": "Qué decir si no hay filas."
+          },
+          "nota": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nota"
+          },
+          "barras": {
+            "type": "boolean",
+            "title": "Barras",
+            "description": "La segunda columna se puede dibujar como barra (embudo, categorías)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "titulo",
+          "columnas",
+          "filas",
+          "vacio",
+          "nota",
+          "barras"
+        ],
+        "title": "Tabla"
       },
       "TableroKpis": {
         "properties": {
@@ -7121,6 +7624,25 @@
           "soy_yo"
         ],
         "title": "ViajeroOpcion"
+      },
+      "VistaExportable": {
+        "properties": {
+          "vista": {
+            "type": "string",
+            "title": "Vista",
+            "description": "Valor de `vista` para `GET /monitoreo/exportar.csv`."
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "vista",
+          "texto"
+        ],
+        "title": "VistaExportable"
       }
     }
   }

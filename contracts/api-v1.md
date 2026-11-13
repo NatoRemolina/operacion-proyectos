@@ -376,3 +376,18 @@ Solo administración, como la pantalla `/admin/kpis`: otra cuenta recibe 403 `FO
 
 ### `GET /kpis/exportar.csv?que=kpis|consultas|personas`
 El mismo CSV de la pantalla con los filtros comunes, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Otro valor de `que`: 422.
+
+## Monitoreo
+
+Solo administración, como `/admin/monitoreo`: otra cuenta recibe 403 `FORBIDDEN`. Mismos filtros que los KPIs. Las cifras salen del catálogo de métricas (`app/servicios/metricas.py`), la misma definición de la pantalla.
+
+### `GET /monitoreo?pestana=viajes|gastos|busquedas|modelo|cupos|auditoria|calidad`
+200 `PestanaMonitoreo` (sin `pestana`: gastos; otra: 422). Cada pestaña llega lista para mostrar:
+
+- `cifras`: `{etiqueta, valor, unidad, pie}`; `valor` es `null` sin datos.
+- `tablas`: `{titulo, columnas, filas, vacio, nota, barras}`. Cada columna dice su `unidad` (`USD`, `%`) si es una cifra. Una celda es texto, número, `null` o un enlace `{texto, href}` a una página de la web (`/viajes/7`). `barras` marca las tablas cuya segunda columna se puede dibujar (embudo, gasto por categoría).
+- `exportar`: las vistas de la pestaña que se pueden descargar.
+- La pestaña Modelo incluye el costo del asesor, con su tope diario (supuesto `asesor_usd_dia`). La Auditoría no se filtra por proyecto.
+
+### `GET /monitoreo/exportar.csv?vista=v_h_…`
+El mismo CSV de la pantalla con los filtros, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Solo las vistas de la capa analítica (`v_h_viaje`, `v_h_gasto`, `v_h_busqueda`, `v_h_decision`, `v_h_lectura`, `v_h_evento`, `v_h_consulta`); otra: 422.
