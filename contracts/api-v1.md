@@ -707,3 +707,47 @@ Cuerpo JSON `{"nombres": ["reserva_hotel.eml"], "viaje_id": 12}` (de 1 a 20 nomb
 - Un nombre que no está en el buzón (otro formato, una ruta, uno que no existe) va a `errores` y no crea nada.
 - Leer dos veces el mismo correo crea otro gasto, que las reglas marcan como posible duplicado.
 - Un `viaje_id` que no existe: 422 con `fields.viaje_id`. Sin nombres: 422.
+
+## Compras
+
+La solicitud de compra del tiquete nace al decidir una cotización (`Cotizacion.compra`: «Solicitud de compra enviada» y su estado). La lleva **solo administración**: toda esta sección responde 403 `FORBIDDEN` a las demás personas, y nadie decide la compra de su propio viaje (403 `SELF_APPROVAL`, con rastro en la bitácora). Una compra activa por viaje: cambiar la decisión actualiza la misma solicitud mientras no se haya decidido.
+
+Estados: `solicitada` → `en_analisis` → `se_comprara` | `no_se_comprara` → `comprada` | `cancelada`. Cada cambio lleva la `version` que se vio: si otra persona la cambió, 409 `EDIT_CONFLICT`; un cambio que no corresponde al estado, 409 `INVALID_STATE`.
+
+```ts
+interface Compra {
+  id: number; estado: EstadoCompra; estado_texto: string; version: number;
+  viaje: { id: number; codigo: string; estado: string; presupuesto_usd: Dinero };
+  solicitud_id: number | null; solicitada_por: string | null; motivo: string | null;
+  vendedor: string | null; localizador: string | null;
+  precio_pagado_usd: Dinero; precio_cotizado_usd: Dinero;   // cotizado: la tarifa del buscador al decidir
+  anticipacion_dias: number | null;                          // días entre la compra y la ida
+  creado: string | null; decidido: string | null; comprada: string | null;
+  frente_presupuesto: { presupuesto_usd: Dinero; cotizado_usd: Dinero; diferencia_usd: Dinero } | null;   // con la compra registrada
+}
+interface CompraDetalle extends Compra {
+  vuelo: { opcion_id: number | null; numeros: string[]; aerolinea: string | null; sale: string | null; llega: string | null;
+           precio_usd: Dinero; vendedor_url: string | null; fuente_url: string | null } | null;
+  clics: { destino: "google_flights" | "google_hotels" | "vendedor" | "hotel_oficial"; dominio: string | null;
+           momento: string | null; opcion_id: number | null; usuario: string | null }[];
+  analisis: AnalisisVuelo | null;   // la última lectura de la página del vuelo
+}
+```
+
+### `GET /compras?estado=…`
+200 `{"items": Compra[]}`: las compras activas, la más reciente primero (hasta 200).
+
+### `GET /compras/{id}`
+200 `CompraDetalle`: el vuelo con el mismo enlace a la página oficial que usa «Ver desglose» («Comprar en {vendedor}»), los clics a las fuentes (`clics_fuente`) y la última lectura de la página.
+
+### `POST /compras/{id}/estado`
+Cuerpo `{"accion": "en_analisis" | "se_comprara" | "no_se_comprara" | "cancelada", "version": 2, "motivo": ""}` con `X-CSRF-Token`. «Se va a comprar» exige el viaje **aprobado**; «No se va a comprar» y «Cancelada» exigen motivo (5 caracteres o más; 422 con `fields.motivo`). Cada decisión avisa al viajero en la bitácora de su viaje (`aviso al viajero`). 200 `Compra` con la versión nueva.
+
+### `POST /compras/{id}/registro`
+Cuerpo `{"version": 3, "localizador": "QX7Z2P", "precio_pagado": "461.30", "vendedor": "American"}` con `X-CSRF-Token`, solo desde `se_comprara`. Guarda localizador (5 a 8 letras o números), precio pagado y vendedor, calcula `anticipacion_dias` y responde 200 `Compra` en `comprada` con `frente_presupuesto`.
+
+### `POST /compras/{id}/analisis`
+Con `X-CSRF-Token`. Pide (o reutiliza) la lectura de la página del vuelo de la compra: 200 `AnalisisVuelo`.
+
+### Rastro de los enlaces (`clics_fuente`)
+Cada «Ver en Google Flights/Hotels», cada apertura de la página oficial (`…/vendedor`) y cada «Ir a…» deja una fila: quién, cotización, vuelo, viaje y compra (si existen), destino (`google_flights`, `google_hotels`, `vendedor`) y dominio de salida.

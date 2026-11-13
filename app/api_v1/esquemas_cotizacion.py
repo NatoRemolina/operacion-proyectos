@@ -254,6 +254,14 @@ class ViajeDeCotizacion(BaseModel):
                                                 "sin el riesgo de cambio ni las millas, que solo sirven para comparar.")
 
 
+class CompraDeCotizacion(BaseModel):
+    """La solicitud de compra del tiquete, que nace al decidir. La lleva administración."""
+    id: int
+    estado: Literal["solicitada", "en_analisis", "se_comprara", "no_se_comprara", "comprada", "cancelada"]
+    estado_texto: str = Field(description="«Solicitud de compra enviada», «En análisis», «Se va a comprar»...")
+    motivo: str | None
+
+
 class Cotizacion(BaseModel):
     id: int
     estado: Literal["buscando", "comparando", "decidido"]
@@ -287,6 +295,7 @@ class Cotizacion(BaseModel):
     mas_barata_id: int | None
     decision: DecisionCotizacion | None
     viaje: ViajeDeCotizacion | None
+    compra: CompraDeCotizacion | None = Field(description="La solicitud de compra del viaje, si ya se decidió.")
     fuente_url: str = Field(description="La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador "
                                         "(`search_metadata.google_flights_url`) o, si falta, una construida con los "
                                         "aeropuertos y las fechas. Siempre `https://www.google.com/travel/...`.")

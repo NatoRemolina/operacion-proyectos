@@ -30,6 +30,8 @@ INDICES = [  # nombre, tabla, columnas, único
     ("ix_analisis_vuelo_opcion", "analisis_vuelo", "opcion_id, creado", False),
     ("ix_analisis_vuelo_creado", "analisis_vuelo", "creado", False),
     ("ix_analisis_vuelo_clave", "analisis_vuelo", "clave, creado", False),
+    ("ix_clics_fuente_viaje", "clics_fuente", "viaje_id", False),
+    ("ix_clics_fuente_solicitud", "clics_fuente", "solicitud_id", False),
 ]
 
 
@@ -241,6 +243,8 @@ def _columnas() -> dict:
 def _indices():
     for nombre, tabla, columnas, unico in INDICES:
         db.ejecutar(f"create {'unique ' if unico else ''}index if not exists {nombre} on {tabla} ({columnas})")
+    # una compra activa por viaje (SQLite y PostgreSQL aceptan el índice parcial)
+    db.ejecutar("create unique index if not exists ux_compras_viaje_activa on compras (viaje_id) where activa=1")
 
 
 def _restricciones_postgres() -> dict:
@@ -284,7 +288,7 @@ def permisos_de_vistas(vistas):
 
 
 def migrar() -> dict:
-    from app.servicios import analizador, cotizacion, envios, revision  # noqa: F401  (registran sus tablas y columnas)
+    from app.servicios import analizador, compras, cotizacion, envios, revision  # noqa: F401  (registran sus tablas y columnas)
     hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas(),
               "reglas_vendedor": cotizacion.asegurar_reglas_vendedor()}
     _indices()

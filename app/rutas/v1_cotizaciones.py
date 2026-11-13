@@ -25,7 +25,7 @@ from ..api_v1.esquemas_cotizacion import (
     NuevaDecision,
     errores_cotizacion,
 )
-from ..servicios import acceso, agente, consultas, cotizacion, geografia, viajes
+from ..servicios import acceso, agente, compras, consultas, cotizacion, geografia, viajes
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
@@ -314,6 +314,11 @@ def _origen_vuelos(sid: int) -> str | None:
     return fila["origen"] if fila else None
 
 
+def _compra(viaje: dict | None) -> dict | None:
+    c = compras.de_viaje(viaje["id"]) if viaje else None
+    return {"id": c["id"], "estado": c["estado"], "estado_texto": c["estado_texto"], "motivo": c["motivo"]} if c else None
+
+
 def _cotizacion(yo: dict, sid: int) -> dict:
     c = cotizacion.comparacion(sid)
     if not c:
@@ -342,6 +347,7 @@ def _cotizacion(yo: dict, sid: int) -> dict:
                      "razones": db.de_json(d["razones"], []) or [], "total_usd": consultas.dinero(d["total"]),
                      "siguio_recomendacion": bool(d["siguio_recomendacion"]), "creado": consultas.instante(d["creado"]),
                      "aviso": (db.de_json(d["desglose"], {}) or {}).get("aviso_tope")} if d else None,
+        "compra": _compra(viaje),
         "viaje": {**{k: viaje[k] for k in ("id", "codigo", "estado", "estado_texto")},
                   "presupuesto_usd": consultas.dinero(viaje["presupuesto_usd"])} if viaje else None,
         "fuente_url": c["fuente_url"], "fuente_hoteles_url": c["fuente_hoteles_url"],

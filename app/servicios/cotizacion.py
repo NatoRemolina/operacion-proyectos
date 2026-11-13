@@ -15,7 +15,7 @@ from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
-from . import acceso, analizador, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
+from . import acceso, analizador, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
 
 # Un pedido de cotización con `Idempotency-Key` por la API: la misma clave de la misma persona da la misma cotización
 envios_cotizacion = db._tabla(
@@ -448,6 +448,7 @@ def abrir_fuente(usuario: dict, sid: int, destino: str, hotel_id: int | None = N
     else:
         url, que = precios.enlace_hoteles(_ciudad_hotel(sol), sol["ida"], sol["regreso"]), FUENTES["hoteles"]
     eventos.registrar("solicitud", sid, "fuente abierta", f"{que}: {url}", f"{canal} · {usuario['nombre']}")
+    compras.registrar_clic(usuario, sid, vuelo_id or hotel_id, "google_flights" if destino == "vuelos" else "google_hotels", url)
     return url
 
 
@@ -488,10 +489,12 @@ def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int) -> dict:
                           f"api v1 · {usuario['nombre']}")
 
     try:
-        return _destino_vendedor(usuario, sol, vuelo, sid, vuelo_id, google, anotar)
+        destino = _destino_vendedor(usuario, sol, vuelo, sid, vuelo_id, google, anotar)
     except Exception as e:  # noqa: BLE001 (una respuesta rara o un fallo no deja a la persona en un 500: va a Google Flights)
         anotar(f"error al preparar el enlace ({type(e).__name__}) · Google Flights")
-        return google
+        destino = google
+    compras.registrar_clic(usuario, sid, vuelo_id, "vendedor" if destino["tipo"] == "envio" else "google_flights", destino["url"])
+    return destino
 
 
 def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id: int, google: dict, anotar) -> dict:
@@ -626,6 +629,8 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
                     "sale": o["v"]["sale"][11:], "llega": o["v"]["llega"][11:], "tarifa": o["ev"]["tarifa"]["nombre"],
                     "permite_cambio": o["ev"]["tarifa"]["permite_cambio"], "tarifas_reales": o["ev"]["tarifas_reales"],
                     "frente_esperado": o.get("frente_esperado"), "prob_cambio": c["sol"]["prob_cambio"],
+                    # para medir el modelo frente a lo cotizado y lo pagado (frente datos-modelo)
+                    "esperado": o.get("esperado"), "precio_buscador": o["v"]["precio"],
                     "baterias": c["sol"]["baterias_n"], "maleta": c["sol"]["maleta"]},
          "creado": db.ahora()} for i, o in enumerate(orden)] + [
         {"decision_id": did, "solicitud_id": sid, "opcion_id": h["id"], "tipo": "hotel", "posicion": i + 1,
@@ -648,4 +653,5 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     # La decisión asigna el viaje a la persona: nace con su código y queda a la espera de que administración apruebe el presupuesto
     el_viaje = viajes.crear_desde_decision(did)
     monitoreo_vuelos.registrar_tramos(el_viaje["id"], vuelo["v"], regreso)
+    compras.solicitar(did, usuario)   # la solicitud de compra del tiquete nace con la decisión
     return {"repetida": False, "decision_id": did, "viaje": el_viaje}

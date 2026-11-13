@@ -23,7 +23,7 @@ import httpx
 from sqlalchemy import Column, Integer, Text, text
 
 from .. import config, db
-from . import almacen, costo, eventos, precios
+from . import almacen, compras, costo, eventos, precios
 
 analisis_vuelo = db._tabla(
     "analisis_vuelo",   # una fila por lectura de la página de un vuelo; solo la usa el servidor
@@ -435,6 +435,7 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
         db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"], clave=clave(sol, vuelo),
                     url=url or "", creado=db.ahora(), accion="ir_a", vendedor=vendedor, tarifa=tarifa, **cambios)
     dominio = urlsplit(destino["url"]).hostname if destino["url"] else "sin enlace"
+    compras.registrar_clic(usuario, sid, opcion_id, "vendedor" if camino != "google" else "google_flights", destino["url"])
     eventos.registrar("solicitud", sid, "ir a vendedor",
                       f"{' + '.join(vuelo.get('numeros') or [])} (opción {opcion_id}): {vendedor} · {tarifa} · camino {camino} · "
                       f"{dominio} · {ms} ms{' · ' + motivo if motivo and camino != 'pagina' else ''}"[:500],
