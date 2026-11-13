@@ -37,6 +37,9 @@ ALTO_CAPTURA = 4000          # px: la reserva entera cabe; lo de más abajo (his
 TOPE_CAPTURA = 3_000_000     # bytes en base64: con los datos, la respuesta queda bajo 4 MB
 TOPE_RESPUESTA = 4_000_000
 OTRO_SITIO = "la página llevó a otro sitio"
+# Frases fijas para la persona: el detalle técnico del error queda solo en el registro del analizador
+NO_ABRIO = "no se pudo abrir la página"
+ERROR_NAVEGADOR = "error del navegador"
 SIN_TARIFA = "no se encontró la tarifa"
 SIN_ENVIO = "Google no respondió al elegir la tarifa"
 CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for [\d,.]+ US dollars")
@@ -84,7 +87,8 @@ def _con_turno(url: str, leer) -> dict:
     try:
         return leer(url, inicio)
     except Exception as e:  # noqa: BLE001 (un fallo del navegador es una lectura fallida, nunca una caída del servicio)
-        return _resultado("fallido", inicio, f"error del navegador ({_primera_linea(e)})")
+        print(f"analizador: error del navegador: {type(e).__name__}: {_primera_linea(e)}", flush=True)
+        return _resultado("fallido", inicio, ERROR_NAVEGADOR)
     finally:
         _turno.release()
 
@@ -186,7 +190,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
             try:
                 pagina.goto(url, wait_until="domcontentloaded", timeout=restante())
             except Error as e:
-                motivo = (fuera or abiertas) and salida() or f"no se pudo abrir la página ({_primera_linea(e)})"
+                print(f"analizador: no se pudo abrir la página: {_primera_linea(e)}", flush=True)
+                motivo = (fuera or abiertas) and salida() or NO_ABRIO
                 return _resultado("fallido", inicio, motivo)
             if salida():
                 return _resultado("fallido", inicio, salida())

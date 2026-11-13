@@ -237,3 +237,20 @@ def test_un_content_length_invalido_es_400(largo, estado):
         assert c.getresponse().status == estado
     finally:
         s.shutdown()
+
+
+# ---------- ronda 1 · punto 5: el motivo es una frase fija; el detalle del error, solo al registro ----------
+def test_el_motivo_no_lleva_el_detalle_interno_del_navegador(capsys):
+    r = navegador.analizar(URL, servir=_servir({}, []))          # sin red: la página no abre
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.NO_ABRIO)
+    assert "net::" in capsys.readouterr().out                     # el detalle queda en el registro del analizador
+
+
+def test_un_fallo_inesperado_tiene_motivo_fijo(monkeypatch, capsys):
+    def roto(*a, **k):
+        raise RuntimeError("detalle interno con /ruta/del/servidor")
+
+    monkeypatch.setattr(navegador, "_leer", roto)
+    r = navegador.analizar(URL)
+    assert r["motivo"] == navegador.ERROR_NAVEGADOR and "/ruta/del/servidor" not in r["motivo"]
+    assert "/ruta/del/servidor" in capsys.readouterr().out

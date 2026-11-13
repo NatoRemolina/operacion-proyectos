@@ -192,7 +192,8 @@ def _invocar(pedido: dict) -> dict:
             return {"estado": "fallido", "motivo": "el analizador falló al leer la página"}
         return cuerpo
     except Exception as e:   # red, tiempo agotado, respuesta que no es JSON
-        return {"estado": "fallido", "motivo": f"el analizador no respondió ({type(e).__name__})"}
+        print(f"analizador: la llamada falló: {type(e).__name__}", flush=True)   # el detalle, solo al registro
+        return {"estado": "fallido", "motivo": "el analizador no respondió"}
 
 
 def _guardar_captura(b64: str | None) -> str | None:
