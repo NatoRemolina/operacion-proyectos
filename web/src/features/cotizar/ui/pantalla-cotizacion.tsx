@@ -556,7 +556,7 @@ function FilaHotel({ h, noches }: { h: OpcionHotel; noches: number }) {
           {h.clase ? <span className="text-texto-secundario"> · {h.clase} estrellas</span> : null}
           {h.calificacion ? <span className="text-texto-secundario"> · calificación {h.calificacion.toFixed(1)}</span> : null}
         </span>
-        <span className="text-right tabular-nums">
+        <span className="ml-auto text-right tabular-nums">
           <span className="font-bold">{formatearDinero(h.costo_total_usd)}</span>
           <span className="block text-sm text-texto-secundario">
             {h.costo_total_usd !== h.total_usd ? `tarifa ${formatearDinero(h.total_usd)} · ` : ""}
@@ -585,9 +585,11 @@ function FilaHotel({ h, noches }: { h: OpcionHotel; noches: number }) {
             <tbody>
               {h.lineas.map((l) => (
                 <tr key={l.concepto} className="border-t border-linea">
-                  <td className="py-1 pr-2">{l.concepto}</td>
-                  <td className="py-1 pr-2 text-texto-secundario">{ORIGEN_LINEA_HOTEL[l.origen] ?? l.origen}</td>
-                  <td className="py-1 text-right tabular-nums">{formatearDinero(l.valor_usd)}</td>
+                  <td className="py-1 pr-2">
+                    {l.concepto}
+                    <span className="block text-xs text-texto-secundario">{ORIGEN_LINEA_HOTEL[l.origen] ?? l.origen}</span>
+                  </td>
+                  <td className="whitespace-nowrap py-1 text-right align-top tabular-nums">{formatearDinero(l.valor_usd)}</td>
                 </tr>
               ))}
             </tbody>

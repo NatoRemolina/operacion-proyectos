@@ -178,7 +178,7 @@ export function OpcionDeVuelo({
       {vuelo.total_con_hotel_usd ? (
         <p className="text-sm text-texto-secundario">
           Total con el hotel recomendado:{" "}
-          <span className="font-semibold text-texto tabular-nums">{formatearDinero(vuelo.total_con_hotel_usd)}</span>
+          <span className="whitespace-nowrap font-semibold text-texto tabular-nums">{formatearDinero(vuelo.total_con_hotel_usd)}</span>
         </p>
       ) : null}
       <BarraCosto vuelo={vuelo} maximo={maximo} />
