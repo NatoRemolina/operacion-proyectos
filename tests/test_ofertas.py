@@ -218,3 +218,15 @@ def test_r1_1_un_archivo_de_respaldo_solo_entra_si_la_tabla_no_tiene_esa_clave()
     de_archivo = db.todos("select origen_fila from ofertas_tarifa where busqueda_clave=:c", c=archivo)
     assert de_archivo and all(f["origen_fila"] == f"archivo:{archivo}" for f in de_archivo)
     assert db.uno("select count(*) n from ofertas_tarifa where origen_fila like 'busqueda:%' and busqueda_clave=:c", c=archivo)["n"] == 0
+
+
+def test_r1_2_una_opcion_sin_precio_se_guarda_y_la_limpieza_la_excluye():
+    sin_precio = {"together": {"book_with": "Agencia Sin Precio", "airline": False, "option_title": "Economy",
+                               "extensions": ["No refunds"], "baggage_prices": []}}
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7002.json"
+    _guardar_respuesta(clave, _respuesta(opciones=[sin_precio]), "2026-11-02 10:00:00")
+    ofertas.actualizar()
+    fila = db.uno("select * from ofertas_tarifa where busqueda_clave=:c", c=clave)
+    assert fila["precio"] is None and json.loads(fila["crudo"])["book_with"] == "Agencia Sin Precio"
+    limpias, informe = ofertas.depurar([fila])
+    assert limpias == [] and informe["descartes"] == {"sin precio": 1}

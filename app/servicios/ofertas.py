@@ -159,7 +159,7 @@ def _fila(base: dict, nombre, precio, vendedor, es_aerolinea, lineas_equipaje, l
     try:
         precio = float(precio)
     except (TypeError, ValueError):
-        return None
+        precio = None   # se guarda igual, con su crudo: la limpieza la deja fuera al entrenar («sin precio»)
     mano, maleta = equipaje(lineas_equipaje)
     c, r = cambios(lineas_condiciones), reembolso(lineas_condiciones)
     return {**base, "tarifa": nombre or "Tarifa", "vendedor": vendedor or "", "es_aerolinea": es_aerolinea, "precio": precio,
