@@ -266,8 +266,10 @@
 }
 
 /*
- * Portada de entrada: la carta, el recibo de papel térmico y lo que se leyó de él. Cada pieza está en su
- * estado final (la ruta dibujada, el recibo aprobado, la ejecución del viaje con ese gasto).
+ * Portada de entrada: una sola secuencia, una vez, de unos 3,5 s. Se dibuja la ruta, llega a Moab, nace el
+ * viaje, un recibo se lee y queda aprobado, y la ejecución del viaje avanza con ese gasto. Solo opacidad,
+ * transformaciones y el trazo. El estado normal de cada pieza es el final: con movimiento reducido no hay
+ * animación y se ve todo terminado desde el principio.
  */
 @layer components {
   /* La carta se desvanece hacia los bordes en vez de cortarse en seco. */
@@ -281,15 +283,21 @@
   }
   .portada-trazo {
     stroke-dasharray: 1 1;
+    animation: portada-trazo 1.2s cubic-bezier(0.45, 0, 0.25, 1) 0.2s both;
   }
   .portada-llegada {
     transform-box: fill-box;
     transform-origin: center;
+    animation: portada-llegada 0.35s var(--ease-salida) 1.3s both;
   }
   .portada-ping {
     opacity: 0;
     transform-box: fill-box;
     transform-origin: center;
+    animation: portada-ping 1s ease-out 1.45s forwards; /* oculto hasta que llega la ruta */
+  }
+  .portada-aparece {
+    animation: portada-aparece 0.5s var(--ease-salida) both;
   }
   .portada-recibo {
     /* Borde inferior dentado del papel térmico. */
@@ -310,18 +318,110 @@
     z-index: -1;
     border-radius: 3px;
     background: var(--marca-suave);
+    animation: portada-entra 0.25s ease-out both;
+    animation-delay: inherit;
   }
   .portada-lectura {
     opacity: 0;
     background: linear-gradient(to bottom, transparent 70%, rgb(0 114 127 / 0.12) 97%, var(--marca) 97%);
+    animation: portada-lectura 0.8s cubic-bezier(0.4, 0, 0.6, 1) 2.2s forwards;
   }
   .portada-sello {
     rotate: -4deg;
+    animation: portada-sello 0.3s var(--ease-salida) 3s both;
   }
   .portada-ejecucion {
     transform-origin: left center;
+    animation: portada-ejecucion 0.6s var(--ease-salida) 3.2s both;
   }
   .portada-cifra-antes {
     opacity: 0;
+    animation: portada-se-va 0.25s ease-out 3.2s both;
+  }
+  .portada-cifra-despues {
+    animation: portada-entra 0.25s ease-out 3.2s both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .portada-ilustracion *,
+    .portada-ilustracion *::before {
+      animation: none !important;
+    }
+  }
+}
+
+@keyframes portada-trazo {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes portada-llegada {
+  from {
+    opacity: 0;
+    scale: 0.3;
+  }
+}
+
+@keyframes portada-ping {
+  from {
+    opacity: 0.7;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 2.4;
+  }
+}
+
+@keyframes portada-aparece {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
+@keyframes portada-entra {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes portada-se-va {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes portada-lectura {
+  0% {
+    opacity: 1;
+    translate: 0 -100%;
+  }
+  85% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  100% {
+    opacity: 0;
+    translate: 0 0;
+  }
+}
+
+@keyframes portada-sello {
+  from {
+    opacity: 0;
+    scale: 1.25;
+  }
+}
+
+@keyframes portada-ejecucion {
+  from {
+    scale: 0.2 1;
   }
 }
