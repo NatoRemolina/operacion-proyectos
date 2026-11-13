@@ -5,10 +5,12 @@ clave, y como último recurso una respuesta guardada de la misma ruta con otras 
 Cada resultado dice de dónde salió: "en vivo", "guardado" o "guardado (otras fechas)".
 Cada búsqueda, también la leída de lo guardado o la fallida, deja una fila en `consultas_buscador`.
 """
+import base64
 import json
 import re
 import time
 from datetime import UTC, date, datetime, timedelta
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 import httpx
 
@@ -84,6 +86,85 @@ def _anotar(tipo: str, clave: str, origen: str, solicitud_id: int | None, inicio
 
 
 SIN_DATOS = "Sin respuesta guardada para esta búsqueda y sin consulta en vivo disponible."
+
+
+# ---------- enlace a la fuente: la misma búsqueda en Google Flights y Google Hotels ----------
+DOMINIOS_FUENTE = frozenset({"www.google.com", "google.com"})
+
+
+def es_fuente_google(url) -> bool:
+    """Solo `https://www.google.com/travel/...`, sin credenciales ni puerto: lo único a lo que la plataforma enlaza."""
+    if not isinstance(url, str):
+        return False
+    try:
+        p = urlsplit(url)
+        puerto = p.port
+    except ValueError:
+        return False
+    return (p.scheme == "https" and p.hostname in DOMINIOS_FUENTE and puerto is None and not p.username
+            and not p.password and p.path.startswith("/travel/"))
+
+
+def _protobuf(campo: int, datos: bytes) -> bytes:
+    """Un campo de longitud variable del formato que usa Google Flights en el parámetro `tfs`."""
+    largo, n = b"", len(datos)
+    while True:
+        byte, n = n & 0x7F, n >> 7
+        largo += bytes([byte | (0x80 if n else 0)])
+        if not n:
+            return bytes([campo << 3 | 2]) + largo + datos
+
+
+def _tramo_tfs(fecha: str, desde: list[str], hasta: list[str]) -> bytes:
+    aeropuerto = lambda c: b"\x08\x01" + _protobuf(2, c.encode())  # noqa: E731
+    return _protobuf(3, _protobuf(2, fecha.encode()) + b"".join(_protobuf(13, aeropuerto(c)) for c in desde)
+                     + b"".join(_protobuf(14, aeropuerto(c)) for c in hasta))
+
+
+def construir_enlace_vuelos(origen: str | list[str], destino: str | list[str], ida: str, regreso: str) -> str:
+    """La búsqueda de ida y vuelta, en clase económica y para una persona, como la arma el buscador en `google_flights_url`.
+    Sirve cuando la respuesta guardada no lo trae."""
+    o, d = codigos(origen), codigos(destino)
+    tfs = b"\x08\x1c\x10\x02" + _tramo_tfs(ida, o, d) + _tramo_tfs(regreso, d, o) + b"\x40\x01\x48\x01\x70\x01\x98\x01\x01"
+    return ("https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs="
+            + base64.urlsafe_b64encode(tfs).decode().rstrip("=") + "&tfu=EgIIAQ")
+
+
+_enlaces: dict[str, str] = {}   # lo leído de una respuesta guardada no cambia: no se vuelve a leer en cada comparación
+
+
+def _enlace_guardado(nombre: str, campo: str) -> str | None:
+    if nombre not in _enlaces:
+        try:
+            url = ((_leer(nombre) or {}).get("search_metadata") or {}).get(campo)
+        except (ValueError, AttributeError):
+            url = None
+        if not es_fuente_google(url):
+            return None
+        _enlaces[nombre] = url
+    return _enlaces[nombre]
+
+
+def enlace_vuelos(origen: str | list[str], destino: str | list[str], ida: str, regreso: str) -> str:
+    """La búsqueda exacta en Google Flights: la de la respuesta guardada de esas fechas o, si falta, una construida."""
+    _, _, n_origen, n_destino = ruta(origen, destino)
+    return (_enlace_guardado(f"vuelos_{n_origen}_{n_destino}_{ida}_{regreso}.json", "google_flights_url")
+            or construir_enlace_vuelos(origen, destino, ida, regreso))
+
+
+def enlace_hoteles(ciudad: str, entrada: str, salida: str, hotel: str | None = None) -> str:
+    """La búsqueda en Google Hotels con sus fechas; con `hotel`, la del hotel en esa ciudad, para verlo primero.
+
+    El buscador guarda un enlace sin fechas: se toma su texto de búsqueda y se le añaden las fechas, que Google lee del
+    texto (comprobado el 13 de noviembre de 2026; los parámetros `checkin` y `checkout` los ignora)."""
+    guardado = _enlace_guardado(f"hoteles_{_slug(ciudad)}_{entrada}_{salida}.json", "google_hotels_url")
+    base, parametros = "https://www.google.com/travel/search", {"q": f"{ciudad} hotels", "hl": "en", "gl": "us"}
+    if guardado:
+        p = urlsplit(guardado)
+        base, parametros = f"https://{p.hostname}{p.path}", {k: v[0] for k, v in parse_qs(p.query).items()}
+    texto = f"{hotel}, {ciudad}" if hotel else parametros.get("q") or f"{ciudad} hotels"
+    parametros["q"] = f"{texto} from {entrada} to {salida}"
+    return f"{base}?{urlencode(parametros, quote_via=quote)}"
 
 
 def _consultar(parametros: dict, entidad: str, entidad_id: int | None, que: str) -> dict:

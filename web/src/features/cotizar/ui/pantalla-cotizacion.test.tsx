@@ -296,6 +296,7 @@ describe("Comparación de una cotización", () => {
       ],
       avisos: ["Acumula solo con reserva directa."], calificacion: 4.1, clase: 3, programa: "Hilton Honors", socio: true,
       membresia_de_ejemplo: true, descartado: null, origen_dato: "guardado", recomendada: true, mas_barata: false,
+      fuente_url: "https://www.google.com/travel/search?q=Tru%20by%20Hilton%20Moab%2C%20Moab%20from%202026-12-08%20to%202026-12-11",
     };
     const independiente: OpcionHotel = {
       ...tru, id: 91, nombre: "Independiente Moab", noche_usd: "75.00", total_usd: "225.00", costo_total_usd: "225.00",
@@ -332,5 +333,40 @@ describe("Comparación de una cotización", () => {
     expect(radioTru).not.toBeChecked();
     expect(screen.getByText("Motel Barato")).toBeInTheDocument();
     expect(screen.getByText("Calificación 3.2, por debajo del mínimo de 3.5.")).toBeInTheDocument();
+  });
+
+  it("enlaza a la búsqueda en Google Flights y Google Hotels y deja el rastro de cada clic", async () => {
+    const usuario = userEvent.setup();
+    const registrarFuente = vi.fn<CotizarRepository["registrarFuente"]>().mockResolvedValue(undefined);
+    const hotel: OpcionHotel = {
+      id: 90, nombre: "Tru by Hilton Moab", noche_usd: "81.00", total_usd: "243.00", costo_total_usd: "243.00",
+      lineas: [{ concepto: "Tarifa total (3 noches)", valor_usd: "243.00", origen: "buscador", tipo: "tarifa" }],
+      avisos: [], calificacion: 4.1, clase: 3, programa: null, socio: false, membresia_de_ejemplo: false, descartado: null,
+      origen_dato: "guardado", recomendada: true, mas_barata: false,
+      fuente_url: "https://www.google.com/travel/search?q=Tru%20by%20Hilton%20Moab",
+    };
+    const conHotel: Cotizacion = { ...COTIZACION_MOAB, hoteles: [hotel], hotel_recomendado_id: 90 };
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(conHotel, { registrarFuente }) });
+
+    const vuelos = await screen.findByRole("link", { name: "Ver en Google Flights, se abre en otra pestaña" });
+    expect(vuelos).toHaveAttribute("href", COTIZACION_MOAB.fuente_url);
+    expect(vuelos).toHaveAttribute("target", "_blank");
+    expect(vuelos).toHaveAttribute("rel", "noopener noreferrer");
+    await usuario.click(vuelos);
+    expect(registrarFuente).toHaveBeenLastCalledWith(12, "vuelos", undefined);
+
+    const lista = screen.getByRole("link", { name: "Ver en Google Hotels, se abre en otra pestaña" });
+    expect(lista).toHaveAttribute("href", COTIZACION_MOAB.fuente_hoteles_url);
+    expect(lista).toHaveAttribute("rel", "noopener noreferrer");
+    await usuario.click(lista);
+    expect(registrarFuente).toHaveBeenLastCalledWith(12, "hoteles", undefined);
+
+    const uno = screen.getByRole("link", { name: "Ver en Google Hotels (Tru by Hilton Moab), se abre en otra pestaña" });
+    expect(uno).toHaveAttribute("href", hotel.fuente_url);
+    expect(uno).toHaveAttribute("target", "_blank");
+    await usuario.pointer({ keys: "[MouseMiddle]", target: uno });   // abrir en otra pestaña con el botón central
+    expect(registrarFuente).toHaveBeenLastCalledWith(12, "hoteles", 90);
+    // el enlace no elige el hotel
+    expect(screen.getByRole("radio", { name: `Tru by Hilton Moab, costo total ${dinero("243.00")}` })).not.toBeChecked();
   });
 });

@@ -126,6 +126,7 @@ const hotelSchema = z.object({
   origen_dato: z.string().nullable(),
   recomendada: z.boolean(),
   mas_barata: z.boolean(),
+  fuente_url: z.string(),
 });
 
 const ladoSchema = z.object({ codigo: z.string(), aeropuertos: z.array(z.string()), lugar: lugarSchema.nullable() });
@@ -183,9 +184,13 @@ export const cotizacionSchema = z.object({
       presupuesto_usd: dineroSchema,
     })
     .nullable(),
+  fuente_url: z.string(),
+  fuente_hoteles_url: z.string(),
   puede_decidir: z.boolean(),
   bloqueo: z.string().nullable(),
 }) satisfies z.ZodType<Cotizacion>;
+
+const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), url: z.string() });
 
 export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
   return {
@@ -208,6 +213,9 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       return cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
       });
+    },
+    async registrarFuente(id, destino, hotelId) {
+      await cliente.postJson(`/cotizaciones/${id}/fuente`, { destino, hotel_id: hotelId ?? null }, enlaceFuenteSchema);
     },
   };
 }

@@ -168,6 +168,8 @@ export interface OpcionHotel {
   readonly membresia_de_ejemplo: boolean;
   readonly descartado: string | null;
   readonly origen_dato: string | null;
+  /** Este hotel en Google Hotels con las fechas de la cotización, para verificar el precio. */
+  readonly fuente_url: string;
   readonly recomendada: boolean;
   readonly mas_barata: boolean;
 }
@@ -225,9 +227,16 @@ export interface Cotizacion {
     /** Lo que aprueba administración: sin riesgo de cambio ni millas, con viáticos. */
     readonly presupuesto_usd: Dinero;
   } | null;
+  /** La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador. Siempre google.com/travel. */
+  readonly fuente_url: string;
+  /** La búsqueda de hoteles en Google Hotels con las fechas de la cotización. */
+  readonly fuente_hoteles_url: string;
   readonly puede_decidir: boolean;
   readonly bloqueo: string | null;
 }
+
+/** Qué fuente abre la persona: la URL la arma el servidor, nunca la web. */
+export type DestinoFuente = "vuelos" | "hoteles";
 
 export interface CotizarRepository {
   /** Proyectos, quién puede viajar y razones de la decisión, según el permiso de la persona. */
@@ -242,6 +251,8 @@ export interface CotizarRepository {
   obtener(id: number, signal?: AbortSignal): Promise<Cotizacion>;
   /** Guarda la decisión y crea el viaje, pendiente de aprobación. La clave evita decidir dos veces al reintentar. */
   decidir(id: number, decision: DecisionPedida, claveIdempotencia: string): Promise<Cotizacion>;
+  /** Deja el rastro de que la persona abrió la fuente de los precios (quién, qué cotización y adónde). */
+  registrarFuente(id: number, destino: DestinoFuente, hotelId?: number): Promise<void>;
 }
 
 // ---------- reglas del campo de lugar ----------

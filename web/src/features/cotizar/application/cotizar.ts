@@ -10,6 +10,7 @@ import type {
   Cotizacion,
   CotizarRepository,
   DecisionPedida,
+  DestinoFuente,
   PedidoCotizacion,
 } from "../domain/cotizar";
 
@@ -180,4 +181,18 @@ export function useDecidir(id: number) {
     [isPending, mutate],
   );
   return { ...mutacion, decidir };
+}
+
+/**
+ * Caso de uso «ver la fuente»: el enlace abre Google en otra pestaña por sí solo; esto solo deja el rastro del clic.
+ * Si el registro falla no se interrumpe a la persona: la verificación importa más que el rastro.
+ */
+export function useRegistrarFuente(id: number) {
+  const repositorio = useCotizarRepository();
+  return useCallback(
+    (destino: DestinoFuente, hotelId?: number) => {
+      repositorio.registrarFuente(id, destino, hotelId).catch(() => {});
+    },
+    [repositorio, id],
+  );
 }

@@ -338,7 +338,8 @@ def comparacion(sid: int) -> dict | None:
             ev_h = costo.evaluar_hotel(datos, membresias, cat, costo.noches(sol["ida"], sol["regreso"]))
             # la calificación queda como número (o sin dato) para la página, la API, el asistente y la foto de lo mostrado
             hoteles.append({"id": o["id"], "h": {**datos, "calificacion": ev_h["calificacion"]}, "origen_dato": o["origen_dato"],
-                            "programa": ev_h["programa"], "ev": ev_h})
+                            "programa": ev_h["programa"], "ev": ev_h,
+                            "fuente_url": precios.enlace_hoteles(sol["ciudad"], sol["ida"], sol["regreso"], hotel=datos.get("nombre"))})
     # Precio esperado según el modelo (solo si hay un modelo utilizable)
     _, _, n_origen, n_destino = precios.ruta(codigos(sol, "origen"), codigos(sol, "destino"))
     ref = db.uno("select tipico_min, tipico_max from observaciones where busqueda=:b limit 1",
@@ -391,10 +392,42 @@ def comparacion(sid: int) -> dict | None:
     return {"sol": sol, "vuelos": validos, "descartados": descartados, "hoteles": hoteles, "aviso": aviso,
             "hoteles_descartados": hoteles_descartados, "hotel_recomendado": hotel_recomendado, "hotel_mas_barato": hotel_mas_barato,
             "mas_barato": mas_barato, "mas_barato_descartado": descartado, "hay_modelo": modelo.utilizable(),
+            "fuente_url": fuente_vuelos(sol), "fuente_hoteles_url": precios.enlace_hoteles(sol["ciudad"], sol["ida"], sol["regreso"]),
             "baterias": costo.baterias(sol["baterias_n"], sol["baterias_wh"]), "noches": n,
             "carro": round((sol["carro_dia"] or 0) * n, 2), "membresias": membresias,
             "fallos": db.todos("select detalle from eventos where entidad='solicitud' and entidad_id=:i and paso='consulta externa fallida'", i=sid),
             "decision": db.uno("select * from decisiones where solicitud_id=:i order by id desc", i=sid)}
+
+
+# ---------- enlace a la fuente ----------
+FUENTES = {"vuelos": "Google Flights", "hoteles": "Google Hotels"}
+
+
+def fuente_vuelos(sol: dict) -> str:
+    """La búsqueda de vuelos de la cotización en Google Flights (la misma que se le pidió al buscador)."""
+    return precios.enlace_vuelos(codigos(sol, "origen"), codigos(sol, "destino"), sol["ida"], sol["regreso"])
+
+
+def abrir_fuente(usuario: dict, sid: int, destino: str, hotel_id: int | None = None, canal: str = "api v1") -> str:
+    """El enlace a la fuente que la persona abre, con su rastro en la bitácora (quién, qué cotización y adónde).
+
+    La URL la arma siempre el servidor con los datos de la cotización: nunca llega del cliente. Quien llama comprueba
+    antes que la persona ve la cotización. LookupError si no existe; CotizacionInvalida si el hotel no es de ella."""
+    sol = db.uno("select * from solicitudes where id=:i", i=sid)
+    if not sol:
+        raise LookupError(sid)
+    if destino == "vuelos":
+        url, que = fuente_vuelos(sol), FUENTES["vuelos"]
+    elif hotel_id:
+        hotel = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='hotel'", o=hotel_id, s=sid)
+        if not hotel:
+            raise CotizacionInvalida("hotel_id", "Ese hotel no es de esta cotización.")
+        nombre = (db.de_json(hotel["datos"], {}) or {}).get("nombre") or ""
+        url, que = precios.enlace_hoteles(sol["ciudad"], sol["ida"], sol["regreso"], hotel=nombre), f"{FUENTES['hoteles']} ({nombre})"
+    else:
+        url, que = precios.enlace_hoteles(sol["ciudad"], sol["ida"], sol["regreso"]), FUENTES["hoteles"]
+    eventos.registrar("solicitud", sid, "fuente abierta", f"{que}: {url}", f"{canal} · {usuario['nombre']}")
+    return url
 
 
 # ---------- decidir ----------
