@@ -11,6 +11,8 @@ export interface Columna<T> {
   alinear?: "inicio" | "fin";
   /** La columna que nombra la fila: lleva el enlace y es el título de la tarjeta en celular. */
   principal?: boolean;
+  /** Códigos y nombres cortos que se leen mal partidos en dos líneas (`V-2026-` / `0001`). */
+  sinCorte?: boolean;
 }
 
 /**
@@ -95,12 +97,14 @@ export function Tabla<T>({
                 {columnas.map((c) => (
                   <td
                     key={c.clave}
-                    className={`px-4 py-3 align-top ${c.alinear === "fin" ? "text-right tabular-nums whitespace-nowrap" : ""}`}
+                    className={`px-4 py-3 align-middle ${c.alinear === "fin" ? "text-right tabular-nums whitespace-nowrap" : ""} ${
+                      c.sinCorte ? "whitespace-nowrap tabular-nums" : ""
+                    }`}
                   >
                     {c === principal ? contenidoPrincipal(fila, true) : c.celda(fila)}
                   </td>
                 ))}
-                {acciones ? <td className="relative z-10 px-4 py-3 align-top">{acciones(fila)}</td> : null}
+                {acciones ? <td className="relative z-10 whitespace-nowrap px-4 py-3 align-middle">{acciones(fila)}</td> : null}
               </tr>
             ))}
           </tbody>

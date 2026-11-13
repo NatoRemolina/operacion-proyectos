@@ -15,7 +15,7 @@ const ESTILOS: Record<TonoDistintivo, string> = {
  */
 export function Distintivo({ tono = "neutro", children }: { tono?: TonoDistintivo; children: ReactNode }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold ${ESTILOS[tono]}`}>
+    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-bold ${ESTILOS[tono]}`}>
       {children}
     </span>
   );

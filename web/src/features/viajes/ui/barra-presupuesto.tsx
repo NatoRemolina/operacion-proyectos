@@ -26,7 +26,7 @@ export function BarraPresupuesto({
   const hayRevision = enRevision !== null && Number(enRevision) > 0;
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-sm">
+      <p className="text-sm tabular-nums">
         <span className="font-semibold">
           {formatearDinero(gastado ?? "0.00")} de {formatearDinero(presupuesto)}
         </span>{" "}

@@ -114,8 +114,8 @@ function ActividadReciente({ resumen }: { resumen: ResumenAdmin }) {
           hrefFila={(a) => `/gastos/${a.gasto_id}`}
           columnas={[
             { clave: "comercio", encabezado: "Comercio", celda: (a) => a.comercio ?? "Sin comercio leído", principal: true },
-            { clave: "persona", encabezado: "Persona", celda: (a) => a.persona?.nombre ?? "Sin asignar" },
-            { clave: "viaje", encabezado: "Viaje", celda: (a) => a.viaje?.codigo ?? "Sin viaje" },
+            { clave: "persona", encabezado: "Persona", celda: (a) => a.persona?.nombre ?? "Sin asignar", sinCorte: true },
+            { clave: "viaje", encabezado: "Viaje", celda: (a) => a.viaje?.codigo ?? "Sin viaje", sinCorte: true },
             {
               clave: "importe",
               encabezado: "Importe",
