@@ -1,0 +1,7 @@
+<!doctype html>
+<!-- Como regresos.html, pero la lista con precios aparece a los 6 segundos (Google a veces tarda). Sin red. -->
+<html lang="en"><head><meta charset="utf-8"><title>Las Vegas to Miami | Google Flights</title></head>
+<body><main><div>Loading results</div><div id="lista"></div></main>
+<script>setTimeout(function () {
+  document.getElementById("lista").innerHTML = "<h2>Returning flights</h2><div>$564</div>";
+}, 6000);</script></body></html>

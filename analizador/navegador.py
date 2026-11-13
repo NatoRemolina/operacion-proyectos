@@ -41,6 +41,11 @@ OTRO_SITIO = "la página llevó a otro sitio"
 NO_ABRIO = "no se pudo abrir la página"
 ERROR_NAVEGADOR = "error del navegador"
 SIN_TARIFA = "no se encontró la tarifa"
+SIN_REGRESO = "no se pudo elegir el regreso"
+# «Ir a…» necesita tiempo después de la lista (elegir el regreso, desplegar, «Continue» y el envío): la espera de la
+# lista no puede comerse todo el plazo. Una lectura necesita menos (elegir, leer y capturar).
+RESERVA_IR_MS = 20_000
+RESERVA_LEER_MS = 10_000
 SIN_ENVIO = "Google no respondió al elegir la tarifa"
 CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for [\d,.]+ US dollars")
 VENDEDOR_O_TARIFA = re.compile(r"^[\w .,&'()+/-]{1,60}$")
@@ -195,7 +200,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 return _resultado("fallido", inicio, motivo)
             if salida():
                 return _resultado("fallido", inicio, salida())
-            texto = _esperar(pagina, LISTO, min(espera_ms, restante()))
+            reserva = min(RESERVA_IR_MS if pedido_ir else RESERVA_LEER_MS, presupuesto_ms // 2)
+            texto = _esperar(pagina, LISTO, max(min(espera_ms, restante() - reserva), 1))
             if salida():
                 return _resultado("fallido", inicio, salida())
             if texto is None:
@@ -217,6 +223,9 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
             if salida():
                 return _resultado("fallido", inicio, salida())
             if pedido_ir:
+                if not RESERVA.search(texto):   # sin opciones de reserva no hay «Continue» que pulsar
+                    return _resultado("fallido", inicio, SIN_REGRESO, url_final=pagina.url, regreso_elegido=regreso,
+                                      **_evidencia(pagina))
                 return _ir(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
             restante()
             etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
@@ -260,17 +269,19 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
     indice = next((i for i, e in enumerate(etiquetas) if _es_continuar(e, pedido["vendedor"], pedido["tarifa"])), None)
     if indice is None:
-        return _resultado("fallido", inicio, SIN_TARIFA, url_final=pagina.url)
+        return _resultado("fallido", inicio, SIN_TARIFA, url_final=pagina.url, regreso_elegido=regreso, **_evidencia(pagina))
     previa = _captura(pagina, restante)
     try:
         pagina.locator("[aria-label]").nth(indice).click(timeout=min(5000, restante()))
     except Error:
-        return _resultado("fallido", inicio, SIN_ENVIO, url_final=pagina.url)
+        return _resultado("fallido", inicio, SIN_ENVIO, url_final=pagina.url, regreso_elegido=regreso, **_evidencia(pagina))
     fin = time.monotonic() + min(10_000, restante()) / 1000
     while not envio and time.monotonic() < fin:
         pagina.wait_for_timeout(100)
     if not envio:
-        return _resultado("fallido", inicio, salida() or SIN_ENVIO, url_final=pagina.url)
+        motivo = salida()
+        evidencia = {} if motivo else _evidencia(pagina)   # otro sitio u otra pestaña no se fotografían
+        return _resultado("fallido", inicio, motivo or SIN_ENVIO, url_final=pagina.url, regreso_elegido=regreso, **evidencia)
     return _resultado("listo", inicio, url=envio["url"], cuerpo=envio["cuerpo"], vendedor=pedido["vendedor"],
                       tarifa=pedido["tarifa"], regreso_elegido=regreso, url_final=pagina.url,
                       captura_previa_png_b64=base64.b64encode(previa).decode())

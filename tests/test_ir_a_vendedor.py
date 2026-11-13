@@ -163,3 +163,15 @@ def test_la_pagina_de_envio_prepara_el_enlace_con_la_sesion(piloto, piloto2, ent
     assert "No encontramos ese vuelo" in ajena.text
     assert piloto.get(ruta, params={"vendedor": "<b>", "tarifa": "x"}).status_code == 422
     assert db.uno("select count(*) n from analisis_vuelo")["n"] == 0                  # abrir la página no gasta el tope
+
+
+def test_un_ir_a_fallido_guarda_la_captura_y_el_extracto_como_evidencia(piloto, entorno):
+    _, respuesta, _ = entorno
+    respuesta.update(estado="fallido", motivo="no se pudo elegir el regreso", url=None, cuerpo=None,
+                     captura_png_b64=base64.b64encode(PNG).decode(), extracto="Returning flights $564")
+    respuesta.pop("captura_previa_png_b64")
+    c = _vegas(piloto)
+    e = _ir(piloto, c["id"], c["vuelos"][0]["id"]).json()
+    assert (e["camino"], e["motivo"]) == ("google", "no se pudo elegir el regreso")
+    fila = db.uno("select * from analisis_vuelo where accion='ir_a'")
+    assert fila["estado"] == "fallido" and fila["captura"] and db.de_json(fila["datos"]) == {"extracto": "Returning flights $564"}

@@ -193,9 +193,36 @@ def test_ir_a_devuelve_el_envio_de_esa_tarifa_sin_mandarlo(vendedor, tarifa, cue
     assert not any("/travel/clk" in p for p in pedidos)          # la petición nunca salió del navegador del servidor
 
 
-def test_ir_a_una_tarifa_que_no_esta_falla():
+def test_ir_a_una_tarifa_que_no_esta_falla_con_evidencia():
     r = navegador.ir_a(URL, "American", "First", servir=_servir(dict(COMPLETA), []))
     assert (r["estado"], r["motivo"], r.get("cuerpo")) == ("fallido", navegador.SIN_TARIFA, None)
+    # lo que se vio: captura, comienzo del texto y el regreso que se eligió, para saber por qué
+    assert base64.b64decode(r["captura_png_b64"]).startswith(b"\x89PNG") and "Booking options" in r["extracto"]
+    assert r["regreso_elegido"]["precio"] == 564
+
+
+# ---------- prueba en vivo de «Ir a…» (13 nov): lo que la hizo fallar ----------
+def test_ir_a_con_una_hora_de_regreso_que_no_esta_elige_el_mas_barato():
+    r = navegador.ir_a(URL, "American", "Main Cabin", servir=_servir(dict(COMPLETA), []),
+                       regreso={"sale": "1:43 PM", "aerolinea": "Delta"})
+    assert r["estado"] == "listo", r["motivo"]
+    assert (r["regreso_elegido"]["precio"], r["regreso_elegido"]["elegido_por"]) == (564, "precio")
+
+
+def test_ir_a_sin_regreso_que_elegir_lo_dice_con_evidencia():
+    r = navegador.ir_a(URL, "American", "Main Cabin",
+                       servir=_servir({"https://www.google.com/travel/flights?": "regresos_sin_etiquetas.html"}, []))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_REGRESO)
+    assert base64.b64decode(r["captura_png_b64"]).startswith(b"\x89PNG") and "Returning flights" in r["extracto"]
+
+
+def test_ir_a_reserva_tiempo_para_sus_pasos_y_una_lista_lenta_dice_que_tardo():
+    """Con 10 s de plazo, «ir a» espera la lista a lo sumo la mitad: si tarda más, lo dice (no «no se encontró la tarifa»)."""
+    r = navegador.ir_a(URL, "American", "Main Cabin", presupuesto_ms=10_000,
+                       servir=_servir({"https://www.google.com/travel/flights?": "regresos_lentos.html"}, []))
+    assert (r["estado"], r["motivo"]) == ("fallido", "la página tardó demasiado en mostrar los precios")
+    assert r["duracion_ms"] < 9_000 and r["captura_png_b64"]
+
 
 
 def test_ir_a_con_redireccion_a_otro_dominio_falla():

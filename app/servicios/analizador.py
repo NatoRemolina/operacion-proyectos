@@ -415,6 +415,7 @@ def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, ca
 def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict, url: str | None, vendedor: str,
                   tarifa: str, turno: dict, inicio: datetime, canal: str) -> dict:
     destino, camino, motivo, captura, aid = None, None, turno.get("motivo"), None, turno.get("id")
+    extracto = None
     if aid:
         r = _invocar({"accion": "ir_a", "url": url, "vendedor": vendedor, "tarifa": tarifa, "regreso": regreso_de(sol, vuelo)})
         if not isinstance(r, dict):
@@ -430,6 +431,12 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
                 captura = None
         else:
             motivo = str(r.get("motivo") or "la página no devolvió el envío")[:300]
+            # lo que vio el analizador (captura y comienzo del texto): sirve para saber por qué no llegó a la tarifa
+            try:
+                captura = _guardar_captura(r.get("captura_png_b64"))
+            except Exception:  # noqa: BLE001 (la evidencia es secundaria)
+                captura = None
+            extracto = str(r["extracto"])[:500] if r.get("extracto") else None
     if not destino and not turno.get("tope") and config.SERPAPI_KEY:
         destino = _por_buscador(sol, vuelo, vendedor, tarifa, sid)
         camino = "buscador" if destino else None
@@ -443,7 +450,8 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
         destino, camino = {"url": google, "campos": []}, "google"
     ms = int((datetime.now(UTC) - inicio).total_seconds() * 1000)
     cambios = {"estado": "listo" if camino == "pagina" else "fallido", "terminado": db.ahora(), "duracion_ms": ms,
-               "camino": camino, "captura": captura, "motivo": None if camino == "pagina" else motivo}
+               "camino": camino, "captura": captura, "motivo": None if camino == "pagina" else motivo,
+               "datos": {"extracto": extracto} if extracto else None}
     if aid:
         db.actualizar("analisis_vuelo", aid, **cambios)
     elif not turno.get("tope"):   # sin turno del analizador también queda el rastro (y cuenta para el tope)
