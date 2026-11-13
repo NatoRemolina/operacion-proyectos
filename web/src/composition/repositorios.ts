@@ -17,6 +17,9 @@ import { crearGastosMemoria } from "@/features/gastos/infrastructure/gastos-memo
 import type { ProyectosRepository } from "@/features/proyectos/domain/proyectos";
 import { crearProyectosHttp } from "@/features/proyectos/infrastructure/proyectos-http";
 import { crearProyectosMemoria } from "@/features/proyectos/infrastructure/proyectos-memoria";
+import type { UsuariosRepository } from "@/features/usuarios/domain/usuarios";
+import { crearUsuariosHttp } from "@/features/usuarios/infrastructure/usuarios-http";
+import { crearUsuariosMemoria } from "@/features/usuarios/infrastructure/usuarios-memoria";
 import type { ViajesRepository } from "@/features/viajes/domain/viajes";
 import { crearViajesHttp } from "@/features/viajes/infrastructure/viajes-http";
 import { crearViajesMemoria } from "@/features/viajes/infrastructure/viajes-memoria";
@@ -34,6 +37,7 @@ export interface Repositorios {
   administracion: AdministracionRepository;
   asistente: AsistenteRepository;
   proyectos: ProyectosRepository;
+  usuarios: UsuariosRepository;
   demo: ModoDemo | null;
 }
 
@@ -83,6 +87,8 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
       asistente: crearAsistenteMemoria({ sesion, latenciaMs }),
       // La cuenta de demostración es de colaboración: proyectos responde «sin permiso», como la API.
       proyectos: crearProyectosMemoria({ sesion, latenciaMs }),
+      // Usuarios es solo de administración: con la cuenta de demostración responde «sin permiso», como la API.
+      usuarios: crearUsuariosMemoria({ sesion, latenciaMs }),
       demo: {
         cuentas: [
           { correo: CUENTA_DEMO.persona.correo, clave: CUENTA_DEMO.clave, descripcion: "Piloto" },
@@ -99,6 +105,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     administracion: crearAdministracionHttp(cliente),
     asistente: crearAsistenteHttp(cliente),
     proyectos: crearProyectosHttp(cliente),
+    usuarios: crearUsuariosHttp(cliente),
     demo: null,
   };
 }

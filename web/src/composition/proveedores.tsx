@@ -8,6 +8,7 @@ import { AuthRepositoryProvider } from "@/features/auth/application/sesion";
 import { CotizarRepositoryProvider } from "@/features/cotizar/application/cotizar";
 import { GastosRepositoryProvider } from "@/features/gastos/application/gastos";
 import { ProyectosRepositoryProvider } from "@/features/proyectos/application/proyectos";
+import { UsuariosRepositoryProvider } from "@/features/usuarios/application/usuarios";
 import { ViajesRepositoryProvider } from "@/features/viajes/application/viajes";
 import { leerBaseApi, type FuenteDatos } from "@/config/configuracion";
 import { crearQueryClient } from "@/shared/application/consultas";
@@ -35,8 +36,10 @@ export function Proveedores({ fuente, children }: { fuente: FuenteDatos; childre
                 <AdministracionRepositoryProvider repositorio={repositorios.administracion}>
                   <AsistenteRepositoryProvider repositorio={repositorios.asistente}>
                     <ProyectosRepositoryProvider repositorio={repositorios.proyectos}>
-                      {repositorios.demo ? <AvisoDemo /> : null}
-                      {children}
+                      <UsuariosRepositoryProvider repositorio={repositorios.usuarios}>
+                        {repositorios.demo ? <AvisoDemo /> : null}
+                        {children}
+                      </UsuariosRepositoryProvider>
                     </ProyectosRepositoryProvider>
                   </AsistenteRepositoryProvider>
                 </AdministracionRepositoryProvider>
