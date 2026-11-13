@@ -20,7 +20,7 @@
 </div>
 
 <h2>Ahorro por consulta</h2>
-<div class="tarjeta tabla"><table><tr><th>#</th><th>Ruta</th><th>Ida</th><th>Registrada por</th><th class="d">Precio mínimo buscador</th><th class="d">Costo esperado del más barato</th><th class="d">Costo esperado recomendado</th><th class="d">Ahorro identificado</th></tr>
+<div class="tarjeta tabla"><table><tr><th>#</th><th>Ruta</th><th>Ida</th><th>Registrada por</th><th class="d">Precio del más barato que sirve</th><th class="d">Su costo esperado</th><th class="d">Costo esperado recomendado</th><th class="d">Ahorro identificado</th></tr>
 {% for d in a.detalle_ahorro %}<tr><td><a href="/viajes/{{ d.id }}">{{ d.id }}</a></td><td>{{ d.ruta }}</td><td>{{ d.ida }}</td><td>{{ d.por or '—' }}</td><td class="d">{{ '%.0f'|format(d.precio_min or 0) }}</td><td class="d">{{ '%.2f'|format(d.costo_mas_barato or 0) }}</td><td class="d">{{ '%.2f'|format(d.costo_mejor or 0) }}</td><td class="d"><b>{{ '%.2f'|format(d.ahorro or 0) }}</b></td></tr>
 {% else %}<tr><td colspan="8">Sin consultas todavía.</td></tr>{% endfor %}</table></div>
 
