@@ -28,7 +28,10 @@ export function TarjetaKpi({ kpi }: { kpi: Kpi }) {
         </h3>
         <SemaforoKpi estado={kpi.estado}>{kpi.estado_texto}</SemaforoKpi>
       </div>
-      <p className="text-cifra font-bold tabular-nums">{formatearValor(kpi.valor, kpi.unidad)}</p>
+      <p className="text-cifra font-bold tabular-nums">
+        {/* Sin valor el semáforo ya dice «Sin datos»: la cifra no lo repite. */}
+        {kpi.valor === null ? <span aria-label="Sin valor">—</span> : formatearValor(kpi.valor, kpi.unidad)}
+      </p>
       <p className="text-sm text-texto-secundario">
         {textoMeta(kpi)} · {kpi.responsable}
       </p>
