@@ -47,4 +47,9 @@ describe("ORIGENES_WEB en la API", () => {
   test("sin dominio no se fija aquí: va en el secreto con la dirección de CloudFront", () => {
     assert.equal(variables({}).ORIGENES_WEB, undefined);
   });
+
+  test("con dominio, las pantallas anteriores se retiran y llevan a la web", () => {
+    assert.equal(variables(CON_DOMINIO).INTERFAZ_ANTIGUA, "redirige");
+    assert.equal(variables({}).INTERFAZ_ANTIGUA, undefined);
+  });
 });

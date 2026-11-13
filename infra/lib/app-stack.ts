@@ -46,7 +46,10 @@ export class AppStack extends Stack {
     // (app/servicios/acceso.py). Sin dominio la dirección de CloudFront sale al desplegar OperacionWeb y va en el
     // secreto. Una variable de la función prevalece sobre la misma clave del secreto (app/config.py).
     const dominio = dominioDesdeContexto(this.node);
-    const origenesWeb: Record<string, string> = dominio ? { ORIGENES_WEB: `https://${dominio.web}` } : {};
+    // Con dominio, la web es la única interfaz: las pantallas anteriores llevan a su equivalente en la web
+    const origenesWeb: Record<string, string> = dominio
+      ? { ORIGENES_WEB: `https://${dominio.web}`, INTERFAZ_ANTIGUA: "redirige" }
+      : {};
 
     const registro = new logs.LogGroup(this, "Registro", {
       retention: logs.RetentionDays.ONE_MONTH,
