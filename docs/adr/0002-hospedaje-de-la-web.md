@@ -45,10 +45,10 @@ La web no tiene secretos: llama a la API con `NEXT_PUBLIC_API_BASE=/api/v1`, una
 | Pieza | Cómo |
 |---|---|
 | Registro del dominio | `nataliaremolinarodriguez.com`, registrado en Route 53 (un `.com` cuesta unos 15 USD al año) |
-| Zona DNS | Una zona alojada en Route 53 (0,50 USD al mes más centavos por consultas; las que apuntan a CloudFront no se cobran). **La creó la dueña y es suya:** la pila la importa por su identificador y nunca la crea ni la borra |
+| Zona DNS | Una zona alojada en Route 53 (0,50 USD al mes más centavos por consultas; las que apuntan a CloudFront no se cobran). **Es de la cuenta y existía antes:** la pila la importa por su identificador y nunca la crea ni la borra |
 | Nombres | La web en `software.nataliaremolinarodriguez.com`; las pantallas actuales en `admin.software.nataliaremolinarodriguez.com`. El subdominio es una variable del despliegue (`-c subdominio=`, por omisión `software`) |
 | Certificado | ACM en `us-east-1`, pedido y validado por CDK en la propia zona, solo para esos dos nombres: sin pasos a mano. Gratis |
-| Registros | *Alias* A y AAAA de los dos nombres hacia su distribución. **El dominio raíz y `www` no se tocan:** quedan para la página personal de la dueña, y la pila rechaza un subdominio `www` |
+| Registros | *Alias* A y AAAA de los dos nombres hacia su distribución. **El dominio raíz y `www` no se tocan:** quedan para otro sitio, y la pila rechaza un subdominio `www` |
 | Configuración | `ORIGENES_WEB` con el dominio de la web: con dominio la fija la pila de la API; sin dominio va en el secreto |
 
 **Sin las variables del dominio**, el mismo stack publica en la dirección gratuita de CloudFront (`https://<id>.cloudfront.net`), con HTTPS incluido y el mismo comportamiento de sesión y CSRF. El dominio se activa con dos variables del despliegue (`-c dominio=… -c zonaId=…`, que van juntas); sin ellas no se crean certificado ni registros, y la zona nunca se crea.

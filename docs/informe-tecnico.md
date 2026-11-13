@@ -213,7 +213,7 @@ Qué cubren las de Python: permisos por rol (con una prueba de humo de cada pág
 | Web en AWS detrás de un solo origen con la API, con dominio en Route 53 y 60 s de espera en CloudFront | [ADR 0002](adr/0002-hospedaje-de-la-web.md) |
 | El viaje como eje de los dos retos | [ADR 0003](adr/0003-el-viaje-como-eje.md) |
 | SerpApi como fuente de precios (Apify de respaldo, Amadeus cerrado), Supabase como base, XGBoost solo para el precio esperado | [`EXPLORACION.md`](../EXPLORACION.md), secciones 1, 7.4 y 9 |
-| El cargo separado del permiso; todos viajan; «nadie aprueba lo suyo» | [`regla-de-negocio.md`](regla-de-negocio.md), secciones 2 y 3, y el diseño del buscador mundial y los cargos del 12 de noviembre (`docs/historico/`) |
+| El cargo separado del permiso; todos viajan; «nadie aprueba lo suyo» | [`regla-de-negocio.md`](regla-de-negocio.md), secciones 2 y 3, y el [diseño del buscador mundial y los cargos](historico/diseno/2026-11-12-buscador-mundial-y-cargos.md) del 12 de noviembre, hoy en el [histórico](historico/README.md) |
 
 ## 9. Limitaciones
 

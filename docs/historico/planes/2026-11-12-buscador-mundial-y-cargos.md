@@ -1,6 +1,6 @@
 # Plan de construcción: buscador mundial, cargos y monitoreo del vuelo
 
-> Para quien ejecute: se implementa tarea por tarea; cada paso usa casillas (`- [ ]`) para seguir el avance.
+> **Histórico.** Plan ya ejecutado el 12 y 13 de noviembre de 2026; se conserva como registro. Las casillas sin marcar (`- [ ]`) no indican trabajo pendiente: el plan no se fue marcando al ejecutarlo. Lo vigente está en [`regla-de-negocio.md`](../../regla-de-negocio.md) y en el [informe técnico](../../informe-tecnico.md). Ver [`historico/README.md`](../README.md).
 
 **Objetivo:** cotizar desde y hacia cualquier lugar del mundo con el mejor acceso, que toda persona de la empresa viaje con su cargo, y seguir el vuelo el día del viaje.
 
@@ -8,7 +8,7 @@
 
 **Tecnología:** Python 3.12, FastAPI, SQLAlchemy Core (SQLite y PostgreSQL), Jinja, JavaScript sin dependencias en las pantallas actuales; Next.js 16 con zod en `web/`.
 
-**Diseño:** `docs/diseno/2026-11-12-buscador-mundial-y-cargos.md`. Léase junto con este plan.
+**Diseño:** [`historico/diseno/2026-11-12-buscador-mundial-y-cargos.md`](../diseno/2026-11-12-buscador-mundial-y-cargos.md). Léase junto con este plan.
 
 ## Restricciones globales
 
@@ -24,7 +24,7 @@
 - Cargos iniciales: «Pilotaje de dron», «Edición de video», «Desarrollo de software», «Ingeniería de datos», «Producción».
 - El permiso `piloto` pasa a `colaborador` en base, código, API v1 y web.
 - Datos: OurAirports (dominio público) y GeoNames `cities1000` (CC BY 4.0, citar en README y en el pie del buscador).
-- Referencia de las APIs: `docs/referencias/serpapi-google-flights/` (léase `uso-en-el-proyecto.md`).
+- Referencia de las APIs: `docs/referencias/serpapi-google-flights/uso-en-el-proyecto.md`, con enlaces a la documentación oficial.
 - La opción elegida se carga completa: 2 búsquedas al decidir y 1 al aprobar; `booking_request` nunca se guarda.
 - Trazabilidad: todo dato que entra queda registrado (quién, cuándo, de dónde, qué) en `eventos`, `consultas_buscador` o la tabla nueva `cargas_datos` de la tarea 5; cada tarea lo prueba.
 - Sin push ni despliegue. Voz neutra en el código, los commits y la documentación.
