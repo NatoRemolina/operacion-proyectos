@@ -1,16 +1,16 @@
 # Arquitectura objetivo y mapa de acoplamientos
 
-Complementa `docs/adr/0001-arquitectura-objetivo.md`. Aquí está el mapa de dueños de datos (la etapa M0 del plan fullstack): qué tabla es de quién, qué cruza hoy de un dominio a otro y qué hay que cortar para separar servicios.
+Complementa `docs/adr/0001-arquitectura-objetivo.md`. Aquí está el mapa de dueños de datos: qué tabla es de quién, qué cruza de un dominio a otro y qué hay que cortar para separar servicios.
 
-Datos de la revisión del 12 de noviembre de 2026 sobre la rama `dev`.
+> **Fotografía con fecha.** El análisis de acoplamientos es de la revisión del 12 de noviembre de 2026 sobre la rama `dev`. El 13 de noviembre se pusieron al día la tabla de dueños (tablas nuevas), el conteo de claves foráneas, las transacciones y la infraestructura; los conteos de consultas y escrituras que cruzan dominios siguen siendo los del 12.
 
 ## Dónde estamos y hacia dónde vamos
 
 ```mermaid
 flowchart LR
   subgraph Hoy["Hoy (transición)"]
-    W1["Pantallas actuales"] --> A["Aplicación FastAPI"]
-    N1["Web Next.js"] --> G1["Gateway local"] --> A
+    W1["Pantallas de administración"] --> C1["CloudFront admin."] --> A["Aplicación FastAPI"]
+    N1["Web Next.js"] --> G1["CloudFront (Caddy en local)"] --> A
     A --> B[("Una base PostgreSQL")]
   end
   subgraph Objetivo["Objetivo"]
@@ -26,9 +26,9 @@ flowchart LR
 
 | Dominio | Tablas |
 |---|---|
-| **Organización y acceso** | `usuarios`, `sesiones`, `proyectos`, `proyecto_miembros` |
-| **Viajes y presupuestos** (reto 1) | `viajeros`, `membresias`, `solicitudes`, `opciones`, `decisiones`, `elecciones`, `viajes`, `observaciones`, `historial_ruta`, `busquedas`, `consultas_buscador` |
-| **Gastos y evidencias** (reto 2) | `documentos`, `gastos`, `vinculos_telegram`, `telegram_mensajes` |
+| **Organización y acceso** | `usuarios`, `sesiones`, `proyectos`, `proyecto_miembros`, `cargos` |
+| **Viajes y presupuestos** (reto 1) | `viajeros`, `membresias`, `solicitudes`, `opciones`, `decisiones`, `elecciones`, `viajes`, `tramos_vuelo`, `envios_cotizacion`, `observaciones`, `historial_ruta`, `busquedas`, `consultas_buscador`; datos de referencia del buscador: `aeropuertos_mundo`, `lugares`, `paises`, `aeropuertos_google` |
+| **Gastos y evidencias** (reto 2) | `documentos`, `gastos`, `envios_soporte`, `justificaciones`, `vinculos_telegram`, `telegram_mensajes` |
 
 Tablas sin dueño claro, que hay que decidir antes de separar:
 
@@ -38,14 +38,15 @@ Tablas sin dueño claro, que hay que decidir antes de separar:
 | `eventos` | Bitácora que escriben todos | Cada servicio con su propia auditoría; la vista transversal se arma por composición |
 | `errores` | Registro técnico | Cada servicio el suyo |
 | `llamadas_modelo` | La usan la lectura de recibos (Gastos) y el agente (Viajes) | Cada servicio registra sus llamadas |
-| `fichas_rag`, `indice_rag`, `asistente_consultas` | El asistente lee de los tres dominios | Capa de lectura propia que consulta por contrato, no por tablas |
+| `fichas_rag`, `indice_rag`, `asistente_consultas` (y `asistente_dictados`, con el asistente para colaborador y gestor) | El asistente lee de los tres dominios | Capa de lectura propia que consulta por contrato, no por tablas |
+| `cargas_datos` | Registro de las cargas de datos de referencia (hoy, los del buscador) | Con los datos de referencia, en Viajes |
 | `usuarios.telegram_chat_id`, `usuarios.viaje_activo_id` | Datos de Gastos guardados en la tabla de Organización | Mover a Gastos |
 
 ## Lo que cruza hoy de un dominio a otro
 
 | Cruce | Cantidad | Ejemplo |
 |---|---|---|
-| Claves foráneas entre dominios | 16 de 29 | `gastos.viaje_id` → `viajes`; `viajes.usuario_id` → `usuarios` |
+| Claves foráneas entre dominios | 20 de 39 (el 12 de noviembre eran 16 de 29) | `gastos.viaje_id` → `viajes`; `viajes.usuario_id` → `usuarios`; `justificaciones.usuario_id` → `usuarios` |
 | Consultas que deciden algo | 4 | `viajes.lista` suma `gastos` para resolver a qué viaje va un gasto |
 | Consultas de pantallas | 11 | Inicio, Mi cuenta, tablero de proyecto, contadores del menú |
 | Consultas analíticas | 8 | Las vistas `v_h_*` y el monitoreo |
@@ -56,7 +57,7 @@ Tablas sin dueño claro, que hay que decidir antes de separar:
 
 | # | Acoplamiento | Por qué es difícil | Cómo se corta |
 |---|---|---|---|
-| 1 | **Control del presupuesto**: Gastos decide sumando su propia tabla contra el límite de Viajes | Sin bloqueo y con confirmación sentencia a sentencia: dos aprobaciones simultáneas pueden pasar el límite | Libro de reservas y consumos dueño de Viajes; Gastos pide autorización; saga con estados persistidos |
+| 1 | **Control del presupuesto**: Gastos decide sumando su propia tabla contra el límite de Viajes | Hoy lo protege una transacción con el viaje bloqueado (`db.bloquear_viaje`), que solo funciona porque los dos dominios comparten la base: al separarlos, ese bloqueo desaparece | Libro de reservas y consumos dueño de Viajes; Gastos pide autorización; saga con estados persistidos |
 | 2 | **Asignar el viaje a un gasto** | Se resuelve en línea con el estado de Viajes, el viaje activo guardado en Organización y los permisos; lo usan la web y Telegram | Viajes expone «viajes autorizados de la persona»; Gastos guarda la referencia y la valida por contrato |
 | 3 | **Permisos metidos en el SQL** de cada dominio | La subconsulta a `proyecto_miembros` va dentro de las consultas de Viajes y Gastos | Organización publica el alcance de la persona; cada servicio lo aplica a sus datos |
 | 4 | **Identidad en dos sentidos** entre cuenta y viajero | Crear una cuenta crea un viajero; el titular se busca de viajero a cuenta | El viajero pasa a ser de Viajes, con referencia a la persona |
@@ -64,7 +65,7 @@ Tablas sin dueño claro, que hay que decidir antes de separar:
 
 ## Transacciones y dinero
 
-- El motor confirma cada sentencia por separado y cada ayudante de `app/db.py` abre su propia conexión. Nueve operaciones de negocio necesitan varias sentencias en una transacción (registrar un gasto, aprobarlo contra el presupuesto, decidir un viaje, cambiar su estado, vincular Telegram, entre otras). El frente `integridad` introduce la transacción real en la aprobación.
+- Fuera de una transacción explícita, el motor confirma cada sentencia por separado. Desde el 12 de noviembre existe `db.transaccion()` (en PostgreSQL, conexión propia con READ COMMITTED; en SQLite, `BEGIN IMMEDIATE`) y `db.bloquear_viaje`: registrar un gasto, asignarle viaje y aprobarlo contra el presupuesto ya ocurren en una transacción con el viaje bloqueado (`docs/trazabilidad.md`). Otras operaciones de varias sentencias (decidir un viaje, cambiar su estado, vincular Telegram) siguen en confirmación automática.
 - Los importes están en coma flotante en diez tablas y se convierten a `float` al leer. La API v1 los entrega como cadenas con dos decimales; el cambio de tipo en la base se hace antes de separar servicios.
 
 ## Lo que ya facilita la migración
@@ -80,14 +81,14 @@ Tablas sin dueño claro, que hay que decidir antes de separar:
 
 | Pieza | Hoy | Objetivo | Anillo |
 |---|---|---|---|
-| Web | Pantallas servidas por el backend | Next.js en `web/` | 1 |
-| Entrada | URL de función pública | API Gateway con rutas por servicio | 0 en local, 4 en la nube |
+| Web | Next.js en `web/` para cotizar, viajes, gastos, aprobación y revisión; pantallas servidas por el backend para el resto de administración | Solo Next.js | 1 |
+| Entrada | CloudFront con dominio propio delante de la web y la API (la dirección de la función queda para el webhook de Telegram); Caddy en local | API Gateway con rutas por servicio | 0 en local, 4 en la nube (hecho en parte) |
 | Cómputo | Una función con una imagen | Una función o contenedor por servicio, con su secreto | 3 y 4 |
 | Datos | Una base con claves cruzadas | Esquema y luego base por servicio, con credencial propia | 2 y 3 |
 | Archivos | Un bucket con clave de servicio | Bucket privado de Gastos con credencial acotada | 3 |
 | Mensajería | Solo avisos por correo | Tema por evento, cola por consumidor, cola de fallos y relay del outbox | 3 |
 | Migraciones | Idempotentes, sin versión | Versionadas por servicio | 2 |
-| Integración continua | Linter y pruebas en SQLite | Además PostgreSQL aislado, web y un trabajo por servicio | 1 a 3 |
+| Integración continua | Cuatro trabajos: Python (linter y pruebas en SQLite), web, infraestructura e imágenes | Además PostgreSQL aislado y un trabajo por servicio | 1 a 3 |
 | Entorno local | PostgreSQL, aplicación, web y gateway en Compose | Un contenedor por servicio | 3 |
 
 ## Referencias

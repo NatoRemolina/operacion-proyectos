@@ -1,11 +1,13 @@
 # Web de viajes y gastos (Next.js)
 
 La web nueva de la plataforma. Cubre **cotizar** (origen y destino en cualquier lugar del mundo, comparar
-con desglose y decidir), **mis viajes**, **mis gastos** (cargar un recibo con su justificación y ver su estado
-real) y, para administración, **resumen, aprobación de viajes** (con la reconfirmación del precio) y
-**revisión de gastos**. Lo que todavía no tiene (corregir los datos leídos de un gasto, aprobar con excepción,
-KPIs, asistente, monitoreo, reglas, proyectos y usuarios) sigue en la plataforma actual, y la web enlaza allí
-cuando hace falta.
+vuelos y hoteles con desglose y decidir), **mis viajes**, **mis gastos** (cargar un recibo con su justificación,
+ver su estado real y descargar el **Excel contable** de lo que cada permiso puede ver) y, para administración,
+**resumen, aprobación de viajes** (con la reconfirmación del precio) y **revisión de gastos**. En todas las
+pantallas privadas hay un **asistente IA** flotante, con dictado por voz, que responde a cada permiso solo
+sobre lo que puede ver (`docs/asistente.md`). Lo que todavía no tiene (corregir los datos leídos de un gasto,
+aprobar con excepción, KPIs, monitoreo, reglas, proyectos y usuarios) sigue en las pantallas de
+administración, y la web enlaza allí cuando hace falta.
 
 La web consume solo la API v1 descrita en [`contracts/api-v1.md`](../contracts/api-v1.md); no tiene acceso a
 ninguna base de datos.
@@ -82,20 +84,20 @@ sin privilegios y puerto 3000. El contenedor nunca usa el modo de desarrollo.
 
 ## Arquitectura
 
-Inversión de dependencias (sección 13 del plan): la interfaz depende de puertos, no de `fetch`.
+Inversión de dependencias: la interfaz depende de puertos, no de `fetch`.
 
 ```
 src/
   app/                      rutas delgadas del App Router
     (public)/entrar
-    (private)/layout.tsx    comprueba la sesión (experiencia de uso; los permisos los aplica la API)
+    (private)/layout.tsx    comprueba la sesión (experiencia de uso; los permisos los aplica la API) y monta el asistente
     (private)/cotizar, cotizar/[id]
     (private)/viajes, viajes/[id]
     (private)/gastos, gastos/nuevo, gastos/[id]
     (private)/resumen       inicio de administración
-  features/<auth|cotizar|viajes|gastos|administracion>/
+  features/<auth|cotizar|viajes|gastos|administracion|asistente>/
     domain/                 tipos y puertos (AuthRepository, CotizarRepository, ViajesRepository,
-                            GastosRepository, AdministracionRepository)
+                            GastosRepository, AdministracionRepository y el del asistente)
     application/            hooks con TanStack Query y casos de uso (envío con idempotencia)
     infrastructure/         adaptador HTTP (fetch + zod) y adaptador en memoria
     ui/                     contenedores y componentes de presentación
@@ -152,12 +154,20 @@ se desborda a 360 px. Son comprobaciones hechas con capturas y pruebas, no una c
 
 ## Pruebas
 
-- `gastos-http.test.ts`: adaptador HTTP ante 200, 401, 404, JSON inválido, JSON con otra forma,
-  error sin JSON, fallo de red, CSRF + `Idempotency-Key` en el envío y 413.
-- `pantalla-gastos.test.tsx` (**ARCH-01**): la misma pantalla de gastos funciona con el
-  adaptador en memoria y con otra implementación del puerto, sin tocar la interfaz.
-- `pantalla-nuevo-gasto.test.tsx`: archivo elegido, estado devuelto (aprobado y en revisión),
-  viaje elegido, 413, límite de tamaño previo, reintento con la misma clave y sesión vencida.
-- `formulario-entrar.test.tsx`, `gastos-memoria.test.ts`, `configuracion.test.ts`.
+`npm test` corre **262 pruebas en 33 archivos** con Vitest y Testing Library (medido el 13 de noviembre
+de 2026; todas pasan). Por grupo:
 
-Las pruebas de extremo a extremo (Playwright) contra la API real quedan para la integración.
+- **Adaptadores HTTP** (`*-http.test.ts`, `cliente-http.test.ts`): cada uno ante 200, 401, 404, JSON
+  inválido o con otra forma, fallo de red, CSRF e `Idempotency-Key` en las escrituras, y 413.
+- **Dominio y casos de uso** (`cotizar.test.ts`, `gastos.test.ts`, `asistente.test.ts`,
+  `navegacion.test.ts`, `configuracion.test.ts`, `gastos-memoria.test.ts`).
+- **Pantallas** (`pantalla-*.test.tsx`, `decision-viaje`, `detalle-gasto`, `revision-gasto`,
+  `justificacion-gasto`, `formulario-entrar`, `marco-privado`, `zona-privada`, `migas-coherentes`):
+  `pantalla-gastos.test.tsx` comprueba además que la misma pantalla funciona con el adaptador en
+  memoria y con otra implementación del puerto, sin tocar la interfaz.
+- **Asistente** (`asistente-flotante`, `asistente-http`, `asistente-voz`).
+- **Sistema de diseño** (`sistema.test.tsx`, `ilustracion-ruta`, `error-consulta`).
+
+No hay pruebas de extremo a extremo en un navegador contra la API real. El contrato lo cubren las
+pruebas de la API v1 en Python (`tests/test_api_v1_*.py`) y la integración continua compila la imagen
+y comprueba que responde en `/entrar`. Añadir recorridos con Playwright queda en la hoja de ruta.
