@@ -37,6 +37,7 @@ import psycopg
 from dotenv import dotenv_values
 
 IMAGEN = "postgres:17"
+DIR_RESPALDOS = Path.home() / "Respaldos" / "operacion-proyectos"   # fuera del repositorio: los respaldos llevan datos personales
 ESQUEMA = "public"
 
 
@@ -107,7 +108,7 @@ def respaldar(archivo_env: str, destino: str | None) -> Path:
     e = _entorno(archivo_env)
     p = _partes(e["url"])
     momento = datetime.now(UTC)
-    carpeta = Path(destino or Path.home() / "Respaldos" / "operacion-proyectos" / momento.strftime("%Y-%m-%d_%H%M")).expanduser()
+    carpeta = Path(destino or DIR_RESPALDOS / momento.strftime("%Y-%m-%d_%H%M")).expanduser()
     carpeta.mkdir(parents=True, exist_ok=False)
     print(f"Respaldo en {carpeta}")
 

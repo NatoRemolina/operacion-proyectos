@@ -1,8 +1,14 @@
 """Datos de ejemplo: proyectos, viajeros, membresías y catálogo de reglas.
 
 Uso:  python -m datos.semilla           (solo llena tablas vacías)
-Las personas, clientes y membresías son inventados.
+Las personas, clientes y membresías son inventados. Sobre una base que no es local pide antes un respaldo reciente
+de esa base y que se escriba su nombre (ver `main`).
 """
+import argparse
+import json
+import sys
+from datetime import UTC, datetime, timedelta
+
 from app import db
 
 HOY = "2026-11-11"
@@ -186,6 +192,67 @@ def sembrar_cuentas():
             acceso.crear_usuario(demo_correo, "Andrés Molina", "colaborador", demo_clave, 1, _id_cargo("Pilotaje de dron"))
 
 
-if __name__ == "__main__":
+# ---------- migrar una base que no es local ----------
+# La migración cambia datos y estructura sin vuelta atrás automática: fuera del equipo solo corre con un respaldo
+# reciente de esa misma base y escribiendo su nombre (docs/despliegue.md).
+RESPALDO_VIGENTE = timedelta(hours=6)   # «respaldo fresco justo antes» (docs/respaldo.md)
+
+
+def _es_local(url: str) -> bool:
+    from datos.importar_entorno import LOCALES, _identidad
+    return not url or url.startswith("sqlite") or _identidad(url)[0] in LOCALES
+
+
+def _sin_clave(url: str) -> str:
+    """Para reconocer la base basta el servidor, el puerto y el usuario; el marcador de la contraseña estorba al leerla."""
+    return url.replace("[YOUR-PASSWORD]", "x")
+
+
+def _respaldo_reciente(url: str):
+    """(carpeta, momento) del respaldo más nuevo de esta base hecho dentro del plazo, con sus huellas comprobadas."""
+    from datos import respaldar
+    origen, limite = respaldar.identidad(_sin_clave(url)), datetime.now(UTC) - RESPALDO_VIGENTE
+    for archivo in sorted(respaldar.DIR_RESPALDOS.glob("*/manifiesto.json"), reverse=True):
+        datos = json.loads(archivo.read_text())
+        momento = datetime.fromisoformat(datos.get("momento", "1970-01-01T00:00:00+00:00"))
+        if datos.get("origen") == origen and momento >= limite:
+            respaldar._manifiesto(archivo.parent)   # se detiene si algún archivo no coincide con su huella
+            return archivo.parent, momento
+    return None
+
+
+def _guarda_remota(url: str, confirmar: str | None, entrada) -> None:
+    from datos import importar_entorno, respaldar
+    servidor, usuario, base = importar_entorno._identidad(url)
+    nombre = next(iter(sorted(importar_entorno._proyectos(url))), "") or servidor
+    proyectos, identidades = importar_entorno._publicada()
+    publicada = bool(importar_entorno._proyectos(url) & proyectos) or (servidor, usuario) in identidades
+    print(f"Destino: {nombre} (servidor {servidor}, base {base})" + (" — es la BASE PUBLICADA." if publicada else "."))
+    if respaldar._partes(_sin_clave(url))["puerto"] != "5432":
+        sys.exit("La migración va por el puerto 5432 (agrupador de sesión), no por el 6543 de la función. No se migró nada.")
+    reciente = _respaldo_reciente(url)
+    if not reciente:
+        horas = int(RESPALDO_VIGENTE.total_seconds() // 3600)
+        sys.exit(f"No hay un respaldo de esta base de las últimas {horas} horas en {respaldar.DIR_RESPALDOS}. "
+                 "Haz uno (make respaldar, docs/respaldo.md) y repite. No se migró nada.")
+    carpeta, momento = reciente
+    print(f"Respaldo: {carpeta.name}, hace {int((datetime.now(UTC) - momento).total_seconds() // 60)} minutos.")
+    respuesta = confirmar if confirmar is not None else entrada(f"Para migrar esa base escribe {nombre}: ")
+    if respuesta.strip() != nombre:
+        sys.exit("No se migró nada: la confirmación no coincide.")
+
+
+def main(argv: list[str] | None = None, entrada=input) -> int:
+    a = argparse.ArgumentParser(description="Crea lo que falte y migra la base de DATABASE_URL.")
+    a.add_argument("--confirmar", metavar="DESTINO", help="el nombre del destino (proyecto de Supabase o servidor), para no preguntarlo")
+    x = a.parse_args(argv)
+    from app import config
+    if not _es_local(config.DATABASE_URL):
+        _guarda_remota(config.DATABASE_URL, x.confirmar, entrada)
     sembrar()
     print("Semilla aplicada.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
