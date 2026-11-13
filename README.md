@@ -33,6 +33,8 @@ persona (P-0007) ─► cotización ─► decisión ─► VIAJE (V-2026-0012, 
 
 ### Lo más rápido: sin claves y sin Docker
 
+Requiere **Python 3.12** (Docker no lo necesita). Con 3.11 o anterior el código no compila; `make instalar` lo comprueba y usa `python3.12`, o el que se indique con `make instalar PYTHON=/ruta/a/python`.
+
 ```bash
 make instalar
 make ejecutar        # http://localhost:8000
