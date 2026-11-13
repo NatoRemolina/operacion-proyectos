@@ -79,7 +79,7 @@ def tablero(id: Id, yo: dict = Depends(persona)):
     if not p:
         raise _no_encontrado()
     c = proyectos.comparacion(id)
-    desde, hasta = contable.mes_en_curso()
+    desde, hasta = contable.anio_en_curso()   # el mismo periodo por omisión que el libro contable
     return {
         "proyecto": _resumen(p, c),
         "categorias": [{"clave": f["clave"], "nombre": f["nombre"], "previsto_usd": consultas.dinero(f["previsto"]),

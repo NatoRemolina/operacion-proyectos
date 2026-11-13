@@ -44,7 +44,7 @@ export interface TableroProyecto {
   readonly faltantes: readonly string[];
   readonly viajes: readonly ViajeResumen[];
   readonly gastos: readonly GastoDelProyecto[];
-  /** El mes en curso que propone el Excel contable. */
+  /** El año en curso (1 de enero a 31 de diciembre) que propone el Excel contable. */
   readonly periodo_contable: PeriodoContable;
 }
 

@@ -223,3 +223,11 @@ def test_la_lista_no_hace_consultas_por_cada_proyecto(cliente):
     finally:
         event.remove(db.motor, "before_cursor_execute", contar)
     assert siete <= una + 1, (una, siete)
+
+
+def test_el_excel_del_proyecto_propone_el_anio_en_curso(cliente):
+    from app.servicios import contable
+    periodo = cliente.get(f"{V1}/proyectos/1").json()["periodo_contable"]
+    desde, hasta = contable.anio_en_curso()
+    assert periodo == {"desde": desde, "hasta": hasta}
+    assert periodo["desde"].endswith("-01-01") and periodo["hasta"].endswith("-12-31")

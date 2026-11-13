@@ -48,8 +48,8 @@ class GastoDelProyecto(GastoResumen):
 
 
 class PeriodoContable(BaseModel):
-    desde: str = Field(description="Primer día del mes en curso (hora de Nueva York): lo que propone el Excel contable.")
-    hasta: str
+    desde: str = Field(description="1 de enero del año en curso (hora de Nueva York): el periodo que propone el Excel contable.")
+    hasta: str = Field(description="31 de diciembre del año en curso.")
 
 
 class TableroProyecto(BaseModel):

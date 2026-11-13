@@ -495,7 +495,7 @@ interface TableroProyecto {
   faltantes: string[];               // categorías con previsto y sin gasto aprobado
   viajes: ViajeResumen[];            // los que no se rechazaron
   gastos: (GastoResumen & { viajero: string | null })[];   // todos, por fecha del recibo
-  periodo_contable: { desde: string; hasta: string };    // el mes en curso que propone el Excel contable
+  periodo_contable: { desde: string; hasta: string };    // el año en curso (1 ene–31 dic, hora de Nueva York) que propone el Excel contable
 }
 ```
 
