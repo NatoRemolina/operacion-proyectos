@@ -346,3 +346,18 @@ def test_r1_9_tope_de_origenes_por_corrida(monkeypatch):
     segunda = ofertas.actualizar()
     assert segunda["respuestas"] == 1 and segunda["pendientes"] == 0
     assert db.uno("select count(*) n from ofertas_origenes where origen_fila in (:a, :b)", a=f"busqueda:{ids[0]}", b=f"busqueda:{ids[1]}")["n"] == 2
+
+
+def test_r1_10_el_evento_lo_firma_el_extractor_y_si_falla_no_tumba_la_extraccion(monkeypatch):
+    from app.servicios import acceso
+    monkeypatch.setattr(acceso, "actual", lambda: {"id": 1})   # alguien abrió KPIs
+    _guardar_respuesta("reserva_MIA_LAS_2026-12-08_2026-12-11_AA7020.json", _respuesta(410), "2026-11-08 10:00:00")
+    ofertas.actualizar()
+    evento = db.uno("select usuario_id, fuente from eventos where entidad='ofertas_tarifa' order by id desc limit 1")
+    assert evento == {"usuario_id": None, "fuente": "extractor"}
+    original = db.insertar
+    monkeypatch.setattr(db, "insertar", lambda t, **v: (_ for _ in ()).throw(RuntimeError("bitácora caída")) if t == "eventos" else original(t, **v))
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7021.json"
+    _guardar_respuesta(clave, _respuesta(411), "2026-11-08 11:00:00")
+    assert ofertas.actualizar()["filas"] == 1
+    assert db.uno("select count(*) n from ofertas_tarifa where busqueda_clave=:c", c=clave)["n"] == 1

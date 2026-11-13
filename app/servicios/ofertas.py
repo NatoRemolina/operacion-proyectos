@@ -12,7 +12,6 @@ from datetime import date
 from sqlalchemy import CheckConstraint, Column, Float, Integer, Text, inspect, text
 
 from .. import config, db
-from . import eventos
 
 FUENTES = ("buscador", "pagina")
 TARIFAS = ("basica", "estandar", "flexible", "premium")
@@ -406,11 +405,19 @@ def actualizar() -> dict:
             if filas:
                 hechos["lecturas" if tipo == "analisis" else "respuestas"] += 1
                 hechos["filas"] += nuevas
-        if hechos["filas"]:
-            eventos.registrar("ofertas_tarifa", None, "tarifas extraídas",
-                              f"{hechos['filas']} tarifas de {hechos['respuestas']} respuestas del buscador y {hechos['lecturas']} lecturas de la página",
-                              "extractor")
+    if hechos["filas"]:
+        _evento("tarifas extraídas", f"{hechos['filas']} tarifas de {hechos['respuestas']} respuestas del buscador y "
+                                     f"{hechos['lecturas']} lecturas de la página" + (f"; quedan {hechos['pendientes']}" if hechos["pendientes"] else ""))
     return hechos
+
+
+def _evento(paso: str, detalle: str):
+    """Lo firma el extractor, no quien abrió la pantalla que lo disparó. Si la bitácora falla, la extracción ya quedó."""
+    try:
+        db.insertar("eventos", momento=db.ahora(), entidad="ofertas_tarifa", entidad_id=None, paso=paso, detalle=detalle[:500],
+                    fuente="extractor", duracion_ms=0, usuario_id=None)
+    except Exception:  # noqa: BLE001,S110  la bitácora no puede deshacer una extracción ya confirmada
+        pass
 
 
 _ultima: list = [None]
@@ -425,7 +432,7 @@ def actualizar_si_toca() -> dict | None:
     try:
         return actualizar()
     except Exception as e:   # el tablero se muestra aunque la extracción falle; el fallo queda en la bitácora
-        eventos.registrar("ofertas_tarifa", None, "extracción fallida", f"{type(e).__name__}: {str(e)[:200]}", "extractor")
+        _evento("extracción fallida", f"{type(e).__name__}: {str(e)[:200]}")
         return None
 
 
