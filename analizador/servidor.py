@@ -41,7 +41,10 @@ class Manejador(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         if self.path != "/analizar":
             return self._responder(404, {"error": "no existe"})
-        largo = int(self.headers.get("Content-Length") or 0)
+        texto = (self.headers.get("Content-Length") or "0").strip()
+        if not texto.isdigit():   # ni negativo, ni con signo, ni texto
+            return self._responder(400, {"error": "Content-Length no válido"})
+        largo = int(texto)
         if largo > TOPE_CUERPO:
             return self._responder(413, {"error": "pedido demasiado grande"})
         try:

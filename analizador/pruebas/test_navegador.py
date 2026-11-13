@@ -216,3 +216,24 @@ def test_el_servidor_y_lambda_atienden_las_dos_acciones(monkeypatch):
     servidor.atender({"url": URL, "regreso": {"sale": "1:43 PM"}})
     lambda_handler.handler({"accion": "ir_a", "url": URL, "vendedor": "American", "tarifa": "Main Cabin"}, None)
     assert vistos == [("leer", URL, {"sale": "1:43 PM"}), ("ir_a", URL, "American", "Main Cabin")]
+
+
+# ---------- ronda 1 · punto 7: el servidor interno no se rompe con un Content-Length raro ----------
+@pytest.mark.parametrize("largo, estado", [("abc", 400), ("-5", 400), ("99999", 413), ("2", 200)])
+def test_un_content_length_invalido_es_400(largo, estado):
+    import http.client
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from analizador import servidor
+    s = ThreadingHTTPServer(("127.0.0.1", 0), servidor.Manejador)
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", s.server_address[1], timeout=5)
+        c.putrequest("POST", "/analizar")
+        c.putheader("Content-Length", largo)
+        c.endheaders()
+        c.send(b"{}")
+        assert c.getresponse().status == estado
+    finally:
+        s.shutdown()
