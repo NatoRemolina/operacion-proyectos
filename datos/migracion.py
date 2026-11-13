@@ -287,6 +287,8 @@ def _tablas_modelo() -> dict:
     from datos import recolectar
     db.crear_tablas()
     recolectar.asegurar_regla()   # el tope diario del recolector aparece en Reglas desde el inicio
+    for nombre in ofertas.INDICES_RETIRADOS:
+        db.ejecutar(f"drop index if exists {nombre}")
     for nombre, columnas, unico in ofertas.INDICES:
         db.ejecutar(f"create {'unique ' if unico else ''}index if not exists {nombre} on ofertas_tarifa ({columnas})")
     if not config.ES_SQLITE:

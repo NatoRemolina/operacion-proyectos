@@ -19,6 +19,7 @@ TARIFAS = ("basica", "estandar", "flexible", "premium")
 CAMBIOS = ("gratis", "cargo", "no")
 REEMBOLSOS = ("total", "parcial", "no")
 ASIENTOS = ("incluido", "cargo")
+TRAMOS = ("ida_vuelta", "ida", "regreso")   # la tarifa cubre el viaje completo, o solo la ida o el regreso (boletos separados)
 
 
 def _valores(columna: str, valores: tuple) -> CheckConstraint:
@@ -34,6 +35,9 @@ ofertas_tarifa = db._tabla(
     # Sin claves foráneas: la fila es un hecho histórico y sobrevive a la limpieza de cotizaciones o lecturas
     Column("solicitud_id", Integer), Column("opcion_id", Integer), Column("analisis_id", Integer), Column("busqueda_clave", Text),
     Column("origen", Text), Column("destino", Text), Column("ida", Text), Column("regreso", Text),
+    # Posición de la opción dentro de su respuesta o lectura (desde 0) y qué parte del viaje cubre
+    Column("ordinal", Integer, nullable=False, server_default="0"),
+    Column("tramo", Text, nullable=False, server_default="ida_vuelta"),
     Column("vuelos", Text, nullable=False),        # números de vuelo de la ida, juntos y sin espacios como en las claves: «AA1851»
     Column("aerolinea", Text), Column("vendedor", Text, nullable=False), Column("es_aerolinea", Integer),
     Column("tarifa", Text, nullable=False),        # nombre original: «Basic Economy»
@@ -45,14 +49,15 @@ ofertas_tarifa = db._tabla(
     # La tarifa tal como llegó (JSON): si la normalización mejora, se rehace desde aquí sin volver a buscar
     Column("crudo", Text),
     _valores("fuente", FUENTES), _valores("tarifa_normalizada", TARIFAS), _valores("cambios", CAMBIOS),
-    _valores("reembolso", REEMBOLSOS), _valores("asiento", ASIENTOS),
+    _valores("reembolso", REEMBOLSOS), _valores("asiento", ASIENTOS), _valores("tramo", TRAMOS),
 )
 
 INDICES = [  # nombre, columnas, único
     ("ix_ofertas_tarifa_ruta_ida", "origen, destino, ida", False),
     ("ix_ofertas_tarifa_ida", "ida", False),
-    ("ux_ofertas_tarifa_unica", "fuente, origen_fila, vuelos, vendedor, tarifa", True),
+    ("ux_ofertas_tarifa_origen", "fuente, origen_fila, ordinal, tramo, vuelos, vendedor, tarifa", True),
 ]
+INDICES_RETIRADOS = ("ux_ofertas_tarifa_unica",)   # sin ordinal ni tramo rechazaba filas legítimas
 
 
 
@@ -155,14 +160,15 @@ def _calendario(ida, regreso, momento) -> dict:
             "dia_semana": f_ida.weekday() if f_ida else None, "noches": (f_reg - f_ida).days if f_ida and f_reg else None}
 
 
-def _fila(base: dict, nombre, precio, vendedor, es_aerolinea, lineas_equipaje, lineas_condiciones, crudo) -> dict | None:
+def _fila(base: dict, nombre, precio, vendedor, es_aerolinea, lineas_equipaje, lineas_condiciones, crudo,
+          ordinal: int = 0, tramo: str = "ida_vuelta") -> dict | None:
     try:
         precio = float(precio)
     except (TypeError, ValueError):
         precio = None   # se guarda igual, con su crudo: la limpieza la deja fuera al entrenar («sin precio»)
     mano, maleta = equipaje(lineas_equipaje)
     c, r = cambios(lineas_condiciones), reembolso(lineas_condiciones)
-    return {**base, "tarifa": nombre or "Tarifa", "vendedor": vendedor or "", "es_aerolinea": es_aerolinea, "precio": precio,
+    return {**base, "ordinal": ordinal, "tramo": tramo, "tarifa": nombre or "Tarifa", "vendedor": vendedor or "", "es_aerolinea": es_aerolinea, "precio": precio,
             "tarifa_normalizada": tarifa_normalizada(nombre, c, r), "equipaje_mano": mano, "maleta_usd": maleta,
             "cambios": c, "reembolso": r, "asiento": asiento(lineas_condiciones),
             "crudo": json.dumps(crudo, ensure_ascii=False)}
@@ -193,11 +199,12 @@ def _de_respuesta(origen_fila: str, clave: str, datos: dict, creado: str | None)
             "ida": ida, "regreso": regreso, "vuelos": numeros, "aerolinea": tramos[0].get("airline") if tramos else None,
             "moneda": p.get("currency") or "USD", **_calendario(ida, regreso, momento)}
     filas = []
-    for o in datos["booking_options"]:
-        t = o.get("together") or o.get("departing")
-        if t:
+    for ordinal, o in enumerate(datos["booking_options"]):
+        partes = [(o[k], tramo) for k, tramo in (("together", "ida_vuelta"), ("departing", "ida"), ("returning", "regreso"))
+                  if isinstance(o.get(k), dict)] or [(o, "ida_vuelta")]   # una forma desconocida se guarda entera
+        for t, tramo in partes:
             f = _fila(base, t.get("option_title"), t.get("price"), t.get("book_with"), int(bool(t.get("airline"))),
-                      t.get("baggage_prices"), t.get("extensions"), t)
+                      t.get("baggage_prices"), t.get("extensions"), t, ordinal, tramo)
             filas += [f] if f else []
     return filas
 
@@ -234,10 +241,10 @@ def _de_lectura(a: dict) -> list[dict]:
             "moneda": "USD", **_calendario(ida, regreso, momento)}
     de_aerolinea = {v.get("vendedor"): int(bool(v.get("aerolinea"))) for v in datos.get("vendedores") or []}
     filas = []
-    for t in tarifas:
+    for ordinal, t in enumerate(tarifas):
         condiciones = (t.get("cambios") or []) + (t.get("reembolso") or []) + (t.get("otras") or [])
         f = _fila(base, t.get("nombre"), t.get("precio"), t.get("vendedor"), de_aerolinea.get(t.get("vendedor")),
-                  t.get("equipaje"), condiciones, t)
+                  t.get("equipaje"), condiciones, t, ordinal)
         filas += [f] if f else []
     return filas
 

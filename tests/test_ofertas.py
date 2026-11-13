@@ -22,9 +22,9 @@ def test_la_tabla_existe_con_sus_indices():
     assert {"momento", "fuente", "solicitud_id", "opcion_id", "analisis_id", "busqueda_clave", "origen", "destino", "ida",
             "regreso", "vuelos", "aerolinea", "vendedor", "es_aerolinea", "tarifa", "tarifa_normalizada", "precio", "moneda",
             "equipaje_mano", "maleta_usd", "cambios", "reembolso", "asiento", "anticipacion_dias", "dia_semana",
-            "noches", "crudo"} <= columnas
+            "noches", "crudo", "ordinal", "tramo"} <= columnas
     indices = {i["name"] for i in inspect(db.motor).get_indexes("ofertas_tarifa")}
-    assert {"ix_ofertas_tarifa_ruta_ida", "ux_ofertas_tarifa_unica"} <= indices
+    assert {"ix_ofertas_tarifa_ruta_ida", "ux_ofertas_tarifa_origen"} <= indices and "ux_ofertas_tarifa_unica" not in indices
 
 
 def test_la_misma_tarifa_de_la_misma_fuente_no_se_repite():
@@ -230,3 +230,16 @@ def test_r1_2_una_opcion_sin_precio_se_guarda_y_la_limpieza_la_excluye():
     assert fila["precio"] is None and json.loads(fila["crudo"])["book_with"] == "Agencia Sin Precio"
     limpias, informe = ofertas.depurar([fila])
     assert limpias == [] and informe["descartes"] == {"sin precio": 1}
+
+
+def test_r1_3_dos_opciones_iguales_del_mismo_vendedor_y_el_regreso_por_separado_no_se_pierden():
+    kiwi = lambda precio: {"together": {"book_with": "Kiwi.com", "airline": False, "price": precio,  # noqa: E731
+                                        "extensions": [], "baggage_prices": []}}
+    separadas = {"departing": {"book_with": "Spirit", "airline": True, "price": 120, "option_title": "Basic"},
+                 "returning": {"book_with": "Frontier", "airline": True, "price": 95, "option_title": "Basic"}}
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7003.json"
+    _guardar_respuesta(clave, _respuesta(opciones=[kiwi(400), kiwi(430), separadas]), "2026-11-03 10:00:00")
+    ofertas.actualizar()
+    filas = db.todos("select ordinal, tramo, vendedor, precio from ofertas_tarifa where busqueda_clave=:c order by ordinal, tramo", c=clave)
+    assert [(f["ordinal"], f["tramo"], f["vendedor"], f["precio"]) for f in filas] == [
+        (0, "ida_vuelta", "Kiwi.com", 400), (1, "ida_vuelta", "Kiwi.com", 430), (2, "ida", "Spirit", 120), (2, "regreso", "Frontier", 95)]
