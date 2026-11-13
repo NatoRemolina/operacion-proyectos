@@ -454,10 +454,13 @@ def _mediana(valores: list[float]) -> float:
     return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
 
 
-def depurar(filas: list[dict], clave_repetida=("fuente", "origen", "destino", "ida", "regreso", "vuelos", "vendedor", "tarifa"),
+def depurar(filas: list[dict],
+            clave_repetida=("fuente", "origen", "destino", "ida", "regreso", "vuelos", "vendedor", "tarifa", "tramo"),
             grupo_atipico=("origen", "destino", "tarifa_normalizada")) -> tuple[list[dict], dict]:
-    """(filas útiles, informe). Descarta: sin precio, otra moneda, sin ruta o fecha, anticipación imposible, la misma
-    tarifa de la misma fuente repetida el mismo día (queda la más reciente) y precios atípicos dentro de su ruta y tipo de tarifa."""
+    """(filas útiles, informe). Descarta: sin precio, otra moneda, sin ruta o fecha, anticipación imposible, un solo tramo
+    (ida o regreso de boletos separados: su precio no se compara con ida y vuelta), la misma tarifa de la misma fuente
+    vista en otra respuesta o lectura del mismo día (queda la más reciente; dentro de una misma respuesta, dos ofertas
+    iguales son dos ofertas) y precios atípicos dentro de su ruta y tipo de tarifa."""
     descartes: dict[str, int] = {}
 
     def fuera(motivo: str):
@@ -478,15 +481,21 @@ def depurar(filas: list[dict], clave_repetida=("fuente", "origen", "destino", "i
             fuera("sin ruta o fecha")
         elif anticipacion is not None and not 0 <= anticipacion <= ANTICIPACION_MAXIMA:
             fuera("anticipación imposible")
+        elif (f.get("tramo") or "ida_vuelta") != "ida_vuelta":
+            fuera("un solo tramo")
         else:
             validas.append(f)
-    ultimas: dict[tuple, dict] = {}
+    ultimas: dict[tuple, list[dict]] = {}   # por clave, las filas de la respuesta o lectura más reciente
     for f in sorted(validas, key=lambda x: str(x.get("momento") or x.get("capturado") or "")):
         clave = (*(f.get(c) for c in clave_repetida), str(f.get("momento") or f.get("capturado") or "")[:10])
-        if clave in ultimas:
+        previas = ultimas.get(clave)
+        if previas and f.get("origen_fila") is not None and previas[0].get("origen_fila") == f.get("origen_fila"):
+            previas.append(f)
+            continue
+        for _ in previas or []:
             fuera("repetida el mismo día")
-        ultimas[clave] = f
-    unicas = list(ultimas.values())
+        ultimas[clave] = [f]
+    unicas = [f for grupo in ultimas.values() for f in grupo]
     grupos: dict[tuple, list[float]] = {}
     for f in unicas:
         grupos.setdefault(tuple(f.get(c) for c in grupo_atipico), []).append(float(f["precio"]))

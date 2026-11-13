@@ -32,3 +32,18 @@ def test_la_tabla_no_se_toca():
     antes = db.uno("select count(*) n from ofertas_tarifa")["n"]
     ofertas.limpias()
     assert db.uno("select count(*) n from ofertas_tarifa")["n"] == antes
+
+
+def test_dos_ofertas_de_una_misma_respuesta_no_son_repetidas():
+    """Kiwi.com a 400 y a 430 en la misma respuesta son dos ofertas; la misma tarifa en otra respuesta del mismo día sí se repite."""
+    misma = [_f(400, vendedor="Kiwi.com", origen_fila="busqueda:1", ordinal=0), _f(430, vendedor="Kiwi.com", origen_fila="busqueda:1", ordinal=1)]
+    limpias, informe = ofertas.depurar(misma)
+    assert len(limpias) == 2 and informe["descartes"] == {}
+    otra = _f(405, vendedor="Kiwi.com", origen_fila="busqueda:2", ordinal=0, momento="2027-01-10 18:00:00")
+    limpias, informe = ofertas.depurar([*misma, otra])
+    assert [f["precio"] for f in limpias] == [405] and informe["descartes"] == {"repetida el mismo día": 2}
+
+
+def test_un_solo_tramo_no_se_mezcla_con_ida_y_vuelta():
+    limpias, informe = ofertas.depurar([_f(300, vuelos="A"), _f(120, vuelos="B", tramo="ida"), _f(95, vuelos="B", tramo="regreso")])
+    assert [f["vuelos"] for f in limpias] == ["A"] and informe["descartes"] == {"un solo tramo": 2}
