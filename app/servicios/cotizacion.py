@@ -29,6 +29,9 @@ AVISO_TOPE_DECISION = ("Se alcanzó el tope de decisiones con consulta en vivo d
                        "guardado o quedan supuestos.")
 
 
+NO_DECIDE = "Esta cotización la decide quien viaja, quien la creó (si es de un proyecto que gestiona) o administración."
+
+
 class CotizacionInvalida(ValueError):
     """Un dato de la cotización no sirve. `campo` dice cuál; el mensaje, qué hacer."""
 
@@ -51,6 +54,31 @@ class ConflictoEnvio(ValueError):
 
 class EnvioEnCurso(ValueError):
     """El primer pedido con esa clave todavía está buscando."""
+
+
+class FueraDeAlcance(PermissionError):
+    """Cotizar o decidir para otra persona fuera de los proyectos que se gestionan."""
+
+
+# ---------- quién cotiza y decide para otra persona (la misma regla en las pantallas y en la API) ----------
+def proyectos_para_otros(usuario: dict) -> set[int] | None:
+    """Dónde puede cotizar y decidir para otra persona: administración en todos (None); el gestor, en los que gestiona."""
+    if acceso.es_admin(usuario):
+        return None
+    return acceso.proyectos_de(usuario) if usuario.get("rol") == "gestor" else set()
+
+
+def para_otros_en(usuario: dict, proyecto_id: int | None) -> bool:
+    permitidos = proyectos_para_otros(usuario)
+    return permitidos is None or proyecto_id in permitidos
+
+
+def puede_decidir(usuario: dict, fila: dict | None) -> bool:
+    """Decide quien la creó, quien viaja o administración; para otra persona, solo dentro de su alcance."""
+    if not acceso.es_propio(usuario, fila):
+        return False
+    para_otro = fila.get("viajero_id") != usuario.get("viajero_id")
+    return not para_otro or para_otros_en(usuario, fila.get("proyecto_id"))
 
 
 # ---------- origen y destino ----------
@@ -146,6 +174,8 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         viajero_id = existente["id"] if existente else db.insertar("viajeros", nombre=viajero_nuevo, base=desde[1], rol="Viajero")
     if not viajero_id or not db.uno("select id from viajeros where id=:i", i=viajero_id):
         raise CotizacionInvalida("viajero_id", "Elige quién viaja.")
+    if viajero_id != usuario.get("viajero_id") and not para_otros_en(usuario, proyecto_id):
+        raise FueraDeAlcance("Para cotizar para otra persona elige uno de los proyectos que gestionas.")
     sid = db.insertar("solicitudes", proyecto_id=proyecto_id, viajero_id=viajero_id, origen=origen,
                       destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
                       llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,
@@ -304,6 +334,8 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     c = comparacion(sid)
     if not c:
         raise LookupError(sid)
+    if not puede_decidir(usuario, c["sol"]):
+        raise FueraDeAlcance(NO_DECIDE)
     previa = c["decision"]
     if previa and previa["vuelo_id"] == vuelo_id and (previa["hotel_id"] or 0) == hotel_id and (previa["motivo"] or "") == motivo.strip()[:300]:
         return {"repetida": True, "decision_id": previa["id"], "viaje": viajes.de_solicitud(sid)}

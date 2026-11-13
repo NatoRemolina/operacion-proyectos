@@ -371,9 +371,13 @@ def test_el_gestor_cotiza_para_otra_persona_solo_en_sus_proyectos(gestor):
     assert "proyectos que gestionas" in cuerpo["error"]["message"] and _solicitudes() == antes
     assert _cotizar(gestor, viajero_id=1, proyecto_id=1).status_code == 201   # en su proyecto, sí
     assert _cotizar(gestor, proyecto_id=2).status_code == 201                 # para sí mismo, en cualquiera
-    # una cotización ajena a su alcance que ya existía (creada antes de esta regla) tampoco la decide
+    # la regla vive en el servicio: tampoco se salta llamándolo directamente
     yo = _cuenta("gestor@demo.local")
-    sid = cotizacion.crear(yo, **_datos(proyecto_id=2, viajero_id=1, destino="las vegas"))
+    with pytest.raises(cotizacion.FueraDeAlcance):
+        cotizacion.crear(yo, **_datos(proyecto_id=2, viajero_id=1, destino="las vegas"))
+    # una cotización ajena a su alcance que ya existía (creada antes de esta regla) tampoco la decide
+    sid = cotizacion.crear(_cuenta("admin@demo.local"), **_datos(proyecto_id=2, viajero_id=1, destino="las vegas"))
+    db.ejecutar("update solicitudes set usuario_id=:u where id=:s", u=yo["id"], s=sid)
     vuelo = cotizacion.comparacion(sid)["vuelos"][0]["id"]
     _contrato(gestor.post(f"{V1}/cotizaciones/{sid}/decision", json={"vuelo_id": vuelo}, headers=_csrf(gestor)),
               403, "FORBIDDEN")

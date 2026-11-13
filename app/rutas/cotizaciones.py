@@ -49,13 +49,18 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen:
                                viajero_nuevo=viajero_nuevo, para_otra_persona=para_otra_persona == "1",
                                origen_aeropuertos=origen_aeropuertos, destino_aeropuertos=destino_aeropuertos,
                                origen_lugar=origen_lugar, destino_lugar=destino_lugar)
-    except cotizacion.CotizacionInvalida as e:
+    except (cotizacion.CotizacionInvalida, cotizacion.FueraDeAlcance) as e:
         return _volver_al_formulario(str(e))
     return RedirectResponse(f"/viajes/{sid}", status_code=303)
 
 
 def _volver_al_formulario(error: str) -> RedirectResponse:
     return RedirectResponse(f"/viajes/nuevo?{urlencode({'error': error})}", status_code=303)
+
+
+def _decide(sid: int) -> bool:
+    """La misma regla que la API: quien la creó, quien viaja o administración; para otra persona, solo en su alcance."""
+    return cotizacion.puede_decidir(_yo(), db.uno("select usuario_id, viajero_id, proyecto_id from solicitudes where id=:i", i=sid))
 
 
 @router.get("/viajes/{sid}", response_class=HTMLResponse)
@@ -65,7 +70,7 @@ def viaje(request: Request, sid: int, aviso: str = ""):
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "viaje.html", _ctx(
         **c, agente=agente.recomendar(c, solo_determinista=True), aviso_form=aviso[:200], razones=config.RAZONES,
-        el_viaje=viajes.de_solicitud(sid), editable=_solicitud_propia(sid, True)))
+        el_viaje=viajes.de_solicitud(sid), editable=_decide(sid)))
 
 
 @router.post("/viajes/{sid}/agente", response_class=HTMLResponse)
@@ -79,13 +84,13 @@ def viaje_agente(request: Request, sid: int, pregunta: str = Form("")):
     eventos.registrar("solicitud", sid, "recomendación del agente", (pregunta.strip()[:120] or "recomendación general")
                       + " · herramientas: " + (", ".join(r["pasos"]) or "ninguna"), r["modo"], t())
     return plantillas.TemplateResponse(request, "viaje.html", _ctx(**c, agente=r, pregunta=pregunta, razones=config.RAZONES,
-                                                                   el_viaje=viajes.de_solicitud(sid), editable=_solicitud_propia(sid, True)))
+                                                                   el_viaje=viajes.de_solicitud(sid), editable=_decide(sid)))
 
 
 @router.post("/viajes/{sid}/tarifas/{oid}")
 def viaje_tarifas(sid: int, oid: int):
     """Trae las familias tarifarias reales de un vuelo (dos consultas al buscador)."""
-    if not _solicitud_propia(sid, para_modificar=True):   # gasta cupo de pago: quien solo puede ver, no
+    if not _decide(sid):   # gasta cupo de pago: quien solo puede ver, no
         return NO_ENCONTRADO
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
     o = db.uno("select * from opciones where id=:i and solicitud_id=:s", i=oid, s=sid)
@@ -107,7 +112,7 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
         cotizacion.decidir(_yo(), sid, vuelo_id, hotel_id, motivo, razones)
     except LookupError:
         return NO_ENCONTRADO
-    except (cotizacion.DecisionBloqueada, cotizacion.DecisionInvalida) as e:
+    except (cotizacion.DecisionBloqueada, cotizacion.DecisionInvalida, cotizacion.FueraDeAlcance) as e:
         return RedirectResponse(f"/viajes/{sid}?{urlencode({'aviso': str(e)})}", status_code=303)
     return RedirectResponse(f"/viajes/{sid}/ficha", status_code=303)
 

@@ -67,3 +67,22 @@ def test_apartarse_de_la_recomendacion_exige_el_porque_y_deja_datos_etiquetados(
     filas = db.todos("select * from elecciones where decision_id=:d and tipo='vuelo'", d=d["id"])
     assert sum(f["elegida"] for f in filas) == 1 and sum(f["recomendada"] for f in filas) == 1
     assert len(filas) >= len(vuelos)                                           # se guarda todo lo mostrado, no solo lo elegido
+
+
+def test_el_gestor_no_cotiza_ni_decide_para_otra_persona_fuera_de_sus_proyectos(gestor, cliente):
+    """La regla de la API vale también en las pantallas: el gestor del proyecto 1 no cotiza, no trae tarifas pagas ni
+    decide para otra persona en el proyecto 2."""
+    antes = db.uno("select count(*) n from solicitudes")["n"]
+    destino = _crear(gestor, proyecto_id=2, viajero_id=2)
+    assert isinstance(destino, str) and "proyectos+que+gestionas" in destino
+    assert db.uno("select count(*) n from solicitudes")["n"] == antes
+    assert isinstance(_crear(gestor, proyecto_id=1, viajero_id=2), int)   # en su proyecto, sí
+    # una cotización fuera de su alcance que ya existía (creada antes de la regla) tampoco la decide
+    sid = _crear(cliente, proyecto_id=2, viajero_id=2)
+    db.ejecutar("update solicitudes set usuario_id=(select id from usuarios where correo='gestor@demo.local') where id=:s", s=sid)
+    vuelo = _comparacion(sid)["vuelos"][0]["id"]
+    assert gestor.post(f"/viajes/{sid}/tarifas/{vuelo}", follow_redirects=False).status_code == 404
+    r = gestor.post(f"/viajes/{sid}/decidir", data={"vuelo_id": vuelo, "razones": ["costo_total"]}, follow_redirects=False)
+    assert "aviso=" in r.headers["location"]
+    assert not db.uno("select id from decisiones where solicitud_id=:s", s=sid)
+    assert "Solo lectura" in gestor.get(f"/viajes/{sid}").text

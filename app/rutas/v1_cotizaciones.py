@@ -54,22 +54,10 @@ def _sugerencia(r: dict) -> dict:
 
 
 # ---------- formulario ----------
-def _proyectos_para_otros(yo: dict) -> set[int] | None:
-    """Dónde puede cotizar para otra persona: administración en todos (None); el gestor, en los que gestiona."""
-    if acceso.es_admin(yo):
-        return None
-    return acceso.proyectos_de(yo) if yo["rol"] == "gestor" else set()
-
-
-def _para_otros_en(yo: dict, proyecto_id: int | None) -> bool:
-    permitidos = _proyectos_para_otros(yo)
-    return permitidos is None or proyecto_id in permitidos
-
-
 @router.get("/cotizaciones/formulario", response_model=FormularioCotizacion, responses=errores_cotizacion(401))
 def formulario(yo: dict = Depends(persona)):
     """Lo que hace falta para llenar una cotización: proyectos, quién puede viajar y las razones de la decisión."""
-    propio, permitidos = yo.get("viajero_id"), _proyectos_para_otros(yo)
+    propio, permitidos = yo.get("viajero_id"), cotizacion.proyectos_para_otros(yo)
     elige = yo["rol"] in PUEDE_ELEGIR_VIAJERO and (permitidos is None or bool(permitidos))
     viajeros = db.todos("select id, nombre, base from viajeros order by nombre") if elige else \
         db.todos("select id, nombre, base from viajeros where id=:i", i=propio or -1)
@@ -116,7 +104,7 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
     viajero_id, para_otra = _viajero(yo, datos.viajero_id)
     if not db.uno("select id from proyectos where id=:i", i=datos.proyecto_id):
         raise _invalido("proyecto_id", "Elige un proyecto de la lista.")
-    if para_otra and not _para_otros_en(yo, datos.proyecto_id):
+    if para_otra and not cotizacion.para_otros_en(yo, datos.proyecto_id):
         raise ErrorApi(403, "FORBIDDEN", "Para cotizar para otra persona elige uno de los proyectos que gestionas.")
     campos = {**_lado("origen", datos.origen), **_lado("destino", datos.destino)}
     envio = None
@@ -146,6 +134,10 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
         if envio:
             cotizacion.soltar_envio(envio)
         raise _invalido(e.campo, str(e)) from e
+    except cotizacion.FueraDeAlcance as e:
+        if envio:
+            cotizacion.soltar_envio(envio)
+        raise ErrorApi(403, "FORBIDDEN", str(e)) from e
     except Exception:
         if envio:
             cotizacion.soltar_envio(envio)
@@ -171,14 +163,6 @@ def _fila(sid: int) -> dict | None:
 IdCotizacion = Path(ge=1, le=ENTERO_MAXIMO)
 
 
-def _decide(yo: dict, fila: dict | None) -> bool:
-    """Decide quien la creó, quien viaja o administración; para otra persona, solo dentro de su alcance."""
-    if not acceso.es_propio(yo, fila):
-        return False
-    para_otro = fila.get("viajero_id") != yo.get("viajero_id")
-    return not para_otro or _para_otros_en(yo, fila.get("proyecto_id"))
-
-
 @router.get("/cotizaciones/{id}", response_model=Cotizacion, responses=errores_cotizacion(401, 404, 422))
 def detalle(id: int = IdCotizacion, yo: dict = Depends(persona)):
     if not acceso.puede_ver(yo, _fila(id)):
@@ -197,13 +181,14 @@ def decidir(datos: NuevaDecision, id: int = IdCotizacion, yo: dict = Depends(esc
     fila = _fila(id)
     if not acceso.puede_ver(yo, fila):
         raise _no_encontrado()
-    if not _decide(yo, fila):
-        raise ErrorApi(403, "FORBIDDEN", "Esta cotización la decide quien viaja, quien la creó (si es de un proyecto que "
-                                         "gestiona) o administración.")
+    if not cotizacion.puede_decidir(yo, fila):
+        raise ErrorApi(403, "FORBIDDEN", cotizacion.NO_DECIDE)
     try:
         cotizacion.decidir(yo, id, datos.vuelo_id, datos.hotel_id or 0, datos.motivo, datos.razones)
     except LookupError as e:
         raise _no_encontrado() from e
+    except cotizacion.FueraDeAlcance as e:
+        raise ErrorApi(403, "FORBIDDEN", str(e)) from e
     except cotizacion.DecisionBloqueada as e:
         raise ErrorApi(409, "DECISION_LOCKED", str(e)) from e
     except cotizacion.DecisionInvalida as e:
@@ -291,6 +276,6 @@ def _cotizacion(yo: dict, sid: int) -> dict:
                      "aviso": (db.de_json(d["desglose"], {}) or {}).get("aviso_tope")} if d else None,
         "viaje": {**{k: viaje[k] for k in ("id", "codigo", "estado", "estado_texto")},
                   "presupuesto_usd": consultas.dinero(viaje["presupuesto_usd"])} if viaje else None,
-        "puede_decidir": _decide(yo, sol) and not bloqueo and bool(c["vuelos"] or c["descartados"]),
+        "puede_decidir": cotizacion.puede_decidir(yo, sol) and not bloqueo and bool(c["vuelos"] or c["descartados"]),
         "bloqueo": bloqueo,
     }
