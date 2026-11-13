@@ -6,6 +6,10 @@ import { renderizarConFuente } from "@/test/renderizar";
 import type { AsistenteRepository, RespuestaAsistente } from "../domain/asistente";
 import { AsistenteFlotante } from "./asistente-flotante";
 
+// La pantalla en la que está la persona: cada prueba la fija en `navegacion.ruta`
+const navegacion = vi.hoisted(() => ({ ruta: "/inicio" as string | null }));
+vi.mock("next/navigation", () => ({ usePathname: () => navegacion.ruta }));
+
 /*
  * Micrófono simulado: getUserMedia, MediaRecorder, AudioContext (decodificar) y OfflineAudioContext (pasar a
  * 16 kHz). Lo que se prueba es el recorrido de la interfaz: permisos, cancelar, cerrar y la transcripción.
@@ -107,7 +111,7 @@ describe("Dictar al asistente", () => {
     expect(screen.getByText("Dictado por voz")).toBeInTheDocument();
     const audio = transcribir.mock.calls[0]![0] as Blob;
     expect(audio.type).toBe("audio/wav");
-    expect(preguntar).toHaveBeenCalledWith("¿Cómo van los indicadores?", expect.anything());
+    expect(preguntar).toHaveBeenCalledWith("¿Cómo van los indicadores?", expect.objectContaining({ contexto: null }), expect.anything());
     expect(pistasDetenidas).toBe(1);
   });
 

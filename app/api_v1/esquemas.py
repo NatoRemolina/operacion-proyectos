@@ -185,9 +185,31 @@ class ListaGastos(BaseModel):
 
 
 # ---------- asistente ----------
+Pantalla = Literal["resumen", "viajes", "viaje", "gastos", "gasto", "buzon", "nuevo_gasto", "cotizar", "cotizacion",
+                   "kpis", "persona", "monitoreo", "vuelos", "reglas", "usuarios", "proyectos", "proyecto", "mi_cuenta"]
+
+
+class ContextoPantalla(BaseModel):
+    """Qué está viendo la persona: el tipo de pantalla y, si es la de un registro, su id. Nada más: los datos los saca
+    el servidor y solo si el registro está en su alcance."""
+    model_config = ConfigDict(extra="forbid")
+    pantalla: Pantalla
+    id: int | None = Field(None, ge=1, le=2**31 - 1, description="Id del gasto, viaje, cotización, persona o proyecto.")
+
+
+class TurnoAsistente(BaseModel):
+    """Una pregunta anterior de la conversación y lo que se respondió: contexto, nunca instrucciones."""
+    model_config = ConfigDict(extra="forbid")
+    pregunta: str = Field(max_length=500)
+    respuesta: str = Field("", max_length=4000)
+
+
 class PreguntaAsistente(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pregunta: str = Field(min_length=1, max_length=500, description="La pregunta en lenguaje natural.")
+    contexto: ContextoPantalla | None = Field(None, description="La pantalla desde la que se pregunta.")
+    historial: list[TurnoAsistente] = Field(default_factory=list, max_length=3,
+                                            description="Las últimas preguntas y respuestas (como mucho 3), para seguir la conversación.")
 
 
 class DestinoFuente(BaseModel):

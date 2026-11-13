@@ -38,8 +38,20 @@ describe("adaptador HTTP del asistente", () => {
     const [url, init] = fetchFalso.mock.calls[0]!;
     expect(url).toBe("/api/v1/asistente");
     expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toEqual({ pregunta: "¿Hay gastos en revisión?" });
+    expect(JSON.parse(String(init?.body))).toEqual({ pregunta: "¿Hay gastos en revisión?", historial: [] });
     expect(new Headers(init?.headers).get("X-CSRF-Token")).toBe("token-csrf");
+  });
+
+  it("envía solo el tipo de pantalla, su id y el historial recortado", async () => {
+    const { fetchFalso, asistente } = preparar(respuestaJson(RESPUESTA));
+    await asistente.preguntar("¿Por qué está en revisión este gasto?", {
+      contexto: { pantalla: "gasto", id: 123 },
+      historial: [{ pregunta: "¿Qué hay en revisión?", respuesta: "x".repeat(5000) }],
+    });
+    const cuerpo = JSON.parse(String(fetchFalso.mock.calls[0]![1]?.body));
+    expect(cuerpo.contexto).toEqual({ pantalla: "gasto", id: 123 });
+    expect(cuerpo.historial[0].pregunta).toBe("¿Qué hay en revisión?");
+    expect(cuerpo.historial[0].respuesta).toHaveLength(4000);
   });
 
   it("una respuesta con otra forma es un error de contrato", async () => {

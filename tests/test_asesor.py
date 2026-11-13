@@ -133,6 +133,14 @@ class ServicioQueTarda(Servicio):
         return super()._pagina(cursor)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _sin_rastro_propio():
+    """Las preguntas de estas pruebas no cuentan para el tope diario de los módulos que corren después. Se fechan en el
+    pasado en vez de borrarlas: borrar haría que la base reutilice sus ids y los eventos ya escritos."""
+    desde = db.uno("select coalesce(max(id), 0) m from asistente_consultas")["m"]
+    yield
+    db.ejecutar("update asistente_consultas set momento='2000-01-01T00:00:00' where id>:d", d=desde)
+
 @pytest.fixture()
 def con_asesor(monkeypatch):
     """Asesor configurado contra el doble. Devuelve una función que instala el guion."""
@@ -752,3 +760,21 @@ def test_monitoreo_no_cuenta_como_fallida_una_sesion_en_curso():
                 latencia_ms=0, estado_http=0, error="en curso", costo_usd="0.05")
     despues = metricas.uso_modelo({})["por_uso"].get("asesor", {"llamadas": 0, "fallidas": 0})
     assert (despues["llamadas"], despues["fallidas"]) == (antes["llamadas"], antes["fallidas"])
+
+
+def test_el_asesor_recibe_la_pantalla_y_la_conversacion_reciente(con_asesor, cliente, piloto_con_gastos):
+    from app import api_v1
+    from app.servicios import acceso
+    gid = piloto_con_gastos["gastos"][0]
+    s = Servicio([corriendo(), mensaje("Ese gasto está en revisión por el importe."), fin()])
+    con_asesor(s)
+    r = cliente.post("/api/v1/asistente", headers={"X-CSRF-Token": api_v1.token_csrf(cliente.cookies.get(acceso.COOKIE))},
+                     json={"pregunta": "¿Por qué está en revisión este gasto?", "contexto": {"pantalla": "gasto", "id": gid},
+                           "historial": [{"pregunta": "¿Qué gastos hay en revisión?", "respuesta": "Hay dos."}]})
+    assert r.status_code == 200, r.text
+    texto = s.enviados[0]["initial_events"][0]["content"][0]["text"]
+    assert f"Está viendo el gasto #{gid}" in texto and "«este»" in texto
+    assert "Conversación reciente" in texto and "Preguntó: ¿Qué gastos hay en revisión?" in texto and "Se respondió: Hay dos." in texto
+    assert texto.rstrip().endswith("¿Por qué está en revisión este gasto?")   # la pregunta va al final
+    evento = db.uno("select detalle from eventos where entidad='asistente' and paso='pregunta respondida' order by id desc limit 1")
+    assert f"viendo gasto #{gid}" in evento["detalle"]

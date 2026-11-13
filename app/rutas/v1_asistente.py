@@ -42,7 +42,8 @@ def preguntar(datos: PreguntaAsistente, yo: dict = Depends(escritura)):
     _con_permiso(yo)
     if not datos.pregunta.strip():
         raise ErrorApi(422, "VALIDATION_ERROR", "Escribe una pregunta.", {"pregunta": "Escribe una pregunta."})
-    r = asistente.responder(datos.pregunta, yo)
+    r = asistente.responder(datos.pregunta, yo, contexto=datos.contexto.model_dump() if datos.contexto else None,
+                            historial=[h.model_dump() for h in datos.historial])
     return {"texto": r["texto"], "modo": r["modo"], "modo_texto": modo_visible(r["modo"])[0],
             "fuentes": [{"tipo": f["tipo"], "codigo": f["codigo"], "destino": _destino(f["enlace"])} for f in r["fuentes"]],
             "herramientas": r["herramientas"], "duracion_ms": r["duracion_ms"],
