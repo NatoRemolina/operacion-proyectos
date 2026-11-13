@@ -320,8 +320,7 @@ TOPE_IR_A_TEXTO = "Llegaste al tope de «Ir a…» de hoy: el enlace sale de Goo
 
 
 def _es_envio(url) -> bool:
-    """El envío al vendedor solo puede ir a `https://www.google.com/travel/clk…` (Google redirige al vendedor)."""
-    return precios.es_fuente_google(url) and urlsplit(url).path.startswith("/travel/clk")
+    return precios.es_envio_google(url)
 
 
 def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict, url: str | None,

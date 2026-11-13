@@ -109,6 +109,13 @@ def es_fuente_google(url) -> bool:
             and not p.password and ruta_real.startswith("/travel/") and ".." not in ruta_real.split("/"))
 
 
+def es_envio_google(url) -> bool:
+    """El envío al vendedor (el `booking_request` del buscador o el que intercepta el analizador): solo
+    `https://www.google.com/travel/clk…`, con el mismo criterio que `es_fuente_google`. Así una redirección abierta de
+    Google (`/url?q=…`) o cualquier otra ruta queda fuera."""
+    return es_fuente_google(url) and unquote(urlsplit(url).path).startswith("/travel/clk")
+
+
 def _protobuf(campo: int, datos: bytes) -> bytes:
     """Un campo de longitud variable del formato que usa Google Flights en el parámetro `tfs`."""
     largo, n = b"", len(datos)

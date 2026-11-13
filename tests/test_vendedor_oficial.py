@@ -199,3 +199,12 @@ def test_un_fallo_inesperado_va_a_google_flights_con_nota(piloto, buscador, monk
     assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"]
     ev = db.uno("select detalle from eventos where entidad_id=:i and paso='página oficial abierta' order by id desc", i=c["id"])
     assert ev["detalle"].endswith("error al preparar el enlace (RuntimeError) · Google Flights")
+
+
+def test_un_envio_a_google_fuera_de_travel_clk_no_se_usa(piloto, buscador):
+    _, respuestas, _ = buscador
+    respuestas["reserva"] = {"booking_options": [_opcion("American", True, 458, url="https://www.google.com/url?q=https://evil.example")]}
+    c = _vegas(piloto)
+    vuelo = c["vuelos"][0]
+    r = _abrir(piloto, c["id"], vuelo["id"])
+    assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"]

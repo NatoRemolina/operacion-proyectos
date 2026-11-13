@@ -456,7 +456,6 @@ TOPE_VENDEDOR_DIA = 10   # si la regla no existe
 REGLA_VENDEDOR = ("enlace_vendedor_persona_dia", str(TOPE_VENDEDOR_DIA),
                   "Aperturas de la página oficial del vendedor por persona y día que consultan el buscador (opciones de "
                   "reserva). El mismo itinerario dentro de la hora no cuenta. Alcanzado, «Ver desglose» lleva a Google Flights.")
-DOMINIOS_SALIDA = frozenset({"www.google.com", "google.com"})   # el envío va a Google, que redirige al vendedor
 REUSO_VENDEDOR = timedelta(hours=1)
 
 
@@ -467,18 +466,6 @@ def asegurar_reglas_vendedor() -> int:
     db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor, nota=nota,
                 fuente="Supuesto editable", confianza="supuesto", verificado="2026-11-13")
     return 1
-
-
-def _salida_permitida(url) -> bool:
-    if not isinstance(url, str):
-        return False
-    try:
-        p = urlsplit(url)
-        puerto = p.port
-    except ValueError:
-        return False
-    return (p.scheme == "https" and p.hostname in DOMINIOS_SALIDA and puerto is None and not p.username and not p.password
-            and not any(ord(ch) < 33 for ch in url))
 
 
 def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int) -> dict:
@@ -527,7 +514,7 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
             return google
     regreso = precios.vuelo_regreso(vuelo, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
     opciones = precios.reserva_en_vivo(vuelo, regreso, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid) if regreso else []
-    validas = [x for x in opciones if _salida_permitida(x["url"]) and isinstance(x["post_data"], str)]
+    validas = [x for x in opciones if precios.es_envio_google(x["url"]) and isinstance(x["post_data"], str)]
     elegida = next((x for x in validas if x["aerolinea"]), validas[0] if validas else None)
     if not elegida:
         anotar(f"{'sin opciones de reserva' if not opciones else 'vendedor fuera de la lista blanca'} · Google Flights")

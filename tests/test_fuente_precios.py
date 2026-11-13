@@ -202,3 +202,22 @@ def test_guardar_una_respuesta_nueva_renueva_su_enlace(monkeypatch):
     monkeypatch.setattr(precios.db, "insertar", lambda *a, **k: None)
     precios._guardar("hoteles_ciudad-nueva_2026-12-09_2026-12-12.json", {}, archivo=False)
     assert "hoteles_ciudad-nueva_2026-12-09_2026-12-12.json" not in precios._enlaces
+
+
+# ---------- ronda 1 · punto 18: el envío al vendedor solo va a /travel/clk ----------
+@pytest.mark.parametrize("url", ["https://www.google.com/travel/clk/f?u=x", "https://google.com/travel/clk?pf=1"])
+def test_el_envio_al_vendedor_va_a_travel_clk(url):
+    assert precios.es_envio_google(url)
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.google.com/url?q=https://evil.example",          # redirección abierta de Google
+    "https://www.google.com/travel/flights?tfs=x",                # Google, pero no el envío
+    "https://www.google.com/travel/clk\x7f/f",                    # carácter de control
+    "https://www.google.com/travel/%2e%2e/clk/f",
+    "https://evil.example/travel/clk/f",
+    "http://www.google.com/travel/clk/f",
+    None,
+])
+def test_el_envio_al_vendedor_rechaza_lo_demas(url):
+    assert not precios.es_envio_google(url)
