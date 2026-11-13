@@ -63,7 +63,7 @@ export function FormularioCuenta({
         <CampoTexto
           id={`${id}-nombre`}
           etiqueta="Nombre"
-          required
+          ayuda="Opcional: si lo dejas vacío se usa el correo."
           maxLength={80}
           value={datos.nombre}
           error={errorDe("nombre")}

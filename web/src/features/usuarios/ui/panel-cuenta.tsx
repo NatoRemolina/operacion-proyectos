@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useProyectos } from "@/features/proyectos/application/proyectos";
+import { usePersonaId } from "@/shared/application/identidad";
 import type { Permiso } from "@/shared/domain/navegacion";
 import { useAvisos } from "@/shared/ui/aviso-emergente";
 import { Boton } from "@/shared/ui/boton";
@@ -25,6 +27,13 @@ export function PanelCuenta({ usuario, cargos, onCerrar }: { usuario: Usuario; c
   const [claveCorta, setClaveCorta] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const todosLosProyectos = useProyectos();
+  const esMiCuenta = usePersonaId() === usuario.id;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = todosLosProyectos;
+
+  // Para asignar hace falta la lista completa, no solo la primera página.
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const cambiarRol = useAccionCuenta((repo, valor: Permiso) => repo.cambiarRol(usuario.id, valor));
   const cambiarCargo = useAccionCuenta((repo, valor: number | null) => repo.cambiarCargo(usuario.id, valor));
@@ -185,21 +194,30 @@ export function PanelCuenta({ usuario, cargos, onCerrar }: { usuario: Usuario; c
           </div>
         )}
 
-        <form className={BLOQUE} onSubmit={enviarClave} noValidate>
-          <CampoTexto
-            id={`${id}-clave`}
-            etiqueta="Contraseña nueva"
-            type="password"
-            autoComplete="new-password"
-            ayuda="10 caracteres o más. Cierra sus sesiones abiertas; no se vuelve a mostrar."
-            value={clave}
-            error={errorClave}
-            onChange={(e) => setClave(e.target.value)}
-          />
-          <Boton type="submit" variante="secundario" className="self-start" disabled={restablecer.isPending}>
-            {restablecer.isPending ? "Guardando…" : "Restablecer contraseña"}
-          </Boton>
-        </form>
+        {esMiCuenta ? (
+          <div className={BLOQUE}>
+            <p className="font-semibold">Contraseña</p>
+            <p className="text-sm text-texto-secundario">
+              La tuya se cambia en <Link href="/mi-cuenta">Mi cuenta</Link>, que pide la actual.
+            </p>
+          </div>
+        ) : (
+          <form className={BLOQUE} onSubmit={enviarClave} noValidate>
+            <CampoTexto
+              id={`${id}-clave`}
+              etiqueta="Contraseña nueva"
+              type="password"
+              autoComplete="new-password"
+              ayuda="10 caracteres o más. Cierra sus sesiones abiertas; no se vuelve a mostrar."
+              value={clave}
+              error={errorClave}
+              onChange={(e) => setClave(e.target.value)}
+            />
+            <Boton type="submit" variante="secundario" className="self-start" disabled={restablecer.isPending}>
+              {restablecer.isPending ? "Guardando…" : "Restablecer contraseña"}
+            </Boton>
+          </form>
+        )}
       </div>
 
       <div className={BLOQUE}>

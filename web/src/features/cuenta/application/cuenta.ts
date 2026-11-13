@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { crearContextoRepositorio } from "@/shared/application/contexto-repositorio";
 import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
@@ -31,11 +32,22 @@ function conError<T, V>(accion: (variables: V) => Promise<T>) {
   };
 }
 
+/** Al terminar bien se olvida lo enviado: las contraseñas no quedan en el estado ni en la caché de la acción. */
+export function useOlvidarAlTerminar(mutacion: { isSuccess: boolean; reset: () => void }) {
+  const { isSuccess, reset } = mutacion;
+  useEffect(() => {
+    if (isSuccess) reset();
+  }, [isSuccess, reset]);
+}
+
 export function useCambiarMiClave() {
   const repositorio = useCuentaRepository();
-  return useMutation<{ mensaje: string }, ErrorDeAplicacion, { actual: string; nueva: string }>({
+  const mutacion = useMutation<{ mensaje: string }, ErrorDeAplicacion, { actual: string; nueva: string }>({
     mutationFn: conError(({ actual, nueva }) => repositorio.cambiarClave(actual, nueva)),
+    gcTime: 0,
   });
+  useOlvidarAlTerminar(mutacion);
+  return mutacion;
 }
 
 export function useVincularTelegram() {

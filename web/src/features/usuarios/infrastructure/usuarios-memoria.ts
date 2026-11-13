@@ -136,6 +136,9 @@ export function crearUsuariosMemoria(
     async restablecerClave(id, clave) {
       await preparar();
       const u = cuenta(id);
+      if (id === yo) {
+        throw new ErrorDeAplicacion("estado_invalido", { mensaje: "Para cambiar tu propia contraseña usa «Mi cuenta»: allí se pide la actual." });
+      }
       if (clave.length < 10) throw invalido("clave", CLAVE_CORTA);
       return guardar(id, {}, `Contraseña de ${u.nombre} restablecida; sus sesiones abiertas se cerraron.`);
     },

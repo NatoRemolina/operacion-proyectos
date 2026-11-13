@@ -116,6 +116,41 @@ describe("Usuarios y cargos", () => {
     expect(screen.queryByDisplayValue("clave-inicial-123")).not.toBeInTheDocument();
   });
 
+  it("el nombre es opcional al crear una cuenta (se usa el correo)", async () => {
+    const usuario = userEvent.setup();
+    montar();
+    await screen.findByRole("table", { name: "Cuentas" });
+    await usuario.click(screen.getByRole("button", { name: "Nueva cuenta" }));
+    const nombre = within(screen.getByRole("form", { name: "Nueva cuenta" })).getByLabelText("Nombre");
+    expect(nombre).not.toBeRequired();
+    expect(screen.getByText(/si lo dejas vacío se usa el correo/)).toBeInTheDocument();
+  });
+
+  it("en la propia cuenta la contraseña se cambia en «Mi cuenta»", async () => {
+    const usuario = userEvent.setup();
+    montar();
+    const panel = await gestionar(usuario, "Administración (demo)");
+    expect(within(panel).queryByLabelText("Contraseña nueva")).not.toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: "Mi cuenta" })).toHaveAttribute("href", "/mi-cuenta");
+  });
+
+  it("ofrece todos los proyectos para asignar, no solo la primera página", async () => {
+    const usuario = userEvent.setup();
+    const muchos = Array.from({ length: 55 }, (_, i) => proyectoDePrueba({ id: i + 1, nombre: `Proyecto ${i + 1}` }));
+    const repo = crearUsuariosMemoria({ usuarios: [ADMIN, GESTOR], cargos: CARGOS_DE_PRUEBA, permiso: "admin", yo: 1 });
+    renderizarConFuente(
+      <ProyectosRepositoryProvider repositorio={crearProyectosMemoria({ permiso: "admin", proyectos: muchos })}>
+        <UsuariosRepositoryProvider repositorio={repo}>
+          <PantallaUsuarios />
+        </UsuariosRepositoryProvider>
+      </ProyectosRepositoryProvider>,
+      { permiso: "admin", personaId: 1 },
+    );
+    const panel = await gestionar(usuario, "Gestión de proyecto (demo)");
+    expect(await within(panel).findByRole("checkbox", { name: "Proyecto 1" })).toBeInTheDocument();
+    expect(within(panel).getAllByRole("checkbox")).toHaveLength(55);
+  });
+
   it("un correo repetido se señala en su campo", async () => {
     const usuario = userEvent.setup();
     montar();

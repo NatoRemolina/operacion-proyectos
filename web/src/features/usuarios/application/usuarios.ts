@@ -4,6 +4,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { crearContextoRepositorio } from "@/shared/application/contexto-repositorio";
 import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
 import { comoErrorDeAplicacion, type ErrorDeAplicacion } from "@/shared/domain/errores";
+import { useOlvidarAlTerminar } from "@/features/cuenta/application/cuenta";
 import type { Cargo, ResultadoUsuario, UsuariosRepository } from "../domain/usuarios";
 
 const contexto = crearContextoRepositorio<UsuariosRepository>("UsuariosRepository");
@@ -43,11 +44,14 @@ function useRefrescar() {
   return () => void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "usuarios") });
 }
 
-/** Caso de uso genérico sobre una cuenta: alta, permiso, cargo, proyectos, estado o contraseña. */
+/**
+ * Caso de uso genérico sobre una cuenta: alta, permiso, cargo, proyectos, estado o contraseña. Al terminar bien se
+ * olvida lo enviado (la contraseña inicial o la restablecida no quedan en el estado de la acción).
+ */
 export function useAccionCuenta<V>(accion: (repositorio: UsuariosRepository, variables: V) => Promise<ResultadoUsuario>) {
   const repositorio = useUsuariosRepository();
   const refrescar = useRefrescar();
-  return useMutation<ResultadoUsuario, ErrorDeAplicacion, V>({
+  const mutacion = useMutation<ResultadoUsuario, ErrorDeAplicacion, V>({
     mutationFn: async (variables) => {
       try {
         return await accion(repositorio, variables);
@@ -56,7 +60,10 @@ export function useAccionCuenta<V>(accion: (repositorio: UsuariosRepository, var
       }
     },
     onSuccess: refrescar,
+    gcTime: 0,
   });
+  useOlvidarAlTerminar(mutacion);
+  return mutacion;
 }
 
 export function useAccionCargo<V>(accion: (repositorio: UsuariosRepository, variables: V) => Promise<Cargo>) {

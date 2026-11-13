@@ -75,7 +75,8 @@ function CambiarClave() {
       <div>
         <h2 className="text-lg font-bold">Cambiar mi contraseña</h2>
         <p className="text-sm text-texto-secundario">
-          Al cambiarla se cierran tus sesiones en otros equipos; en este sigues dentro.
+          Al cambiarla se cierran tus sesiones en otros equipos (en este sigues dentro) y se desvincula tu chat de Telegram,
+          que puedes volver a vincular.
         </p>
       </div>
       <div className="grid gap-3 sm:max-w-md">
