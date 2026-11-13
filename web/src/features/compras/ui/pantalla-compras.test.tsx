@@ -27,7 +27,7 @@ async function abrir(usuario: ReturnType<typeof userEvent.setup>) {
 describe("Bandeja de compras", () => {
   it("lista las solicitudes y abre el detalle con el vuelo, el enlace oficial y los clics", async () => {
     const usuario = userEvent.setup();
-    montar(crearComprasMemoria({ compras: [COMPRA_EJEMPLO] }));
+    montar(crearComprasMemoria({ compras: [COMPRA_EJEMPLO], permiso: "admin" }));
     const fila = (await screen.findByRole("rowheader", { name: "V-2026-0041" })).closest("tr")!;
     expect(within(fila).getByText("Solicitud de compra enviada")).toBeInTheDocument();
     const detalle = await abrir(usuario);
@@ -40,7 +40,7 @@ describe("Bandeja de compras", () => {
 
   it("«Se va a comprar» espera el viaje aprobado y no comprar exige motivo", async () => {
     const usuario = userEvent.setup();
-    const repo = crearComprasMemoria({ compras: [COMPRA_EJEMPLO] });
+    const repo = crearComprasMemoria({ compras: [COMPRA_EJEMPLO], permiso: "admin" });
     const cambiar = vi.spyOn(repo, "cambiarEstado");
     montar(repo);
     const detalle = await abrir(usuario);
@@ -56,7 +56,7 @@ describe("Bandeja de compras", () => {
 
   it("nadie decide la compra de su propio viaje: el mensaje lo dice", async () => {
     const usuario = userEvent.setup();
-    montar(crearComprasMemoria({ compras: [COMPRA_EJEMPLO], propias: [7] }));
+    montar(crearComprasMemoria({ compras: [COMPRA_EJEMPLO], propias: [7], permiso: "admin" }));
     const detalle = await abrir(usuario);
     await usuario.click(within(detalle).getByRole("button", { name: "Pasar a análisis" }));
     expect(await within(detalle).findByText(/Nadie decide la compra de su propio viaje/)).toBeInTheDocument();
@@ -65,7 +65,7 @@ describe("Bandeja de compras", () => {
   it("con el viaje aprobado se decide comprar y se registra el localizador, frente a lo cotizado", async () => {
     const usuario = userEvent.setup();
     const aprobada = { ...COMPRA_EJEMPLO, viaje: { ...COMPRA_EJEMPLO.viaje, estado: "aprobado" } };
-    montar(crearComprasMemoria({ compras: [aprobada] }));
+    montar(crearComprasMemoria({ compras: [aprobada], permiso: "admin" }));
     const detalle = await abrir(usuario);
     await usuario.click(within(detalle).getByRole("button", { name: "Se va a comprar" }));
     const form = await within(detalle).findByRole("form", { name: "Registrar la compra" });
@@ -80,7 +80,22 @@ describe("Bandeja de compras", () => {
   });
 
   it("sin solicitudes lo dice", async () => {
-    montar(crearComprasMemoria({ compras: [] }));
+    montar(crearComprasMemoria({ compras: [], permiso: "admin" }));
     expect(await screen.findByText("No hay solicitudes de compra")).toBeInTheDocument();
+  });
+});
+
+describe("Compras en memoria", () => {
+  it("fuera de administración responde «prohibido», como la API (403)", async () => {
+    const repo = crearComprasMemoria({ compras: [COMPRA_EJEMPLO], permiso: "colaborador" });
+    await expect(repo.lista()).rejects.toMatchObject({ tipo: "prohibido" });
+    await expect(repo.detalle(7)).rejects.toMatchObject({ tipo: "prohibido" });
+    await expect(repo.cambiarEstado(7, "en_analisis", 1, "")).rejects.toMatchObject({ tipo: "prohibido" });
+    await expect(repo.analizar(7)).rejects.toMatchObject({ tipo: "prohibido" });
+  });
+
+  it("la bandeja lo explica a quien no es de administración", async () => {
+    montar(crearComprasMemoria({ compras: [COMPRA_EJEMPLO], permiso: "gestor" }));
+    expect(await screen.findByText("Esta página no está disponible con tu permiso")).toBeInTheDocument();
   });
 });

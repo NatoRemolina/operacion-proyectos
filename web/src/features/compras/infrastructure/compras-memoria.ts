@@ -1,4 +1,5 @@
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
+import type { Permiso } from "@/shared/domain/navegacion";
 import { esperar, exigirSesion, type SesionMemoria } from "@/shared/infrastructure/memoria";
 import {
   accionesPosibles,
@@ -19,16 +20,27 @@ const TEXTO: Readonly<Record<EstadoCompra, string>> = {
   cancelada: "Cancelada",
 };
 
-/** Compras en memoria, con las reglas del contrato: versión esperada, transiciones y viaje aprobado. */
+/**
+ * Compras en memoria, con las reglas del contrato: versión esperada, transiciones y viaje aprobado. Como la API, solo
+ * administración: con otro `permiso` todo responde «prohibido» (403), igual que las cuentas en memoria.
+ */
 export function crearComprasMemoria(opciones: {
   compras?: readonly CompraDetalle[];
+  /** Permiso de la sesión; fuera de administración, «prohibido». Por omisión, colaborador (como `usuarios-memoria`). */
+  permiso?: Permiso;
   /** Ids de compras del propio viaje de quien mira: cambiarlas responde «autoaprobación». */
   propias?: readonly number[];
   sesion?: SesionMemoria;
   latenciaMs?: number;
 }): ComprasRepository {
-  const { sesion, latenciaMs = 0, propias = [] } = opciones;
+  const { sesion, latenciaMs = 0, propias = [], permiso = "colaborador" } = opciones;
   const compras = new Map<number, CompraDetalle>((opciones.compras ?? []).map((c) => [c.id, c]));
+
+  async function preparar(signal?: AbortSignal) {
+    await esperar(latenciaMs, signal);
+    exigirSesion(sesion);
+    if (permiso !== "admin") throw new ErrorDeAplicacion("prohibido");
+  }
 
   function una(id: number): CompraDetalle {
     const c = compras.get(id);
@@ -53,18 +65,15 @@ export function crearComprasMemoria(opciones: {
 
   return {
     async lista(signal) {
-      await esperar(latenciaMs, signal);
-      exigirSesion(sesion);
+      await preparar(signal);
       return [...compras.values()];
     },
     async detalle(id, signal) {
-      await esperar(latenciaMs, signal);
-      exigirSesion(sesion);
+      await preparar(signal);
       return una(id);
     },
     async cambiarEstado(id, accion, version, motivo) {
-      await esperar(latenciaMs);
-      exigirSesion(sesion);
+      await preparar();
       const c = comprobar(id, version);
       if (!accionesPosibles(c).includes(accion)) throw new ErrorDeAplicacion("estado_invalido");
       if (accion === "se_comprara" && bloqueoSeComprara(c)) {
@@ -76,8 +85,7 @@ export function crearComprasMemoria(opciones: {
       return guardar(c, { estado: accion, estado_texto: TEXTO[accion], motivo: motivo.trim() || c.motivo });
     },
     async registrar(id, version, registro) {
-      await esperar(latenciaMs);
-      exigirSesion(sesion);
+      await preparar();
       const c = comprobar(id, version);
       if (c.estado !== "se_comprara") throw new ErrorDeAplicacion("estado_invalido");
       const errores = validarRegistro(registro);
@@ -94,8 +102,7 @@ export function crearComprasMemoria(opciones: {
       });
     },
     async analizar(id) {
-      await esperar(latenciaMs);
-      exigirSesion(sesion);
+      await preparar();
       una(id);
       return { estado: "no_disponible", motivo: "En la demostración no se lee la página del vuelo.", leido: null, captura_url: null, aviso_precio: null };
     },
