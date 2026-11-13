@@ -104,6 +104,12 @@ export function DetalleGasto({
           ) : null}
           <Fila termino="Viaje">{gasto.viaje?.codigo ?? "Sin viaje asignado"}</Fila>
           <Fila termino="Enviado por">{CANAL[gasto.canal] ?? gasto.canal}</Fila>
+          {gasto.correo ? (
+            <>
+              <Fila termino="Remitente">{gasto.correo.remitente ?? "Sin remitente leído"}</Fila>
+              <Fila termino="Asunto">{gasto.correo.asunto ?? "Sin asunto"}</Fila>
+            </>
+          ) : null}
           <Fila termino="Recibido">{formatearInstante(gasto.creado)}</Fila>
         </dl>
       </section>

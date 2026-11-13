@@ -50,6 +50,10 @@ export const gastoDetalleSchema = gastoResumenSchema.extend({
   version: z.number().int().nonnegative().default(0),
   motivo_rechazo: z.string().nullable().default(null),
   puede_justificar: z.boolean().default(false),
+  correo: z
+    .object({ remitente: z.string().nullable(), asunto: z.string().nullable() })
+    .nullable()
+    .default(null),
 }) satisfies z.ZodType<GastoDetalle>;
 
 const listaSchema = paginaSchema(gastoResumenSchema);

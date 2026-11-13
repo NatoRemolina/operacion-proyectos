@@ -33,13 +33,57 @@ INSTRUCCION = f"""Eres un asistente de contabilidad. Lee el soporte de gasto adj
 No inventes valores: si algo no se lee, usa null y nómbralo en dudas."""
 
 
+def tipo_binario(contenido: bytes) -> str | None:
+    """Tipo de una foto o un PDF según sus primeros bytes, no según lo que declara quien lo envía."""
+    if contenido[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if contenido[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if contenido[:4] == b"RIFF" and contenido[8:12] == b"WEBP":
+        return "image/webp"
+    if contenido[:5] == b"%PDF-":
+        return "application/pdf"
+    return None
+
+
+def _linea(valor) -> str | None:
+    """Una cabecera del correo en una sola línea, sin caracteres de control y con un largo razonable."""
+    texto = re.sub(r"\s+", " ", re.sub(r"[\x00-\x1f\x7f]", " ", str(valor or ""))).strip()[:200]
+    return texto or None
+
+
+def remitente_y_asunto(contenido: bytes) -> dict:
+    """De quién llegó el correo y con qué asunto: el contexto del gasto que se muestra en su ficha."""
+    try:
+        msg = email.message_from_bytes(contenido, policy=policy.default)
+        return {"remitente": _linea(msg["from"]), "asunto": _linea(msg["subject"])}
+    except Exception:   # una cabecera mal formada no impide guardar el gasto: solo se queda sin contexto
+        return {"remitente": None, "asunto": None}
+
+
+def _adjunto_util(msg) -> tuple[bytes, str] | None:
+    """El adjunto que mejor sirve para leer el gasto: un PDF antes que una foto. El tipo se mira en el contenido."""
+    candidatos = []
+    for parte in msg.iter_attachments():
+        try:
+            datos = parte.get_payload(decode=True) or b""
+        except Exception:  # noqa: S112  un adjunto dañado no impide leer los demás
+            continue
+        tipo = tipo_binario(datos)
+        if tipo:
+            candidatos.append((tipo != "application/pdf", datos, tipo))
+    if not candidatos:
+        return None
+    _, datos, tipo = min(candidatos, key=lambda c: c[0])   # el primero de los PDF, o la primera foto si no hay PDF
+    return datos, tipo
+
+
 def _correo(contenido: bytes):
     """Devuelve (texto del correo, adjunto o None, mime del adjunto)."""
     msg = email.message_from_bytes(contenido, policy=policy.default)
-    for parte in msg.iter_attachments():
-        tipo = parte.get_content_type()
-        if tipo == "application/pdf" or tipo.startswith("image/"):
-            return None, parte.get_payload(decode=True), tipo
+    adjunto = _adjunto_util(msg)
+    if adjunto:
+        return None, *adjunto
     cuerpo = msg.get_body(preferencelist=("plain", "html"))
     texto = cuerpo.get_content() if cuerpo else ""
     texto = re.sub(r"<[^>]+>", " ", texto)

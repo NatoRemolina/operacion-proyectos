@@ -17,7 +17,13 @@ from ..servicios import gastos as soportes
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
 
 
+class CorreoDelSoporte(BaseModel):
+    remitente: str | None = Field(description="Quién envió el correo, tal como viene en su cabecera.")
+    asunto: str | None = Field(description="El asunto del correo.")
+
+
 class GastoRevisable(GastoDetalle):
+    correo: CorreoDelSoporte | None = Field(None, description="Si el soporte es un correo (.eml): de quién llegó y con qué asunto.")
     version: int = Field(description="Versión del gasto. La revisión la manda de vuelta para no pisar un cambio ajeno.")
     motivo_rechazo: str | None = Field(description="Por qué se rechazó, con las palabras de quien revisó.")
     puede_justificar: bool = Field(False, description="La persona de la sesión hizo el gasto o es quien viaja: puede contar para qué fue.")
@@ -62,8 +68,10 @@ def _revisable(yo: dict, id: int) -> dict | None:
     g = consultas.gasto(yo, id)
     if not g:
         return None
-    extra = db.uno("select version, motivo_rechazo from gastos where id=:i", i=id)
-    return marcar_propios([{**g, "version": extra["version"] or 0, "motivo_rechazo": extra["motivo_rechazo"]}], yo)[0]
+    extra = db.uno("""select g.version, g.motivo_rechazo, d.texto from gastos g left join documentos d on d.id=g.documento_id
+                      where g.id=:i""", i=id)
+    return marcar_propios([{**g, "version": extra["version"] or 0, "motivo_rechazo": extra["motivo_rechazo"],
+                            "correo": soportes.correo_de(extra["texto"])}], yo)[0]
 
 
 def _campos(datos: RevisionGasto) -> dict:

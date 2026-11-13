@@ -49,6 +49,13 @@ export interface GastoDetalle extends GastoResumen {
   readonly motivo_rechazo?: string | null;
   /** Hizo el gasto o es quien viaja: puede contar para qué fue. Sin el dato (memoria), se asume que sí. */
   readonly puede_justificar?: boolean;
+  /** Si el soporte es un correo (.eml): de quién llegó y con qué asunto. */
+  readonly correo?: CorreoDelSoporte | null;
+}
+
+export interface CorreoDelSoporte {
+  readonly remitente: string | null;
+  readonly asunto: string | null;
 }
 
 export interface FiltroGastos extends OpcionesListado {

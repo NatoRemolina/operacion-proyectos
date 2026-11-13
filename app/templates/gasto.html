@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% import "_macros.html" as m %}{% block titulo %}Gasto #{{ g.id }}{% endblock %}{% block cuerpo %}
 <div class="fila"><div><h1>Gasto #{{ g.id }}</h1><p class="sub">{{ g.archivo }} · canal {{ g.canal }} · lectura {{ g.origen_dato }} con confianza {{ '%.0f'|format((g.confianza or 0) * 100) }}%</p></div><span class="der">{{ m.estado(g.estado) }}</span></div>
+{% if correo %}<p class="eti">Llegó por correo de <b>{{ correo.remitente or 'remitente sin leer' }}</b>{% if correo.asunto %} · asunto «{{ correo.asunto }}»{% endif %}</p>{% endif %}
 {% if el_viaje %}<p class="eti">Viaje <a href="/viaje/{{ el_viaje.id }}"><b>{{ el_viaje.codigo }}</b></a> · {{ el_viaje.origen }} → {{ el_viaje.destino }} · {{ el_viaje.ida }} a {{ el_viaje.regreso }} · {{ el_viaje.estado_texto }} · titular {{ el_viaje.titular or '—' }}</p>{% endif %}
 {% if aviso_revision %}<p class="nota aviso" role="alert"><b>No se guardó la revisión.</b> {{ aviso_revision }}</p>{% endif %}
 {% if g.estado == 'rechazado' and g.motivo_rechazo %}<p class="nota aviso"><b>Motivo del rechazo:</b> {{ g.motivo_rechazo }}</p>{% endif %}

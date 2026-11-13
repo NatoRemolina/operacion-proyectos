@@ -138,12 +138,12 @@ def gastos_ejemplos(nombres: list[str] = Form([]), proyecto_id: int = Form(0), v
 
 @router.get("/gastos/{gid}", response_class=HTMLResponse)
 def gasto(request: Request, gid: int, aviso: str = "", revision: str = ""):
-    g = db.uno("""select g.*, d.nombre archivo, d.mime, d.canal from gastos g
+    g = db.uno("""select g.*, d.nombre archivo, d.mime, d.canal, d.texto texto_soporte from gastos g
                   left join documentos d on d.id=g.documento_id where g.id=:i""", i=gid) if _gasto_propio(gid) else None
     if not g:
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "gasto.html", _ctx(
-        g=g, alertas=db.de_json(g["alertas"], []), el_viaje=viajes.uno(g["viaje_id"]), aviso=aviso[:300], aviso_revision=revision[:300],
+        g=g, correo=soportes.correo_de(g["texto_soporte"]), alertas=db.de_json(g["alertas"], []), el_viaje=viajes.uno(g["viaje_id"]), aviso=aviso[:300], aviso_revision=revision[:300],
         propio=viajes.gasto_propio_de(g, _yo()), no_autorrevisar=viajes.NO_AUTORREVISAR,
         hay_otro_admin=acceso.es_admin(_yo()) and viajes.hay_otro_admin(_yo()),
         justifs=justificaciones.de_gasto(gid), puede_justificar=justificaciones.puede_justificar(_yo(), g),

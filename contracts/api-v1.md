@@ -97,8 +97,9 @@ interface GastoDetalle extends GastoResumen {
   subtotal: Dinero; impuesto: Dinero; propina: Dinero;
   motivos: string[];                          // códigos estables, por ejemplo "sin_viaje"
   alertas: string[];                          // textos para mostrar
-  canal: string;                              // "web" | "celular" | "correo" | "telegram"
+  canal: string;                              // "web" | "celular" | "correo" | "telegram"; un correo (.eml) que se sube queda "correo"
   documento_id: number | null;
+  correo: { remitente: string | null; asunto: string | null } | null;  // si el soporte es un correo (.eml)
   lectura: { origen: string; confianza: number | null };
   justificaciones: Justificacion[];           // en orden de llegada
   version: number;                            // sube con cada cambio; la revisión la manda de vuelta
