@@ -23,17 +23,24 @@ RUN npm run build
 
 FROM ${NODE_IMAGE} AS ejecucion
 WORKDIR /app
+# Adaptador que ejecuta este mismo servidor dentro de una función Lambda (infra/lib/web-stack.ts), igual que la API.
+# Fuera de Lambda no hace nada: la imagen sirve igual en Docker Compose.
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
-    FUENTE_DATOS=http
+    FUENTE_DATOS=http \
+    AWS_LWA_PORT=3000 \
+    AWS_LWA_READINESS_CHECK_PATH=/entrar
 # Usuario sin privilegios que ya trae la imagen oficial de Node.
 COPY --from=compilacion --chown=node:node /app/.next/standalone ./
 COPY --from=compilacion --chown=node:node /app/.next/static ./.next/static
 COPY --from=compilacion --chown=node:node /app/public ./public
+# En Lambda solo /tmp admite escritura: la caché de Next vive allí
+RUN ln -s /tmp/cache-next ./.next/cache
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
   CMD node -e "fetch('http://127.0.0.1:3000/entrar').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "mkdir -p /tmp/cache-next && exec node server.js"]

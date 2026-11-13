@@ -19,6 +19,9 @@ export interface AppStackProps extends StackProps {
  * Sin cómputo encendido en reposo. `-c caliente=1` mantiene una instancia lista (día de demostración).
  */
 export class AppStack extends Stack {
+  /** La dirección pública de la función. La web (OperacionWeb) la pone detrás de CloudFront. */
+  public readonly url: lambda.FunctionUrl;
+
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
 
@@ -43,6 +46,7 @@ export class AppStack extends Stack {
 
     // El acceso lo controla la propia aplicación (sesión y roles); la dirección es pública.
     const url = vivo.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
+    this.url = url;
 
     const aviso = new acciones.SnsAction(props.avisos);
     const alarma = (nombre: string, metrica: cloudwatch.Metric, umbral: number, periodos = 1) =>

@@ -1,7 +1,22 @@
 {
   "name": "infra",
   "private": true,
-  "scripts": { "synth": "cdk synth", "diff": "cdk diff", "deploy": "cdk deploy", "typecheck": "tsc --noEmit" },
-  "dependencies": { "aws-cdk-lib": "^2.160.0", "constructs": "^10.3.0" },
-  "devDependencies": { "aws-cdk": "^2.160.0", "ts-node": "^10.9.2", "typescript": "^5.6.0", "@types/node": "^22.0.0" }
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "node --require ts-node/register --test test/*.test.ts",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.160.0",
+    "constructs": "^10.3.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.160.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
 }
