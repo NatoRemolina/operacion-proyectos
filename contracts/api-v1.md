@@ -264,6 +264,7 @@ interface OpcionHotel {
   calificacion: number | null; clase: number | null;
   programa: string | null;                    // reconocido por la marca del nombre (Marriott Bonvoy, Hilton Honors...)
   socio: boolean;                             // el viajero o la empresa tiene membresía de ese programa
+  membresia_de_ejemplo: boolean;              // esa membresía es un dato inventado para la demostración
   descartado: string | null;                  // la razón (calificación bajo el mínimo), si no sirve
   origen_dato: string | null;
   recomendada: boolean;                       // menor costo total entre los que sirven

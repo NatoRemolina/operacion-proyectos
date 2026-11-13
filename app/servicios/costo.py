@@ -295,7 +295,8 @@ def evaluar_hotel(hotel: dict, membresias: list[dict], cat: dict, noches: int) -
     lineas = [{"concepto": f"Tarifa total ({noches} noche{'' if noches == 1 else 's'})", "valor": tarifa, "origen": "buscador"}]
     avisos = []
     p = programa_hotel(hotel.get("nombre") or "", cat)
-    socio = bool(p) and any(_sin_tildes(m.get("entidad") or "") == _sin_tildes(p["nombre"]) for m in membresias)
+    membresia = next((m for m in membresias if p and _sin_tildes(m.get("entidad") or "") == _sin_tildes(p["nombre"])), None)
+    socio = bool(membresia)
     if p:
         supone = not socio and _es_si((cat.get(("supuesto", "", "", "inscripcion_gratis_hotel")) or {}).get("valor"))
         descuento, por_usd, valor_punto = p["descuento_miembro"], p["puntos_por_usd"], p["valor_punto_usd"]
@@ -318,7 +319,8 @@ def evaluar_hotel(hotel: dict, membresias: list[dict], cat: dict, noches: int) -
     minima, calificacion = supuesto(cat, "hotel_calificacion_minima", 3.5), hotel.get("calificacion")
     descartado = (f"Calificación {calificacion:.1f}, por debajo del mínimo de {minima:g}."
                   if calificacion is not None and minima and calificacion < minima else None)
-    return {"programa": p["nombre"] if p else None, "socio": socio, "tarifa": tarifa, "lineas": lineas,
+    return {"programa": p["nombre"] if p else None, "socio": socio, "membresia_de_ejemplo": bool(membresia and membresia.get("ejemplo")),
+            "tarifa": tarifa, "lineas": lineas,
             "total": round(sum(l["valor"] for l in lineas), 2), "avisos": avisos, "descartado": descartado}
 
 

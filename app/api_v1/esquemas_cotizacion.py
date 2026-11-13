@@ -209,6 +209,7 @@ class OpcionHotel(BaseModel):
     clase: int | None
     programa: str | None = Field(description="Programa de fidelización reconocido por la marca, solo con reserva directa.")
     socio: bool = Field(description="El viajero o la empresa tiene membresía de ese programa.")
+    membresia_de_ejemplo: bool = Field(description="Esa membresía es un dato inventado para la demostración.")
     descartado: str | None = Field(description="Por qué no sirve (calificación bajo el mínimo); null si sirve.")
     origen_dato: str | None
     recomendada: bool = Field(description="El de menor costo total entre los que sirven.")

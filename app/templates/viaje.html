@@ -54,7 +54,7 @@
   <td class="d"><b>{{ '%.2f'|format(o.ev.total) }}</b>
     <details><summary>Ver desglose</summary>{{ m.desglose(o.ev.lineas, o.ev.total) }}</details></td>
   <td>{{ '%.1f'|format(o.h.calificacion) if o.h.calificacion else '—' }}</td>
-  <td>{% if o.programa %}<span class="chip azul">{{ o.programa }}</span>{% if o.ev.socio %} <span class="chip ok">socio</span>{% endif %}{% for a in o.ev.avisos %}<br><span class="eti">{{ a }}</span>{% endfor %}{% else %}<span class="eti">sin programa en el catálogo</span>{% endif %}</td>
+  <td>{% if o.programa %}<span class="chip azul">{{ o.programa }}</span>{% if o.ev.socio %} <span class="chip {{ 'aviso' if o.ev.membresia_de_ejemplo else 'ok' }}">socio{% if o.ev.membresia_de_ejemplo %} · dato de ejemplo{% endif %}</span>{% endif %}{% for a in o.ev.avisos %}<br><span class="eti">{{ a }}</span>{% endfor %}{% else %}<span class="eti">sin programa en el catálogo</span>{% endif %}</td>
   <td>{{ m.origen(o.origen_dato) }}</td></tr>{% endfor %}
 {% for o in hoteles_descartados %}<tr><td></td><td class="tachado">{{ o.h.nombre }}</td><td class="d">{{ '%.0f'|format(o.h.total) }}</td><td colspan="4"><span class="chip mal">Descartado</span> {{ o.ev.descartado }}</td></tr>{% endfor %}
 </table></div>

@@ -164,6 +164,8 @@ export interface OpcionHotel {
   readonly programa: string | null;
   /** El viajero o la empresa tiene membresía del programa. */
   readonly socio: boolean;
+  /** Esa membresía es un dato inventado para la demostración. */
+  readonly membresia_de_ejemplo: boolean;
   readonly descartado: string | null;
   readonly origen_dato: string | null;
   readonly recomendada: boolean;

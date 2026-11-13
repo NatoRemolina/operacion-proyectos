@@ -121,6 +121,7 @@ const hotelSchema = z.object({
   clase: z.number().int().nullable(),
   programa: z.string().nullable(),
   socio: z.boolean(),
+  membresia_de_ejemplo: z.boolean(),
   descartado: z.string().nullable(),
   origen_dato: z.string().nullable(),
   recomendada: z.boolean(),

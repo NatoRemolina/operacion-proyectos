@@ -265,3 +265,39 @@ def test_la_api_expone_los_hoteles_evaluados(cliente):
         ("Barato y mal calificado", "Calificación 3.3, por debajo del mínimo de 3.5.")]
     v = api["vuelos"][0]
     assert v["total_con_hotel_usd"] == f"{float(v['costo_total_usd']) + 219.31:.2f}"
+
+
+# ---------- pieza 5: rótulos de dato de ejemplo ----------
+def test_las_membresias_sembradas_llevan_el_rotulo(cliente):
+    from app import db
+    from datos import semilla
+    filas = db.todos("select m.programa, m.ejemplo, v.nombre from membresias m left join viajeros v on v.id=m.viajero_id")
+    sembradas = {(f["nombre"], f["programa"]) for f in filas if f["ejemplo"]}
+    assert {("Andrés Molina", "AAdvantage"), ("Laura Pérez", "Miles & More"),
+            (None, "Cuenta de empresa (AAdvantage Business)"), ("Andrés Molina", "Hilton Honors")} <= sembradas
+    # una membresía real (no sembrada) no se marca
+    real = db.insertar("membresias", viajero_id=2, programa="SkyMiles", entidad="Delta", estatus="")
+    semilla.asegurar_fidelizacion_hotel()
+    assert db.uno("select ejemplo from membresias where id=:i", i=real)["ejemplo"] is None
+    pagina = cliente.get("/reglas").text
+    assert pagina.count('<span class="chip aviso">Dato de ejemplo</span>') == len(sembradas)
+    db.ejecutar("delete from membresias where id=:i", i=real)
+
+
+def test_el_socio_de_ejemplo_se_rotula_en_hoteles(cliente):
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Tru by Hilton Las Vegas", 243.0)])
+    api = cliente.get(f"/api/v1/cotizaciones/{sid}").json()
+    assert api["hoteles"][0]["socio"] and api["hoteles"][0]["membresia_de_ejemplo"]
+    assert "socio · dato de ejemplo" in cliente.get(f"/viajes/{sid}").text
+
+
+def test_el_tramo_de_la_demostracion_lleva_estado_de_ejemplo(cliente, monkeypatch):
+    from app import config, db
+    from datos import demo_monitoreo
+    monkeypatch.setattr(config, "PREPARAR_BASE_LOCAL", True)
+    monkeypatch.setattr(config, "SERPAPI_KEY", "")
+    r = demo_monitoreo.preparar()
+    tramo = db.uno("select * from tramos_vuelo where viaje_id=:v", v=r["viaje_id"])
+    assert tramo["aerolinea"] == "Iberia · Estado de ejemplo"
+    monkeypatch.setenv("MONITOREO_AHORA", demo_monitoreo.AHORA)   # el tablero muestra los tramos del día de ese ahora
+    assert "Iberia · Estado de ejemplo" in cliente.get("/admin/viajes").text

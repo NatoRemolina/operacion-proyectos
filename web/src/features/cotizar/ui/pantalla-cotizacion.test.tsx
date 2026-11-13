@@ -287,12 +287,12 @@ describe("Comparación de una cotización", () => {
         { concepto: "Puntos del programa (10 por USD a 0.005 USD)", valor_usd: "-11.54", origen: "supuesto", tipo: "puntos" },
       ],
       avisos: ["Acumula solo con reserva directa."], calificacion: 4.1, clase: 3, programa: "Hilton Honors", socio: true,
-      descartado: null, origen_dato: "guardado", recomendada: true, mas_barata: false,
+      membresia_de_ejemplo: true, descartado: null, origen_dato: "guardado", recomendada: true, mas_barata: false,
     };
     const independiente: OpcionHotel = {
       ...tru, id: 91, nombre: "Independiente Moab", noche_usd: "75.00", total_usd: "225.00", costo_total_usd: "225.00",
       lineas: [{ concepto: "Tarifa total (3 noches)", valor_usd: "225.00", origen: "buscador", tipo: "tarifa" }],
-      avisos: [], programa: null, socio: false, recomendada: false, mas_barata: true,
+      avisos: [], programa: null, socio: false, membresia_de_ejemplo: false, recomendada: false, mas_barata: true,
     };
     const malo: OpcionHotel = {
       ...independiente, id: 92, nombre: "Motel Barato", total_usd: "150.00", costo_total_usd: "150.00", calificacion: 3.2,
@@ -313,6 +313,7 @@ describe("Comparación de una cotización", () => {
     expect(within(filaTru).getByText("Recomendado")).toBeInTheDocument();
     expect(within(filaTru).getByText(dinero("219.31"))).toBeInTheDocument();
     expect(within(filaTru).getByText("Hilton Honors · socio")).toBeInTheDocument();
+    expect(within(filaTru).getByText("Dato de ejemplo")).toBeInTheDocument();   // la membresía es inventada
     expect(within(filaTru).getByText("Tarifa de miembro (−5 %)")).toBeInTheDocument();
     const filaIndependiente = within(hoteles).getByText("Independiente Moab").closest("label")!;
     expect(within(filaIndependiente).getByText("El más barato")).toBeInTheDocument();

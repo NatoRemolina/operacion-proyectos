@@ -179,6 +179,9 @@ SUPUESTOS_HOTEL = [
 ]
 # Membresía inventada para la demostración: un viajero de ejemplo en Hilton Honors (se rotula «Dato de ejemplo»)
 MEMBRESIA_HOTEL_EJEMPLO = ("Andrés Molina", "Hilton Honors", "Member")
+# Las membresías que siembra `sembrar` (titular, programa, aerolínea): también son inventadas y llevan la marca
+MEMBRESIAS_EJEMPLO = [("Andrés Molina", "AAdvantage", "American"), ("Laura Pérez", "Miles & More", "Lufthansa"),
+                      (None, "Cuenta de empresa (AAdvantage Business)", "American")]
 
 
 def asegurar_fidelizacion_hotel():
@@ -197,6 +200,13 @@ def asegurar_fidelizacion_hotel():
     viajero = db.uno("select id from viajeros where nombre=:n order by id", n=nombre)
     if viajero and not db.uno("select id from membresias where viajero_id=:v and entidad=:e", v=viajero["id"], e=programa):
         db.insertar("membresias", viajero_id=viajero["id"], programa=programa, entidad=programa, estatus=estatus, ejemplo=1)
+    for titular, programa, entidad in MEMBRESIAS_EJEMPLO:
+        viajero = db.uno("select id from viajeros where nombre=:n order by id", n=titular) if titular else None
+        if titular and not viajero:
+            continue
+        db.ejecutar("update membresias set ejemplo=1 where ejemplo is null and programa=:p and entidad=:e and "
+                    + ("viajero_id=:v" if viajero else "viajero_id is null"),
+                    p=programa, e=entidad, **({"v": viajero["id"]} if viajero else {}))
 
 
 def crear_vistas():

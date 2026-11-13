@@ -569,6 +569,7 @@ function FilaHotel({ h, noches }: { h: OpcionHotel; noches: number }) {
           {h.recomendada ? <Distintivo tono="exito">Recomendado</Distintivo> : null}
           {h.mas_barata ? <Distintivo tono="marca">El más barato</Distintivo> : null}
           {h.programa ? <Distintivo>{h.socio ? `${h.programa} · socio` : h.programa}</Distintivo> : null}
+          {h.socio && h.membresia_de_ejemplo ? <Distintivo tono="aviso">Dato de ejemplo</Distintivo> : null}
         </span>
       ) : null}
       {h.avisos.map((a) => (

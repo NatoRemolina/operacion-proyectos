@@ -10,6 +10,6 @@
 </table></div>
 <h2>Membresías de fidelización</h2>
 <div class="tarjeta tabla"><table><tr><th>Titular</th><th>Programa</th><th>Aplica en</th><th>Estatus</th></tr>
-{% for x in membresias %}<tr><td>{{ x.viajero or 'Empresa' }}</td><td>{{ x.programa }}</td><td>{{ x.entidad }}</td><td>{{ x.estatus or '—' }}</td></tr>{% endfor %}</table>
-<p class="eti">Dos niveles: la cuenta de la empresa acumula aparte de la membresía personal del viajero.</p></div>
+{% for x in membresias %}<tr><td>{{ x.viajero or 'Empresa' }}{% if x.ejemplo %} <span class="chip aviso">Dato de ejemplo</span>{% endif %}</td><td>{{ x.programa }}</td><td>{{ x.entidad }}</td><td>{{ x.estatus or '—' }}</td></tr>{% endfor %}</table>
+<p class="eti">Dos niveles: la cuenta de la empresa acumula aparte de la membresía personal del viajero. En los programas de hotel, «Aplica en» es el programa. Las marcadas «Dato de ejemplo» son inventadas para la demostración.</p></div>
 {% endblock %}

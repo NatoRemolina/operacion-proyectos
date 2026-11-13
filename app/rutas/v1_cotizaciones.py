@@ -232,7 +232,7 @@ def _hotel(o: dict) -> dict:
                         "tipo": _tipo_linea_hotel(l["concepto"])} for l in ev["lineas"]],
             "avisos": ev["avisos"], "calificacion": h.get("calificacion"),
             "clase": int(h["clase"]) if h.get("clase") is not None else None, "programa": o["programa"],
-            "socio": ev["socio"], "descartado": ev["descartado"], "origen_dato": o["origen_dato"],
+            "socio": ev["socio"], "membresia_de_ejemplo": ev["membresia_de_ejemplo"], "descartado": ev["descartado"], "origen_dato": o["origen_dato"],
             "recomendada": bool(o.get("recomendado")), "mas_barata": bool(o.get("mas_barato"))}
 
 

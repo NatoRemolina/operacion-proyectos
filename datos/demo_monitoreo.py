@@ -22,7 +22,8 @@ from app.servicios import eventos, monitoreo_vuelos, viajes
 FUENTE = "preparador de la demostración"
 AHORA = "2026-12-13T06:00"   # UTC: dentro de la ventana del vuelo (05:05 a 09:30 UTC, o la llegada estimada)
 IDA, REGRESO, LIMITE = "2026-12-13", "2026-12-16", "2026-12-13T12:00"   # llegar a Lisboa antes del mediodía
-TRAMO = {"aerolinea": "Iberia", "numero": "IB 5634", "desde": "MAD", "hasta": "LIS",
+# El estado del vuelo sale de una respuesta escrita a mano: el rótulo viaja con el tramo y se ve en el tablero
+TRAMO = {"aerolinea": "Iberia · Estado de ejemplo", "numero": "IB 5634", "desde": "MAD", "hasta": "LIS",
          "sale": "2026-12-13 09:05", "llega": "2026-12-13 09:30"}
 LISBOA_GEONAMES = 2267057
 
