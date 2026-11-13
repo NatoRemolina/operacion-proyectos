@@ -377,17 +377,24 @@ function Bienvenida({ conVoz, deshabilitado, onElegir }: { conVoz: boolean; desh
         Pregunta por viajes, gastos, cotizaciones o indicadores{conVoz ? ", por escrito o con tu voz" : ""}. Cada respuesta cita de
         dónde salen los datos.
       </p>
-      <ul className="mt-4 w-full space-y-2 text-left" aria-label="Preguntas sugeridas">
+      {/* Una lista agrupada, como las de viajes y gastos: la chispa queda para identificar al asistente, no se repite
+          en cada sugerencia. */}
+      <ul
+        className="mt-4 w-full divide-y divide-linea overflow-hidden rounded-tarjeta border border-linea bg-superficie text-left"
+        aria-label="Preguntas sugeridas"
+      >
         {PREGUNTAS_SUGERIDAS.map((p) => (
           <li key={p}>
             <button
               type="button"
               onClick={() => onElegir(p)}
               disabled={deshabilitado}
-              className={`flex min-h-11 w-full items-center gap-3 rounded-xl border border-linea bg-superficie px-3.5 py-2.5 text-left text-sm font-semibold text-texto shadow-sm hover:border-marca hover:bg-marca-suave disabled:opacity-50 ${PRESIONAR}`}
+              className="flex min-h-11 w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm font-semibold text-texto transition-[background-color] duration-150 hover:bg-marca-suave active:bg-marca-suave disabled:opacity-50"
             >
-              <IconoChispa className="size-4 shrink-0 text-marca" />
               {p}
+              <span aria-hidden="true" className="text-texto-secundario">
+                ›
+              </span>
             </button>
           </li>
         ))}
@@ -592,18 +599,21 @@ function BarraGrabacion({
   onListo: () => void;
 }) {
   return (
-    <div className="flex min-h-14 items-center gap-2 rounded-2xl border border-error bg-error-suave py-1.5 pl-3 pr-1.5">
+    // El punto rojo dice «grabando», la convención de cualquier grabadora; la barra no se tiñe de error, y «Listo»,
+    // que envía lo dicho, es la acción primaria en color de marca.
+    <div className="flex min-h-14 items-center gap-2 rounded-2xl border border-borde-campo bg-superficie py-1.5 pl-3 pr-1.5">
       <span className="relative flex size-3 shrink-0" aria-hidden="true">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-error opacity-60" />
         <span className="relative inline-flex size-3 rounded-full bg-error" />
       </span>
-      <span className="text-sm font-bold text-error">{pidiendo ? "Activando el micrófono…" : "Escuchando"}</span>
+      <span className="text-sm font-bold text-texto">{pidiendo ? "Activando el micrófono…" : "Escuchando"}</span>
       <span className="flex h-8 flex-1 items-center justify-center gap-1 max-[22rem]:hidden" aria-hidden="true">
         {FORMA_ONDA.map((forma, i) => (
           <span
             key={i}
-            className="w-1 rounded-full bg-error transition-[height] duration-100"
-            style={{ height: `${Math.round(4 + forma * nivel * 24)}px` }}
+            // Solo se anima la escala (no el alto): la onda sigue la voz sin recalcular la composición.
+            className="h-7 w-1 rounded-full bg-marca transition-transform duration-100"
+            style={{ transform: `scaleY(${((4 + forma * nivel * 24) / 28).toFixed(3)})` }}
           />
         ))}
       </span>
@@ -615,7 +625,7 @@ function BarraGrabacion({
         onClick={onCancelar}
         aria-label="Cancelar la grabación"
         title="Cancelar"
-        className="grid size-11 shrink-0 place-items-center rounded-xl text-texto-secundario hover:bg-superficie"
+        className="grid size-11 shrink-0 place-items-center rounded-xl text-texto-secundario hover:bg-neutro-suave"
       >
         <IconoCerrar className="size-5" />
       </button>
@@ -623,7 +633,7 @@ function BarraGrabacion({
         type="button"
         onClick={onListo}
         disabled={pidiendo}
-        className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-error px-3 text-sm font-bold text-sobre-marca disabled:opacity-50 ${PRESIONAR}`}
+        className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-marca px-3 text-sm font-bold text-sobre-marca hover:bg-marca-oscura disabled:opacity-50 ${PRESIONAR}`}
       >
         <IconoDetener className="size-4" /> Listo
       </button>
