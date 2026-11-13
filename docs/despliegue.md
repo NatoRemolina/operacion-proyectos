@@ -14,10 +14,23 @@ Las tres pilas de `infra/`:
 
 ## Antes de empezar
 
-- **Carpeta de trabajo limpia** en el commit que se publica (`git status` sin cambios; lo más seguro es un `git worktree` nuevo). A la imagen de la API solo entran `requirements.txt`, `app/` y `datos/` (`.dockerignore`), y la web sale de `web/`. Si en `app/` o `datos/` hay algo sin versionar (por ejemplo, una respuesta del buscador pagada y sin revisar), la síntesis de `OperacionApp` se detiene y lo nombra: o se versiona, o se despliega desde otra carpeta.
+**Dos carpetas.** Todo el código que corre (respaldo, migración, secreto y CDK) es el **del commit que se publica**, en una carpeta limpia. El entorno de Python y los archivos `.env.*` (fuera de git) están solo en la carpeta principal y se usan con su ruta completa:
+
+```
+PRINCIPAL=/Users/nato/Documents/GitHub/inflight-prueba-tecnica      # .venv y archivos .env.* (fuera de git)
+PUBLICAR=/Users/nato/Documents/GitHub/inflight-publicar             # carpeta limpia del commit que se publica
+PY="$PRINCIPAL/.venv/bin/python"
+DOTENV="$PRINCIPAL/.venv/bin/dotenv"
+git -C "$PRINCIPAL" worktree add "$PUBLICAR" <commit que se publica>
+cd "$PUBLICAR"
+```
+
+Cada paso dice dónde corre, y todos van en la misma terminal (usan estas variables). En `$PUBLICAR` no hay `.env`: la configuración de desarrollo no puede completar nada de lo que falte en los archivos indicados.
+
+- **Por qué una carpeta limpia:** a la imagen de la API solo entran `requirements.txt`, `app/` y `datos/` (`.dockerignore`), y la web sale de `web/`. Si en `app/` o `datos/` hay algo sin versionar (por ejemplo, una respuesta del buscador pagada y sin revisar), la síntesis de `OperacionApp` se detiene y lo nombra.
 - **Docker en marcha:** CDK construye en este equipo las dos imágenes y los estáticos de la web.
-- **Credenciales de AWS de la dueña**, región `us-east-1`: `export AWS_PROFILE=operacion` y `aws sts get-caller-identity` para ver la cuenta. La cuenta ya tiene el *bootstrap* de CDK de despliegues anteriores; en una cuenta nueva se hace una vez, con `npx cdk bootstrap aws://<cuenta>/us-east-1`.
-- **Archivos locales, fuera de git:**
+- **Credenciales de AWS de la dueña**, región `us-east-1`: `export AWS_PROFILE=operacion` y `aws sts get-caller-identity` para ver la cuenta. La cuenta ya tiene el *bootstrap* de CDK de despliegues anteriores; en una cuenta nueva se hace una vez, con `(cd infra && npx cdk bootstrap aws://<cuenta>/us-east-1)`.
+- **Archivos locales, fuera de git, en `$PRINCIPAL`:**
   - `.env.supabase-publicada`: la base publicada por el agrupador de **sesión (puerto 5432)**, para el respaldo y la migración (`docs/respaldo.md`).
   - `.env.produccion`: lo que va al secreto. La misma base, el almacenamiento, el buscador, el modelo, el asesor, Pinecone y Telegram. `ORIGENES_WEB` solo hace falta si se publica sin dominio (paso 5).
 - **El contexto de CDK, igual en todas las órdenes** (el correo es obligatorio: sin él la síntesis se detiene). Va en un arreglo, que se expande igual en zsh y en bash; reemplazar `CORREO_DE_AVISOS`:
@@ -28,23 +41,26 @@ Las tres pilas de `infra/`:
 
 ## 1. Respaldo
 
-Con la aplicación en reposo, copiar la base publicada y ensayar su restauración (`docs/respaldo.md`, pasos 1 a 4):
+**En `$PUBLICAR`.** Con la aplicación en reposo, copiar la base publicada y ensayar su restauración (`docs/respaldo.md`, pasos 1 a 4):
 
 ```
-make respaldar
-make verificar-respaldo RESPALDO=~/Respaldos/operacion-proyectos/AAAA-MM-DD_HHMM BASE=restauracion_AAAAMMDD
+"$PY" -m datos.respaldar respaldar --env "$PRINCIPAL/.env.supabase-publicada"
+"$PY" -m datos.respaldar verificar --respaldo ~/Respaldos/operacion-proyectos/AAAA-MM-DD_HHMM \
+  --env "$PRINCIPAL/.env.supabase-pruebas" --base restauracion_AAAAMMDD
 ```
 
 La migración del paso 2 exige un respaldo **de esa misma base y de las últimas 6 horas**, con sus huellas intactas.
 
 ## 2. Migración (puerto 5432)
 
+**En `$PUBLICAR`**, con el código del commit que se publica:
+
 ```
-.venv/bin/dotenv -f .env.supabase-publicada run -- .venv/bin/python -m datos.semilla
-.venv/bin/dotenv -f .env.supabase-publicada run -- .venv/bin/python -m datos.comprobar_supabase
+"$DOTENV" -f "$PRINCIPAL/.env.supabase-publicada" run -- "$PY" -m datos.semilla
+"$DOTENV" -f "$PRINCIPAL/.env.supabase-publicada" run -- "$PY" -m datos.comprobar_supabase
 ```
 
-`dotenv run` carga el archivo indicado por encima del entorno; el `.env` de desarrollo solo completa lo que el archivo no trae. Sobre una base que no es local, la semilla:
+`dotenv run` carga el archivo indicado por encima del entorno, y en `$PUBLICAR` no hay `.env` que complete nada. Sobre una base que no es local, la semilla:
 
 1. dice el destino (proyecto, servidor y base, sin la contraseña) y avisa si es la base publicada;
 2. se detiene si la conexión va por el puerto 6543: el agrupador de transacción es para la función, no para migrar;
@@ -55,18 +71,22 @@ La migración del paso 2 exige un respaldo **de esa misma base y de las últimas
 
 ## 3. Secreto
 
+**En `$PUBLICAR`**, con el código del commit que se publica:
+
 ```
-.venv/bin/python infra/poblar_secreto.py --env .env.produccion --ensayo
-.venv/bin/python infra/poblar_secreto.py --env .env.produccion
+"$PY" infra/poblar_secreto.py --env "$PRINCIPAL/.env.produccion" --ensayo
+"$PY" infra/poblar_secreto.py --env "$PRINCIPAL/.env.produccion"
 ```
 
 El ensayo muestra las claves que subiría, sin valores y sin contactar AWS. La carga de verdad lee el secreto de `OperacionBase`, reemplaza las claves que el archivo trae con valor, conserva las demás y retira `APP_CLAVE`. Se niega a subir el proyecto de pruebas de Supabase. La base va al agrupador de transacción (6543). Si `OperacionBase` no existiera aún (cuenta nueva), se despliega primero (paso 5) y se vuelve aquí.
 
 ## 4. Revisión del cambio, aprobada por la dueña
 
+**En `$PUBLICAR`.** CDK corre dentro de `infra/`, en una subcapa para no cambiar de carpeta:
+
 ```
-cd infra && npm ci
-npx cdk diff OperacionBase OperacionApp OperacionWeb "${CDK_CTX[@]}"
+(cd infra && npm ci)
+(cd infra && npx cdk diff OperacionBase OperacionApp OperacionWeb "${CDK_CTX[@]}")
 ```
 
 Qué debe mostrar:
@@ -79,26 +99,30 @@ Sin la aprobación de la dueña sobre este diff, no se sigue.
 
 ## 5. Despliegue, una pila a la vez
 
+**En `$PUBLICAR`** (las órdenes de `aws` sirven desde cualquier carpeta):
+
 ```
-npx cdk deploy OperacionBase "${CDK_CTX[@]}"
-npx cdk deploy OperacionApp "${CDK_CTX[@]}"
+(cd infra && npx cdk deploy OperacionBase "${CDK_CTX[@]}")
+(cd infra && npx cdk deploy OperacionApp "${CDK_CTX[@]}")
 FUNCION=$(aws cloudformation describe-stacks --stack-name OperacionApp --query "Stacks[0].Outputs[?OutputKey=='Funcion'].OutputValue" --output text)
 URL_API=$(aws cloudformation describe-stacks --stack-name OperacionApp --query "Stacks[0].Outputs[?OutputKey=='Url'].OutputValue" --output text)
 aws lambda delete-function-concurrency --function-name "$FUNCION"
 curl -s -o /dev/null -w "%{http_code}\n" "${URL_API}salud"        # 200
-npx cdk deploy OperacionWeb "${CDK_CTX[@]}"
+(cd infra && npx cdk deploy OperacionWeb "${CDK_CTX[@]}")
 ```
 
 - **La suscripción por correo** llega como un mensaje de AWS con un enlace: hay que confirmarla, o las alarmas no avisan.
 - **La reserva de concurrencia.** La función de la API quedó pausada con concurrencia reservada 0, y por eso su dirección responde 429. La plantilla no define esa reserva, así que `cdk deploy` no la quita: lo hace `delete-function-concurrency`, y `/salud` debe pasar a 200. Para desplegar con `-c caliente=1` (una instancia siempre lista, día de demostración), la reserva se quita antes del `cdk deploy OperacionApp`.
 - **La primera vez de OperacionWeb** tarda: el certificado se valida por DNS en la zona en unos minutos, y cada distribución de CloudFront tarda de 5 a 15 minutos en quedar lista.
-- **Sin dominio**, `ORIGENES_WEB` no la fija la pila: se copia la salida `UrlWeb` en `.env.produccion` como `ORIGENES_WEB`, se repite el paso 3 y se vuelve a desplegar `OperacionApp`, para que la función arranque con el valor nuevo. Con dominio no hace falta.
+- **Sin dominio**, `ORIGENES_WEB` no la fija la pila: se copia la salida `UrlWeb` en `$PRINCIPAL/.env.produccion` como `ORIGENES_WEB`, se repite el paso 3 y se vuelve a desplegar `OperacionApp`, para que la función arranque con el valor nuevo. Con dominio no hace falta.
 
 ## 6. Webhook de Telegram
 
+**En `$PUBLICAR`**, en la misma terminal del paso 5 (usa `$URL_API`):
+
 ```
-.venv/bin/dotenv -f .env.produccion run -- .venv/bin/python -m datos.telegram_webhook "$URL_API"
-.venv/bin/dotenv -f .env.produccion run -- .venv/bin/python -m datos.telegram_webhook --estado
+"$DOTENV" -f "$PRINCIPAL/.env.produccion" run -- "$PY" -m datos.telegram_webhook "$URL_API"
+"$DOTENV" -f "$PRINCIPAL/.env.produccion" run -- "$PY" -m datos.telegram_webhook --estado
 ```
 
 El bot apunta a la dirección de la función de la API (`<Url>/telegram/webhook`), no a CloudFront: no depende del DNS ni del plazo de 60 s de las distribuciones (ADR 0002).
@@ -117,9 +141,11 @@ El bot apunta a la dirección de la función de la API (`<Url>/telegram/webhook`
 
 ## 8. Vuelta atrás, decidida de antemano
 
+Desde `$PUBLICAR`, como el resto.
+
 | Qué falla | Qué se hace |
 |---|---|
 | La API | Volver al commit anterior en una carpeta limpia y `npx cdk deploy OperacionApp "${CDK_CTX[@]}"`. La migración no se deshace con esto |
-| La web | Las pantallas de administración siguen en `admin.software.`. Si hace falta retirar la web: `npx cdk destroy OperacionWeb "${CDK_CTX[@]}"`, que borra solo lo que creó la pila (distribuciones, certificado, los registros de `software.` y `admin.software.`, el bucket y la función). La zona, el raíz y `www` no se tocan |
-| La base | `docs/respaldo.md`, «Vuelta atrás»: guardar el estado fallido, borrar lo que la copia no trae (`python -m datos.respaldar vuelta-atras`) y restaurar en una sola transacción, con la aplicación detenida |
+| La web | Las pantallas de administración siguen en `admin.software.`. Si hace falta retirar la web: `(cd infra && npx cdk destroy OperacionWeb "${CDK_CTX[@]}")`, que borra solo lo que creó la pila (distribuciones, certificado, los registros de `software.` y `admin.software.`, el bucket y la función). La zona, el raíz y `www` no se tocan |
+| La base | `docs/respaldo.md`, «Vuelta atrás»: guardar el estado fallido, borrar lo que la copia no trae (`"$PY" -m datos.respaldar vuelta-atras`) y restaurar en una sola transacción, con la aplicación detenida |
 | El secreto | Secrets Manager guarda la versión anterior (`AWSPREVIOUS`). Lo más simple es volver a cargar el archivo anterior con el paso 3 |
