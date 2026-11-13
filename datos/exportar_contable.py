@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from openpyxl import load_workbook
+from sqlalchemy.exc import DBAPIError, OperationalError
 
 from app import config, db
 from app.servicios import contable
@@ -63,6 +64,13 @@ def main(argv: list[str] | None = None) -> int:
             contenido = contable.libro(ADMINISTRACION, a.desde, a.hasta, a.proyecto, enlace_base=contable.origen_publico())
     except ValueError as e:   # fecha ilegible, periodo al revés o proyecto que no existe
         print(e, file=sys.stderr)
+        return 1
+    # Sin el detalle del error: trae servidor, puerto, usuario y base, que no deben quedar en una consola ni en un registro
+    except OperationalError:
+        print("No se pudo conectar a la base. Revisa DATABASE_URL y que la base esté disponible.", file=sys.stderr)
+        return 1
+    except DBAPIError:
+        print("La base respondió con un error al leer los gastos. Revisa que sea una base de esta plataforma.", file=sys.stderr)
         return 1
     salida = Path(a.salida or contable.nombre_archivo(a.desde, a.hasta, a.proyecto))
     salida.write_bytes(contenido)

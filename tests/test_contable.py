@@ -515,3 +515,20 @@ def test_el_proyecto_del_filtro_se_lee_una_sola_vez(mundo):
     finally:
         event.remove(db.motor, "before_cursor_execute", anotar)
     assert len(lecturas) == 1
+
+
+def test_el_guion_sin_base_no_muestra_la_conexion(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    entorno = {**os.environ, "ENTORNO": "local",
+               "DATABASE_URL": "postgresql://usuario_secreto@127.0.0.1:9/base_secreta?connect_timeout=5"}
+    r = subprocess.run([sys.executable, "-m", "datos.exportar_contable", "--desde", DESDE, "--hasta", HASTA,  # noqa: S603  guion fijo de esta prueba
+                        "--salida", str(tmp_path / "no.xlsx")], cwd=Path(__file__).resolve().parent.parent, env=entorno,
+                       capture_output=True, text=True, timeout=120)
+    salida = r.stdout + r.stderr
+    assert r.returncode == 1 and "No se pudo conectar a la base" in salida
+    for dato in ("usuario_secreto", "base_secreta", "127.0.0.1", "Traceback"):
+        assert dato not in salida, dato
+    assert not (tmp_path / "no.xlsx").exists()
