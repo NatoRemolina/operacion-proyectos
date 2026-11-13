@@ -185,6 +185,14 @@ def test_inscripcion_gratis_supuesta_aplica_la_tarifa_de_miembro(cat):
     assert not any(a.startswith("Inscribirse") for a in ev["avisos"])
 
 
+@pytest.mark.parametrize("calificacion, descartado", [
+    ("3.2", "Calificación 3.2, por debajo del mínimo de 3.5."), ("4.1", None), ("n/a", None), ("", None), (None, None)])
+def test_la_calificacion_que_llega_como_texto(cat, calificacion, descartado):
+    from app.servicios import costo
+    ev = costo.evaluar_hotel(_hotel("Independiente Centro", 225.0, calificacion=calificacion), [], cat, 3)
+    assert ev["descartado"] == descartado
+
+
 def test_hotel_sin_programa(cat):
     from app.servicios import costo
     ev = costo.evaluar_hotel(_hotel("The Artesian", 294.0), [_miembro()], cat, 3)
@@ -244,6 +252,18 @@ def test_calificacion_baja_descarta_con_su_razon(cliente):
         ("Barato y mal calificado", "Calificación 3.3, por debajo del mínimo de 3.5.")]
     # el más barato que se compara es el más barato de los que sirven
     assert c["hotel_recomendado"]["h"]["nombre"] == "Sin calificación" and c["hotel_mas_barato"] is None
+
+
+def test_la_calificacion_en_texto_no_rompe_la_pagina_ni_la_api(cliente):
+    from app.servicios import cotizacion
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Independiente Centro", 225.0, calificacion="4.1"),
+                                            _hotel("Independiente Norte", 230.0, calificacion="n/a")])
+    c = cotizacion.comparacion(sid)
+    assert [h["h"]["calificacion"] for h in c["hoteles"]] == [4.1, None] and c["hoteles_descartados"] == []
+    pagina = cliente.get(f"/viajes/{sid}")
+    assert pagina.status_code == 200 and "<td>4.1</td>" in pagina.text
+    api = cliente.get(f"/api/v1/cotizaciones/{sid}")
+    assert api.status_code == 200 and [h["calificacion"] for h in api.json()["hoteles"]] == [4.1, None]
 
 
 def test_la_decision_lleva_el_hotel_evaluado(cliente):

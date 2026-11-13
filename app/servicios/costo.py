@@ -332,11 +332,15 @@ def evaluar_hotel(hotel: dict, membresias: list[dict], cat: dict, noches: int) -
             avisos.append(f"Inscribirse en {p['nombre']} es gratis: tarifa de miembro (−{descuento * 100:g} %) y "
                           f"~{_miles(n)} puntos (≈ {n * valor_punto:.0f} USD) en esta estadía.")
     # Sin calificación no se descarta: falta el dato, no es un mal hotel
-    minima, calificacion = supuesto(cat, "hotel_calificacion_minima", 3.5), hotel.get("calificacion")
+    minima = supuesto(cat, "hotel_calificacion_minima", 3.5)
+    try:   # el buscador puede traerla como texto («4.1», «n/a»); lo que no es número es falta de dato
+        calificacion = float(hotel["calificacion"]) if hotel.get("calificacion") is not None else None
+    except (TypeError, ValueError):
+        calificacion = None
     descartado = (f"Calificación {calificacion:.1f}, por debajo del mínimo de {minima:g}."
                   if calificacion is not None and minima and calificacion < minima else None)
     return {"programa": p["nombre"] if p else None, "socio": socio, "membresia_de_ejemplo": bool(membresia and membresia.get("ejemplo")),
-            "tarifa": tarifa, "lineas": lineas,
+            "tarifa": tarifa, "lineas": lineas, "calificacion": calificacion,
             "total": round(sum(l["valor"] for l in lineas), 2), "avisos": avisos, "descartado": descartado}
 
 
