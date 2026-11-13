@@ -70,6 +70,10 @@ TELEGRAM_BOT_NOMBRE = _txt("TELEGRAM_BOT_NOMBRE").lstrip("@")
 # http://localhost:8080. El mismo origen de la plataforma siempre está permitido.
 ORIGENES_WEB = [o.strip().rstrip("/") for o in _txt("ORIGENES_WEB").split(",") if o.strip()]
 
+# «redirige»: las pantallas de la plataforma anterior llevan a su equivalente en la web (la primera de ORIGENES_WEB).
+# Vacío: siguen disponibles, como en local y en las pruebas.
+INTERFAZ_ANTIGUA = _txt("INTERFAZ_ANTIGUA").lower()
+
 # Índice del asistente en Pinecone (opcional). Sin clave y dirección se usa el índice local por palabras
 PINECONE_API_KEY = _txt("PINECONE_API_KEY")
 PINECONE_INDICE = _txt("PINECONE_INDICE") or "asistente-fichas"
