@@ -147,6 +147,16 @@
               }
             }
           },
+          "429": {
+            "description": "Demasiados intentos de ingreso, o se alcanzó un tope del día",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
           "503": {
             "description": "El servicio que transcribe la voz no está configurado o no respondió",
             "content": {
@@ -220,7 +230,7 @@
             }
           },
           "429": {
-            "description": "Demasiados intentos de ingreso",
+            "description": "Demasiados intentos de ingreso, o se alcanzó un tope del día",
             "content": {
               "application/json": {
                 "schema": {

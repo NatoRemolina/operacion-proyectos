@@ -33,7 +33,7 @@
   memoria.mensajes.forEach((m) => { if (m.pendiente) { m.pendiente = false; m.perdida = true; } });
 
   // ---------- pintar ----------
-  const enlaceSeguro = (href) => typeof href === 'string' && href.startsWith('/') && !href.startsWith('//');
+  const enlaceSeguro = (href) => typeof href === 'string' && href.startsWith('/') && !href.startsWith('//') && !href.startsWith('/\\');
   function el(etiqueta, clase, texto) {
     const n = document.createElement(etiqueta);
     if (clase) n.className = clase;

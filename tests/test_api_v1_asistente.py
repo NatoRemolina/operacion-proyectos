@@ -18,6 +18,7 @@ V1 = "/api/v1"
 def _sin_tope(monkeypatch):
     """Toda la suite pregunta como la misma administración: el tope diario se prueba aparte, fijándolo."""
     monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
+    monkeypatch.setattr(asistente, "tope_dictados", lambda: 10_000)
 
 
 def _csrf(c: TestClient) -> dict:
@@ -138,3 +139,36 @@ def test_dictar_exige_csrf_y_administracion(cliente, piloto, modelo_que_transcri
     _error(_dictar(cliente, _wav(), csrf=False), 403, "CSRF_INVALID")
     _error(_dictar(piloto, _wav()), 403, "FORBIDDEN")
     assert modelo_que_transcribe == []
+
+
+def test_dictar_con_el_tope_de_preguntas_agotado_no_paga_la_transcripcion(cliente, modelo_que_transcribe, monkeypatch):
+    admin = db.uno("select id from usuarios where correo='admin@demo.local'")
+    monkeypatch.setattr(asistente, "tope_diario", lambda: asistente.usadas_hoy(admin["id"]))
+    for _ in range(3):
+        _error(_dictar(cliente, _wav()), 429, "TOO_MANY_REQUESTS")
+    assert modelo_que_transcribe == []   # ninguna llamada al modelo
+
+
+def test_dictar_tiene_su_propio_tope_por_dia(cliente, modelo_que_transcribe, monkeypatch):
+    monkeypatch.setattr(asistente, "tope_dictados", lambda: 2)
+    hechos = {"n": 0}
+    monkeypatch.setattr(asistente, "dictados_hoy", lambda uid: hechos["n"])
+    original = llm.generar
+
+    def contar(*a, **k):
+        hechos["n"] += 1
+        return original(*a, **k)
+    monkeypatch.setattr(llm, "generar", contar)
+    assert _dictar(cliente, _wav()).status_code == 200
+    assert _dictar(cliente, _wav()).status_code == 200
+    e = _error(_dictar(cliente, _wav()), 429, "TOO_MANY_REQUESTS")
+    assert "dictados" in e["message"]
+    assert len(modelo_que_transcribe) == 2
+
+
+def test_los_dictados_del_dia_se_cuentan_en_las_llamadas_al_modelo():
+    admin = db.uno("select id from usuarios where correo='admin@demo.local'")
+    antes = asistente.dictados_hoy(admin["id"])
+    db.insertar("llamadas_modelo", momento=db.ahora(), uso="dictado", entidad_id=admin["id"], modelo="prueba", estado_http=200)
+    db.insertar("llamadas_modelo", momento=db.ahora(), uso="recibo", entidad_id=admin["id"], modelo="prueba", estado_http=200)
+    assert asistente.dictados_hoy(admin["id"]) == antes + 1

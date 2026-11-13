@@ -47,7 +47,7 @@ def preguntar(datos: PreguntaAsistente, yo: dict = Depends(escritura)):
             "usadas": asistente.usadas_hoy(yo["id"]), "tope": asistente.tope_diario()}
 
 
-@router.post("/voz", response_model=Transcripcion, responses=errores(401, 403, 413, 415, 422, 503))
+@router.post("/voz", response_model=Transcripcion, responses=errores(401, 403, 413, 415, 422, 429, 503))
 def dictar(audio: UploadFile = File(..., description="La pregunta grabada, en WAV (la web graba y convierte en el navegador)."),
            yo: dict = Depends(escritura)):
     """Solo administración. Devuelve la pregunta dictada en texto; no la responde ni la guarda."""
@@ -63,5 +63,7 @@ def dictar(audio: UploadFile = File(..., description="La pregunta grabada, en WA
         raise ErrorApi(503, "SERVICE_UNAVAILABLE", "La transcripción de voz no está configurada. Escribe la pregunta.")
     try:
         return {"texto": asistente.transcribir_pregunta(contenido, "audio/wav", yo)}
+    except asistente.TopeDeDictado as e:
+        raise ErrorApi(429, "TOO_MANY_REQUESTS", str(e)) from None
     except llm.ErrorDelModelo:
         raise ErrorApi(503, "SERVICE_UNAVAILABLE", "No se pudo transcribir el audio ahora. Intenta de nuevo o escribe la pregunta.") from None
