@@ -2323,7 +2323,7 @@
           "usuarios"
         ],
         "summary": "Asignar Proyectos",
-        "description": "Reemplaza los proyectos que gestiona; los que no existen se ignoran.",
+        "description": "Reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo para cuentas con permiso de gestor\n(la pantalla actual solo lo ofrece a ellas): si no, al volverla gestora heredaría acceso sin que nadie lo decida.",
         "operationId": "asignar_proyectos_api_v1_usuarios__id__proyectos_post",
         "parameters": [
           {

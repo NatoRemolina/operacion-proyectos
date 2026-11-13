@@ -439,7 +439,7 @@ Cuerpo `{"activo": boolean}`. Desactivar cierra sus sesiones; reactivar limpia e
 Cuerpo `{"cargo_id": number | null}`. El cargo no da permisos: no cierra sesiones. Cargo inexistente o desactivado: 422 `fields.cargo_id`.
 
 ### `POST /usuarios/{id}/proyectos`
-Cuerpo `{"proyectos_ids": number[]}`: reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo tienen efecto con el permiso de gestor.
+Cuerpo `{"proyectos_ids": number[]}`: reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo para cuentas con permiso de gestor: si no, 422 `fields.proyectos_ids` (al volverla gestora no hereda nada).
 
 ### `POST /usuarios/{id}/clave`
 Cuerpo `{"clave"}` (10 caracteres o más; si no, 422 `fields.clave`). Cierra sus sesiones y limpia el bloqueo por intentos.
