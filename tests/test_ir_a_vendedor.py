@@ -175,3 +175,91 @@ def test_un_ir_a_fallido_guarda_la_captura_y_el_extracto_como_evidencia(piloto, 
     assert (e["camino"], e["motivo"]) == ("google", "no se pudo elegir el regreso")
     fila = db.uno("select * from analisis_vuelo where accion='ir_a'")
     assert fila["estado"] == "fallido" and fila["captura"] and db.de_json(fila["datos"]) == {"extracto": "Returning flights $564"}
+
+
+# ---------- ronda 2 · punto 1: los topes de búsquedas pagas no se pasan con pedidos simultáneos ----------
+def _cupos_de_prueba(monkeypatch, tope_ir_a: int, tope_enlace: int):
+    from app.servicios import cotizacion
+    analizador.asegurar_reglas()
+    cotizacion.asegurar_reglas_vendedor()
+    db.ejecutar("delete from cupos_buscador")
+    db.ejecutar("update reglas set valor=:v where ambito='supuesto' and clave='ir_a_persona_dia'", v=str(tope_ir_a))
+    db.ejecutar("update reglas set valor=:v where ambito='supuesto' and clave='enlace_vendedor_persona_dia'", v=str(tope_enlace))
+
+
+def _restaurar_cupos():
+    db.ejecutar("update reglas set valor='20' where ambito='supuesto' and clave in ('ir_a_persona_dia', 'enlace_vendedor_persona_dia')")
+    db.ejecutar("delete from cupos_buscador")
+
+
+def _en_paralelo(n: int, funcion):
+    import threading
+    errores = []
+
+    def correr(i):
+        try:
+            funcion(i)
+        except Exception as e:  # noqa: BLE001
+            errores.append(e)
+
+    hilos = [threading.Thread(target=correr, args=(i,)) for i in range(n)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    assert errores == [], errores
+
+
+def test_ir_a_simultaneos_sin_analizador_no_pasan_ningun_tope(piloto, entorno, monkeypatch):
+    import threading
+    monkeypatch.delenv("ANALIZADOR_URL")                     # sin analizador: todos van por el buscador
+    monkeypatch.setattr(config, "SERPAPI_KEY", "clave-de-prueba")
+    reservas, cerrojo = [], threading.Lock()
+
+    def consultar(parametros, *a, **k):
+        with cerrojo:
+            reservas.append(parametros)
+        return {"booking_options": []}
+
+    monkeypatch.setattr(precios, "_consultar", consultar)
+    monkeypatch.setattr(precios, "vuelo_regreso", lambda *a, **k: {"booking": "TOKEN"})
+    monkeypatch.setattr(precios, "regreso_guardado", lambda *a, **k: None)   # cada uno costaría 2 búsquedas
+    _cupos_de_prueba(monkeypatch, tope_ir_a=3, tope_enlace=4)
+    try:
+        c = _vegas(piloto)
+        yo = db.uno("select * from usuarios where correo='piloto@demo.local'")
+        _en_paralelo(20, lambda i: analizador.ir_a(yo, c["id"], c["vuelos"][i % len(c["vuelos"])]["id"], "American", "Main Cabin"))
+        assert db.uno("select count(*) n from analisis_vuelo where accion='ir_a'")["n"] <= 3
+        assert db.uno("select coalesce(sum(unidades), 0) n from cupos_buscador")["n"] <= 4
+        assert len(reservas) <= 2                                    # 4 unidades = 2 aperturas de 2 búsquedas
+    finally:
+        _restaurar_cupos()
+
+
+def test_el_enlace_al_vendedor_reserva_su_cupo_antes_de_buscar(piloto, entorno, monkeypatch):
+    import threading
+
+    from app.servicios import cotizacion
+    monkeypatch.setattr(config, "SERPAPI_KEY", "clave-de-prueba")
+    busquedas, cerrojo = [], threading.Lock()
+
+    def consultar(parametros, *a, **k):
+        with cerrojo:
+            busquedas.append(parametros)
+        if "booking_token" in parametros:
+            return {"booking_options": []}
+        return {"best_flights": []}
+
+    monkeypatch.setattr(precios, "_consultar", consultar)
+    monkeypatch.setattr(precios, "regreso_guardado", lambda *a, **k: None)
+    _cupos_de_prueba(monkeypatch, tope_ir_a=20, tope_enlace=4)
+    db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")
+    try:
+        c = _vegas(piloto)
+        yo = db.uno("select * from usuarios where correo='piloto@demo.local'")
+        vuelos = c["vuelos"] + c["descartados"]
+        _en_paralelo(len(vuelos), lambda i: cotizacion.enlace_vendedor(yo, c["id"], vuelos[i]["id"]))
+        assert db.uno("select coalesce(sum(unidades), 0) n from cupos_buscador")["n"] <= 4
+        assert len(busquedas) <= 4                                   # nunca más búsquedas pagas que el tope
+    finally:
+        _restaurar_cupos()

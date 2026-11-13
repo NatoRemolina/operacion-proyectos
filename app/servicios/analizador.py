@@ -39,7 +39,14 @@ analisis_vuelo = db._tabla(
     # «ir a» (pieza 3b): la misma tabla y el mismo turno; nunca guarda el envío al vendedor
     Column("accion", Text), Column("vendedor", Text), Column("tarifa", Text), Column("camino", Text),
 )
-LEER = "coalesce(accion, 'leer')='leer'"   # las lecturas de la página; «ir a» tiene su propio tope
+LEER = "coalesce(accion, 'leer')='leer'"
+cupos_buscador = db._tabla(
+    "cupos_buscador",   # el cupo de búsquedas pagas, reservado antes de buscar (bajo cerrojo): ningún pedido lo pasa
+    db._ref("cupos_buscador", "usuario_id", "usuarios"), Column("tipo", Text, nullable=False), Column("clave", Text),
+    Column("unidades", Integer, nullable=False), Column("creado", Text),
+)
+BLOQUEO_CUPO = 7_311_804
+TOPE_ENLACE_VENDEDOR = 20   # la regla `enlace_vendedor_persona_dia` (la crea cotizacion.asegurar_reglas_vendedor)   # las lecturas de la página; «ir a» tiene su propio tope
 
 VIGENCIA = timedelta(minutes=60)
 EN_CURSO = timedelta(minutes=2)      # una lectura que no terminó en este tiempo ya no va a terminar
@@ -73,6 +80,32 @@ def inicio_del_dia(ahora: datetime | None = None) -> str:
     """Desde cuándo cuentan los topes «por día»: la medianoche de hoy en Bogotá, en UTC (como se guardan los momentos)."""
     local = (ahora or datetime.now(UTC)).astimezone(ZONA_EMPRESA)
     return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def tope_enlace_vendedor() -> int:
+    return int(costo.supuesto(costo.catalogo(), "enlace_vendedor_persona_dia", TOPE_ENLACE_VENDEDOR))
+
+
+def reservar_cupo(usuario: dict, clave_busqueda: str, unidades: int) -> bool:
+    """Reserva `unidades` búsquedas pagas del cupo diario del enlace al vendedor antes de hacerlas, en fila con las
+    demás reservas (cerrojo de transacción; en SQLite, el de escritura). False si no alcanza: no se busca nada."""
+    with db.transaccion() as c:
+        if not config.ES_SQLITE:
+            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_CUPO})
+        usadas = db.uno("""select coalesce(sum(unidades), 0) n from cupos_buscador where tipo='enlace_vendedor'
+                           and usuario_id=:u and creado>=:h""", u=usuario["id"], h=inicio_del_dia())["n"]
+        if usadas + unidades > tope_enlace_vendedor():
+            return False
+        db.insertar("cupos_buscador", usuario_id=usuario["id"], tipo="enlace_vendedor", clave=clave_busqueda,
+                    unidades=unidades, creado=db.ahora())
+        return True
+
+
+def unidades_busqueda(sol: dict, vuelo: dict) -> int:
+    """Búsquedas pagas de una apertura: las opciones de reserva y, si el regreso no está guardado, el regreso."""
+    lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
+    guardado = precios.regreso_guardado(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"])
+    return 1 if guardado else 2
 
 
 def _hace(delta: timedelta) -> str:
@@ -356,7 +389,8 @@ def _es_envio(url) -> bool:
 def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict, url: str | None,
                  vendedor: str, tarifa: str) -> dict:
     """El turno del analizador para «ir a», en fila con las lecturas (mismo cerrojo y una a la vez), con su tope por
-    persona. Devuelve `{"id"}` o `{"motivo", "tope"}`."""
+    persona. La fila se reserva aquí en todos los caminos que no son de tope (con o sin turno del analizador): ningún
+    pedido simultáneo pasa el tope. Devuelve `{"id", "motivo", "turno"}` o `{"motivo", "tope"}`."""
     with db.transaccion() as c:
         if not config.ES_SQLITE:
             c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_TURNO})
@@ -366,23 +400,20 @@ def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict
         if db.uno("select count(*) n from analisis_vuelo where accion='ir_a' and usuario_id=:u and creado>=:h",
                   u=usuario["id"], h=inicio_del_dia())["n"] >= tope:
             return {"motivo": TOPE_IR_A_TEXTO, "tope": True}
-        if apagado():
-            return {"motivo": APAGADO}
-        if not _modo():
-            return {"motivo": SIN_ANALIZADOR}
-        if not url:
-            return {"motivo": SIN_TRAMOS}
-        if db.uno("select id from analisis_vuelo where estado='pendiente' limit 1"):
-            return {"motivo": OCUPADO}
-        return {"id": db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"],
-                                  clave=clave(sol, vuelo), url=url, estado="pendiente", creado=db.ahora(), accion="ir_a",
-                                  vendedor=vendedor, tarifa=tarifa)}
+        # la fila se reserva en todos los caminos: cuenta para el tope aunque no haya turno del analizador
+        motivo = (APAGADO if apagado() else SIN_ANALIZADOR if not _modo() else SIN_TRAMOS if not url
+                  else OCUPADO if db.uno("select id from analisis_vuelo where estado='pendiente' limit 1") else None)
+        aid = db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"],
+                          clave=clave(sol, vuelo), url=url or "", estado="sin_turno" if motivo else "pendiente",
+                          motivo=motivo, creado=db.ahora(), accion="ir_a", vendedor=vendedor, tarifa=tarifa)
+        return {"id": aid, "motivo": motivo, "turno": motivo is None}
 
 
 def _por_buscador(sol: dict, vuelo: dict, vendedor: str, tarifa: str, sid: int) -> dict | None:
     """El pedido de un solo uso de esa tarifa de ese vendedor, de las opciones de reserva del buscador."""
     lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
-    regreso = precios.vuelo_regreso(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid)
+    regreso = precios.vuelo_regreso(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid,
+                                    tipo="vendedor_regreso")
     if not regreso:
         return None
     for o in precios.reserva_en_vivo(vuelo, regreso, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid):
@@ -416,13 +447,12 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
                   tarifa: str, turno: dict, inicio: datetime, canal: str) -> dict:
     destino, camino, motivo, captura, aid = None, None, turno.get("motivo"), None, turno.get("id")
     extracto = None
-    if aid:
+    if turno.get("turno"):
         r = _invocar({"accion": "ir_a", "url": url, "vendedor": vendedor, "tarifa": tarifa, "regreso": regreso_de(sol, vuelo)})
         if not isinstance(r, dict):
             motivo = RESPUESTA_RARA
         elif r.get("no_disponible"):
-            db.ejecutar("delete from analisis_vuelo where id=:i and estado='pendiente'", i=aid)
-            aid, motivo = None, r["no_disponible"]
+            motivo = r["no_disponible"]   # la fila queda: el pedido ya contó para el tope
         elif r.get("estado") == "listo" and _es_envio(r.get("url")) and isinstance(r.get("cuerpo"), str):
             destino, camino = {"url": r["url"], "campos": parse_qsl(r["cuerpo"], keep_blank_values=True)}, "pagina"
             try:
@@ -438,8 +468,12 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
                 captura = None
             extracto = str(r["extracto"])[:500] if r.get("extracto") else None
     if not destino and not turno.get("tope") and config.SERPAPI_KEY:
-        destino = _por_buscador(sol, vuelo, vendedor, tarifa, sid)
-        camino = "buscador" if destino else None
+        # el camino del buscador gasta búsquedas pagas: el cupo del enlace se reserva antes de buscar
+        if reservar_cupo(usuario, f"ir_a_{clave(sol, vuelo)}", unidades_busqueda(sol, vuelo)):
+            destino = _por_buscador(sol, vuelo, vendedor, tarifa, sid)
+            camino = "buscador" if destino else None
+        else:
+            motivo = motivo or "se alcanzó el tope de búsquedas del día"
     if not destino:
         try:
             google = url or precios.enlace_vuelos(precios.codigos(sol.get("origen_aeropuertos") or sol["origen"]),
@@ -454,9 +488,6 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
                "datos": {"extracto": extracto} if extracto else None}
     if aid:
         db.actualizar("analisis_vuelo", aid, **cambios)
-    elif not turno.get("tope"):   # sin turno del analizador también queda el rastro (y cuenta para el tope)
-        db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"], clave=clave(sol, vuelo),
-                    url=url or "", creado=db.ahora(), accion="ir_a", vendedor=vendedor, tarifa=tarifa, **cambios)
     dominio = urlsplit(destino["url"]).hostname if destino["url"] else "sin enlace"
     compras.registrar_clic(usuario, sid, opcion_id, "vendedor" if camino != "google" else "google_flights", destino["url"])
     eventos.registrar("solicitud", sid, "ir a vendedor",

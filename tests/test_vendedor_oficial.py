@@ -56,6 +56,7 @@ def buscador(monkeypatch, tmp_path):
     monkeypatch.setattr(precios, "_consultar", consultar)
     # cada prueba empieza sin aperturas previas: ni topes ni repeticiones de otras pruebas
     db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")
+    db.ejecutar("delete from cupos_buscador")
     ultima = db.uno("select coalesce(max(id), 0) n from busquedas")["n"]
     yield llamadas, respuestas, tmp_path
     # lo que guardó el doble no debe servir de «respuesta guardada» a otras pruebas
@@ -148,7 +149,9 @@ def test_tope_por_persona_y_dia_y_reutiliza_la_ultima_hora(piloto, buscador):
     uno, dos = c["vuelos"][0]["id"], c["vuelos"][1]["id"]
     cotizacion.asegurar_reglas_vendedor()
     db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")   # las pruebas anteriores abrieron otros
-    db.ejecutar("update reglas set valor='1' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
+    db.ejecutar("delete from cupos_buscador")
+    # 2 unidades: una apertura que busca el regreso y las opciones de reserva
+    db.ejecutar("update reglas set valor='2' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
     try:
         assert _abrir(piloto, c["id"], uno).status_code == 200
         # el mismo itinerario dentro de la hora: el buscador lo sirve de su caché sin cobrar; no cuenta para el tope
@@ -234,7 +237,7 @@ def test_los_regresos_buscados_por_el_enlace_cuentan_para_el_tope(piloto, buscad
     llamadas, _, _ = buscador
     cotizacion.asegurar_reglas_vendedor()
     db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")
-    db.ejecutar("update reglas set valor='1' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
+    db.ejecutar("update reglas set valor='2' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
     original = precios._consultar
 
     def regreso_falla(parametros, *a, **k):
