@@ -403,3 +403,57 @@ def test_la_api_valida_fechas_y_proyecto(sesiones):
     assert "desde" in error["fields"]
     _error_api(sesiones["admin"].get(f"{V1}/gastos/contable",
                                      params={"desde": DESDE, "hasta": HASTA, "proyecto_id": 987654}), 404, "NOT_FOUND")
+
+
+# ---------- guion de consola ----------
+def test_el_guion_escribe_el_libro_como_administracion(mundo, tmp_path, capsys):
+    from datos import exportar_contable
+    salida = tmp_path / "libro.xlsx"
+    assert exportar_contable.main(["--desde", DESDE, "--hasta", HASTA, "--salida", str(salida)]) == 0
+    assert _ids(salida.read_bytes()) == {mundo[k] for k in ("vuelo_a", "hotel_a", "comida_b", "gasolina_b", "parqueo_g")}
+    assert "administración" in _parametros(salida.read_bytes())["Generado por"]
+    assert f"{salida}: 5 gastos" in capsys.readouterr().out
+    assert exportar_contable.main(["--desde", DESDE, "--hasta", HASTA, "--proyecto", str(P_A), "--salida", str(salida)]) == 0
+    assert _ids(salida.read_bytes()) == {mundo["vuelo_a"], mundo["comida_b"]}
+
+
+def test_el_guion_explica_un_error_sin_escribir_nada(mundo, tmp_path, capsys):
+    from datos import exportar_contable
+    salida = tmp_path / "no.xlsx"
+    assert exportar_contable.main(["--desde", HASTA, "--hasta", DESDE, "--salida", str(salida)]) == 1
+    assert "fecha final" in capsys.readouterr().err and not salida.exists()
+    assert exportar_contable.main(["--desde", DESDE, "--hasta", HASTA, "--proyecto", "987654", "--salida", str(salida)]) == 1
+    assert "no existe" in capsys.readouterr().err and not salida.exists()
+
+
+def test_el_guion_lee_en_solo_lectura_y_lo_deshace_al_terminar(mundo):
+    from sqlalchemy.exc import DBAPIError
+
+    from datos import exportar_contable
+    with exportar_contable.solo_lectura():
+        assert db.uno("select count(*) n from gastos")["n"] >= 5
+        with pytest.raises(DBAPIError):
+            db.insertar("eventos", momento=db.ahora(), entidad="contabilidad", entidad_id=None, paso="no debe quedar",
+                        detalle="", fuente="pruebas")
+    assert not db.uno("select id from eventos where paso='no debe quedar'")
+    # La conexión vuelve al grupo sin el bloqueo: el resto de la plataforma escribe como siempre
+    db.insertar("eventos", momento=db.ahora(), entidad="contabilidad", entidad_id=None, paso="escritura después del guion",
+                detalle="", fuente="pruebas")
+    assert db.uno("select id from eventos where paso='escritura después del guion'")
+
+
+def test_el_guion_corre_desde_la_consola(mundo, tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    salida = tmp_path / "consola.xlsx"
+    # La base de la aplicación y no la del entorno: `tests.conftest` importado con ese nombre vuelve a correr el arnés
+    # y deja en el entorno otra base, vacía
+    entorno = {**os.environ, "DATABASE_URL": config.DATABASE_URL}
+    r = subprocess.run([sys.executable, "-m", "datos.exportar_contable", "--desde", DESDE, "--hasta", HASTA,  # noqa: S603  guion fijo de esta prueba
+                        "--salida", str(salida)], cwd=Path(__file__).resolve().parent.parent, env=entorno,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert _ids(salida.read_bytes()) == {mundo[k] for k in ("vuelo_a", "hotel_a", "comida_b", "gasolina_b", "parqueo_g")}
+    assert "postgres" not in r.stdout + r.stderr and "sqlite" not in r.stdout + r.stderr   # nunca muestra la conexión
