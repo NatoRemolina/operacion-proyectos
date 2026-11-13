@@ -234,3 +234,68 @@ def test_un_secreto_recien_creado_por_cdk_no_es_configuracion():
         def get_secret_value(self, SecretId):  # noqa: N803
             return {"SecretString": "aB3$kL9!qW7zR2#xV5"}
     assert ps._actual(Recien(), ARN) == {}
+
+
+# ---------- forma de lo escrito a mano (app/validar_config.py) ----------
+@pytest.mark.parametrize("clave,valor", [
+    ("ASESOR_AGENTE_VERSION", "seis"), ("ASESOR_AGENTE_VERSION", "0"), ("ASESOR_AGENTE_VERSION", "6ASESOR_CABECERAS"),
+    ("ASESOR_CABECERAS", "{x-version: v1}"), ("MODELO_CABECERAS", "[1, 2]"),
+    ("URL_PUBLICA", "http://software.ejemplo.test"), ("N8N_WEBHOOK_URL", "ftp://n8n.ejemplo.test/webhook"),
+    ("ASESOR_API_URL", "agentes.ejemplo.test"), ("N8N_WEBHOOK_SECRETO", "corto-pero-secreto"),
+])
+def test_un_valor_mal_escrito_no_se_sube_y_no_se_muestra(tmp_path, clave, valor):
+    nube = Nube(actual={})
+    with pytest.raises(SystemExit) as e:
+        ps.main(["--env", _archivo(tmp_path, **{clave: valor})], sesion=nube)
+    mensaje = str(e.value.code).replace(str(tmp_path), "")   # la ruta del archivo puede tener cifras sueltas
+    assert clave in mensaje and "No se cambió nada" in mensaje and valor not in mensaje
+    assert nube.clientes == [] and nube.subido is None   # se detiene antes de tocar AWS
+
+
+def test_el_ensayo_tambien_se_detiene_con_un_valor_mal_escrito(tmp_path):
+    with pytest.raises(SystemExit, match="ASESOR_AGENTE_VERSION"):
+        ps.main(["--env", _archivo(tmp_path, ASESOR_AGENTE_VERSION="v6"), "--ensayo"], sesion=Nube())
+
+
+def test_un_valor_viejo_mal_escrito_en_el_secreto_tambien_detiene_la_carga(tmp_path):
+    """El 13 nov la versión del agente quedó mal pegada en el secreto: el archivo que no la trae no la arregla."""
+    nube = Nube(actual={"ASESOR_AGENTE_VERSION": "6\nASESOR_CABECERAS={}"})
+    with pytest.raises(SystemExit) as e:
+        ps.main(["--env", _archivo(tmp_path)], sesion=nube)
+    assert "tras la fusión" in str(e.value.code) and "ASESOR_AGENTE_VERSION" in str(e.value.code)
+    assert nube.subido is None
+    ps.main(["--env", _archivo(tmp_path, ASESOR_AGENTE_VERSION="6")], sesion=nube)   # el archivo la corrige
+    assert nube.subido["ASESOR_AGENTE_VERSION"] == "6"
+
+
+def test_quitar_retira_una_clave_opcional_del_secreto(tmp_path, capsys):
+    """Una clave vacía en el archivo no borra la del secreto: para retirar una versión forzada hace falta --quitar."""
+    nube = Nube(actual={"ASESOR_AGENTE_VERSION": "6\nASESOR_CABECERAS={}", "PUESTA_A_MANO": "conservar"})
+    ps.main(["--env", _archivo(tmp_path), "--quitar", "ASESOR_AGENTE_VERSION"], sesion=nube)
+    assert "ASESOR_AGENTE_VERSION" not in nube.subido and nube.subido["PUESTA_A_MANO"] == "conservar"
+    assert "Retiradas: ASESOR_AGENTE_VERSION" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("clave,extra,motivo", [
+    ("DATABASE_URL", {}, "opcionales"), ("NO_EXISTE", {}, "opcionales"),
+    ("ASESOR_AGENTE_VERSION", {"ASESOR_AGENTE_VERSION": "6"}, "el archivo la trae"),
+])
+def test_quitar_solo_retira_opcionales_que_el_archivo_no_trae(tmp_path, clave, extra, motivo):
+    nube = Nube(actual={})
+    with pytest.raises(SystemExit, match=motivo):
+        ps.main(["--env", _archivo(tmp_path, **extra), "--quitar", clave], sesion=nube)
+    assert nube.subido is None
+
+
+def test_avisa_si_lo_que_queda_en_el_secreto_fuerza_otra_version(tmp_path, capsys):
+    del_candado = json.loads((RAIZ / "app" / "asesor_agente.json").read_text())["version"]
+    ps.main(["--env", _archivo(tmp_path)], sesion=Nube(actual={"ASESOR_AGENTE_VERSION": str(del_candado + 1)}))
+    assert f"el candado app/asesor_agente.json dice {del_candado}" in capsys.readouterr().out
+
+
+def test_avisa_si_la_version_forzada_no_es_la_del_candado(tmp_path, capsys):
+    del_candado = json.loads((RAIZ / "app" / "asesor_agente.json").read_text())["version"]
+    ps.main(["--env", _archivo(tmp_path, ASESOR_AGENTE_VERSION=str(del_candado + 1)), "--ensayo"], sesion=Nube())
+    assert f"el candado app/asesor_agente.json dice {del_candado}" in capsys.readouterr().out
+    ps.main(["--env", _archivo(tmp_path, ASESOR_AGENTE_VERSION=str(del_candado)), "--ensayo"], sesion=Nube())
+    assert "Aviso" not in capsys.readouterr().out

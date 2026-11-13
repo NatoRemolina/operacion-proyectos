@@ -299,7 +299,7 @@ Publicada en https://software.nataliaremolinarodriguez.com (web nueva) y https:/
 - Los precios son una foto del momento de la consulta; cada opción muestra su origen.
 - La distancia y el tiempo por carretera son una estimación (línea recta × factor ÷ velocidad), sin mapas ni rutas reales, y no hay tren, bus ni ferri.
 - **Módulos que todavía están en la plataforma anterior:** la web Next.js cubre cotizar, viajes, gastos con su revisión completa y el Excel contable, Reglas y supuestos, KPIs, Monitoreo, el estado de los vuelos y el asistente. Proyectos, Usuarios y Mi cuenta (en paso a la web) y la analítica de precios y el flujo de la información siguen en las pantallas servidas por el backend (en producción, `admin.software.`), con su propia sesión. Cuando estén en la web, esas pantallas se retiran: cada dirección anterior lleva a su equivalente en la web (`INTERFAZ_ANTIGUA=redirige`, `app/servicios/interfaz.py`).
-- Con el asesor, una respuesta del asistente tarda más que sin él (hasta un tope de 75 s; no hay una medición del tiempo típico); si el asesor falla o llega a su tope de gasto del día, responde el asistente sin él y lo dice.
+- Con el asesor, una respuesta del asistente tarda más que sin él (hasta un tope de 40 s; en las pruebas, de 14 a 17 s); si el asesor falla o llega a su tope de gasto del día, responde el asistente sin él y lo dice.
 - Varias reglas de aerolíneas vienen de fuentes secundarias o están sin verificar; la página *Reglas* lo indica.
 - El canal de Telegram se probó con un bot simulado.
 - Extraer precios de buscadores puede ir contra sus términos de uso; para producción corresponde una API con licencia.
@@ -338,6 +338,7 @@ Publicada en https://software.nataliaremolinarodriguez.com (web nueva) y https:/
 | [`docs/respaldo.md`](docs/respaldo.md) | Respaldo de la base publicada, ensayo de restauración y vuelta atrás |
 | [`docs/n8n/automatizaciones.md`](docs/n8n/automatizaciones.md) | Automatizaciones con n8n (propuesta diseñada, sin construir) |
 | [`docs/mejoras.md`](docs/mejoras.md) | Mejoras de experiencia de uso e ingeniería y su estado |
+| [`docs/incidentes.md`](docs/incidentes.md) | Incidentes en producción, sin culpables: causa, por qué no se vio y qué impide que se repita |
 | [`docs/convenciones.md`](docs/convenciones.md) | Cómo se escribe, se prueba y se integra el código |
 | [`docs/referencias/serpapi-google-flights/uso-en-el-proyecto.md`](docs/referencias/serpapi-google-flights/uso-en-el-proyecto.md) | Qué usa la plataforma de cada API del buscador, con enlaces a la documentación oficial |
 | [`web/README.md`](web/README.md) | La web nueva: comandos, modo demostración, arquitectura por capas, diseño y pruebas |

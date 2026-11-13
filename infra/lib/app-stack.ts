@@ -156,6 +156,18 @@ export class AppStack extends Stack {
       metricValue: "1",
     });
     alarma("ErroresDeLaAplicacion", errores.metric({ period: Duration.minutes(5), statistic: "Sum" }), 1);
+
+    // Cuando el asesor del asistente cae, la página responde bien con otra vía: ni los 5xx ni los errores lo ven.
+    // app/servicios/asesor.py escribe una línea por cada pregunta que no respondió (configuración mal escrita incluida).
+    const caidas = new logs.MetricFilter(this, "CaidasDelAsesorEnElRegistro", {
+      logGroup: registro,
+      filterPattern: logs.FilterPattern.literal('"AVISO asesor_caida"'),
+      metricNamespace: "Operacion",
+      metricName: "CaidasDelAsesor",
+      metricValue: "1",
+    });
+    // Con poco tráfico (unas preguntas por hora) una ventana corta no junta caídas: 2 en una hora ya no es casualidad
+    alarma("CaidasDelAsesor", caidas.metric({ period: Duration.hours(1), statistic: "Sum" }), 2);
     alarma("Respuestas5xx", vivo.metric("Url5xxCount", { period: Duration.minutes(5), statistic: "Sum" }), 1);
 
     new CfnOutput(this, "Url", { value: url.url });

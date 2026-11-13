@@ -7,16 +7,31 @@ describe("alarmas de la API (H-37)", () => {
   const alarmas = propiedades(api, "AWS::CloudWatch::Alarm");
   const avisan = (a: any) => JSON.stringify(a.AlarmActions).includes("OperacionBase");
 
+  const filtros = propiedades(api, "AWS::Logs::MetricFilter");
+
   test("cuenta las líneas ERROR peticion= del registro de la función", () => {
-    const [filtro, ...otros] = propiedades(api, "AWS::Logs::MetricFilter");
-    assert.equal(otros.length, 0);
-    assert.equal(filtro.FilterPattern, '"ERROR peticion="');
+    assert.equal(filtros.length, 2);
+    const filtro = filtros.find((f) => f.FilterPattern === '"ERROR peticion="');
+    assert.ok(filtro, "falta el filtro de errores de la aplicación");
     assert.deepEqual(filtro.MetricTransformations.map((m: any) => m.MetricValue), ["1"]);
     const { MetricNamespace, MetricName } = filtro.MetricTransformations[0];
     const alarma = alarmas.find((a) => a.MetricName === MetricName && a.Namespace === MetricNamespace);
     assert.ok(alarma, "falta la alarma de errores de la aplicación");
     assert.equal(alarma.Threshold, 1);
     assert.equal(alarma.ComparisonOperator, "GreaterThanOrEqualToThreshold");
+    assert.ok(avisan(alarma));
+  });
+
+  test("avisa cuando el asesor del asistente cae 2 veces en una hora, aunque la página responda bien", () => {
+    const filtro = filtros.find((f) => f.FilterPattern === '"AVISO asesor_caida"');
+    assert.ok(filtro, "falta el filtro de caídas del asesor");
+    const { MetricNamespace, MetricName, MetricValue } = filtro.MetricTransformations[0];
+    assert.equal(MetricValue, "1");
+    const alarma = alarmas.find((a) => a.MetricName === MetricName && a.Namespace === MetricNamespace);
+    assert.ok(alarma, "falta la alarma de caídas del asesor");
+    assert.equal(alarma.Threshold, 2);
+    assert.equal(alarma.Period, 3600);
+    assert.equal(alarma.Statistic, "Sum");
     assert.ok(avisan(alarma));
   });
 

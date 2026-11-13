@@ -191,6 +191,7 @@ def test_si_el_modelo_falla_responde_el_determinista(dos_pilotos, monkeypatch):
     assert r["modo"] == "determinista" and "no respondió" in r["texto"] and "Diner Asistente Uno" in r["texto"]
 
 
+@pytest.mark.con_tope
 def test_tope_diario_de_preguntas(dos_pilotos):
     asistente.asegurar_regla()
     regla = db.uno("select id, valor from reglas where clave='asistente_preguntas_dia'")

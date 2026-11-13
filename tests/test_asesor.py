@@ -150,7 +150,6 @@ def con_asesor(monkeypatch):
         monkeypatch.setattr(config, nombre, valor)
     monkeypatch.setattr(asesor, "_dormir", lambda s: None)
     monkeypatch.setattr(asesor, "tope_usd_dia", lambda: Decimal("1000"))   # el tope de gasto tiene sus propias pruebas
-    monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
 
     def instalar(servicio) -> Servicio:
         monkeypatch.setattr(asesor, "TRANSPORTE", httpx.MockTransport(servicio))
@@ -273,10 +272,84 @@ def test_la_version_del_agente_se_fija_si_esta_configurada(con_asesor, monkeypat
     s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
     asistente.responder("¿Hay gastos en revisión?", _admin())
     assert s.enviados[0]["agent"] == {"type": "agent", "id": "agent_prueba", "version": 7}
+    # Mal escrita (el 13 nov quedó pegada con la línea siguiente): no apaga el asesor, se ignora y se usa la del candado
     monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "siete")
     s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
     r = asistente.responder("¿Hay gastos en revisión?", _admin())
-    assert r["modo"] == "determinista" and "versión del agente" in r["texto"] and s.peticiones == []
+    assert r["modo"] == "asesor" and s.enviados[0]["agent"] == "agent_prueba"   # sin candado: la última
+    situacion, detalle = asesor.estado()
+    assert situacion == "listo" and "ASESOR_AGENTE_VERSION" in detalle and "se ignora" in detalle and "siete" not in detalle
+
+
+def test_sin_version_forzada_las_sesiones_usan_la_del_candado(con_asesor):
+    asesor.CANDADO.write_text(json.dumps({"version": 5, "huella": asesor.huella()}))
+    try:
+        s = con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
+        asistente.responder("¿Hay gastos en revisión?", _admin())
+        assert s.enviados[0]["agent"] == {"type": "agent", "id": "agent_prueba", "version": 5}
+    finally:
+        asesor.CANDADO.unlink()
+
+
+def test_el_candado_del_repositorio_tiene_la_huella_del_codigo():
+    """Si cambian el mensaje de sistema o las herramientas sin `python -m datos.asesor --sincronizar`, el agente del
+    servicio y el código dejan de coincidir: esta prueba lo detecta sin red."""
+    from pathlib import Path
+    candado = json.loads((Path(__file__).resolve().parent.parent / "app" / "asesor_agente.json").read_text())
+    assert isinstance(candado["version"], int) and candado["version"] >= 1
+    assert candado["huella"] == asesor.huella(), "el código del asesor cambió: correr python -m datos.asesor --sincronizar"
+
+
+def test_configuracion_a_medias_no_llama_al_servicio_pero_lo_dice_y_avisa(con_asesor, monkeypatch, capsys):
+    s = con_asesor(Servicio([corriendo(), mensaje("No debería llegar."), fin()]))
+    monkeypatch.setattr(config, "ASESOR_ENTORNO_ID", "")
+    assert asesor.estado() == ("mal configurado", "faltan ASESOR_ENTORNO_ID")
+    r = asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
+    assert s.peticiones == [] and r["modo"] == "determinista"
+    assert "mal configurado (faltan ASESOR_ENTORNO_ID)" in r["texto"]
+    assert "AVISO asesor_caida motivo=configuracion" in capsys.readouterr().out
+    detalle = db.uno("select detalle from eventos where paso='asesor sin respuesta' order by id desc limit 1")["detalle"]
+    assert "mal configurado" in detalle
+
+
+def test_sin_configurar_no_es_una_caida(monkeypatch, capsys):
+    assert asesor.estado() == ("apagado", "sin configurar")
+    asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
+    assert "asesor_caida" not in capsys.readouterr().out
+
+
+def test_cada_caida_deja_una_linea_fija_para_la_alarma(con_asesor, capsys):
+    """La línea tiene una forma cerrada (motivo y segundos): no hay dónde quepa la pregunta ni un dato de la persona."""
+    import re
+    con_asesor(lambda request: httpx.Response(500, json={"error": {"message": "caído"}}))
+    asistente.responder("¿Qué gastó P-0001 en el hotel Dinero Secreto?", _admin())
+    lineas = [x for x in capsys.readouterr().out.splitlines() if "asesor_caida" in x]
+    assert len(lineas) == 1
+    assert re.fullmatch(r"AVISO asesor_caida motivo=(configuracion|plazo|sin_respuesta|error) segundos=\d+\.\d", lineas[0])
+
+
+def test_el_estado_dice_si_la_version_forzada_no_es_la_del_candado(con_asesor, monkeypatch):
+    con_asesor(Servicio([]))
+    asesor.CANDADO.write_text(json.dumps({"version": 6, "huella": asesor.huella()}))
+    monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "5")
+    assert asesor.estado() == ("listo", "ASESOR_AGENTE_VERSION fuerza la versión 5 y el candado dice 6")
+    monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "6")
+    assert asesor.estado() == ("listo", "")
+
+
+def test_sin_tiempo_para_la_sesion_no_se_abre(con_asesor):
+    s = con_asesor(Servicio([corriendo(), mensaje("No debería llegar."), fin()]))
+    with pytest.raises(asesor.ErrorAsesor) as e:
+        asesor.preguntar("¿Hay gastos?", asistente.Rastro(_admin()), _admin(),
+                         plazo_s=asesor.CIERRE_MAX_S + asesor.MIN_SESION_S - 1)
+    assert e.value.sin_tiempo and not e.value.agotado and s.peticiones == []
+
+
+def test_llegar_al_tope_de_gasto_no_es_una_caida(con_asesor, monkeypatch, capsys):
+    s = con_asesor(Servicio([corriendo(), mensaje("No debería llegar."), fin()]))
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: Decimal("0"))
+    asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
+    assert s.peticiones == [] and "asesor_caida" not in capsys.readouterr().out
 
 
 # ---------- costo, tope y cierre de cada sesión ----------
@@ -317,7 +390,7 @@ def test_con_el_tope_de_gasto_del_dia_alcanzado_no_se_llama_al_servicio(con_ases
     assert r["modo"] == "determinista" and "tope de gasto del día" in r["texto"] and "asesor_usd_dia" in r["texto"]
     # si responde el modelo de lenguaje, la respuesta también lo dice
     monkeypatch.setattr(llm, "activo", lambda: True)
-    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r: "Respuesta del modelo de lenguaje.")
+    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r, **_: "Respuesta del modelo de lenguaje.")
     r = asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
     assert r["modo"] == "modelo" and "tope de gasto del día" in r["texto"] and r["texto"].endswith("Respuesta del modelo de lenguaje.")
     assert s.peticiones == []
@@ -419,7 +492,7 @@ def test_si_el_servicio_falla_al_crear_responde_el_determinista(con_asesor, pilo
 def test_si_falla_y_hay_modelo_responde_el_modelo(con_asesor, monkeypatch):
     con_asesor(Servicio(crear=503))
     monkeypatch.setattr(llm, "activo", lambda: True)
-    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r: "Respuesta del modelo de lenguaje.")
+    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r, **_: "Respuesta del modelo de lenguaje.")
     r = asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
     assert r["modo"] == "modelo" and r["texto"] == "Respuesta del modelo de lenguaje."
 
@@ -560,7 +633,7 @@ def test_el_guion_imprime_las_herramientas_en_json(capsys):
     assert json.loads(capsys.readouterr().out) == asesor.ESQUEMAS
     assert guion.main(["--sistema"]) == 0 and asesor.SISTEMA in capsys.readouterr().out
     assert guion.main(["--verificar"]) == 1   # sin configuración no llama a ningún servicio
-    assert "Falta configurar" in capsys.readouterr().out
+    assert "no está listo (sin configurar)" in capsys.readouterr().out
 
 
 def test_verificar_detecta_lo_que_separa_al_agente_del_codigo():
@@ -596,9 +669,13 @@ def test_verificar_revisa_el_entorno_y_la_version_fijada(con_asesor, monkeypatch
             return httpx.Response(200, json=entorno)
         return httpx.Response(404, json={})
     con_asesor(servicio)
+    asesor.CANDADO.write_text(json.dumps({"version": 3, "huella": asesor.huella()}))
     assert guion.main(["--verificar"]) == 1 and "no limita la red" in capsys.readouterr().out
     entorno["config"]["networking"] = {"type": "limited", "allowed_hosts": []}
     assert guion.main(["--verificar"]) == 0
+    asesor.CANDADO.write_text(json.dumps({"version": 3, "huella": "otra"}))
+    assert guion.main(["--verificar"]) == 1 and "falta --sincronizar" in capsys.readouterr().out
+    asesor.CANDADO.write_text(json.dumps({"version": 3, "huella": asesor.huella()}))
     capsys.readouterr()
     monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "2")
     assert guion.main(["--verificar"]) == 1 and "versión fijada" in capsys.readouterr().out
@@ -619,6 +696,7 @@ def test_sincronizar_sube_el_sistema_y_las_herramientas(con_asesor, capsys):
     assert guion.main(["--sincronizar"]) == 0
     assert recibido["version"] == 3 and recibido["system"] == asesor.SISTEMA and recibido["tools"] == asesor.ESQUEMAS
     assert "versión 3 → 4" in capsys.readouterr().out
+    assert json.loads(asesor.CANDADO.read_text()) == {"version": 4, "huella": asesor.huella()}   # el candado, al día
 
 
 def test_el_mensaje_de_sistema_nombra_todos_los_motivos_y_permisos():
@@ -684,7 +762,7 @@ def test_fuera_de_administracion_los_avisos_del_asesor_no_dan_detalles_internos(
     assert "USD, supuesto" not in r["texto"] and "asesor_usd_dia" not in r["texto"] and "tope de gasto" not in r["texto"]
     assert r["texto"].startswith("(El asesor no estaba disponible: se usó la respuesta directa.)")
     monkeypatch.setattr(llm, "activo", lambda: True)
-    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r: "Respuesta del modelo de lenguaje.")
+    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r, **_: "Respuesta del modelo de lenguaje.")
     r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
     assert r["modo"] == "modelo" and "asesor_usd_dia" not in r["texto"] and "tope de gasto" not in r["texto"]
     monkeypatch.setattr(asesor, "tope_usd_dia", lambda: Decimal("1000"))
