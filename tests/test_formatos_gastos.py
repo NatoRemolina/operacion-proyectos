@@ -217,3 +217,22 @@ def test_un_correo_con_cuerpo_html_se_reduce_a_texto_antes_de_enviarlo(cliente, 
 def test_la_pagina_de_carga_ofrece_elegir_confirmaciones_html(cliente):
     pagina = cliente.get("/gastos/cargar").text
     assert 'accept="image/*,application/pdf,.eml,.html,.htm"' in pagina and "confirmaciones en HTML" in pagina
+
+
+# ---------- pieza 3: PDF de varias páginas ----------
+def test_un_pdf_de_dos_paginas_llega_entero_al_modelo_con_el_total_de_la_segunda(cliente, viaje_aprobado, modelo):
+    pdf = _pdf(f"Tejo Car Hire - contrato {uuid.uuid4().hex[:8]} - continua en la pagina 2", "TOTAL EUR 258.30")
+    modelo["respuesta"] = {"total": 258.30, "moneda": "EUR"}
+    gid = _subir_web(cliente, viaje_aprobado["id"], "factura_dos_paginas.pdf", pdf)
+    enviado = modelo["enviados"][-1]
+    assert _archivo_enviado(enviado) == ("application/pdf", pdf)          # sin cortar: las dos páginas
+    assert pdf.count(b"/Type /Page ") == 2 and b"TOTAL EUR 258.30" in pdf
+    instruccion = enviado["partes"][-1]["text"]
+    assert "todas las páginas" in instruccion                            # el modelo sabe que el total puede ir al final
+    assert db.uno("select total from gastos where id=:i", i=gid)["total"] == 258.30
+
+
+def test_un_pdf_adjunto_a_un_correo_tambien_llega_entero(cliente, viaje_aprobado, modelo):
+    pdf = _pdf("Factura pagina 1", "Factura pagina 2", f"TOTAL USD 99.10 {uuid.uuid4().hex[:6]}")
+    _subir_web(cliente, viaje_aprobado["id"], "tres.eml", _correo([(pdf, "application/pdf", "factura.pdf")]))
+    assert _archivo_enviado(modelo["enviados"][-1]) == ("application/pdf", pdf)

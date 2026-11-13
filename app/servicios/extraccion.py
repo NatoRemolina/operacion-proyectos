@@ -31,6 +31,7 @@ INSTRUCCION = f"""Eres un asistente de contabilidad. Lee el soporte de gasto adj
 - ciudad: ciudad del gasto o null
 - confianza: número entre 0 y 1 con tu seguridad sobre el conjunto
 - dudas: lista de campos que no se leen con claridad (vacía si todo es legible)
+Si el soporte tiene varias páginas, lee todas las páginas: el total y los impuestos suelen ir en la última.
 No inventes valores: si algo no se lee, usa null y nómbralo en dudas."""
 
 
