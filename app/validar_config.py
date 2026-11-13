@@ -5,6 +5,7 @@ Las usan el arranque (`app/config.py`, que registra lo que encuentre) y la carga
 la plataforma, pero tampoco puede quedar en silencio. Los mensajes nombran la variable y nunca muestran su valor.
 """
 import json
+import re
 from collections.abc import Mapping
 
 VERSION_INVALIDA = "ASESOR_AGENTE_VERSION no es un número entero mayor que cero"
@@ -14,7 +15,8 @@ MIN_SECRETO_WEBHOOK = 32
 
 
 def version_valida(texto: str) -> bool:
-    return texto.isdigit() and int(texto) >= 1
+    """Un entero positivo en cifras ASCII: `isdigit` acepta «²» o «６», y luego `int` falla o los toma por otro número."""
+    return re.fullmatch(r"[1-9][0-9]*", texto) is not None
 
 
 def _objeto_json(valor) -> bool:

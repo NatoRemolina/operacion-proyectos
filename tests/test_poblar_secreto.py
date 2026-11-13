@@ -265,6 +265,31 @@ def test_un_valor_viejo_mal_escrito_en_el_secreto_tambien_detiene_la_carga(tmp_p
     assert nube.subido["ASESOR_AGENTE_VERSION"] == "6"
 
 
+def test_quitar_retira_una_clave_opcional_del_secreto(tmp_path, capsys):
+    """Una clave vacía en el archivo no borra la del secreto: para retirar una versión forzada hace falta --quitar."""
+    nube = Nube(actual={"ASESOR_AGENTE_VERSION": "6\nASESOR_CABECERAS={}", "PUESTA_A_MANO": "conservar"})
+    ps.main(["--env", _archivo(tmp_path), "--quitar", "ASESOR_AGENTE_VERSION"], sesion=nube)
+    assert "ASESOR_AGENTE_VERSION" not in nube.subido and nube.subido["PUESTA_A_MANO"] == "conservar"
+    assert "Retiradas: ASESOR_AGENTE_VERSION" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("clave,extra,motivo", [
+    ("DATABASE_URL", {}, "opcionales"), ("NO_EXISTE", {}, "opcionales"),
+    ("ASESOR_AGENTE_VERSION", {"ASESOR_AGENTE_VERSION": "6"}, "el archivo la trae"),
+])
+def test_quitar_solo_retira_opcionales_que_el_archivo_no_trae(tmp_path, clave, extra, motivo):
+    nube = Nube(actual={})
+    with pytest.raises(SystemExit, match=motivo):
+        ps.main(["--env", _archivo(tmp_path, **extra), "--quitar", clave], sesion=nube)
+    assert nube.subido is None
+
+
+def test_avisa_si_lo_que_queda_en_el_secreto_fuerza_otra_version(tmp_path, capsys):
+    del_candado = json.loads((RAIZ / "app" / "asesor_agente.json").read_text())["version"]
+    ps.main(["--env", _archivo(tmp_path)], sesion=Nube(actual={"ASESOR_AGENTE_VERSION": str(del_candado + 1)}))
+    assert f"el candado app/asesor_agente.json dice {del_candado}" in capsys.readouterr().out
+
+
 def test_avisa_si_la_version_forzada_no_es_la_del_candado(tmp_path, capsys):
     del_candado = json.loads((RAIZ / "app" / "asesor_agente.json").read_text())["version"]
     ps.main(["--env", _archivo(tmp_path, ASESOR_AGENTE_VERSION=str(del_candado + 1)), "--ensayo"], sesion=Nube())

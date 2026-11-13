@@ -44,6 +44,10 @@ MAX_HERRAMIENTAS = 12     # llamadas a herramientas por pregunta
 MAX_RESULTADO = 20_000    # caracteres del JSON que se devuelve por herramienta
 ESPERA_HTTP_S = 15
 CIERRE_S = 2              # espera de cada llamada al cerrar: costo final, borrado, búsqueda de una sesión sin respuesta
+# Lo más que puede tardar el cierre después del plazo: interrumpir (3 s), costo final, borrado con su reintento y pausa,
+# y la búsqueda de una sesión cuya creación venció. Se descuenta del tiempo que queda a la pregunta.
+CIERRE_MAX_S = 3 + CIERRE_S + (2 * CIERRE_S + 0.5) + CIERRE_S
+MIN_SESION_S = 5          # con menos tiempo que esto no se abre la sesión
 SONDEO_MIN_S, SONDEO_MAX_S = 0.5, 1.5
 MAX_PAGINAS = 5
 REINTENTABLES = {408, 429, 500, 502, 503, 504, 529}
@@ -303,6 +307,10 @@ def version() -> int | None:
     forzada = config.ASESOR_AGENTE_VERSION
     if forzada and validar_config.version_valida(forzada):
         return int(forzada)
+    return version_del_candado()
+
+
+def version_del_candado() -> int | None:
     v = candado().get("version")
     return v if isinstance(v, int) and not isinstance(v, bool) and v >= 1 else None
 
@@ -318,10 +326,13 @@ def estado() -> tuple[str, str]:
     if faltan:
         mal = next((p for p in config.PROBLEMAS if p.startswith("ASESOR_CABECERAS")), "")
         return "mal configurado", mal or f"faltan {', '.join(faltan)}"
-    if config.ASESOR_AGENTE_VERSION and not validar_config.version_valida(config.ASESOR_AGENTE_VERSION):
+    forzada, del_candado = config.ASESOR_AGENTE_VERSION, version_del_candado()
+    if forzada and not validar_config.version_valida(forzada):
         v = version()
         return "listo", (f"{validar_config.VERSION_INVALIDA}: se ignora y se usa "
                          + (f"la versión {v} del candado" if v else "la última versión del agente"))
+    if forzada and del_candado and int(forzada) != del_candado:
+        return "listo", f"ASESOR_AGENTE_VERSION fuerza la versión {forzada} y el candado dice {del_candado}"
     return "listo", ""
 
 
@@ -775,20 +786,25 @@ def _limpio(texto: str) -> str:
     return texto.replace("**", "").strip()[:4000]
 
 
-def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: bool = False, contexto: str = "") -> str:
+def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: bool = False, contexto: str = "",
+              plazo_s: float | None = None) -> str:
     """Una sesión por pregunta. Devuelve el texto final o lanza ErrorAsesor con un motivo apto para mostrar.
 
     Al terminar, bien o con error, la sesión se registra en `llamadas_modelo` y se borra del servicio; con
     `conservar` (la prueba por consola) queda allí para abrirla en la consola del servicio. `contexto` es lo que la
     persona está viendo y lo que acaba de preguntar (lo arma `asistente.responder`); va antes de la pregunta.
+    `plazo_s` es lo que le queda a la pregunta entera: la sesión, con su cierre, no lo pasa.
     """
     inicio = _reloj()
-    limite = inicio + PLAZO_TOTAL_S
+    disponible = PLAZO_TOTAL_S if plazo_s is None else min(PLAZO_TOTAL_S, plazo_s - CIERRE_MAX_S)
+    limite = inicio + disponible
     error, reserva = "", None
     try:
         situacion, detalle = estado()
         if situacion != "listo":
             raise ErrorAsesor(f"no está configurado ({detalle})", configuracion=True)
+        if disponible < MIN_SESION_S:
+            raise ErrorAsesor("no quedaba tiempo para consultarlo", agotado=True)
         reserva = _reservar_gasto(usuario)
         cuerpo = {
             "agent": _agente(), "environment_id": config.ASESOR_ENTORNO_ID,

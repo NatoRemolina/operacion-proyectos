@@ -13,17 +13,17 @@ Cada incidente se escribe sin culpables: qué pasó, cuánto duró, por qué no 
 - El motivo quedaba en el evento `asesor sin respuesta` y en «Últimos errores del modelo», en Monitoreo. Para verlo había que ir a buscarlo.
 - Ni la carga del secreto ni el arranque revisaban la forma del valor.
 
-**Arreglo inmediato.** Corregir el valor en `.env.produccion` y volver a cargar el secreto (`docs/despliegue.md`, paso 3).
+**Arreglo inmediato.** Retirar la versión forzada del secreto con `infra/poblar_secreto.py --quitar ASESOR_AGENTE_VERSION` (y quitarla de `.env.produccion`), para que las sesiones usen la del candado. Otra opción es corregir el valor y volver a cargar el secreto (`docs/despliegue.md`, paso 3). Hasta hacerlo, con el código nuevo la versión mal escrita se ignora, pero cada instancia nueva deja un `ERROR` al arrancar y la alarma avisa.
 
 **Qué impide que se repita** (`docs/mejoras.md`, I10 a I13):
 
 | Capa | Antes | Ahora |
 |---|---|---|
-| Carga del secreto | Subía cualquier texto | `infra/poblar_secreto.py` revisa la forma de lo escrito a mano y no sube nada si algo está mal, tampoco si el valor malo ya estaba en el secreto |
+| Carga del secreto | Subía cualquier texto y una clave guardada no se podía retirar | `infra/poblar_secreto.py` revisa la forma de lo escrito a mano y no sube nada si algo está mal, tampoco si el valor malo ya estaba en el secreto. `--quitar` retira una clave opcional. Avisa si la versión forzada no es la del candado |
 | Arranque | Nada | Una línea `ERROR peticion=arranque` por variable mal escrita: la cuenta la alarma `ErroresDeLaAplicacion` |
 | Comportamiento | El asesor fallaba en cada pregunta | Una versión forzada mal escrita se ignora y se usa la del candado; la configuración a medias apaga el asesor, y la respuesta lo dice |
 | Origen de la versión | Copiada a mano | Candado versionado `app/asesor_agente.json`, escrito por `--sincronizar` |
-| Detección | Leer los errores uno por uno | Alarma `CaidasDelAsesor` (3 caídas en 15 min) y cifra «Respondió el asesor» en Monitoreo |
-| Comprobación tras desplegar | No había | Paso 7 de `docs/despliegue.md`: sin `ERROR peticion=arranque` y una pregunta que cuente como del asesor |
+| Detección | Leer los errores uno por uno | Alarma `CaidasDelAsesor` (2 caídas en una hora) y cifra «Respondió el asesor» en Monitoreo |
+| Comprobación tras desplegar | No había | Paso 7 de `docs/despliegue.md`: `python -m datos.asesor --verificar`, sin `ERROR peticion=arranque` y una pregunta que cuente como del asesor |
 
 **Lección.** Lo opcional puede degradarse, pero no en silencio. Cada vía de respaldo necesita su propia señal, porque desde fuera una respuesta del respaldo se ve igual que una del camino principal.

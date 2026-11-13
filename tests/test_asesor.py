@@ -318,11 +318,31 @@ def test_sin_configurar_no_es_una_caida(monkeypatch, capsys):
     assert "asesor_caida" not in capsys.readouterr().out
 
 
-def test_cada_caida_deja_una_linea_para_la_alarma_sin_la_pregunta(con_asesor, capsys):
+def test_cada_caida_deja_una_linea_fija_para_la_alarma(con_asesor, capsys):
+    """La línea tiene una forma cerrada (motivo y segundos): no hay dónde quepa la pregunta ni un dato de la persona."""
+    import re
     con_asesor(lambda request: httpx.Response(500, json={"error": {"message": "caído"}}))
     asistente.responder("¿Qué gastó P-0001 en el hotel Dinero Secreto?", _admin())
-    salida = capsys.readouterr().out
-    assert "AVISO asesor_caida motivo=" in salida and "Dinero Secreto" not in salida and "P-0001" not in salida
+    lineas = [x for x in capsys.readouterr().out.splitlines() if "asesor_caida" in x]
+    assert len(lineas) == 1
+    assert re.fullmatch(r"AVISO asesor_caida motivo=(configuracion|plazo|sin_respuesta|error) segundos=\d+\.\d", lineas[0])
+
+
+def test_el_estado_dice_si_la_version_forzada_no_es_la_del_candado(con_asesor, monkeypatch):
+    con_asesor(Servicio([]))
+    asesor.CANDADO.write_text(json.dumps({"version": 6, "huella": asesor.huella()}))
+    monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "5")
+    assert asesor.estado() == ("listo", "ASESOR_AGENTE_VERSION fuerza la versión 5 y el candado dice 6")
+    monkeypatch.setattr(config, "ASESOR_AGENTE_VERSION", "6")
+    assert asesor.estado() == ("listo", "")
+
+
+def test_sin_tiempo_para_la_sesion_no_se_abre(con_asesor):
+    s = con_asesor(Servicio([corriendo(), mensaje("No debería llegar."), fin()]))
+    with pytest.raises(asesor.ErrorAsesor) as e:
+        asesor.preguntar("¿Hay gastos?", asistente.Rastro(_admin()), _admin(),
+                         plazo_s=asesor.CIERRE_MAX_S + asesor.MIN_SESION_S - 1)
+    assert e.value.agotado and s.peticiones == []
 
 
 def test_llegar_al_tope_de_gasto_no_es_una_caida(con_asesor, monkeypatch, capsys):

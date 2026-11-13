@@ -31,8 +31,39 @@ def test_el_presupuesto_de_una_pregunta_cabe_en_la_espera_de_cloudfront():
 
 
 def test_el_asesor_con_su_cierre_cabe_en_el_presupuesto():
-    cierre = 3 + 3 * asesor.CIERRE_S   # interrumpir, costo final y borrado de la sesión (asesor._cerrar)
-    assert asesor.PLAZO_TOTAL_S + cierre <= asistente.PRESUPUESTO_S
+    assert asesor.PLAZO_TOTAL_S + asesor.CIERRE_MAX_S <= asistente.PRESUPUESTO_S
+
+
+class Reloj:
+    """Reloj falso para `asistente.time`: avanza solo cuando la prueba lo dice."""
+    def __init__(self):
+        self.ahora = 1000.0
+
+    def monotonic(self):
+        return self.ahora
+
+
+def _admin():
+    return db.uno("select * from usuarios where correo='admin@demo.local'")
+
+
+def test_el_asesor_recibe_lo_que_queda_tras_poner_al_dia_el_indice(monkeypatch):
+    reloj, recibido = Reloj(), {}
+    monkeypatch.setattr(asistente, "time", reloj)
+    monkeypatch.setattr(asistente, "_indexar_si_toca", lambda: setattr(reloj, "ahora", reloj.ahora + 20))   # índice lento
+    monkeypatch.setattr(asesor, "estado", lambda: ("listo", ""))
+    monkeypatch.setattr(asesor, "preguntar", lambda *a, **k: recibido.update(k) or "Respuesta del asesor.")
+    assert asistente.responder("¿Cuántos gastos hay en revisión?", _admin())["modo"] == "asesor"
+    assert recibido["plazo_s"] == pytest.approx(asistente.PRESUPUESTO_S - 20)
+
+
+def test_el_modelo_recibe_el_limite_de_la_pregunta(monkeypatch):
+    recibido = {}
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r, **k: recibido.update(k) or "Respuesta del modelo.")
+    inicio = time.monotonic()
+    assert asistente.responder("¿Cuántos gastos hay en revisión?", _admin())["modo"] == "modelo"
+    assert inicio < recibido["limite"] <= time.monotonic() + asistente.PRESUPUESTO_S
 
 
 def test_si_el_asesor_falla_rapido_el_modelo_aun_alcanza_a_responder():

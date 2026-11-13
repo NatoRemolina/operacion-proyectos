@@ -1212,7 +1212,8 @@ def _responder(pregunta: str, usuario: dict, cid: int, contexto: dict | None = N
         situacion, detalle = asesor.estado()
         if situacion == "listo":
             try:
-                texto, modo = asesor.preguntar(pregunta, r, usuario, contexto=adicional), "asesor"
+                texto, modo = asesor.preguntar(pregunta, r, usuario, contexto=adicional,
+                                               plazo_s=limite - time.monotonic()), "asesor"
             except Exception as e:   # ningún fallo del asesor llega a la página: responde la vía siguiente
                 fallo = e
                 eventos.registrar("asistente", None, "asesor sin respuesta",

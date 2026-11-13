@@ -17,7 +17,7 @@ import json
 import sys
 import time
 
-from app import config, db
+from app import config, db, validar_config
 from app.servicios import asesor, asistente
 
 
@@ -116,14 +116,19 @@ def sincronizar() -> int:
                                    reintentar_red=False)
     print(f"Agente actualizado: versión {actual.get('version')} → {nuevo.get('version')}.")
     problemas = diferencias(nuevo)
-    if isinstance(nuevo.get("version"), int) and not problemas:
-        asesor.CANDADO.write_text(json.dumps({"version": nuevo["version"], "huella": asesor.huella()}, indent=2) + "\n",
-                                  encoding="utf-8")
-        print(f"Candado {asesor.CANDADO.name} escrito con la versión {nuevo['version']}: hay que commitearlo y desplegar "
-              "para que las sesiones la usen.")
-    if config.ASESOR_AGENTE_VERSION:
-        print(f"ASESOR_AGENTE_VERSION fuerza la versión {config.ASESOR_AGENTE_VERSION} y manda sobre el candado: "
-              "quítala del entorno (y del secreto) para usar la del candado.")
+    v = nuevo.get("version")
+    if not (isinstance(v, int) and not isinstance(v, bool) and v >= 1):
+        problemas.append("El servicio no devolvió un número de versión: el candado no se escribió.")
+    elif not problemas:
+        asesor.CANDADO.write_text(json.dumps({"version": v, "huella": asesor.huella()}, indent=2) + "\n", encoding="utf-8")
+        print(f"Candado {asesor.CANDADO.name} escrito con la versión {v}: hay que commitearlo y desplegar para que las "
+              "sesiones la usen.")
+    forzada = config.ASESOR_AGENTE_VERSION
+    if forzada and validar_config.version_valida(forzada):
+        print(f"ASESOR_AGENTE_VERSION fuerza la versión {forzada} y manda sobre el candado: quítala del entorno (y del "
+              "secreto, con poblar_secreto.py --quitar ASESOR_AGENTE_VERSION) para usar la del candado.")
+    elif forzada:   # mal escrita: no se muestra, puede arrastrar otras líneas del archivo
+        print(f"{validar_config.VERSION_INVALIDA}: se ignora y las sesiones usan la del candado. Conviene quitarla.")
     for p in problemas:
         print(f"  ✗ {p}")
     return 1 if problemas else 0

@@ -22,15 +22,15 @@ describe("alarmas de la API (H-37)", () => {
     assert.ok(avisan(alarma));
   });
 
-  test("avisa cuando el asesor del asistente cae 3 veces en 15 minutos, aunque la página responda bien", () => {
+  test("avisa cuando el asesor del asistente cae 2 veces en una hora, aunque la página responda bien", () => {
     const filtro = filtros.find((f) => f.FilterPattern === '"AVISO asesor_caida"');
     assert.ok(filtro, "falta el filtro de caídas del asesor");
     const { MetricNamespace, MetricName, MetricValue } = filtro.MetricTransformations[0];
     assert.equal(MetricValue, "1");
     const alarma = alarmas.find((a) => a.MetricName === MetricName && a.Namespace === MetricNamespace);
     assert.ok(alarma, "falta la alarma de caídas del asesor");
-    assert.equal(alarma.Threshold, 3);
-    assert.equal(alarma.Period, 900);
+    assert.equal(alarma.Threshold, 2);
+    assert.equal(alarma.Period, 3600);
     assert.equal(alarma.Statistic, "Sum");
     assert.ok(avisan(alarma));
   });

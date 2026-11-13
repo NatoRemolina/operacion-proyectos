@@ -4,16 +4,19 @@ Uso, desde la raíz del repositorio:
 
     python infra/poblar_secreto.py --env .env.produccion --ensayo      # qué claves subiría: sin valores y sin AWS
     AWS_PROFILE=operacion python infra/poblar_secreto.py --env .env.produccion
+    python infra/poblar_secreto.py --env .env.produccion --quitar ASESOR_AGENTE_VERSION   # retira una clave opcional
 
 - El archivo de origen es obligatorio: nunca se lee `.env` por omisión, que en desarrollo apunta a la base de pruebas.
 - El destino es siempre producción, así que se detiene si la base o el almacenamiento son el proyecto de pruebas de
   Supabase, venga del archivo o de lo que ya tenía el secreto. Cuál es ese proyecto lo dice el archivo local
   `.env.supabase-pruebas` (de esta carpeta o de la principal); de él solo se toma el identificador, y sin él no sigue.
 - Fusiona: lee el secreto actual, reemplaza las claves que el archivo trae con valor y conserva las demás (una clave
-  puesta a mano no se pierde). Retira APP_CLAVE, que nadie lee.
+  puesta a mano no se pierde). Retira APP_CLAVE, que nadie lee. Una clave vacía en el archivo no borra la del secreto:
+  para retirar una opcional (por ejemplo una ASESOR_AGENTE_VERSION que ya no hace falta), `--quitar CLAVE`.
 - Revisa la forma de lo que se escribe a mano (app/validar_config.py: versión del agente entera, cabeceras en JSON,
   direcciones por HTTPS, secreto del webhook largo), en el archivo y en el resultado de la fusión: si algo está mal no
-  sube nada. Avisa si ASESOR_AGENTE_VERSION fuerza otra versión que la del candado app/asesor_agente.json.
+  sube nada. Avisa si ASESOR_AGENTE_VERSION, en el archivo o en lo que queda del secreto, fuerza otra versión que la
+  del candado app/asesor_agente.json.
 - Nunca imprime valores, solo nombres de claves. La función lee el secreto al arrancar: el cambio entra en las
   instancias que arranquen después (las encendidas siguen con el valor anterior hasta apagarse, o hasta que se
   despliegue una versión nueva de la función).
@@ -74,6 +77,15 @@ def validar(valores: dict, donde: str):
         sys.exit(f"En {donde}: {'; '.join(problemas)}. No se cambió nada.")
 
 
+def comprobar_quitar(quitar: list[str], valores: dict):
+    """Solo se retiran claves opcionales que el archivo no trae: retirar y subir a la vez sería contradictorio."""
+    for clave in quitar:
+        if clave not in CLAVES or clave in OBLIGATORIAS:
+            sys.exit(f"--quitar {clave}: solo se retiran claves opcionales de la lista CLAVES. No se cambió nada.")
+        if clave in valores:
+            sys.exit(f"--quitar {clave}: el archivo la trae con valor; quítala del archivo o no la retires. No se cambió nada.")
+
+
 def avisar_version(valores: dict):
     """ASESOR_AGENTE_VERSION manda sobre el candado: si fuerza otra versión, se dice (no se detiene: puede ser a propósito)."""
     forzada = str(valores.get("ASESOR_AGENTE_VERSION") or "")
@@ -83,7 +95,7 @@ def avisar_version(valores: dict):
         return
     if forzada and forzada != str(del_candado):
         print(f"Aviso: ASESOR_AGENTE_VERSION fuerza la versión {forzada} y el candado app/asesor_agente.json dice "
-              f"{del_candado}. Si no es a propósito, ponla en {del_candado}.")
+              f"{del_candado}. Si no es a propósito, retírala con --quitar ASESOR_AGENTE_VERSION.")
 
 
 def leer(archivo: str) -> dict:
@@ -143,6 +155,8 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     a.add_argument("--env", required=True, help="archivo con la configuración de producción (por ejemplo .env.produccion)")
     a.add_argument("--ensayo", action="store_true", help="solo muestra qué claves subiría, sin valores y sin contactar AWS")
+    a.add_argument("--quitar", action="append", default=[], metavar="CLAVE",
+                   help="retira esa clave opcional del secreto (se puede repetir)")
     a.add_argument("--sin-telegram", action="store_true",
                    help="Telegram no se publica ahora: no exige sus claves y no toca las que ya tenga el secreto")
     x = a.parse_args(argv)
@@ -152,9 +166,12 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     comprobar(valores, x.env, pruebas)
     comprobar_telegram(valores, x.env, x.sin_telegram)
     validar(valores, x.env)
-    avisar_version(valores)
+    comprobar_quitar(x.quitar, valores)
     if x.ensayo:
+        avisar_version(valores)
         print(f"Ensayo: subiría {len(valores)} claves desde {x.env}: {', '.join(sorted(valores))}.")
+        if x.quitar:
+            print(f"Retiraría del secreto, si están: {', '.join(sorted(x.quitar))}.")
         faltan = [k for k in OBLIGATORIAS if k not in valores]
         if faltan:
             print(f"No están en el archivo (tendrían que estar ya en el secreto): {', '.join(faltan)}.")
@@ -171,16 +188,17 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     arn = _arn(sesion)
     cliente = sesion.client("secretsmanager", region_name=REGION)
     antes = _actual(cliente, arn)
-    final = {k: v for k, v in {**antes, **valores}.items() if k not in RETIRADAS}
+    final = {k: v for k, v in {**antes, **valores}.items() if k not in RETIRADAS and k not in x.quitar}
     comprobar(final, f"el secreto de {PILA}", pruebas)
-    validar(final, f"el secreto de {PILA} tras la fusión (un valor viejo que el archivo no reemplaza)")
+    validar(final, f"el secreto de {PILA} tras la fusión (un valor viejo que el archivo no reemplaza; se retira con --quitar)")
+    avisar_version(final)
     faltan = [k for k in OBLIGATORIAS if not final.get(k)]
     if faltan:
         sys.exit(f"Faltan {', '.join(faltan)}: la función no arrancaría. No se cambió nada.")
     cliente.put_secret_value(SecretId=arn, SecretString=json.dumps(final))
 
-    conservadas = sorted(set(antes) - set(valores) - set(RETIRADAS))
-    retiradas = sorted(set(antes) & set(RETIRADAS))
+    conservadas = sorted(set(antes) - set(valores) - set(RETIRADAS) - set(x.quitar))
+    retiradas = sorted(set(antes) & (set(RETIRADAS) | set(x.quitar)))
     print(f"Secreto de {PILA} actualizado. Del archivo: {', '.join(sorted(valores))}.")
     if conservadas:
         print(f"Conservadas del secreto: {', '.join(conservadas)}.")

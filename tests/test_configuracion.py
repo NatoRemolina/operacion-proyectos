@@ -21,6 +21,9 @@ RAIZ = Path(__file__).resolve().parent.parent
     ({"ASESOR_AGENTE_VERSION": ""}, []),
     ({"ASESOR_AGENTE_VERSION": "6\nASESOR_CABECERAS={}"}, [validar_config.VERSION_INVALIDA]),
     ({"ASESOR_AGENTE_VERSION": "-1"}, [validar_config.VERSION_INVALIDA]),
+    ({"ASESOR_AGENTE_VERSION": "²"}, [validar_config.VERSION_INVALIDA]),     # isdigit() lo acepta; int() no
+    ({"ASESOR_AGENTE_VERSION": "６"}, [validar_config.VERSION_INVALIDA]),
+    ({"ASESOR_AGENTE_VERSION": "06"}, [validar_config.VERSION_INVALIDA]),
     ({"ASESOR_CABECERAS": '{"x-version": "v1"}', "MODELO_CABECERAS": {"x": "1"}}, []),
     ({"ASESOR_CABECERAS": "x-version: v1"}, ["ASESOR_CABECERAS no es un objeto JSON"]),
     ({"MODELO_CABECERAS": '"texto"'}, ["MODELO_CABECERAS no es un objeto JSON"]),
@@ -46,6 +49,12 @@ def test_una_version_mal_escrita_queda_como_error_al_arrancar_sin_mostrar_el_val
     assert p.returncode == 0, p.stderr   # arranca igual: la variable es opcional
     assert "ERROR peticion=arranque" in p.stdout and "ASESOR_AGENTE_VERSION" in p.stdout   # la alarma lo cuenta
     assert "ValorPegadoDeMas" not in p.stdout + p.stderr
+
+
+def test_un_digito_raro_tampoco_tumba_el_arranque():
+    p = _arrancar(ASESOR_AGENTE_VERSION="²")
+    assert p.returncode == 0, p.stderr
+    assert "ERROR peticion=arranque" in p.stdout
 
 
 def test_bien_configurada_no_deja_errores_al_arrancar():

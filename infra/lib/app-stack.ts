@@ -113,7 +113,8 @@ export class AppStack extends Stack {
       metricName: "CaidasDelAsesor",
       metricValue: "1",
     });
-    alarma("CaidasDelAsesor", caidas.metric({ period: Duration.minutes(15), statistic: "Sum" }), 3);
+    // Con poco tráfico (unas preguntas por hora) una ventana corta no junta caídas: 2 en una hora ya no es casualidad
+    alarma("CaidasDelAsesor", caidas.metric({ period: Duration.hours(1), statistic: "Sum" }), 2);
     alarma("Respuestas5xx", vivo.metric("Url5xxCount", { period: Duration.minutes(5), statistic: "Sum" }), 1);
 
     new CfnOutput(this, "Url", { value: url.url });
