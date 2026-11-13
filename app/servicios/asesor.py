@@ -26,6 +26,7 @@ from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
+from sqlalchemy import text
 
 from .. import config, db
 from . import acceso, agente, asistente, costo, justificaciones, viajes
@@ -40,6 +41,9 @@ SONDEO_MIN_S, SONDEO_MAX_S = 0.5, 1.5
 MAX_PAGINAS = 5
 REINTENTABLES = {408, 429, 500, 502, 503, 504, 529}
 TOPE_USD_DIA = Decimal("2")   # si el supuesto asesor_usd_dia falta o está mal escrito
+TOPE_USD_DIA_COLABORADORES = Decimal("1")   # ídem asesor_usd_dia_colaboradores
+ESTIMADO_USD_SESION = Decimal("0.05")       # ídem asesor_usd_estimado_sesion
+BLOQUEO_GASTO = 7_341_002   # bloqueo de PostgreSQL que pone en fila las reservas de gasto del asesor
 # Herramientas que ejecuta el propio servicio (consola, archivos, web, MCP): la plataforma no las permite
 AJENAS = ("agent.tool_use", "agent.mcp_tool_use", "agent.tool_result", "agent.mcp_tool_result")
 
@@ -305,34 +309,74 @@ def costo_usd(lista) -> Decimal | None:
     return centavos / 100 if centavos.is_finite() and centavos >= 0 else None
 
 
-def gasto_hoy() -> Decimal:
-    """Lo gastado hoy (día de la empresa) en sesiones del asesor, sumado con Decimal desde `llamadas_modelo`."""
+def gasto_hoy(colaboradores: bool = False) -> Decimal:
+    """Lo gastado hoy (día de la empresa) en sesiones del asesor, sumado con Decimal desde `llamadas_modelo`. Incluye
+    lo reservado por las sesiones en curso. Con `colaboradores`, solo las de quien no es de administración."""
     total = Decimal(0)
-    for f in db.todos("select costo_usd from llamadas_modelo where uso='asesor' and momento>=:d and costo_usd is not null",
-                      d=inicio_del_dia()):
+    de_quien = " and entidad_id in (select id from usuarios where rol<>'admin')" if colaboradores else ""
+    for f in db.todos("select costo_usd from llamadas_modelo where uso='asesor' and momento>=:d and costo_usd is not null"
+                      + de_quien, d=inicio_del_dia()):
         with contextlib.suppress(InvalidOperation):
             total += Decimal(str(f["costo_usd"]))
     return total
 
 
-def tope_usd_dia() -> Decimal:
-    """Supuesto editable `asesor_usd_dia` (Reglas y supuestos); si falta o está mal escrito, 2 USD."""
-    regla = costo.catalogo().get(("supuesto", "", "", "asesor_usd_dia"))
+def _supuesto_usd(clave: str, defecto: Decimal) -> Decimal:
+    """Un supuesto editable en USD (Reglas y supuestos); si falta o está mal escrito, el valor por defecto."""
+    regla = costo.catalogo().get(("supuesto", "", "", clave))
     try:
-        valor = Decimal(str(regla["valor"]).strip()) if regla else TOPE_USD_DIA
+        valor = Decimal(str(regla["valor"]).strip()) if regla else defecto
     except InvalidOperation:
-        return TOPE_USD_DIA
-    return valor if valor.is_finite() and valor >= 0 else TOPE_USD_DIA
+        return defecto
+    return valor if valor.is_finite() and valor >= 0 else defecto
 
 
-def _registrar(r: asistente.Rastro, ms: int, error: str):
-    """Una fila por sesión en `llamadas_modelo` (uso «asesor»): la ven Monitoreo y el tope de gasto del día."""
+def tope_usd_dia() -> Decimal:
+    """Supuesto `asesor_usd_dia`: el tope de toda la empresa; si falta o está mal escrito, 2 USD."""
+    return _supuesto_usd("asesor_usd_dia", TOPE_USD_DIA)
+
+
+def tope_usd_colaboradores() -> Decimal:
+    """Supuesto `asesor_usd_dia_colaboradores`: la parte del tope que pueden gastar colaboradores y gestores."""
+    return _supuesto_usd("asesor_usd_dia_colaboradores", TOPE_USD_DIA_COLABORADORES)
+
+
+def estimado_usd_sesion() -> Decimal:
+    """Supuesto `asesor_usd_estimado_sesion`: lo que se reserva al abrir una sesión, antes de saber su costo."""
+    return _supuesto_usd("asesor_usd_estimado_sesion", ESTIMADO_USD_SESION)
+
+
+def _reservar_gasto(usuario: dict) -> int:
+    """Reserva el costo estimado de una sesión antes de abrirla, en fila con las demás reservas: varias sesiones
+    simultáneas no pasan juntas el tope. Fuera de administración vale además el cupo de colaboradores, así
+    administración conserva el suyo. Devuelve la fila de `llamadas_modelo` que se completa al cerrar."""
+    with db.transaccion() as c:
+        if not config.ES_SQLITE:   # en SQLite la transacción ya toma el cerrojo de escritura
+            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_GASTO})
+        gastado, tope = gasto_hoy(), tope_usd_dia()
+        if gastado >= tope:
+            raise ErrorAsesor(f"se alcanzó el tope de gasto del día ({gastado:.2f} de {tope:.2f} USD, supuesto asesor_usd_dia)", tope=True)
+        if not acceso.es_admin(usuario):
+            gastado, tope = gasto_hoy(colaboradores=True), tope_usd_colaboradores()
+            if gastado >= tope:
+                raise ErrorAsesor(f"se alcanzó el tope de gasto del día de colaboradores y gestores ({gastado:.2f} de {tope:.2f} USD, "
+                                  "supuesto asesor_usd_dia_colaboradores)", tope=True)
+        return db.insertar("llamadas_modelo", momento=db.ahora(), uso="asesor", entidad_id=usuario.get("id"), modelo=_nombre_agente(),
+                           estado_http=0, error="en curso", costo_usd=str(estimado_usd_sesion()))
+
+
+def _registrar(r: asistente.Rastro, ms: int, error: str, reserva: int):
+    """Completa la fila de la sesión en `llamadas_modelo` (uso «asesor»): la ven Monitoreo y el tope de gasto del día.
+
+    El costo reservado se reemplaza por el que informa el servicio; si no lo informa, queda lo reservado. Si la
+    sesión no llegó a abrirse, no costó nada.
+    """
     gasto = r.sesion.get("costo_usd")
+    costo_final = str(gasto) if gasto is not None else (str(estimado_usd_sesion()) if r.sesion.get("id") else "0")
     with contextlib.suppress(Exception):   # el registro de uso nunca tumba la respuesta
-        db.insertar("llamadas_modelo", momento=db.ahora(), uso="asesor", entidad_id=None, modelo=_nombre_agente(),
-                    tokens_entrada=r.sesion.get("entrada", 0), tokens_salida=r.sesion.get("salida", 0), latencia_ms=ms,
-                    estado_http=0 if error else 200, motivo_parada=None if error else "end_turn", error=error[:300],
-                    costo_usd=str(gasto) if gasto is not None else None)
+        db.actualizar("llamadas_modelo", reserva, momento=db.ahora(), tokens_entrada=r.sesion.get("entrada", 0),
+                      tokens_salida=r.sesion.get("salida", 0), latencia_ms=ms, estado_http=0 if error else 200,
+                      motivo_parada=None if error else "end_turn", error=error[:300], costo_usd=costo_final)
 
 
 # ---------- herramientas propias del asesor ----------
@@ -672,13 +716,11 @@ def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: b
     """
     inicio = _reloj()
     limite = inicio + PLAZO_TOTAL_S
-    error = ""
+    error, reserva = "", None
     try:
         if not activo():
             raise ErrorAsesor("no está configurado")
-        gastado, tope = gasto_hoy(), tope_usd_dia()
-        if gastado >= tope:
-            raise ErrorAsesor(f"se alcanzó el tope de gasto del día ({gastado:.2f} de {tope:.2f} USD, supuesto asesor_usd_dia)", tope=True)
+        reserva = _reservar_gasto(usuario)
         cuerpo = {
             "agent": _agente(), "environment_id": config.ASESOR_ENTORNO_ID,
             "title": f"Asistente de administración · {db.ahora()[:16]}",
@@ -717,5 +759,5 @@ def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: b
         error = str(falla)
         raise falla from None
     finally:
-        if r.sesion.get("id"):
-            _registrar(r, int((_reloj() - inicio) * 1000), error)
+        if reserva:
+            _registrar(r, int((_reloj() - inicio) * 1000), error, reserva)

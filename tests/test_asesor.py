@@ -5,6 +5,7 @@ eventos guionados a medida que la plataforma responde las herramientas.
 """
 import itertools
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -683,3 +684,54 @@ def test_fuera_de_administracion_los_avisos_del_asesor_no_dan_detalles_internos(
     con_asesor(Servicio(crear=500))
     r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
     assert "HTTP" not in r["texto"] and r["texto"].startswith("(El asesor no estaba disponible")
+
+
+
+# ---------- tope de gasto: reserva por sesión y cupo aparte para colaboradores ----------
+def test_las_sesiones_simultaneas_no_pasan_del_tope_de_gasto(monkeypatch):
+    """Cada sesión reserva un costo estimado antes de abrirse: ocho a la vez con cupo para tres, abren tres."""
+    monkeypatch.setattr(asesor, "estimado_usd_sesion", lambda: Decimal("0.05"))
+    tope = asesor.gasto_hoy() + Decimal("0.15")
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: tope)
+
+    def reservar(_):
+        try:
+            return asesor._reservar_gasto(_admin())
+        except asesor.ErrorAsesor as e:
+            assert e.tope
+            return None
+    with ThreadPoolExecutor(8) as hilos:
+        reservas = [x for x in hilos.map(reservar, range(8)) if x]
+    try:
+        assert len(reservas) == 3 and asesor.gasto_hoy() == tope
+    finally:
+        for i in reservas:
+            db.ejecutar("delete from llamadas_modelo where id=:i", i=i)
+
+
+def test_la_reserva_se_reemplaza_por_el_costo_real_y_queda_a_nombre_de_quien_pregunta(con_asesor, piloto_con_gastos, monkeypatch):
+    monkeypatch.setattr(asesor, "estimado_usd_sesion", lambda: Decimal("0.05"))
+    piloto = db.uno("select * from usuarios where id=:i", i=piloto_con_gastos["id"])
+    con_asesor(Servicio([corriendo(), mensaje("Te quedan 100 USD."), fin()], uso={"list_cost": {"amount": "4", "currency": "USD"}}))
+    total, de_colaboradores = asesor.gasto_hoy(), asesor.gasto_hoy(colaboradores=True)
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert r["modo"] == "asesor"
+    fila = db.uno("select * from llamadas_modelo where uso='asesor' order by id desc limit 1")
+    assert fila["costo_usd"] == "0.04" and fila["entidad_id"] == piloto["id"] and fila["estado_http"] == 200
+    assert asesor.gasto_hoy() - total == Decimal("0.04") and asesor.gasto_hoy(colaboradores=True) - de_colaboradores == Decimal("0.04")
+
+
+def test_el_cupo_de_colaboradores_no_consume_el_de_administracion(con_asesor, piloto_con_gastos, monkeypatch):
+    piloto = db.uno("select * from usuarios where id=:i", i=piloto_con_gastos["id"])
+    s = con_asesor(Servicio([corriendo(), mensaje("Respuesta para administración."), fin()]))
+    monkeypatch.setattr(asesor, "tope_usd_colaboradores", lambda: asesor.gasto_hoy(colaboradores=True))   # ya llegaron a su cupo
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert s.peticiones == [] and r["modo"] == "determinista"   # el colaborador recibe la respuesta directa
+    assert asistente.responder("¿Hay gastos en revisión?", _admin())["modo"] == "asesor"   # administración conserva su cupo
+
+
+def test_los_supuestos_del_gasto_del_asesor_son_editables():
+    asistente.asegurar_regla()
+    reglas = {f["clave"]: f["valor"] for f in db.todos("select clave, valor from reglas where ambito='supuesto'")}
+    assert reglas["asesor_usd_estimado_sesion"] == "0.05" and reglas["asesor_usd_dia_colaboradores"] == "1"
+    assert asesor.estimado_usd_sesion() == Decimal("0.05") and asesor.tope_usd_colaboradores() == Decimal("1")

@@ -824,12 +824,20 @@ def _determinista(pregunta: str, r: Rastro) -> str:
 
 
 # ---------- entrada ----------
+SUPUESTOS = (
+    ("asistente_preguntas_dia", str(TOPE_DIARIO), "Preguntas al asistente por persona y por día."),
+    ("asistente_dictados_dia", str(TOPE_DIARIO), "Preguntas dictadas por voz al asistente por persona y por día (cada una paga una transcripción)."),
+    ("asesor_usd_estimado_sesion", "0.05", "Costo que se reserva al abrir cada sesión del asesor (USD); al cerrarla se reemplaza por el real."),
+    ("asesor_usd_dia_colaboradores", "1", "Gasto máximo por día en sesiones del asesor de colaboradores y gestores (USD). "
+                                          "Es parte del tope de toda la empresa (asesor_usd_dia): el resto queda para administración."),
+)
+
+
 def asegurar_regla():
-    """Los topes diarios son supuestos editables en la pantalla Reglas."""
-    for clave, nota in (("asistente_preguntas_dia", "Preguntas al asistente por persona y por día."),
-                        ("asistente_dictados_dia", "Preguntas dictadas por voz al asistente por persona y por día (cada una paga una transcripción).")):
+    """Los topes diarios y el gasto del asesor son supuestos editables en la pantalla Reglas."""
+    for clave, valor, nota in SUPUESTOS:
         if not db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
-            db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=str(TOPE_DIARIO),
+            db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor,
                         nota=nota, fuente="Supuesto editable", confianza="supuesto", verificado=date.today().isoformat())
 
 
