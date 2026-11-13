@@ -290,3 +290,15 @@ def test_r1_6_el_crudo_nunca_lleva_el_pedido_de_reserva():
     fila = db.uno("select crudo from ofertas_tarifa where busqueda_clave=:c", c=clave)
     assert "booking_request" not in fila["crudo"] and "post_data" not in fila["crudo"]
     assert json.loads(fila["crudo"])["price"] == 470
+
+
+def test_r1_7_una_reconfirmacion_lleva_sus_fechas_y_su_ruta():
+    """La reconfirmación es el precio al decidir: su clave no trae fechas ni ruta, salen de `selected_flights`."""
+    datos = _respuesta(612, search_parameters={"engine": "google_flights", "type": 1, "selected_flights_json": "{}"},
+                       search_metadata={"created_at": "2026-11-12 15:30:00 UTC"})
+    clave = "reconfirmacion_AA1851AA1851_202611121530.json"
+    _guardar_respuesta(clave, datos, "2026-11-12 15:30:00")
+    ofertas.actualizar()
+    fila = db.uno("select * from ofertas_tarifa where busqueda_clave=:c", c=clave)
+    assert (fila["ida"], fila["regreso"], fila["origen"], fila["destino"]) == ("2026-12-08", "2026-12-11", "MIA", "LAS")
+    assert fila["anticipacion_dias"] == 26 and fila["noches"] == 3 and fila["vuelos"] == "AA1851" and fila["precio"] == 612

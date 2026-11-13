@@ -239,21 +239,28 @@ def _de_respuesta(origen_fila: str, clave: str, datos: dict, creado: str | None)
     if not isinstance(datos, dict) or not datos.get("booking_options"):
         return []
     p = datos.get("search_parameters") or {}
+    # Solo las claves de reserva y tarifas llevan ruta y fechas («reserva_MIA_LAS_ida_regreso_vuelos»); una reconfirmación
+    # no («reconfirmacion_<vuelos>_<momento>»): sus fechas y su ruta salen de los vuelos elegidos
     partes = clave.removesuffix(".json").split("_")
-    tramos = ((datos.get("selected_flights") or [{}])[0] or {}).get("flights") or []
+    partes = partes if clave.startswith(("reserva_", "tarifas_")) and len(partes) >= 5 else []
+    elegidos = datos.get("selected_flights") or []
+    tramos = ((elegidos[0] if elegidos else {}) or {}).get("flights") or []
+    vuelta = ((elegidos[1] if len(elegidos) > 1 else {}) or {}).get("flights") or []
     numeros = "".join((t.get("flight_number") or "").replace(" ", "") for t in tramos)
     if not numeros and len(partes) == 6:
         numeros = partes[5]
     origen = (tramos[0].get("departure_airport") or {}).get("id") if tramos else None
     destino = (tramos[-1].get("arrival_airport") or {}).get("id") if tramos else None
-    ida, regreso = p.get("outbound_date") or (partes[3] if len(partes) >= 5 else None), p.get("return_date") or (partes[4] if len(partes) >= 5 else None)
+    salida = lambda ts: ((ts[0].get("departure_airport") or {}).get("time") or "")[:10] or None if ts else None  # noqa: E731
+    ida = p.get("outbound_date") or salida(tramos) or (partes[3] if partes else None)
+    regreso = p.get("return_date") or salida(vuelta) or (partes[4] if partes else None)
     momento = ((datos.get("search_metadata") or {}).get("created_at") or creado or db.ahora())[:19]
     consulta = db.uno("select solicitud_id from consultas_buscador where clave=:c and solicitud_id is not null order by id limit 1", c=clave)
     sid = consulta["solicitud_id"] if consulta else None
     base = {"momento": momento, "fuente": "buscador", "origen_fila": origen_fila, "busqueda_clave": clave,
             "solicitud_id": sid, "opcion_id": _opcion_de(sid, numeros), "analisis_id": None,
-            "origen": origen or p.get("departure_id") or (partes[1] if len(partes) >= 3 else None),
-            "destino": destino or p.get("arrival_id") or (partes[2] if len(partes) >= 3 else None),
+            "origen": origen or p.get("departure_id") or (partes[1] if partes else None),
+            "destino": destino or p.get("arrival_id") or (partes[2] if partes else None),
             "ida": ida, "regreso": regreso, "vuelos": numeros, "aerolinea": tramos[0].get("airline") if tramos else None,
             "moneda": p.get("currency") or "USD", **_calendario(ida, regreso, momento)}
     filas = []
