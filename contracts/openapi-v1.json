@@ -682,6 +682,203 @@
         }
       }
     },
+    "/api/v1/cuenta": {
+      "get": {
+        "tags": [
+          "cuenta"
+        ],
+        "summary": "Mi Cuenta",
+        "description": "Mis datos y el estado de Telegram. `canal_activo` dice si el bot está configurado (en producción hoy no lo está).",
+        "operationId": "mi_cuenta_api_v1_cuenta_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiCuenta"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cuenta/clave": {
+      "post": {
+        "tags": [
+          "cuenta"
+        ],
+        "summary": "Cambiar Clave",
+        "description": "Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.\nTambién desvincula su Telegram. Cinco fallos seguidos con la actual cierran sus sesiones: 429 `TOO_MANY_ATTEMPTS`.",
+        "operationId": "cambiar_clave_api_v1_cuenta_clave_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioMiClave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaveCambiada"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Demasiados intentos de ingreso, o se alcanzó un tope del día",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cuenta/telegram/vinculo": {
+      "post": {
+        "tags": [
+          "cuenta"
+        ],
+        "summary": "Vincular Telegram",
+        "description": "Un código de un solo uso para vincular el chat (vale unos minutos; en la base queda solo su huella).\nCon el canal apagado: 409 `INVALID_STATE`.",
+        "operationId": "vincular_telegram_api_v1_cuenta_telegram_vinculo_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VinculoTelegram"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cuenta/telegram/desvincular": {
+      "post": {
+        "tags": [
+          "cuenta"
+        ],
+        "summary": "Desvincular Telegram",
+        "operationId": "desvincular_telegram_api_v1_cuenta_telegram_desvincular_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiCuenta"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gastos": {
       "get": {
         "tags": [
@@ -1958,6 +2155,361 @@
         }
       }
     },
+    "/api/v1/proyectos": {
+      "get": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Lista",
+        "description": "Administración, todos; quien gestiona, los suyos; el resto, 403. Más reciente primero.",
+        "operationId": "lista_api_v1_proyectos_get",
+        "parameters": [
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Cuántos elementos devolver (1 a 100).",
+              "default": 20,
+              "title": "Limite"
+            },
+            "description": "Cuántos elementos devolver (1 a 100)."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "El valor de `siguiente` de la página anterior.",
+              "title": "Cursor"
+            },
+            "description": "El valor de `siguiente` de la página anterior."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListaProyectos"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Crear",
+        "description": "Solo administración. Deja el evento `proyecto creado`.",
+        "operationId": "crear_api_v1_proyectos_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatosProyecto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProyectoResumen"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/proyectos/{id}": {
+      "get": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Tablero",
+        "description": "Previsto frente a real por categoría, viajes y gastos del proyecto. Lo ajeno responde 404.",
+        "operationId": "tablero_api_v1_proyectos__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableroProyecto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Editar",
+        "description": "Solo administración. Se mandan todos los campos. Deja el evento `proyecto editado`.",
+        "operationId": "editar_api_v1_proyectos__id__post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatosProyecto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProyectoResumen"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/proyectos/{id}/exportar.csv": {
+      "get": {
+        "tags": [
+          "proyectos"
+        ],
+        "summary": "Exportar",
+        "description": "El mismo CSV que la pantalla actual del proyecto. Lo ajeno responde 404.",
+        "operationId": "exportar_api_v1_proyectos__id__exportar_csv_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Los gastos del proyecto en CSV",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/reglas": {
       "get": {
         "tags": [
@@ -2114,6 +2666,782 @@
           },
           "403": {
             "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usuarios": {
+      "get": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Lista",
+        "description": "Todas las cuentas, activas o no, la más reciente primero.",
+        "operationId": "lista_api_v1_usuarios_get",
+        "parameters": [
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Cuántos elementos devolver (1 a 100).",
+              "default": 20,
+              "title": "Limite"
+            },
+            "description": "Cuántos elementos devolver (1 a 100)."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "El valor de `siguiente` de la página anterior.",
+              "title": "Cursor"
+            },
+            "description": "El valor de `siguiente` de la página anterior."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListaUsuarios"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Crear",
+        "description": "La contraseña inicial nunca se devuelve. Deja el evento `cuenta creada`.",
+        "operationId": "crear_api_v1_usuarios_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuevaCuenta"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoUsuario"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usuarios/{id}/rol": {
+      "post": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Cambiar Rol",
+        "description": "Cierra las sesiones de la cuenta. Quien deja de ser gestor pierde sus proyectos.\nNadie se quita su propio rol de administración ni deja la plataforma sin ella: 409 `INVALID_STATE`.",
+        "operationId": "cambiar_rol_api_v1_usuarios__id__rol_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioRol"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoUsuario"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usuarios/{id}/estado": {
+      "post": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Cambiar Estado",
+        "description": "Desactivar cierra sus sesiones. Nadie desactiva su propia cuenta ni a la última administración: 409 `INVALID_STATE`.",
+        "operationId": "cambiar_estado_api_v1_usuarios__id__estado_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioEstadoCuenta"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoUsuario"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usuarios/{id}/cargo": {
+      "post": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Cambiar Cargo",
+        "operationId": "cambiar_cargo_api_v1_usuarios__id__cargo_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioCargo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoUsuario"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usuarios/{id}/proyectos": {
+      "post": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Asignar Proyectos",
+        "description": "Reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo para cuentas con permiso de gestor\n(la pantalla actual solo lo ofrece a ellas): si no, al volverla gestora heredaría acceso sin que nadie lo decida.",
+        "operationId": "asignar_proyectos_api_v1_usuarios__id__proyectos_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioProyectos"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoUsuario"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usuarios/{id}/clave": {
+      "post": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Restablecer Clave",
+        "description": "La contraseña nueva nunca se devuelve. Cierra sus sesiones, desvincula su Telegram (le avisa antes por ese chat) y\nlimpia el bloqueo por intentos. La propia no se restablece aquí (409 `INVALID_STATE`): se cambia en «Mi cuenta».",
+        "operationId": "restablecer_clave_api_v1_usuarios__id__clave_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuevaClave"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoUsuario"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cargos": {
+      "get": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Cargos",
+        "operationId": "cargos_api_v1_cargos_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListaCargos"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Crear Cargo",
+        "description": "Deja el evento `cargo creado`. Un nombre repetido (sin importar mayúsculas) o con menos de 3 letras: 422.",
+        "operationId": "crear_cargo_api_v1_cargos_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuevoCargo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cargo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cargos/{id}": {
+      "post": {
+        "tags": [
+          "usuarios"
+        ],
+        "summary": "Cambiar Cargo Catalogo",
+        "description": "Renombra o activa/desactiva. Quien tiene un cargo desactivado lo conserva.",
+        "operationId": "cambiar_cargo_catalogo_api_v1_cargos__id__post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioCargoCatalogo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cargo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
             "content": {
               "application/json": {
                 "schema": {
@@ -2814,6 +4142,75 @@
         ],
         "title": "Body_enviar_api_v1_gastos_post"
       },
+      "CambioCargo": {
+        "properties": {
+          "cargo_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cargo Id",
+            "description": "Un cargo activo, o null para quitarlo."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "cargo_id"
+        ],
+        "title": "CambioCargo"
+      },
+      "CambioCargoCatalogo": {
+        "properties": {
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre"
+          },
+          "activo": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activo"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CambioCargoCatalogo",
+        "description": "Renombrar, activar o desactivar. Lo que no se manda no cambia. Un cargo nunca se borra."
+      },
+      "CambioEstadoCuenta": {
+        "properties": {
+          "activo": {
+            "type": "boolean",
+            "title": "Activo"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "activo"
+        ],
+        "title": "CambioEstadoCuenta"
+      },
       "CambioEstadoViaje": {
         "properties": {
           "accion": {
@@ -2848,6 +4245,94 @@
         ],
         "title": "CambioEstadoViaje",
         "description": "Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."
+      },
+      "CambioMiClave": {
+        "properties": {
+          "actual": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Actual"
+          },
+          "nueva": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Nueva",
+            "description": "10 caracteres o más y distinta de la actual."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "actual",
+          "nueva"
+        ],
+        "title": "CambioMiClave"
+      },
+      "CambioProyectos": {
+        "properties": {
+          "proyectos_ids": {
+            "items": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 1.0
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Proyectos Ids",
+            "description": "Los proyectos que gestiona; reemplaza los anteriores."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "proyectos_ids"
+        ],
+        "title": "CambioProyectos"
+      },
+      "CambioRol": {
+        "properties": {
+          "rol": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "Rol",
+            "description": "colaborador, gestor o admin."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "rol"
+        ],
+        "title": "CambioRol"
+      },
+      "Cargo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "activo": {
+            "type": "boolean",
+            "title": "Activo"
+          },
+          "personas": {
+            "type": "integer",
+            "title": "Personas",
+            "description": "Cuentas que tienen este cargo."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre",
+          "activo",
+          "personas"
+        ],
+        "title": "Cargo"
       },
       "CatalogoReglas": {
         "properties": {
@@ -2891,6 +4376,61 @@
           "nombre"
         ],
         "title": "Categoria"
+      },
+      "CategoriaProyecto": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "title": "Clave",
+            "description": "vuelo, hotel, alquiler_carro o viaticos (todo lo que se paga en el viaje)."
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "previsto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previsto Usd"
+          },
+          "real_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Real Usd"
+          },
+          "diferencia_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diferencia Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clave",
+          "nombre",
+          "previsto_usd",
+          "real_usd",
+          "diferencia_usd"
+        ],
+        "title": "CategoriaProyecto"
       },
       "Cifra": {
         "properties": {
@@ -2938,6 +4478,25 @@
           "pie"
         ],
         "title": "Cifra"
+      },
+      "ClaveCambiada": {
+        "properties": {
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token",
+            "description": "La sesión se renueva al cambiar la contraseña: el token CSRF anterior deja de servir."
+          },
+          "mensaje": {
+            "type": "string",
+            "title": "Mensaje"
+          }
+        },
+        "type": "object",
+        "required": [
+          "csrf_token",
+          "mensaje"
+        ],
+        "title": "ClaveCambiada"
       },
       "Columna": {
         "properties": {
@@ -3038,7 +4597,7 @@
           "proyecto": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Referencia"
+                "$ref": "#/components/schemas/app__api_v1__esquemas__Referencia"
               },
               {
                 "type": "null"
@@ -3048,7 +4607,7 @@
           "viajero": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Referencia"
+                "$ref": "#/components/schemas/app__api_v1__esquemas__Referencia"
               },
               {
                 "type": "null"
@@ -3463,6 +5022,58 @@
         },
         "type": "object",
         "title": "Cupo"
+      },
+      "DatosProyecto": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Nombre",
+            "description": "3 caracteres o más; se guardan hasta 120."
+          },
+          "cliente": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Cliente",
+            "description": "Opcional; vacío se guarda como null.",
+            "default": ""
+          },
+          "ciudad": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Ciudad",
+            "description": "Opcional; vacío se guarda como null.",
+            "default": ""
+          },
+          "fecha_inicio": {
+            "type": "string",
+            "maxLength": 10,
+            "title": "Fecha Inicio",
+            "description": "AAAA-MM-DD"
+          },
+          "fecha_fin": {
+            "type": "string",
+            "maxLength": 10,
+            "title": "Fecha Fin",
+            "description": "AAAA-MM-DD; no antes de `fecha_inicio`."
+          },
+          "moneda": {
+            "type": "string",
+            "maxLength": 3,
+            "title": "Moneda",
+            "description": "Código de tres letras (USD, EUR...); se guarda en mayúsculas.",
+            "default": "USD"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nombre",
+          "fecha_inicio",
+          "fecha_fin"
+        ],
+        "title": "DatosProyecto",
+        "description": "Alta o edición de un proyecto. Quién lo hace sale de la sesión."
       },
       "DatosRevision": {
         "properties": {
@@ -4130,6 +5741,32 @@
         ],
         "title": "Equipo"
       },
+      "EstadoTelegram": {
+        "properties": {
+          "vinculado": {
+            "type": "boolean",
+            "title": "Vinculado"
+          },
+          "usuario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usuario",
+            "description": "Alias de Telegram del chat vinculado, si lo tiene."
+          }
+        },
+        "type": "object",
+        "required": [
+          "vinculado",
+          "usuario"
+        ],
+        "title": "EstadoTelegram"
+      },
       "EventoPersona": {
         "properties": {
           "momento": {
@@ -4681,6 +6318,143 @@
           "destino"
         ],
         "title": "FuenteAsistente"
+      },
+      "GastoDelProyecto": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViajeCodigo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "procesando",
+              "revision",
+              "aprobado_auto",
+              "aprobado",
+              "rechazado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "creado": {
+            "type": "string",
+            "title": "Creado"
+          },
+          "propio": {
+            "type": "boolean",
+            "title": "Propio",
+            "description": "Es de la persona de la sesión: nadie revisa sus propios gastos.",
+            "default": false
+          },
+          "viajero": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viajero",
+            "description": "Nombre de quien viaja, si el gasto lo tiene."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "viaje",
+          "comercio",
+          "fecha",
+          "categoria",
+          "total",
+          "moneda",
+          "total_usd",
+          "estado",
+          "estado_texto",
+          "creado",
+          "viajero"
+        ],
+        "title": "GastoDelProyecto"
       },
       "GastoPersona": {
         "properties": {
@@ -5787,6 +7561,23 @@
         ],
         "title": "LineaPresupuesto"
       },
+      "ListaCargos": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Cargo"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "El catálogo completo, sin paginar, por nombre."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ListaCargos"
+      },
       "ListaGastos": {
         "properties": {
           "items": {
@@ -5848,6 +7639,62 @@
           "carretera"
         ],
         "title": "ListaLugares"
+      },
+      "ListaProyectos": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProyectoResumen"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "siguiente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Siguiente"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "siguiente"
+        ],
+        "title": "ListaProyectos"
+      },
+      "ListaUsuarios": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Usuario"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "siguiente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Siguiente"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "siguiente"
+        ],
+        "title": "ListaUsuarios"
       },
       "ListaViajes": {
         "properties": {
@@ -6093,6 +7940,43 @@
         ],
         "title": "Membresia"
       },
+      "MiCuenta": {
+        "properties": {
+          "persona": {
+            "$ref": "#/components/schemas/Persona"
+          },
+          "rol_texto": {
+            "type": "string",
+            "title": "Rol Texto"
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/TelegramPropio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "persona",
+          "rol_texto",
+          "telegram"
+        ],
+        "title": "MiCuenta"
+      },
+      "NuevaClave": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Clave",
+            "description": "10 caracteres o más."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "clave"
+        ],
+        "title": "NuevaClave"
+      },
       "NuevaCotizacion": {
         "properties": {
           "proyecto_id": {
@@ -6201,6 +8085,57 @@
         "title": "NuevaCotizacion",
         "description": "Un pedido de cotización. Quien cotiza sale de la sesión; nunca del cuerpo."
       },
+      "NuevaCuenta": {
+        "properties": {
+          "correo": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Correo"
+          },
+          "nombre": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Nombre",
+            "description": "Vacío usa el correo.",
+            "default": ""
+          },
+          "rol": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "Rol",
+            "description": "colaborador, gestor o admin."
+          },
+          "clave": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Clave",
+            "description": "10 caracteres o más."
+          },
+          "cargo_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cargo Id",
+            "description": "Un cargo activo, o null (0 también es «sin cargo»)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "correo",
+          "rol",
+          "clave"
+        ],
+        "title": "NuevaCuenta",
+        "description": "La contraseña inicial la escribe administración y nunca se devuelve. Toda cuenta nueva recibe su perfil de viajero."
+      },
       "NuevaDecision": {
         "properties": {
           "vuelo_id": {
@@ -6262,6 +8197,22 @@
         ],
         "title": "NuevaJustificacion",
         "description": "Para qué fue el gasto, con las palabras de la persona."
+      },
+      "NuevoCargo": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Nombre",
+            "description": "Al menos 3 letras; se guardan hasta 60 caracteres."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nombre"
+        ],
+        "title": "NuevoCargo"
       },
       "Opcion": {
         "properties": {
@@ -6676,6 +8627,26 @@
         ],
         "title": "Par"
       },
+      "PeriodoContable": {
+        "properties": {
+          "desde": {
+            "type": "string",
+            "title": "Desde",
+            "description": "1 de enero del año en curso (hora de Nueva York): el periodo que propone el Excel contable."
+          },
+          "hasta": {
+            "type": "string",
+            "title": "Hasta",
+            "description": "31 de diciembre del año en curso."
+          }
+        },
+        "type": "object",
+        "required": [
+          "desde",
+          "hasta"
+        ],
+        "title": "PeriodoContable"
+      },
       "Persona": {
         "properties": {
           "id": {
@@ -6914,6 +8885,114 @@
         ],
         "title": "ProyectoOpcion"
       },
+      "ProyectoResumen": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "cliente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cliente"
+          },
+          "ciudad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ciudad"
+          },
+          "fecha_inicio": {
+            "type": "string",
+            "title": "Fecha Inicio"
+          },
+          "fecha_fin": {
+            "type": "string",
+            "title": "Fecha Fin"
+          },
+          "moneda": {
+            "type": "string",
+            "title": "Moneda"
+          },
+          "viajes": {
+            "type": "integer",
+            "title": "Viajes",
+            "description": "Viajes del proyecto, en cualquier estado."
+          },
+          "gastos": {
+            "type": "integer",
+            "title": "Gastos",
+            "description": "Gastos del proyecto, en cualquier estado."
+          },
+          "previsto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previsto Usd",
+            "description": "Presupuesto de los viajes del proyecto que no se rechazaron."
+          },
+          "real_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Real Usd",
+            "description": "Gastos aprobados del proyecto."
+          },
+          "diferencia_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diferencia Usd",
+            "description": "Real menos previsto: positivo es sobrecosto."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre",
+          "cliente",
+          "ciudad",
+          "fecha_inicio",
+          "fecha_fin",
+          "moneda",
+          "viajes",
+          "gastos",
+          "previsto_usd",
+          "real_usd",
+          "diferencia_usd"
+        ],
+        "title": "ProyectoResumen"
+      },
       "PuntoTendencia": {
         "properties": {
           "valor": {
@@ -6963,31 +9042,6 @@
           "texto"
         ],
         "title": "Razon"
-      },
-      "Referencia": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "nombre": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Nombre"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "nombre"
-        ],
-        "title": "Referencia"
       },
       "Regla": {
         "properties": {
@@ -7262,6 +9316,24 @@
           "mensaje"
         ],
         "title": "ResultadoCambioEstado"
+      },
+      "ResultadoUsuario": {
+        "properties": {
+          "usuario": {
+            "$ref": "#/components/schemas/Usuario"
+          },
+          "mensaje": {
+            "type": "string",
+            "title": "Mensaje",
+            "description": "Lo que pasó, en lenguaje claro."
+          }
+        },
+        "type": "object",
+        "required": [
+          "usuario",
+          "mensaje"
+        ],
+        "title": "ResultadoUsuario"
       },
       "ResumenAdmin": {
         "properties": {
@@ -7862,6 +9934,100 @@
         ],
         "title": "TableroKpis"
       },
+      "TableroProyecto": {
+        "properties": {
+          "proyecto": {
+            "$ref": "#/components/schemas/ProyectoResumen"
+          },
+          "categorias": {
+            "items": {
+              "$ref": "#/components/schemas/CategoriaProyecto"
+            },
+            "type": "array",
+            "title": "Categorias",
+            "description": "Solo las que tienen previsto o real."
+          },
+          "previsto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previsto Usd"
+          },
+          "real_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Real Usd"
+          },
+          "diferencia_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diferencia Usd"
+          },
+          "en_revision": {
+            "type": "integer",
+            "title": "En Revision",
+            "description": "Gastos del proyecto que esperan revisión."
+          },
+          "faltantes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Faltantes",
+            "description": "Categorías con previsto y sin ningún gasto aprobado todavía."
+          },
+          "viajes": {
+            "items": {
+              "$ref": "#/components/schemas/ViajeResumen"
+            },
+            "type": "array",
+            "title": "Viajes",
+            "description": "Viajes del proyecto que no se rechazaron."
+          },
+          "gastos": {
+            "items": {
+              "$ref": "#/components/schemas/GastoDelProyecto"
+            },
+            "type": "array",
+            "title": "Gastos",
+            "description": "Todos los gastos del proyecto, por fecha del recibo."
+          },
+          "periodo_contable": {
+            "$ref": "#/components/schemas/PeriodoContable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "proyecto",
+          "categorias",
+          "previsto_usd",
+          "real_usd",
+          "diferencia_usd",
+          "en_revision",
+          "faltantes",
+          "viajes",
+          "gastos",
+          "periodo_contable"
+        ],
+        "title": "TableroProyecto"
+      },
       "Tarifa": {
         "properties": {
           "nombre": {
@@ -7885,6 +10051,38 @@
           "reales"
         ],
         "title": "Tarifa"
+      },
+      "TelegramPropio": {
+        "properties": {
+          "vinculado": {
+            "type": "boolean",
+            "title": "Vinculado"
+          },
+          "usuario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usuario",
+            "description": "Alias de Telegram del chat vinculado, si lo tiene."
+          },
+          "canal_activo": {
+            "type": "boolean",
+            "title": "Canal Activo",
+            "description": "El bot de Telegram está configurado en esta instalación. En producción hoy está apagado."
+          }
+        },
+        "type": "object",
+        "required": [
+          "vinculado",
+          "usuario",
+          "canal_activo"
+        ],
+        "title": "TelegramPropio"
       },
       "Tendencia": {
         "properties": {
@@ -8317,6 +10515,104 @@
         ],
         "title": "Transcripcion"
       },
+      "Usuario": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "correo": {
+            "type": "string",
+            "title": "Correo"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "rol": {
+            "type": "string",
+            "enum": [
+              "colaborador",
+              "gestor",
+              "admin"
+            ],
+            "title": "Rol"
+          },
+          "rol_texto": {
+            "type": "string",
+            "title": "Rol Texto"
+          },
+          "cargo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/app__api_v1__esquemas_usuarios__Referencia"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Qué hace en la empresa. No da permisos."
+          },
+          "proyectos": {
+            "items": {
+              "$ref": "#/components/schemas/app__api_v1__esquemas_usuarios__Referencia"
+            },
+            "type": "array",
+            "title": "Proyectos",
+            "description": "Proyectos que gestiona (solo cuentan con el permiso de gestor)."
+          },
+          "activo": {
+            "type": "boolean",
+            "title": "Activo"
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/EstadoTelegram"
+          },
+          "ultima_sesion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ultima Sesion",
+            "description": "Última actividad de una sesión abierta (UTC)."
+          },
+          "creado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creado"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "correo",
+          "nombre",
+          "rol",
+          "rol_texto",
+          "cargo",
+          "proyectos",
+          "activo",
+          "telegram",
+          "ultima_sesion",
+          "creado"
+        ],
+        "title": "Usuario"
+      },
       "UsuarioFicha": {
         "properties": {
           "id": {
@@ -8642,7 +10938,7 @@
           "proyecto": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Referencia"
+                "$ref": "#/components/schemas/app__api_v1__esquemas__Referencia"
               },
               {
                 "type": "null"
@@ -8990,7 +11286,7 @@
           "proyecto": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Referencia"
+                "$ref": "#/components/schemas/app__api_v1__esquemas__Referencia"
               },
               {
                 "type": "null"
@@ -9130,6 +11426,39 @@
         ],
         "title": "ViajeroOpcion"
       },
+      "VinculoTelegram": {
+        "properties": {
+          "codigo": {
+            "type": "string",
+            "title": "Codigo",
+            "description": "Código de un solo uso para escribir en el chat del bot: /start <codigo>."
+          },
+          "enlace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enlace",
+            "description": "Enlace que abre el chat del bot con el código, si el bot tiene nombre configurado."
+          },
+          "minutos": {
+            "type": "integer",
+            "title": "Minutos",
+            "description": "Minutos de validez del código."
+          }
+        },
+        "type": "object",
+        "required": [
+          "codigo",
+          "enlace",
+          "minutos"
+        ],
+        "title": "VinculoTelegram"
+      },
       "VistaExportable": {
         "properties": {
           "vista": {
@@ -9183,6 +11512,49 @@
           "tramos"
         ],
         "title": "VuelosDelDia"
+      },
+      "app__api_v1__esquemas__Referencia": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre"
+        ],
+        "title": "Referencia"
+      },
+      "app__api_v1__esquemas_usuarios__Referencia": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre"
+        ],
+        "title": "Referencia"
       }
     }
   }

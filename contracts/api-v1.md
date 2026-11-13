@@ -45,7 +45,7 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html); en la voz, no es WAV |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
-| 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso |
+| 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso, o cinco fallos seguidos con la contraseña actual en `POST /cuenta/clave` |
 | 429 | `TOO_MANY_REQUESTS` | Tope de cotizaciones nuevas del día por persona (regla `tope_cotizaciones_persona_dia`, 20 en la semilla) |
 | 500 | `INTERNAL_ERROR` | Fallo interno, ya registrado |
 
@@ -470,3 +470,121 @@ Estado de cada tramo de los viajes aprobados, el día del viaje. Solo administra
 
 ### `POST /vuelos/{tramo_id}/actualizar`
 Con `X-CSRF-Token`, sin cuerpo. «Actualizar ahora»: salta la caché (una vez por minuto), nunca la ventana ni los topes. 200 `ResultadoActualizacion` con `consultado`, `motivo` si no consultó, `mensaje` en palabras y el `tramo` actualizado. Un tramo que no existe: 404.
+
+## Proyectos
+
+Lo que hacen hoy las pantallas `/admin/proyectos` y `/proyectos/{id}`, con la misma regla (`app/servicios/proyectos.py`): administración ve, crea y edita todos; quien gestiona ve el tablero de los proyectos que gestiona; el resto no ve ninguno. El `id` va de 1 a 2147483647; fuera de ese rango, 422.
+
+```ts
+interface ProyectoResumen {
+  id: number; nombre: string; cliente: string | null; ciudad: string | null;
+  fecha_inicio: string; fecha_fin: string;   // "2026-12-15"
+  moneda: string;                            // "USD"
+  viajes: number; gastos: number;            // en cualquier estado
+  previsto_usd: Dinero;     // presupuesto de los viajes del proyecto que no se rechazaron
+  real_usd: Dinero;         // gastos aprobados (aprobado y aprobado_auto)
+  diferencia_usd: Dinero;   // real − previsto: positivo es sobrecosto
+}
+interface CategoriaProyecto { clave: "vuelo" | "hotel" | "alquiler_carro" | "viaticos"; nombre: string;
+                              previsto_usd: Dinero; real_usd: Dinero; diferencia_usd: Dinero }
+interface TableroProyecto {
+  proyecto: ProyectoResumen;
+  categorias: CategoriaProyecto[];   // solo las que tienen previsto o real; «viaticos» reúne lo que se paga en el viaje
+  previsto_usd: Dinero; real_usd: Dinero; diferencia_usd: Dinero;
+  en_revision: number;               // gastos del proyecto que esperan revisión
+  faltantes: string[];               // categorías con previsto y sin gasto aprobado
+  viajes: ViajeResumen[];            // los que no se rechazaron
+  gastos: (GastoResumen & { viajero: string | null })[];   // todos, por fecha del recibo
+  periodo_contable: { desde: string; hasta: string };    // el año en curso (1 ene–31 dic, hora de Nueva York) que propone el Excel contable
+}
+```
+
+### `GET /proyectos`
+Parámetros `limite` y `cursor` (solo dígitos 0–9; otro valor, 422). Administración, todos; quien gestiona, los suyos; colaborador: 403 `FORBIDDEN`. `{"items": ProyectoResumen[], "siguiente"}`, más reciente primero. Las cifras son las mismas del tablero.
+
+### `POST /proyectos`
+Solo administración (403 `FORBIDDEN`). Cuerpo JSON `{"nombre", "cliente", "ciudad", "fecha_inicio", "fecha_fin", "moneda"}` y `X-CSRF-Token`; un campo de más responde 422. 201 `ProyectoResumen`. Validación, con el campo en `fields` (422): `nombre` de 3 caracteres o más, fechas `AAAA-MM-DD` con `fecha_fin` no anterior a `fecha_inicio`, `moneda` de tres letras (se guarda en mayúsculas). Deja el evento `proyecto creado`.
+
+### `GET /proyectos/{id}`
+200 `TableroProyecto`. 404 si no existe o si la persona no lo gestiona ni es de administración. El Excel contable del proyecto es `GET /gastos/contable?proyecto_id={id}&desde&hasta` (ver arriba).
+
+### `POST /proyectos/{id}`
+Solo administración. Mismo cuerpo y validación que el alta; se mandan todos los campos. 200 `ProyectoResumen`. 404 si no existe. Deja el evento `proyecto editado`.
+
+### `GET /proyectos/{id}/exportar.csv`
+Los gastos del proyecto en CSV (`text/csv`, `Content-Disposition: attachment; filename="gastos_proyecto_<id>.csv"`): el mismo archivo que la pantalla actual. Mismo alcance que el tablero; lo ajeno responde 404.
+
+## Usuarios y cargos
+
+Solo administración: colaborador y gestor reciben 403 `FORBIDDEN` en todo. Lo que hace hoy `/admin/usuarios`, con la misma regla (`app/servicios/usuarios.py`) y los mismos eventos (`cuenta creada`, `rol cambiado`, `cuenta desactivada`/`reactivada`, `cargo asignado`, `proyectos asignados`, `contraseña restablecida`, `cargo creado`/`renombrado`/`desactivado`/`reactivado`). Las escrituras llevan `X-CSRF-Token`; un campo de más responde 422. Una cuenta o un cargo inexistente: 404. Los `id` (en la ruta, `cargo_id` y cada uno de `proyectos_ids`) van de 1 a 2147483647; fuera de ese rango, 422.
+
+```ts
+interface Usuario {
+  id: number; codigo: string;             // "P-0004"
+  correo: string; nombre: string;
+  rol: Rol; rol_texto: string;           // "gestor de proyecto"
+  cargo: { id: number; nombre: string } | null;     // no da permisos
+  proyectos: { id: number; nombre: string }[];     // los que gestiona
+  activo: boolean;
+  telegram: { vinculado: boolean; usuario: string | null };
+  ultima_sesion: string | null;  creado: string | null;   // instantes UTC
+}
+interface ResultadoUsuario { usuario: Usuario; mensaje: string }
+interface Cargo { id: number; nombre: string; activo: boolean; personas: number }
+```
+
+La contraseña (inicial o restablecida) nunca sale en una respuesta.
+
+### `GET /usuarios`
+Parámetros `limite` y `cursor` (solo dígitos 0–9; otro valor, 422). Todas las cuentas, activas o no, la más reciente primero. `{"items": Usuario[], "siguiente"}`.
+
+### `POST /usuarios`
+Cuerpo `{"correo", "nombre", "rol", "clave", "cargo_id": number | null}`. 201 `ResultadoUsuario`. El correo se guarda en minúsculas y sin espacios; la cuenta recibe su perfil de viajero. 422 con el campo en `fields`: `correo` sin `@` o ya usado, `rol` que no es `colaborador`, `gestor` ni `admin`, `clave` de menos de 10 caracteres, `cargo_id` inexistente o desactivado.
+
+### `POST /usuarios/{id}/rol`
+Cuerpo `{"rol"}`. Cierra las sesiones abiertas de la cuenta (el permiso nuevo exige entrar de nuevo); quien deja de ser gestor pierde sus proyectos. El mismo permiso que ya tiene no hace nada: 200 con «Sin cambios…» en `mensaje`, sin cerrar sesiones ni dejar evento. Comprobar y escribir van en una transacción en fila con los demás cambios que pueden quitar administración, así dos administraciones a la vez no la dejan sin ninguna. Nadie se quita su propio rol de administración ni deja la plataforma sin ella: 409 `INVALID_STATE` con el motivo en `message`. Rol desconocido: 422 `fields.rol`.
+
+### `POST /usuarios/{id}/estado`
+Cuerpo `{"activo": boolean}`. Desactivar cierra sus sesiones; reactivar limpia el bloqueo por intentos. Si ya estaba así responde 200 con «Sin cambios…» en `mensaje`. Nadie desactiva su propia cuenta ni a la última administración activa: 409 `INVALID_STATE`.
+
+### `POST /usuarios/{id}/cargo`
+Cuerpo `{"cargo_id": number | null}`. El cargo no da permisos: no cierra sesiones. Cargo inexistente o desactivado: 422 `fields.cargo_id`.
+
+### `POST /usuarios/{id}/proyectos`
+Cuerpo `{"proyectos_ids": number[]}`: reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo para cuentas con permiso de gestor: si no, 422 `fields.proyectos_ids` (al volverla gestora no hereda nada).
+
+### `POST /usuarios/{id}/clave`
+Cuerpo `{"clave"}` (10 caracteres o más; si no, 422 `fields.clave`). Cierra sus sesiones, desvincula su Telegram y anula los códigos de vínculo pendientes (antes le avisa por ese chat, si lo tiene), y limpia el bloqueo por intentos. La propia no se restablece aquí: 409 `INVALID_STATE` (se cambia en «Mi cuenta», que pide la actual).
+
+### `GET /cargos`
+`{"items": Cargo[]}`: el catálogo completo, sin paginar, por nombre.
+
+### `POST /cargos`
+Cuerpo `{"nombre"}`. 201 `Cargo`. Al menos 3 letras y sin repetir otro (sin importar mayúsculas): si no, 422 `fields.nombre`.
+
+### `POST /cargos/{id}`
+Cuerpo `{"nombre"?, "activo"?}`: renombra o activa/desactiva; lo que no se manda no cambia. Un cargo nunca se borra: quien lo tiene lo conserva aunque se desactive. 200 `Cargo`.
+
+## Mi cuenta
+
+Para cualquier permiso. La cuenta sale siempre de la sesión: nadie lee ni cambia la de otra persona por aquí. Misma regla que la pantalla actual `/mi-cuenta` (`app/servicios/usuarios.py` y `telegram.py`).
+
+```ts
+interface MiCuenta {
+  persona: Persona;
+  rol_texto: string;                  // "gestor de proyecto"
+  telegram: { vinculado: boolean; usuario: string | null; canal_activo: boolean };   // canal_activo: el bot está configurado
+}
+```
+
+### `GET /cuenta`
+200 `MiCuenta`. En producción el bot de Telegram está apagado: `canal_activo: false`.
+
+### `POST /cuenta/clave`
+Cuerpo `{"actual", "nueva"}` y `X-CSRF-Token`. La actual que no coincide: 422 `fields.actual`; cada fallo cuenta con el mismo contador del ingreso (evento `contraseña actual equivocada`) y al quinto seguido se cierran sus sesiones y responde 429 `TOO_MANY_ATTEMPTS` (el ingreso queda con el bloqueo progresivo). La nueva de menos de 10 caracteres o igual a la actual: 422 `fields.nueva`. Al cambiarla se desvincula su Telegram, se anulan los códigos de vínculo pendientes, se cierran todas las sesiones de la persona y esta se renueva: 200 `{"csrf_token", "mensaje"}` con la cookie nueva; el token CSRF anterior deja de servir. Deja el evento `contraseña cambiada por la persona`. La contraseña nunca sale en la respuesta.
+
+### `POST /cuenta/telegram/vinculo`
+Con `X-CSRF-Token`, sin cuerpo. 200 `{"codigo", "enlace": string | null, "minutos"}`: un código de un solo uso (en la base queda solo su huella) para escribir `/start <codigo>` en el chat del bot, o el enlace que lo abre si el bot tiene nombre configurado. Con el canal apagado: 409 `INVALID_STATE` con el motivo.
+
+### `POST /cuenta/telegram/desvincular`
+Con `X-CSRF-Token`, sin cuerpo. 200 `MiCuenta` con `telegram.vinculado: false`. Deja el evento `Telegram desvinculado`.

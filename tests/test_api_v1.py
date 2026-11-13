@@ -297,4 +297,10 @@ def test_el_openapi_versionado_coincide_con_la_api():
     esperadas |= {("get", "/kpis"), ("get", "/kpis/personas/{id}"), ("get", "/kpis/exportar.csv")}
     esperadas |= {("get", "/monitoreo"), ("get", "/monitoreo/exportar.csv")}
     esperadas |= {("get", "/vuelos"), ("post", "/vuelos/{tramo_id}/actualizar")}
+    esperadas |= {("get", "/proyectos"), ("post", "/proyectos"), ("get", "/proyectos/{id}"), ("post", "/proyectos/{id}"),
+                  ("get", "/proyectos/{id}/exportar.csv"),
+                  ("get", "/usuarios"), ("post", "/usuarios"), ("post", "/usuarios/{id}/rol"), ("post", "/usuarios/{id}/estado"),
+                  ("post", "/usuarios/{id}/cargo"), ("post", "/usuarios/{id}/proyectos"), ("post", "/usuarios/{id}/clave"),
+                  ("get", "/cargos"), ("post", "/cargos"), ("post", "/cargos/{id}"),
+                  ("get", "/cuenta"), ("post", "/cuenta/clave"), ("post", "/cuenta/telegram/vinculo"), ("post", "/cuenta/telegram/desvincular")}
     assert {(m, r.removeprefix(V1)) for r, ops in rutas.items() for m in ops} == esperadas

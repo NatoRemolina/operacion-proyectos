@@ -6,9 +6,12 @@ import { AdministracionRepositoryProvider } from "@/features/administracion/appl
 import { AsistenteRepositoryProvider } from "@/features/asistente/application/asistente";
 import { AuthRepositoryProvider } from "@/features/auth/application/sesion";
 import { CotizarRepositoryProvider } from "@/features/cotizar/application/cotizar";
+import { CuentaRepositoryProvider } from "@/features/cuenta/application/cuenta";
 import { GastosRepositoryProvider } from "@/features/gastos/application/gastos";
 import { KpisRepositoryProvider } from "@/features/kpis/application/kpis";
 import { MonitoreoRepositoryProvider } from "@/features/monitoreo/application/monitoreo";
+import { ProyectosRepositoryProvider } from "@/features/proyectos/application/proyectos";
+import { UsuariosRepositoryProvider } from "@/features/usuarios/application/usuarios";
 import { VuelosRepositoryProvider } from "@/features/vuelos/application/vuelos";
 import { ViajesRepositoryProvider } from "@/features/viajes/application/viajes";
 import { leerBaseApi, type FuenteDatos } from "@/config/configuracion";
@@ -39,8 +42,14 @@ export function Proveedores({ fuente, children }: { fuente: FuenteDatos; childre
                     <KpisRepositoryProvider repositorio={repositorios.kpis}>
                       <MonitoreoRepositoryProvider repositorio={repositorios.monitoreo}>
                         <VuelosRepositoryProvider repositorio={repositorios.vuelos}>
-                          {repositorios.demo ? <AvisoDemo /> : null}
-                          {children}
+                          <ProyectosRepositoryProvider repositorio={repositorios.proyectos}>
+                            <UsuariosRepositoryProvider repositorio={repositorios.usuarios}>
+                              <CuentaRepositoryProvider repositorio={repositorios.cuenta}>
+                                {repositorios.demo ? <AvisoDemo /> : null}
+                                {children}
+                              </CuentaRepositoryProvider>
+                            </UsuariosRepositoryProvider>
+                          </ProyectosRepositoryProvider>
                         </VuelosRepositoryProvider>
                       </MonitoreoRepositoryProvider>
                     </KpisRepositoryProvider>
