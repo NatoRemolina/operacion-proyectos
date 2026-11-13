@@ -184,6 +184,41 @@ class ListaGastos(BaseModel):
     siguiente: str | None
 
 
+# ---------- asistente ----------
+class PreguntaAsistente(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pregunta: str = Field(min_length=1, max_length=500, description="La pregunta en lenguaje natural.")
+
+
+class DestinoFuente(BaseModel):
+    """Dónde se ve una fuente: la pantalla del viaje, del gasto o de la cotización con ese id."""
+    tipo: Literal["viaje", "gasto", "cotizacion"]
+    id: int
+
+
+class FuenteAsistente(BaseModel):
+    tipo: str = Field(description="persona, viaje, gasto, cotizacion, nota o audio.")
+    codigo: str = Field(description="Cómo la cita la respuesta, por ejemplo «gasto #12» o «V-2026-0003».")
+    destino: DestinoFuente | None = Field(description="null si la fuente no tiene pantalla propia (por ejemplo, una persona).")
+
+
+class RespuestaAsistente(BaseModel):
+    texto: str
+    modo: Literal["asesor", "modelo", "determinista", "tope"] = Field(
+        description="Quién respondió: el asesor (agente con herramientas), el modelo con herramientas, las consultas "
+                    "directas sin modelo, o `tope` si se llegó al máximo de preguntas del día.")
+    modo_texto: str = Field(description="El modo en palabras, el mismo que muestra la pantalla actual.")
+    fuentes: list[FuenteAsistente] = Field(description="Lo que la respuesta cita, con su destino.")
+    herramientas: list[str] = Field(description="Consultas hechas, en orden.")
+    duracion_ms: int
+    usadas: int = Field(description="Preguntas de la persona hoy, incluida esta.")
+    tope: int = Field(description="Máximo de preguntas por persona y día (supuesto `asistente_preguntas_dia`).")
+
+
+class Transcripcion(BaseModel):
+    texto: str = Field(description="Lo que se entendió del audio; vacío si no se entendió nada.")
+
+
 # ---------- errores ----------
 class DetalleError(BaseModel):
     code: str
@@ -202,7 +237,8 @@ DESCRIPCION_ERROR = {
     404: "No existe o no es visible para la persona",
     409: "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
     413: "Archivo de más de 4,5 MB", 415: "El contenido no es JPG, PNG, WebP, PDF ni correo",
-    422: "Campos inválidos; detalle por campo en `fields`", 429: "Demasiados intentos de ingreso",
+    422: "Campos inválidos; detalle por campo en `fields`", 429: "Demasiados intentos de ingreso, o se alcanzó un tope del día",
+    503: "El servicio que transcribe la voz no está configurado o no respondió",
 }
 
 

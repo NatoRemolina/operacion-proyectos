@@ -1,6 +1,9 @@
 import type { AdministracionRepository } from "@/features/administracion/domain/administracion";
 import { crearAdministracionHttp } from "@/features/administracion/infrastructure/administracion-http";
 import { crearAdministracionMemoria } from "@/features/administracion/infrastructure/administracion-memoria";
+import type { AsistenteRepository } from "@/features/asistente/domain/asistente";
+import { crearAsistenteHttp } from "@/features/asistente/infrastructure/asistente-http";
+import { crearAsistenteMemoria } from "@/features/asistente/infrastructure/asistente-memoria";
 import type { AuthRepository } from "@/features/auth/domain/auth";
 import type { CotizarRepository } from "@/features/cotizar/domain/cotizar";
 import { crearCotizarHttp } from "@/features/cotizar/infrastructure/cotizar-http";
@@ -26,6 +29,7 @@ export interface Repositorios {
   gastos: GastosRepository;
   cotizar: CotizarRepository;
   administracion: AdministracionRepository;
+  asistente: AsistenteRepository;
   demo: ModoDemo | null;
 }
 
@@ -71,6 +75,8 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
       }),
       // La cuenta de demostración es de colaboración: el resumen responde «sin permiso», como la API.
       administracion: crearAdministracionMemoria({ sesion, latenciaMs }),
+      // Igual que el resumen: el asistente es de administración y la cuenta de demostración no lo es.
+      asistente: crearAsistenteMemoria({ sesion, latenciaMs }),
       demo: {
         cuentas: [
           { correo: CUENTA_DEMO.persona.correo, clave: CUENTA_DEMO.clave, descripcion: "Piloto" },
@@ -85,6 +91,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     gastos: crearGastosHttp(cliente),
     cotizar: crearCotizarHttp(cliente),
     administracion: crearAdministracionHttp(cliente),
+    asistente: crearAsistenteHttp(cliente),
     demo: null,
   };
 }

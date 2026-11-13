@@ -166,6 +166,25 @@ El agente se configura sin herramientas propias del servicio (consola, archivos,
 
 **Qué sale hacia el servicio:** la pregunta, la fecha del día y los resultados de las herramientas que pida, que incluyen códigos y nombres de personas, comercios, importes y los textos de notas y justificaciones. Es la misma clase de datos que hoy procesa el modelo que lee los recibos.
 
+## Asistente flotante
+
+Administración tiene un botón «Asistente» fijo abajo a la derecha en todas sus pantallas (no en la del asistente, que ya lo tiene, ni para otros permisos). Abre un panel para preguntar sin salir de la página en la que está.
+
+- **Misma vía.** El panel envía la pregunta a `POST /admin/asistente` con la cabecera `X-Envio: pagina` y recibe solo la respuesta en JSON: texto, modo (con el mismo chip que la página), fuentes con enlace, duración y cuántas preguntas van en el día. El orden es el de siempre (asesor, modelo, consultas directas), con el mismo tope diario, el mismo rastro en `asistente_consultas` y la misma protección de origen que cualquier formulario de la plataforma. Sin la cabecera, la ruta devuelve la página como antes.
+- **Qué guarda el navegador.** La conversación (los últimos 12 mensajes) y si el panel está abierto, en `sessionStorage`: solo en esa pestaña, desaparece al cerrarla y se borra al pulsar «Salir». Así sigue visible al cambiar de página.
+- **Accesible con teclado.** Enter envía y Mayúsculas+Enter salta de línea; Escape cierra y devuelve el foco al botón; la conversación es una región que anuncia las respuestas nuevas. En pantallas angostas el panel ocupa el ancho completo.
+- **Código.** `app/templates/_asistente_flotante.html` (incluido desde `base.html`), `app/static/asistente_flotante.js` y los estilos `af-` de `app/static/estilo.css`.
+
+## Asistente IA en la web nueva
+
+En la web Next, administración tiene un botón «Asistente IA» fijo abajo a la derecha en todas las pantallas. Abre una conversación sin salir de la pantalla (en celular, como hoja inferior a todo el ancho).
+
+- **Misma vía, por la API v1.** `POST /api/v1/asistente` (ver `contracts/api-v1.md`) responde con el mismo orden: asesor, modelo, consultas directas. Las fuentes llegan con un destino (`viaje`, `gasto` o `cotizacion` y su id) y la web las enlaza a sus propias pantallas.
+- **Voz.** El micrófono graba la pregunta; el navegador la convierte a WAV mono de 16 kHz y `POST /api/v1/asistente/voz` la transcribe con el modelo de lectura (el mismo que lee recibos y notas de voz). El texto se envía como pregunta y queda marcado «Dictado por voz». El asesor solo recibe texto. La grabación se detiene sola al minuto; sin modelo configurado la voz responde 503 y la web pide escribir la pregunta.
+- **Qué guarda el navegador.** Los últimos 30 mensajes, en `sessionStorage`, con una clave por persona: solo en esa pestaña, y quien entre después en la misma pestaña no ve la conversación anterior. Las respuestas se pintan como texto con viñetas y negritas, nunca como HTML.
+- **Accesible.** Escape cierra (o cancela la grabación) y devuelve el foco al botón; la conversación es una región que anuncia lo nuevo y una región de estado avisa «consultando», «grabando» o que llegó una respuesta con el panel cerrado.
+- **Código.** `web/src/features/asistente/` (dominio, casos de uso, adaptadores HTTP y en memoria, interfaz) y `app/rutas/v1_asistente.py`.
+
 ## Seguridad
 
 - **Alcance por sesión.** La ruta está bajo `/admin` (el control de acceso exige administrador) y además `asistente.responder` lo vuelve a comprobar. El modelo ni el texto de la pregunta deciden qué se ve.
@@ -185,5 +204,6 @@ El agente se configura sin herramientas propias del servicio (consola, archivos,
 - El tope de gasto del día cuenta lo que el servicio informa al cerrar cada sesión. Una pregunta puede pasarse del tope (se comprueba antes de abrir la sesión, no durante), y una sesión cuyo costo el servicio no informe queda registrada sin costo y no suma.
 - Una sesión que no se pudo borrar (seguía en marcha tras dos intentos, o se perdió la conexión) queda en el servicio con la pregunta y los resultados de las herramientas. Este repositorio no conoce un plazo de borrado automático en el servicio: se asume que queda hasta borrarla desde su consola. El identificador está en el evento `asesor sin respuesta` o `pregunta respondida`.
 - Si la creación de la sesión vence, la búsqueda de la sesión huérfana es de mejor esfuerzo: mira las últimas 20 sesiones de la cuenta y puede no encontrarla si el servicio aún no la lista. En ese caso trabaja hasta terminar su turno y queda en el servicio, sin costo registrado en la plataforma.
+- El asistente flotante responde cada pregunta por separado, como la página: no recuerda la anterior. Si se cambia de página mientras espera, esa respuesta se pierde en el panel (la consulta sí queda registrada) y la pregunta aparece marcada como sin respuesta. El panel deja de esperar a los 120 s.
 - El asesor es solo para administración. Abrirlo a otros roles exige acotar cada herramienta a lo que esa persona puede ver (`asesor.herramientas_para` es el punto de entrada).
 - El adaptador de Pinecone se probó con un transporte simulado que reproduce la forma de las peticiones de la documentación oficial; falta la verificación en vivo con una clave real.

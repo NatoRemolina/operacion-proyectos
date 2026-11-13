@@ -84,7 +84,7 @@ export interface ClienteHttp {
     cuerpo: unknown,
     esquema: z.ZodType<T>,
     /** `cabeceras`: por ejemplo `Idempotency-Key` en una escritura que puede reintentarse. */
-    opciones?: { csrf?: boolean; cabeceras?: Record<string, string> },
+    opciones?: { csrf?: boolean; cabeceras?: Record<string, string>; signal?: AbortSignal },
   ): Promise<T>;
   postFormulario<T>(
     ruta: string,
@@ -151,6 +151,7 @@ export function crearClienteHttp(base: string): ClienteHttp {
           method: "POST",
           body: JSON.stringify(cuerpo),
           headers: { ...opciones.cabeceras, "Content-Type": "application/json" },
+          signal: opciones.signal,
         },
         opciones.csrf ?? true,
       );

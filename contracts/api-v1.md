@@ -199,6 +199,14 @@ Cuerpo JSON `{"texto": string}` (3 a 2.000 caracteres) y `X-CSRF-Token`. Añade 
 ### `GET /documentos/{id}/contenido`
 El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `application/pdf`; un correo se entrega como `text/plain`), `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto al que pertenece no es visible.
 
+### `POST /asistente`
+Solo administración (403 `FORBIDDEN` para colaborador y gestor). Cuerpo `{"pregunta": "..."}` (1 a 500 caracteres; solo espacios es 422) y `X-CSRF-Token`. Sigue la misma vía que la pantalla `/admin/asistente`: asesor (agente con herramientas), modelo con herramientas o consultas directas, con el mismo tope diario y el mismo rastro en `asistente_consultas`. Con el asesor puede tardar hasta un minuto.
+
+200 `RespuestaAsistente`: `texto`, `modo` (`asesor`, `modelo`, `determinista` o `tope`), `modo_texto` (el modo en palabras), `fuentes` (`tipo`, `codigo` y `destino`: `{"tipo": "viaje" | "gasto" | "cotizacion", "id"}` o `null` si no tiene pantalla, como una persona), `herramientas`, `duracion_ms`, `usadas` y `tope`. Llegar al tope diario no es un error: responde 200 con `modo: "tope"` y el texto lo explica.
+
+### `POST /asistente/voz`
+Solo administración. `multipart/form-data` con `audio`: la pregunta grabada en WAV (la web graba y convierte en el navegador), hasta 4,5 MB, y `X-CSRF-Token`. La transcribe el modelo de lectura; no la responde ni la guarda. 200 `{"texto": "..."}` (vacío si no se entendió nada). 413 `PAYLOAD_TOO_LARGE`, 415 `UNSUPPORTED_MEDIA_TYPE` si no es WAV, 422 si llega vacío, 429 `TOO_MANY_REQUESTS` si la persona llegó a su tope del día de preguntas (`asistente_preguntas_dia`) o de dictados (`asistente_dictados_dia`), sin llamar al modelo, y 503 `SERVICE_UNAVAILABLE` si no hay modelo configurado o no respondió.
+
 ## Cotizar y decidir
 
 Es el mismo cálculo de las pantallas (`app/servicios/cotizacion.py`): una búsqueda para todos los aeropuertos marcados, el costo total esperado de cada vuelo y la decisión que crea el viaje. Las respuestas del buscador se guardan y una consulta idéntica no se vuelve a pagar.

@@ -26,7 +26,7 @@ persona (P-0007) ─► cotización ─► decisión ─► VIAJE (V-2026-0012, 
 | Telegram | Recibos por chat, vinculados a la cuenta con un código de un solo uso (apagado si no se configura) |
 | Tablero por proyecto | Presupuesto de los viajes frente a gasto real |
 | Indicadores (KPIs) | Metas y semáforo para los dos retos, rastro de cada consulta al buscador y ficha por persona |
-| Asistente de administración | Preguntas en lenguaje natural sobre lo que reportó cada persona, con cifras exactas y fuentes citadas por su código; opcionalmente con un asesor (agente alojado) que también lee justificaciones y cotizaciones |
+| Asistente de administración | Preguntas en lenguaje natural sobre lo que reportó cada persona, con cifras exactas y fuentes citadas por su código; opcionalmente con un asesor (agente alojado) que también lee justificaciones y cotizaciones. También como botón flotante en todas las pantallas de administración |
 | Monitoreo | Catálogo único de métricas, auditoría, errores con identificador, calidad de los datos |
 | API JSON v1 | Contrato para la web nueva (`contracts/api-v1.md`) |
 | Web nueva (Next.js) | Sobre la API v1 (`web/`): cotizar desde y hacia cualquier lugar, comparar con desglose y decidir; mis viajes y mis gastos, con carga de recibos y justificación; y, para administración, resumen, viajes por aprobar (con la reconfirmación del precio) y revisión de gastos |

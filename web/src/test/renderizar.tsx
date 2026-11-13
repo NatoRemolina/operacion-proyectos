@@ -4,6 +4,9 @@ import { render } from "@testing-library/react";
 import type { AdministracionRepository } from "@/features/administracion/domain/administracion";
 import { AdministracionRepositoryProvider } from "@/features/administracion/application/administracion";
 import { crearAdministracionMemoria } from "@/features/administracion/infrastructure/administracion-memoria";
+import type { AsistenteRepository } from "@/features/asistente/domain/asistente";
+import { AsistenteRepositoryProvider } from "@/features/asistente/application/asistente";
+import { crearAsistenteMemoria } from "@/features/asistente/infrastructure/asistente-memoria";
 import type { AuthRepository } from "@/features/auth/domain/auth";
 import { AuthRepositoryProvider } from "@/features/auth/application/sesion";
 import type { GastosRepository } from "@/features/gastos/domain/gastos";
@@ -38,6 +41,7 @@ export function renderizarConFuente(
     auth?: AuthRepository;
     cotizar?: CotizarRepository;
     administracion?: AdministracionRepository;
+    asistente?: AsistenteRepository;
     personaId?: number;
     permiso?: Permiso;
   } = {},
@@ -54,9 +58,11 @@ export function renderizarConFuente(
               repositorio={fuente.cotizar ?? crearCotizarMemoria({ formulario: FORMULARIO_EJEMPLO })}
             >
               <AdministracionRepositoryProvider repositorio={fuente.administracion ?? crearAdministracionMemoria({})}>
-                <AvisosProvider>
-                  <IdentidadProvider personaId={fuente.personaId ?? 1} permiso={fuente.permiso}>{ui}</IdentidadProvider>
-                </AvisosProvider>
+                <AsistenteRepositoryProvider repositorio={fuente.asistente ?? crearAsistenteMemoria()}>
+                  <AvisosProvider>
+                    <IdentidadProvider personaId={fuente.personaId ?? 1} permiso={fuente.permiso}>{ui}</IdentidadProvider>
+                  </AvisosProvider>
+                </AsistenteRepositoryProvider>
               </AdministracionRepositoryProvider>
             </CotizarRepositoryProvider>
           </GastosRepositoryProvider>

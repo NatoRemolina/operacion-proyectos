@@ -243,7 +243,8 @@ def h_kpi(r: Rastro, nombre: str = "", filtros: dict | None = None, **_) -> dict
     f = {k: v for k, v in (filtros or {}).items() if k in ("proyecto_id", "desde", "hasta") and v not in (None, "", 0)}
     if str(nombre or "").strip().lower() in ("todos", "tablero"):   # todo el tablero en una consulta, como la pantalla de KPIs
         filas = kpis.evaluar(f)
-        return {"filtros": f, "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos")},
+        return {"filtros": f, "nota": "Al responder, nombra cada indicador por su «titulo»; «nombre» es la clave interna.",
+                "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos")},
                 "indicadores": [{"nombre": k["nombre"], "titulo": k["titulo"], "valor": k["valor"], "unidad": k["unidad"], "meta": k["meta"],
                                  "umbral_alerta": k["alerta"], "sentido": k["sentido"], "semaforo": k["estado"]} for k in filas]}
     res = metricas.valor(nombre, f)
@@ -442,19 +443,62 @@ def _determinista(pregunta: str, r: Rastro) -> str:
 
 # ---------- entrada ----------
 def asegurar_regla():
-    """El tope diario es un supuesto editable en la pantalla Reglas."""
-    if not db.uno("select id from reglas where ambito='supuesto' and clave='asistente_preguntas_dia'"):
-        db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave="asistente_preguntas_dia", valor=str(TOPE_DIARIO),
-                    nota="Preguntas al asistente por persona y por día.", fuente="Supuesto editable", confianza="supuesto",
-                    verificado=date.today().isoformat())
+    """Los topes diarios son supuestos editables en la pantalla Reglas."""
+    for clave, nota in (("asistente_preguntas_dia", "Preguntas al asistente por persona y por día."),
+                        ("asistente_dictados_dia", "Preguntas dictadas por voz al asistente por persona y por día (cada una paga una transcripción).")):
+        if not db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
+            db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=str(TOPE_DIARIO),
+                        nota=nota, fuente="Supuesto editable", confianza="supuesto", verificado=date.today().isoformat())
 
 
 def tope_diario() -> int:
     return int(costo.supuesto(costo.catalogo(), "asistente_preguntas_dia", TOPE_DIARIO))
 
 
+class TopeDeDictado(Exception):
+    """Se llegó al tope del día: no se paga otra transcripción."""
+
+
+def tope_dictados() -> int:
+    return int(costo.supuesto(costo.catalogo(), "asistente_dictados_dia", TOPE_DIARIO))
+
+
+def dictados_hoy(usuario_id: int) -> int:
+    """Cada intento de transcripción queda en `llamadas_modelo`, haya salido bien o no: es lo que se paga."""
+    return db.uno("select count(*) n from llamadas_modelo where uso='dictado' and entidad_id=:u and momento>=:d",
+                  u=usuario_id, d=db.ahora()[:10])["n"]
+
+
 def usadas_hoy(usuario_id: int) -> int:
     return db.uno("select count(*) n from asistente_consultas where usuario_id=:u and momento>=:d", u=usuario_id, d=db.ahora()[:10])["n"]
+
+
+DICTADO = ("Transcribe literalmente la pregunta que se dice en este audio, en el idioma en que se habla. Devuelve solo "
+           "el texto dicho, sin comillas, comentarios ni respuesta a la pregunta. Si no se entiende, devuelve una cadena vacía.")
+
+
+def puede_dictar() -> bool:
+    """El dictado usa el modelo de lectura (formato `generateContent`); el asesor solo recibe texto."""
+    return llm.activo()
+
+
+def transcribir_pregunta(audio: bytes, mime: str, usuario: dict) -> str:
+    """Pasa a texto una pregunta dictada. Lanza `llm.ErrorDelModelo` si el modelo no está o no responde."""
+    if not acceso.es_admin(usuario):
+        raise PermissionError("El asistente es solo para administración.")
+    if not puede_dictar():
+        raise llm.ErrorDelModelo("No hay un modelo configurado para transcribir voz.")
+    if usadas_hoy(usuario["id"]) >= tope_diario():
+        raise TopeDeDictado(f"Llegaste al tope de {tope_diario()} preguntas por día: hoy no se transcribe más voz.")
+    if dictados_hoy(usuario["id"]) >= tope_dictados():
+        raise TopeDeDictado(f"Llegaste al tope de {tope_dictados()} dictados por día. Escribe la pregunta.")
+    rapido = llm.RAPIDO.set(True)   # quien dicta espera en pantalla: un intento con espera corta
+    try:
+        r = llm.generar([{"role": "user", "parts": [llm.parte_archivo(audio, mime), llm.parte_texto(DICTADO)]}],
+                        uso="dictado", entidad_id=usuario["id"], tope_salida=1024)
+    finally:
+        llm.RAPIDO.reset(rapido)
+    return " ".join(llm.texto_de(r).strip().strip("\"'«»“”").split())[:500]
 
 
 def responder(pregunta: str, usuario: dict) -> dict:
