@@ -22,7 +22,7 @@ import re
 import time
 from datetime import date
 
-from sqlalchemy import Column, Integer, Text
+from sqlalchemy import Column, Integer, Text, text
 
 from .. import config, db
 from . import acceso, costo, eventos, kpis, llm, memoria, metricas, validacion, viajes
@@ -860,11 +860,34 @@ def responder(pregunta: str, usuario: dict) -> dict:
     if not pregunta:
         return {"texto": "Escribe una pregunta.", "fuentes": [], "modo": "", "herramientas": [], "duracion_ms": 0}
     asegurar_regla()
-    if usadas_hoy(usuario["id"]) >= tope_diario():   # el mismo tope por persona para los tres permisos
+    cid = _reservar(usuario, pregunta)
+    if cid is None:   # el mismo tope por persona para los tres permisos
         como = ("Se puede cambiar en Reglas y supuestos (asistente_preguntas_dia)." if acceso.es_admin(usuario)
                 else "Mañana puedes volver a preguntar.")
         return {"texto": f"Llegaste al tope de {tope_diario()} preguntas por día. {como}",
                 "fuentes": [], "modo": "tope", "herramientas": [], "duracion_ms": 0}
+    try:
+        return _responder(pregunta, usuario, cid)
+    except BaseException:
+        db.actualizar("asistente_consultas", cid, modo="fallida")   # cuenta para el tope, pero ya no está en curso
+        raise
+
+
+def _reservar(usuario: dict, pregunta: str) -> int | None:
+    """Reserva el cupo del día antes de responder: la consulta queda «en curso» y ya cuenta para el tope.
+
+    Va en una transacción con la fila de la persona bloqueada (en SQLite, la transacción ya toma el cerrojo de
+    escritura): dos peticiones simultáneas no pasan las dos la comprobación. Devuelve None si no queda cupo.
+    """
+    with db.transaccion() as c:
+        if not config.ES_SQLITE:
+            c.execute(text("select id from usuarios where id=:u for update"), {"u": usuario["id"]})
+        if usadas_hoy(usuario["id"]) >= tope_diario():
+            return None
+        return db.insertar("asistente_consultas", usuario_id=usuario["id"], pregunta=pregunta, modo="en_curso", momento=db.ahora())
+
+
+def _responder(pregunta: str, usuario: dict, cid: int) -> dict:
     try:
         memoria.actualizar(max_envios=INDEXAR_ANTES)
     except Exception as e:  # el índice al día ayuda, pero nunca impide responder con las consultas exactas
@@ -905,8 +928,8 @@ def responder(pregunta: str, usuario: dict) -> dict:
         citadas = [f for f in fuentes if f["codigo"].lower() in bajo or (f["tipo"] == "gasto" and f"#{f['id']}" in texto)
                    or (f["tipo"] == "cotizacion" and f"cotizacion #{f['id']}" in bajo)]
         fuentes = citadas or fuentes
-    cid = db.insertar("asistente_consultas", usuario_id=usuario["id"], pregunta=pregunta, herramientas=r.pasos,
-                      fuentes=[{k: f[k] for k in ("tipo", "id", "codigo")} for f in fuentes], modo=modo, duracion_ms=t(), momento=db.ahora())
+    db.actualizar("asistente_consultas", cid, herramientas=r.pasos, fuentes=[{k: f[k] for k in ("tipo", "id", "codigo")} for f in fuentes],
+                  modo=modo, duracion_ms=t())
     sesion = (f" · sesión {r.sesion['id']} · tokens {r.sesion.get('entrada', 0)}/{r.sesion.get('salida', 0)}"
               + (f" · {r.sesion['costo_usd']:.2f} USD" if r.sesion.get("costo_usd") is not None else "")
               if modo == "asesor" and r.sesion.get("id") else "")

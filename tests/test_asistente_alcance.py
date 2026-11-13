@@ -308,3 +308,36 @@ def test_la_herramienta_persona_responde_a_colaborador_y_gestor_con_su_alcance(m
     del_gestor = asistente.ejecutar(asistente.Rastro(mundo["gestor"]), "persona", {"codigo_o_nombre": laura})
     todo = asistente.ejecutar(asistente.Rastro(_usuario("admin@demo.local")), "persona", {"codigo_o_nombre": laura})
     assert del_gestor["codigo"] == laura and del_gestor["viajes"] < todo["viajes"]   # el viaje del proyecto 2 no cuenta
+
+
+def test_la_pregunta_reserva_su_cupo_antes_de_responder(mundo, monkeypatch):
+    """Dos peticiones a la vez no pasan las dos el tope: la primera ya cuenta mientras responde."""
+    andres = mundo["andres"]
+    tope = asistente.usadas_hoy(andres["id"]) + 1
+    monkeypatch.setattr(asistente, "tope_diario", lambda: tope)
+    original, simultanea = asistente._determinista, {}
+
+    def mientras_responde(pregunta, r):
+        if not simultanea:   # llega antes de que la primera termine
+            simultanea["modo"] = "llamando"
+            simultanea.update(asistente.responder("¿Y otra a la vez?", andres))
+        return original(pregunta, r)
+    monkeypatch.setattr(asistente, "_determinista", mientras_responde)
+    r = asistente.responder("¿Qué he reportado?", andres)
+    assert r["modo"] == "determinista" and simultanea["modo"] == "tope"
+    fila = db.uno("select modo, herramientas, pregunta from asistente_consultas where id=:i", i=r["consulta_id"])
+    assert fila["modo"] == "determinista" and fila["pregunta"] == "¿Qué he reportado?" and json.loads(fila["herramientas"])
+    assert asistente.usadas_hoy(andres["id"]) == tope
+
+
+def test_una_pregunta_que_falla_a_mitad_no_queda_en_curso(mundo, monkeypatch):
+    andres = mundo["andres"]
+    antes = db.uno("select coalesce(max(id), 0) m from asistente_consultas")["m"]
+
+    def falla(pregunta, r):
+        raise RuntimeError("fallo inesperado")
+    monkeypatch.setattr(asistente, "_determinista", falla)
+    with pytest.raises(RuntimeError):
+        asistente.responder("¿Qué he reportado?", andres)
+    fila = db.uno("select modo from asistente_consultas where id>:a and usuario_id=:u", a=antes, u=andres["id"])
+    assert fila["modo"] == "fallida"   # cuenta para el tope, pero no queda «en curso»
