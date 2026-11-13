@@ -56,7 +56,7 @@ def test_en_la_lista_de_regresos_lee_cada_opcion_de_su_etiqueta():
     assert segundo["precio"] == 619.0
 
 
-@pytest.mark.parametrize("url", ["https://www.google.com/travel/flights?tfs=abc", "https://google.com/travel/flights/booking"])
+@pytest.mark.parametrize("url", ["https://www.google.com/travel/flights?tfs=abc", "https://google.com/travel/flights?tfs=x"])
 def test_solo_abre_google_flights(url):
     assert lector.url_permitida(url)
 
@@ -91,4 +91,25 @@ def test_la_pestana_solo_navega_por_google_travel():
     for url in ("https://www.google.com/sorry/index", "https://consent.google.com/m", "https://www.google.com/search?q=x",
                 "https://otro.example/travel/flights", "http://www.google.com/travel/flights", "chrome-error://chromewebdata/",
                 "https://www.google.com:444/travel/flights", None):
+        assert not lector.url_navegable(url), url
+
+
+# ---------- ronda 1 · punto 12: el mismo criterio que los enlaces de la plataforma ----------
+@pytest.mark.parametrize("url", [
+    "https://www.google.com/travel/flightsX?tfs=abc",            # otra ruta que empieza igual
+    "https://www.google.com/travel/flights/../search?q=x",       # sale de la ruta con ..
+    "https://www.google.com/travel/flights/%2e%2e/search",       # .. codificado
+    "https://www.google.com/travel/flights/%2E%2E/search",
+    "https://www.google.com/travel/flights?tfs=a b",             # espacio
+    "https://www.google.com/travel/flights?tfs=a\x00b",          # carácter de control
+    "https://www.google.com/travel/flights\t",
+])
+def test_la_url_de_entrada_es_exactamente_google_flights(url):
+    assert not lector.url_permitida(url)
+
+
+def test_la_navegacion_tampoco_acepta_rutas_que_escapan():
+    assert lector.url_permitida("https://www.google.com/travel/flights?hl=en&tfs=CBwQAh..x")   # «..» en el valor no es ruta
+    for url in ("https://www.google.com/travel/../search", "https://www.google.com/travel/%2e%2e/search",
+                "https://www.google.com/travel/flights/booking?x=\x07"):
         assert not lector.url_navegable(url), url

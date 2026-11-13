@@ -7,7 +7,7 @@ de Miami → Las Vegas). Si Google cambia su texto, lo que no se reconozca queda
 """
 import re
 from html.parser import HTMLParser
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 DOMINIOS = frozenset({"www.google.com", "google.com"})
 # Lo que aparece cuando Google pide comprobar que no es un robot, o aceptar condiciones antes de seguir
@@ -29,31 +29,33 @@ SIN_INTERES = {"Hide options", "Show options", "More options", "Fewer options", 
                "Travel agency", "Learn more"}
 
 
-def url_permitida(url) -> bool:
-    """Solo `https://www.google.com/travel/flights...`: el analizador no abre nada más."""
-    if not isinstance(url, str):
-        return False
+def _ruta_segura(url) -> str | None:
+    """La ruta ya decodificada de una dirección de Google segura, o None. Mismo criterio que los enlaces de la plataforma
+    (`precios.es_fuente_google`): https, solo google.com, sin credenciales ni puerto, sin espacios ni caracteres de
+    control, y sin `..` como tramo de la ruta (tampoco codificado)."""
+    if not isinstance(url, str) or re.search(r"[\s\x00-\x1f\x7f]", url):
+        return None
     try:
         p = urlsplit(url)
         puerto = p.port
     except ValueError:
-        return False
-    return (p.scheme == "https" and p.hostname in DOMINIOS and puerto is None and not p.username and not p.password
-            and p.path.startswith("/travel/flights"))
+        return None
+    if p.scheme != "https" or p.hostname not in DOMINIOS or puerto is not None or p.username or p.password:
+        return None
+    ruta = unquote(p.path)
+    return None if ".." in ruta.split("/") else ruta
+
+
+def url_permitida(url) -> bool:
+    """La dirección que se le pide abrir al analizador: exactamente `https://www.google.com/travel/flights?...`."""
+    return _ruta_segura(url) == "/travel/flights"
 
 
 def url_navegable(url) -> bool:
     """Adónde puede ir la pestaña mientras lee: `https://www.google.com/travel/...` (búsqueda, lista y reserva). La
     verificación (`/sorry/`) y el aviso de condiciones (`consent.google.com`) quedan fuera: se detectan, nunca se abren."""
-    if not isinstance(url, str):
-        return False
-    try:
-        p = urlsplit(url)
-        puerto = p.port
-    except ValueError:
-        return False
-    return (p.scheme == "https" and p.hostname in DOMINIOS and puerto is None and not p.username and not p.password
-            and p.path.startswith("/travel/"))
+    ruta = _ruta_segura(url)
+    return ruta is not None and ruta.startswith("/travel/")
 
 
 def bloqueo(url_final: str, texto: str) -> str | None:
