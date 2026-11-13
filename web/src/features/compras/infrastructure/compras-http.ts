@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { esEnlaceGoogle } from "@/features/cotizar/domain/cotizar";
 import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { Compra, CompraDetalle, ComprasRepository } from "../domain/compras";
 
@@ -46,7 +47,8 @@ const detalleSchema = compraSchema.extend({
       llega: z.string().nullable(),
       precio_usd: dineroSchema,
       vendedor_url: z.string().nullable(),
-      fuente_url: z.string().nullable(),
+      // como en cotizar: solo un enlace de Google (https, www.google.com o google.com) llega a un `href`
+      fuente_url: z.string().nullable().transform((u) => (u && esEnlaceGoogle(u) ? u : null)),
     })
     .nullable(),
   clics: z.array(
