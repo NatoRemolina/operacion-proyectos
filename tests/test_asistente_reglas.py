@@ -125,7 +125,8 @@ def test_si_hay_mas_gastos_de_los_que_se_revisan_lo_dice(caso, monkeypatch):
 def test_preguntas_sugeridas_segun_el_permiso():
     colaborador = asistente.preguntas_sugeridas(_usuario("piloto@demo.local"))
     assert colaborador == ["¿Cuánto me queda del presupuesto?", "¿Por qué mi gasto quedó en revisión?", "¿Qué me falta por justificar?"]
-    assert asistente.preguntas_sugeridas(_usuario("gestor@demo.local")) == colaborador
+    gestor = asistente.preguntas_sugeridas(_usuario("gestor@demo.local"))   # el gestor pregunta también por su proyecto
+    assert gestor[:2] == ["¿Cómo va el presupuesto de mi proyecto?", "¿Qué gastos de mi proyecto están en revisión?"]
     admin = asistente.preguntas_sugeridas(_usuario("admin@demo.local"))
     assert "¿Cómo van los indicadores?" in admin and not set(admin) & set(colaborador)
     assert asistente.preguntas_sugeridas({}) == []

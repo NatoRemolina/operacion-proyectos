@@ -13,6 +13,7 @@ from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
 from ..api_v1.esquemas import Dinero, EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, errores
 from ..servicios import acceso, consultas, contable, dinero, envios, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
+from .gastos import original_legible
 
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
 
@@ -106,16 +107,16 @@ def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, pagina
     **errores(401, 403, 404, 422),
     200: {"description": "El libro (.xlsx) con las hojas «Gastos» y «Resumen»", "content": {contable.TIPO_XLSX: {}}}})
 def libro_contable(request: Request,
-                   desde: str | None = Query(None, description="AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York)."),
-                   hasta: str | None = Query(None, description="AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York)."),
+                   desde: str | None = Query(None, description="AAAA-MM-DD, por la fecha del recibo. Por omisión, el 1 de enero del año en curso (hora de Nueva York)."),
+                   hasta: str | None = Query(None, description="AAAA-MM-DD, incluido. Por omisión, el 31 de diciembre del año en curso (hora de Nueva York)."),
                    proyecto_id: int | None = Query(None, ge=1, le=contable.MAXIMO_ID,
                                                    description="Opcional. Solo administración o quien gestiona el proyecto."),
                    yo: dict = Depends(persona)):
     """Excel contable de los gastos aprobados (`aprobado` y `aprobado_auto`) del periodo, con el alcance de la sesión:
     administración, todo; quien gestiona, sus proyectos y lo suyo; el resto, solo lo suyo. Un `proyecto_id` que la
     persona no gestiona responde 403, exista o no. Va antes de `/gastos/{id}` para que «contable» no se lea como id."""
-    mes = contable.mes_en_curso()
-    desde, hasta = desde or mes[0], hasta or mes[1]
+    anio = contable.anio_en_curso()
+    desde, hasta = desde or anio[0], hasta or anio[1]
     try:
         contenido = contable.libro(yo, desde, hasta, proyecto_id, enlace_base=contable.origen_publico(str(request.base_url)))
     except contable.SinPermiso as e:
@@ -223,8 +224,9 @@ def contenido(id: int, yo: dict = Depends(persona)):
     archivo = consultas.contenido_documento(yo, id)
     if not archivo:
         raise _no_encontrado()
-    datos, tipo = archivo
+    datos, _ = archivo
     d = db.uno("select mime, nombre from documentos where id=:i", i=id)
+    datos, tipo = original_legible(datos, d["mime"])   # un correo: su adjunto o su texto, nunca el MIME crudo
     return Response(datos, media_type=tipo, headers={
         "Content-Disposition": soportes.disposicion(d["mime"], d["nombre"]), "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",

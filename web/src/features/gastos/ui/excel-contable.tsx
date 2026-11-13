@@ -5,7 +5,7 @@ import type { Permiso } from "@/shared/domain/navegacion";
 import { Boton, clasesBoton } from "@/shared/ui/boton";
 import { CampoTexto } from "@/shared/ui/campo";
 import { useUrlLibroContable } from "../application/gastos";
-import { mesEnCurso, problemaDePeriodo, type PeriodoContable } from "../domain/gastos";
+import { anioEnCurso, problemaDePeriodo, type PeriodoContable } from "../domain/gastos";
 
 export const ID_PANEL_EXCEL = "panel-excel-contable";
 
@@ -20,7 +20,7 @@ const ALCANCE: Record<Permiso, string> = {
  * contabilidad. Lo arma el servidor con el permiso de la sesión; aquí solo se elige el periodo.
  */
 export function PanelExcelContable({ permiso }: { permiso: Permiso }) {
-  const [periodo, setPeriodo] = useState<PeriodoContable>(() => mesEnCurso());
+  const [periodo, setPeriodo] = useState<PeriodoContable>(() => anioEnCurso());
   const url = useUrlLibroContable(periodo);
   const problema = problemaDePeriodo(periodo);
 

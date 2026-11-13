@@ -30,6 +30,9 @@ import { IconoCerrar, IconoChispa, IconoDetener, IconoEnviar, IconoMicrofono, Ic
  * conversación sin salir de la pantalla. Se pregunta por escrito o con la voz (se transcribe y se envía).
  * Lo usan los tres permisos; lo que cada uno puede ver lo decide el servidor con la sesión, nunca la pregunta.
  */
+const ENFOCABLES =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function AsistenteFlotante() {
   const permiso = usePermiso();
   const personaId = usePersonaId();
@@ -149,6 +152,28 @@ function Asistente({ permiso }: { permiso: Permiso }) {
   }, [abierto, grabando, procesandoVoz, cancelarVoz, cerrar]);
 
   useEffect(() => {
+    if (!abierto) return;
+    // El panel atrapa el foco: Tab y Mayús+Tab recorren solo lo suyo. En el celular ocupa toda la pantalla y, sin
+    // esto, el teclado recorría la barra y los enlaces que quedan ocultos debajo.
+    const alTabular = (evento: globalThis.KeyboardEvent) => {
+      const p = panel.current;
+      if (evento.key !== "Tab" || !p) return;
+      const enfocables = Array.from(p.querySelectorAll<HTMLElement>(ENFOCABLES)).filter((e) => !e.closest("[hidden]"));
+      const primero = enfocables[0];
+      const ultimo = enfocables[enfocables.length - 1];
+      if (!primero || !ultimo) return;
+      const foco = document.activeElement;
+      const fuera = !foco || !p.contains(foco);
+      if (fuera || (evento.shiftKey && foco === primero) || (!evento.shiftKey && foco === ultimo)) {
+        evento.preventDefault();
+        (evento.shiftKey ? ultimo : primero).focus();
+      }
+    };
+    document.addEventListener("keydown", alTabular);
+    return () => document.removeEventListener("keydown", alTabular);
+  }, [abierto]);
+
+  useEffect(() => {
     const h = historial.current;
     if (h) h.scrollTop = h.scrollHeight;
   }, [mensajes.length, esperandoDesde, abierto]);
@@ -212,7 +237,7 @@ function Asistente({ permiso }: { permiso: Permiso }) {
         ref={panel}
         id={idPanel}
         role="dialog"
-        aria-modal="false"
+        aria-modal="true"
         aria-labelledby={idTitulo}
         hidden={!abierto}
         className="entrada-ia se-mueve fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden border-linea bg-superficie shadow-2xl shadow-grafito/30 md:inset-auto md:bottom-24 md:right-6 md:h-auto md:border md:max-h-[min(42rem,calc(100dvh-8rem))] md:w-[26rem] md:rounded-2xl [@media(max-height:30rem)]:overflow-y-auto"

@@ -341,8 +341,8 @@ def test_la_pagina_explica_una_fecha_invalida_sin_romperse(sesiones):
     assert "fecha final" in sesiones["a"].get(r.headers["location"]).text
 
 
-def test_sin_fechas_la_pagina_entrega_el_mes_en_curso(sesiones):
-    desde, hasta = contable.mes_en_curso()
+def test_sin_fechas_la_pagina_entrega_el_anio_en_curso(sesiones):
+    desde, hasta = contable.anio_en_curso()
     r = sesiones["a"].get("/gastos/contable.xlsx")
     assert r.status_code == 200
     assert r.headers["content-disposition"] == f'attachment; filename="libro_contable_{desde}_{hasta}.xlsx"'
@@ -361,7 +361,7 @@ def test_la_descarga_deja_su_evento(mundo, sesiones):
 
 
 def test_la_lista_de_gastos_y_el_tablero_ofrecen_el_excel_contable(cliente, gestor):
-    desde, hasta = contable.mes_en_curso()
+    desde, hasta = contable.anio_en_curso()
     lista = cliente.get("/gastos").text
     assert 'action="/gastos/contable.xlsx"' in lista and "Excel contable" in lista
     assert f'name="desde" value="{desde}"' in lista and f'name="hasta" value="{hasta}"' in lista
@@ -491,14 +491,15 @@ def test_las_consultas_del_libro_no_crecen_con_las_filas(mundo):
         db.ejecutar(f"delete from gastos where id in ({', '.join(str(int(i)) for i in ids)})")
 
 
-@pytest.mark.parametrize("ahora_utc", [datetime(2026, 11, 30, 23, 30, tzinfo=UTC),   # 18:30 en Nueva York
-                                       datetime(2026, 12, 1, 3, 0, tzinfo=UTC)])     # 22:00 del 30 en Nueva York
-def test_el_mes_en_curso_se_cuenta_en_la_zona_de_la_empresa(monkeypatch, sesiones, ahora_utc):
+@pytest.mark.parametrize("ahora_utc", [datetime(2026, 12, 31, 23, 30, tzinfo=UTC),   # 18:30 en Nueva York
+                                       datetime(2027, 1, 1, 3, 0, tzinfo=UTC)])      # 22:00 del 31 en Nueva York
+def test_el_periodo_en_curso_se_cuenta_en_la_zona_de_la_empresa(monkeypatch, sesiones, ahora_utc):
     monkeypatch.setattr(contable, "_ahora", lambda: ahora_utc)
     assert contable.ZONA_EMPRESA.key == "America/New_York"
-    assert contable.mes_en_curso() == ("2026-11-01", "2026-11-30")
+    assert contable.mes_en_curso() == ("2026-12-01", "2026-12-31")
+    assert contable.anio_en_curso() == ("2026-01-01", "2026-12-31")
     r = sesiones["a"].get(f"{V1}/gastos/contable")
-    assert r.status_code == 200 and "libro_contable_2026-11-01_2026-11-30.xlsx" in r.headers["content-disposition"]
+    assert r.status_code == 200 and "libro_contable_2026-01-01_2026-12-31.xlsx" in r.headers["content-disposition"]
 
 
 def test_el_proyecto_del_filtro_se_lee_una_sola_vez(mundo):
