@@ -43,8 +43,9 @@ def test_la_migracion_de_la_tabla_se_puede_repetir():
 
 
 @pytest.mark.skipif(config.ES_SQLITE, reason="RLS solo existe en PostgreSQL")
-def test_la_tabla_tiene_rls():
-    assert db.uno("select relrowsecurity r from pg_class where relname='ofertas_tarifa'")["r"]
+def test_las_tablas_tienen_rls():
+    for tabla in ofertas.TABLAS:   # también el registro ofertas_origenes
+        assert db.uno("select relrowsecurity r from pg_class where relname=:t", t=tabla)["r"], tabla
 
 
 def test_solo_valores_conocidos():
