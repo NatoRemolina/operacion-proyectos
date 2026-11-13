@@ -907,19 +907,23 @@ def _responder(pregunta: str, usuario: dict, cid: int) -> dict:
         # Si el asesor agotó el plazo o tardó en fallar, no se suma la espera del modelo de lenguaje
         salto = fallo is not None and (getattr(fallo, "agotado", False) or getattr(fallo, "segundos", 0) > asesor.SEGUNDA_VIA_S)
         tope = getattr(fallo, "tope", False)   # el asesor no se llamó: la respuesta lo dice, la dé quien la dé
+        # El porqué de un fallo (costos del día, códigos del servicio) es para administración; los demás reciben un aviso
+        admin = r.alcance.admin
         if not texto and llm.activo() and not salto:
             try:
                 texto, modo = _con_modelo(pregunta, r), "modelo"
             except llm.ErrorDelModelo as e:
-                nota = f"(El modelo de lenguaje no respondió: {e} Se usó la respuesta determinista.)\n\n"
+                nota = (f"(El modelo de lenguaje no respondió: {e} Se usó la respuesta determinista.)\n\n" if admin
+                        else "(El modelo de lenguaje no estaba disponible: se usó la respuesta directa.)\n\n")
             if not texto:
                 modo = "determinista"
-            elif tope:
+            elif tope and admin:
                 texto = f"(El asesor no se consultó: {asesor.motivo(fallo)}.)\n\n{texto}"
         if not texto:
             if fallo is not None and not nota:
-                nota = (f"(El asesor {'no se consultó' if tope else 'no respondió'}: {asesor.motivo(fallo)}. "
-                        "Se usó la respuesta determinista.)\n\n")
+                nota = ((f"(El asesor {'no se consultó' if tope else 'no respondió'}: {asesor.motivo(fallo)}. "
+                         "Se usó la respuesta determinista.)\n\n") if admin
+                        else "(El asesor no estaba disponible: se usó la respuesta directa.)\n\n")
             texto, modo = nota + _determinista(pregunta, r), "determinista"
     # Segunda barrera: aunque una herramienta futura olvidara su filtro, no se cita nada fuera del alcance
     fuentes = [f for f in r.fuentes.values() if r.alcance.ve(f["tipo"], f["id"])]

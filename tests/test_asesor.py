@@ -663,3 +663,23 @@ def test_el_mensaje_de_sistema_dice_para_quien_responde():
     assert "Te escribe la persona de administración" not in asesor.SISTEMA
     for frase in ("«Te escribe …»", "la pone la plataforma", "solo lo suyo", "indicadores de la empresa son solo para administración"):
         assert frase in asesor.SISTEMA, frase
+
+
+def test_fuera_de_administracion_los_avisos_del_asesor_no_dan_detalles_internos(con_asesor, piloto_con_gastos, monkeypatch):
+    """A administración se le explica por qué no respondió el asesor; a los demás, solo que se usó la respuesta directa."""
+    piloto = db.uno("select * from usuarios where id=:i", i=piloto_con_gastos["id"])
+    s = con_asesor(Servicio([corriendo(), mensaje("No debería responder."), fin()]))
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: asesor.gasto_hoy())
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert s.peticiones == [] and r["modo"] == "determinista"
+    assert "USD, supuesto" not in r["texto"] and "asesor_usd_dia" not in r["texto"] and "tope de gasto" not in r["texto"]
+    assert r["texto"].startswith("(El asesor no estaba disponible: se usó la respuesta directa.)")
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r: "Respuesta del modelo de lenguaje.")
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert r["modo"] == "modelo" and "asesor_usd_dia" not in r["texto"] and "tope de gasto" not in r["texto"]
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: Decimal("1000"))
+    monkeypatch.setattr(llm, "activo", lambda: False)
+    con_asesor(Servicio(crear=500))
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert "HTTP" not in r["texto"] and r["texto"].startswith("(El asesor no estaba disponible")
