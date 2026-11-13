@@ -14,6 +14,9 @@ import { crearAuthMemoria } from "@/features/auth/infrastructure/auth-memoria";
 import type { GastosRepository } from "@/features/gastos/domain/gastos";
 import { crearGastosHttp } from "@/features/gastos/infrastructure/gastos-http";
 import { crearGastosMemoria } from "@/features/gastos/infrastructure/gastos-memoria";
+import type { ProyectosRepository } from "@/features/proyectos/domain/proyectos";
+import { crearProyectosHttp } from "@/features/proyectos/infrastructure/proyectos-http";
+import { crearProyectosMemoria } from "@/features/proyectos/infrastructure/proyectos-memoria";
 import type { ViajesRepository } from "@/features/viajes/domain/viajes";
 import { crearViajesHttp } from "@/features/viajes/infrastructure/viajes-http";
 import { crearViajesMemoria } from "@/features/viajes/infrastructure/viajes-memoria";
@@ -30,6 +33,7 @@ export interface Repositorios {
   cotizar: CotizarRepository;
   administracion: AdministracionRepository;
   asistente: AsistenteRepository;
+  proyectos: ProyectosRepository;
   demo: ModoDemo | null;
 }
 
@@ -77,6 +81,8 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
       administracion: crearAdministracionMemoria({ sesion, latenciaMs }),
       // Igual que el resumen: el asistente es de administración y la cuenta de demostración no lo es.
       asistente: crearAsistenteMemoria({ sesion, latenciaMs }),
+      // La cuenta de demostración es de colaboración: proyectos responde «sin permiso», como la API.
+      proyectos: crearProyectosMemoria({ sesion, latenciaMs }),
       demo: {
         cuentas: [
           { correo: CUENTA_DEMO.persona.correo, clave: CUENTA_DEMO.clave, descripcion: "Piloto" },
@@ -92,6 +98,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     cotizar: crearCotizarHttp(cliente),
     administracion: crearAdministracionHttp(cliente),
     asistente: crearAsistenteHttp(cliente),
+    proyectos: crearProyectosHttp(cliente),
     demo: null,
   };
 }
