@@ -371,3 +371,11 @@ def test_r1_11_el_indice_unico_va_con_la_tabla_y_el_programa_migra_su_bloque(mon
     from datos import ofertas as programa
     programa.main()
     assert llamadas == [1]
+
+
+def test_r1_12_el_tablero_de_kpis_pone_al_dia_las_tarifas(monkeypatch):
+    from app.servicios import kpis
+    llamadas = []
+    monkeypatch.setattr(ofertas, "actualizar_si_toca", lambda: llamadas.append(1))
+    kpis.tablero({"proyecto_id": 10 ** 6})
+    assert llamadas == [1]
