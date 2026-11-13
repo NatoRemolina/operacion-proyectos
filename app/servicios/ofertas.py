@@ -28,7 +28,8 @@ def _valores(columna: str, valores: tuple) -> CheckConstraint:
 ofertas_tarifa = db._tabla(
     "ofertas_tarifa",
     Column("momento", Text, nullable=False), Column("fuente", Text, nullable=False),
-    # De dónde sale la fila: «busqueda:<clave>» o «analisis:<id>». Con la fuente, el vuelo, el vendedor y la tarifa la hace única
+    # De dónde sale la fila: «busqueda:<id de busquedas>», «archivo:<nombre>» (respaldo local) o «analisis:<id>». Cada
+    # respuesta guardada es un momento distinto: la misma tarifa vista otro día es otra fila
     Column("origen_fila", Text, nullable=False),
     # Sin claves foráneas: la fila es un hecho histórico y sobrevive a la limpieza de cotizaciones o lecturas
     Column("solicitud_id", Integer), Column("opcion_id", Integer), Column("analisis_id", Integer), Column("busqueda_clave", Text),
@@ -167,7 +168,7 @@ def _fila(base: dict, nombre, precio, vendedor, es_aerolinea, lineas_equipaje, l
             "crudo": json.dumps(crudo, ensure_ascii=False)}
 
 
-def _de_respuesta(clave: str, datos: dict, creado: str | None) -> list[dict]:
+def _de_respuesta(origen_fila: str, clave: str, datos: dict, creado: str | None) -> list[dict]:
     """Filas de una respuesta del buscador con opciones de reserva (las de «Traer tarifas» guardaban también el regreso)."""
     if clave.startswith("tarifas_"):
         datos = datos.get("reserva") or {}
@@ -185,7 +186,7 @@ def _de_respuesta(clave: str, datos: dict, creado: str | None) -> list[dict]:
     momento = ((datos.get("search_metadata") or {}).get("created_at") or creado or db.ahora())[:19]
     consulta = db.uno("select solicitud_id from consultas_buscador where clave=:c and solicitud_id is not null order by id limit 1", c=clave)
     sid = consulta["solicitud_id"] if consulta else None
-    base = {"momento": momento, "fuente": "buscador", "origen_fila": f"busqueda:{clave}", "busqueda_clave": clave,
+    base = {"momento": momento, "fuente": "buscador", "origen_fila": origen_fila, "busqueda_clave": clave,
             "solicitud_id": sid, "opcion_id": _opcion_de(sid, numeros), "analisis_id": None,
             "origen": origen or p.get("departure_id") or (partes[1] if len(partes) >= 3 else None),
             "destino": destino or p.get("arrival_id") or (partes[2] if len(partes) >= 3 else None),
@@ -253,24 +254,28 @@ def _insertar(filas: list[dict]) -> int:
     return db.uno("select count(*) n from ofertas_tarifa")["n"] - antes
 
 
-def _respuestas_nuevas() -> list[tuple[str, dict, str | None]]:
-    """(clave, respuesta, creado) de las respuestas con opciones de reserva que aún no se extrajeron: la tabla compartida
-    `busquedas` (la última de cada clave) y, en local, la carpeta de respaldo."""
-    hechas = {r["busqueda_clave"] for r in db.todos("select distinct busqueda_clave from ofertas_tarifa where fuente='buscador'")}
+def _hechos() -> set[str]:
+    return {r["origen_fila"] for r in db.todos("select distinct origen_fila from ofertas_tarifa")}
+
+
+def _respuestas_nuevas(hechos: set[str]) -> list[tuple[str, str, dict, str | None]]:
+    """(origen de la fila, clave, respuesta, creado) de las respuestas con opciones de reserva aún no extraídas. Cada fila de
+    `busquedas` cuenta por separado (la misma clave guardada otro día es otro momento). Un archivo de la carpeta de
+    respaldo solo entra si la tabla no tiene ninguna respuesta con esa clave: si la tiene, es la misma respuesta."""
     condicion = " or ".join(f"clave like '{p}%'" for p in PREFIJOS)
-    ultimas = db.todos(f"select clave, max(id) id from busquedas where {condicion} group by clave")
     salida = []
-    for r in ultimas:
-        if r["clave"] not in hechas:
-            fila = db.uno("select cuerpo, creado from busquedas where id=:i", i=r["id"])
-            datos = db.de_json(fila["cuerpo"], None)
-            if isinstance(datos, dict):
-                salida.append((r["clave"], datos, fila["creado"]))
-    vistas = hechas | {c for c, _, _ in salida}
+    for r in db.todos(f"select id, clave from busquedas where {condicion} order by id"):
+        if f"busqueda:{r['id']}" in hechos:
+            continue
+        fila = db.uno("select cuerpo, creado from busquedas where id=:i", i=r["id"])
+        datos = db.de_json(fila["cuerpo"], None)
+        if isinstance(datos, dict):
+            salida.append((f"busqueda:{r['id']}", r["clave"], datos, fila["creado"]))
+    en_tabla = {r["clave"] for r in db.todos(f"select distinct clave from busquedas where {condicion}")}
     for archivo in sorted(config.DIR_RESPALDO.glob("*.json")) if config.DIR_RESPALDO.is_dir() else []:
-        if archivo.name.startswith(PREFIJOS) and archivo.name not in vistas:
+        if archivo.name.startswith(PREFIJOS) and archivo.name not in en_tabla and f"archivo:{archivo.name}" not in hechos:
             try:
-                salida.append((archivo.name, json.loads(archivo.read_text()), None))
+                salida.append((f"archivo:{archivo.name}", archivo.name, json.loads(archivo.read_text()), None))
             except (OSError, ValueError):
                 continue
     return salida
@@ -282,8 +287,8 @@ def actualizar() -> dict:
     hechos = {"filas": 0, "respuestas": 0, "lecturas": 0}
     if not _existe("ofertas_tarifa"):
         return hechos
-    for clave, datos, creado in _respuestas_nuevas():
-        filas = _de_respuesta(clave, datos, creado)
+    for origen_fila, clave, datos, creado in _respuestas_nuevas(_hechos()):
+        filas = _de_respuesta(origen_fila, clave, datos, creado)
         if filas:
             hechos["respuestas"] += 1
             hechos["filas"] += _insertar(filas)

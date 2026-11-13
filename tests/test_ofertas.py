@@ -184,3 +184,37 @@ def test_se_puede_correr_desde_la_linea_de_comandos(capsys):
     from datos import ofertas as programa
     programa.main()
     assert "ofertas_tarifa:" in capsys.readouterr().out
+
+
+# ---------- ronda 1 ----------
+def _respuesta(precio=458, opciones=None, **cambios) -> dict:
+    """Una respuesta del buscador con opciones de reserva, a partir de la guardada de MIA-LAS."""
+    base = json.loads((config.DIR_RESPALDO / "tarifas_MIA_LAS_2026-12-08_2026-12-11_AA1851.json").read_text())["reserva"]
+    base = json.loads(json.dumps(base))
+    base["booking_options"] = opciones if opciones is not None else [
+        {"together": {**base["booking_options"][0]["together"], "price": precio}}]
+    return {**base, **cambios}
+
+
+def _guardar_respuesta(clave: str, datos: dict, creado: str) -> int:
+    return db.insertar("busquedas", clave=clave, cuerpo=json.dumps(datos), creado=creado)
+
+
+def test_r1_1_la_misma_tarifa_vista_en_tres_momentos_queda_tres_veces():
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7001.json"
+    ids = [_guardar_respuesta(clave, _respuesta(458), "2026-11-01 10:00:00"),
+           _guardar_respuesta(clave, _respuesta(499), "2026-11-05 10:00:00")]
+    ofertas.actualizar()
+    ids.append(_guardar_respuesta(clave, _respuesta(520), "2026-11-09 10:00:00"))
+    ofertas.actualizar()
+    filas = db.todos("select origen_fila, precio, busqueda_clave from ofertas_tarifa where busqueda_clave=:c order by precio", c=clave)
+    assert [f["precio"] for f in filas] == [458, 499, 520]
+    assert [f["origen_fila"] for f in filas] == [f"busqueda:{i}" for i in ids]
+
+
+def test_r1_1_un_archivo_de_respaldo_solo_entra_si_la_tabla_no_tiene_esa_clave():
+    archivo = "tarifas_MIA_LAS_2026-12-08_2026-12-11_AA1851.json"
+    ofertas.actualizar()
+    de_archivo = db.todos("select origen_fila from ofertas_tarifa where busqueda_clave=:c", c=archivo)
+    assert de_archivo and all(f["origen_fila"] == f"archivo:{archivo}" for f in de_archivo)
+    assert db.uno("select count(*) n from ofertas_tarifa where origen_fila like 'busqueda:%' and busqueda_clave=:c", c=archivo)["n"] == 0
