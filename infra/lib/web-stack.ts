@@ -82,7 +82,11 @@ export class WebStack extends Stack {
     // ---------- distribuciones ----------
     const certificado = dominio ? this.certificado(dominio) : undefined;
     const origenWeb = new origins.FunctionUrlOrigin(urlWeb);
-    const origenApi = new origins.FunctionUrlOrigin(props.urlApi);
+    // 60 s: el plazo total que ya se dan el asistente y el agente de la cotización con el modelo. Lo que lo pase
+    // (asesor, lectura de un recibo con reintentos, una ruta nueva en el buscador) sigue en la función y queda
+    // guardado, pero el navegador recibe 504. Qué pasa en cada caso: docs/adr/0002-hospedaje-de-la-web.md.
+    // Un solo intento: CloudFront repetiría un GET lento, y el tablero de vuelos consulta el buscador pago en un GET.
+    const origenApi = new origins.FunctionUrlOrigin(props.urlApi, { readTimeout: Duration.seconds(60), connectionAttempts: 1 });
     // Si un archivo no está en el bucket (403 por OAC) lo sirve la función, que trae los suyos en la imagen
     const origenEstaticos = new origins.OriginGroup({
       primaryOrigin: origins.S3BucketOrigin.withOriginAccessControl(estaticos),

@@ -44,15 +44,33 @@ La web no tiene secretos: llama a la API con `NEXT_PUBLIC_API_BASE=/api/v1`, una
 
 | Pieza | Cómo |
 |---|---|
-| Registro del dominio | Route 53 (un `.com` cuesta unos 15 USD al año). Si la empresa ya tuviera un dominio en otro registrador, se conserva allí y solo se delega su DNS a Route 53 cambiando los servidores de nombres |
-| Zona DNS | Una zona alojada en Route 53 (0,50 USD al mes más centavos por consultas; las que apuntan a CloudFront no se cobran) |
-| Certificado | ACM en `us-east-1`, pedido y validado por CDK en la propia zona: sin pasos a mano. Gratis |
-| Registros | *Alias* del dominio raíz y de `www` hacia la distribución de CloudFront; `admin.` hacia las pantallas actuales |
-| Configuración | `ORIGENES_WEB` con el dominio, en el secreto de la API |
+| Registro del dominio | `nataliaremolinarodriguez.com`, registrado en Route 53 (un `.com` cuesta unos 15 USD al año) |
+| Zona DNS | Una zona alojada en Route 53 (0,50 USD al mes más centavos por consultas; las que apuntan a CloudFront no se cobran). **La creó la dueña y es suya:** la pila la importa por su identificador y nunca la crea ni la borra |
+| Nombres | La web en `software.nataliaremolinarodriguez.com`; las pantallas actuales en `admin.software.nataliaremolinarodriguez.com`. El subdominio es una variable del despliegue (`-c subdominio=`, por omisión `software`) |
+| Certificado | ACM en `us-east-1`, pedido y validado por CDK en la propia zona, solo para esos dos nombres: sin pasos a mano. Gratis |
+| Registros | *Alias* A y AAAA de los dos nombres hacia su distribución. **El dominio raíz y `www` no se tocan:** quedan para la página personal de la dueña, y la pila rechaza un subdominio `www` |
+| Configuración | `ORIGENES_WEB` con el dominio de la web: con dominio la fija la pila de la API; sin dominio va en el secreto |
 
-**Mientras no se compre el dominio**, el mismo stack publica en la dirección gratuita de CloudFront (`https://<id>.cloudfront.net`), con HTTPS incluido y el mismo comportamiento de sesión y CSRF. El dominio se activa con una variable del despliegue (nombre del dominio y zona); si está vacía, no se crean zona, certificado ni registros.
+**Sin las variables del dominio**, el mismo stack publica en la dirección gratuita de CloudFront (`https://<id>.cloudfront.net`), con HTTPS incluido y el mismo comportamiento de sesión y CSRF. El dominio se activa con dos variables del despliegue (`-c dominio=… -c zonaId=…`, que van juntas); sin ellas no se crean certificado ni registros, y la zona nunca se crea.
 
 Alternativas descartadas: Cloudflare como DNS (funciona, pero deja una parte fuera de CDK y la validación del certificado a mano) y Cloudflare como proxy delante de CloudFront (dos CDN en cadena, más reglas que mantener).
+
+## Tiempo máximo de respuesta (decisión del 12 de noviembre de 2026)
+
+CloudFront espera a la API **60 segundos** como máximo (`readTimeout` del origen de la API en `infra/lib/web-stack.ts`, en las dos distribuciones). La web conserva los 30 s por omisión: sus páginas no hacen trabajo largo.
+
+**Por qué 60 s.** Es el plazo total que ya se dan el asistente y el agente de la cotización en su conversación con el modelo (`PLAZO_TOTAL_S = 60` en `app/servicios/asistente.py` y `app/servicios/agente.py`), y más de un minuto frente a una pantalla quieta ya no es una espera razonable para nadie. CloudFront admite hasta 120 s sin pedir cuota: si la medición del primer despliegue lo pide, se sube en el mismo stack, con su `cdk diff`.
+
+**Qué pasa al superarlo.** Ante un `POST` que no responde a tiempo, CloudFront corta la conexión, no reintenta y el navegador recibe un 504. La función **no se detiene**: termina su trabajo (tiene 180 s) y lo guarda. Con un `GET`, CloudFront reintentaría hasta 3 veces; hacia la API la pila lo deja en **un solo intento** (`connectionAttempts: 1`), porque el tablero de vuelos (`GET /admin/viajes/vuelos`, cada 15 s) consulta el buscador pago dentro de un `GET` y un reintento repetiría la consulta.
+
+| Operación | Cuánto puede tardar | Si pasa de 60 s |
+|---|---|---|
+| Asistente (`/admin/asistente`, en `admin.`) | El asesor tiene 75 s (`app/servicios/asesor.py`); si falla antes de 20 s se prueba el modelo, con otros 60 s | La respuesta queda en `asistente_consultas` y en la bitácora, y el costo del asesor queda registrado, pero la persona ve el error. La pantalla solo lista las preguntas recientes: tiene que preguntar de nuevo, y eso cuenta otra vez en el tope diario y en el costo |
+| Lectura de un recibo (`POST /api/v1/gastos`, `/cargar`) | Hasta 3 intentos de 45 s con el modelo (`app/servicios/llm.py`), o 90 s en el formato «mensajes» (`app/servicios/extraccion.py`) | El soporte y el gasto quedan guardados. Reenviar con la misma `Idempotency-Key` devuelve el mismo gasto, aunque siga en lectura (`app/servicios/envios.py`); la página de carga ya manda una clave por archivo. Si la lectura se corta, el gasto pasa a revisión de administración |
+| Cotizar una ruta nueva (`POST /api/v1/cotizaciones`, `/viajes`) | Hasta 60 s por consulta al buscador (`app/servicios/precios.py`), al menos dos consultas (vuelos y hoteles), más el agente | La cotización y las respuestas del buscador quedan guardadas. Reenviar con la misma `Idempotency-Key` devuelve la misma cotización sin volver a pagar el buscador (`app/servicios/cotizacion.py`) |
+| Telegram | No pasa por CloudFront: el webhook apunta a la dirección de la función | Sin cambio |
+
+Mejoras posibles, sin hacer: que el asistente reciba el plazo que le queda y corte antes de los 60 s, y que su pantalla muestre la última respuesta guardada.
 
 ## Consecuencias
 
@@ -65,8 +83,8 @@ Alternativas descartadas: Cloudflare como DNS (funciona, pero deja una parte fue
 ## Pendiente de comprobar al implementar
 
 - Next.js 16 en modo independiente detrás del adaptador web de Lambda: respuestas en flujo, optimización de imágenes y encabezados de caché.
-- Que CloudFront reenvíe la cookie de sesión y los encabezados `Origin` y `X-CSRF-Token` hacia la API, y nada de eso hacia los archivos estáticos.
-- El nombre del dominio de la empresa (registrarlo en Route 53 o delegar su DNS) y el del subdominio de administración.
+- ~~Que CloudFront reenvíe la cookie de sesión y los encabezados `Origin` y `X-CSRF-Token` hacia la API, y nada de eso hacia los archivos estáticos.~~ Resuelto: `/api/v1/*` y `admin.` usan la política AllViewerExceptHostHeader y los estáticos ninguna (`infra/lib/web-stack.ts`, `tests/test_detras_de_cloudfront.py`). Detrás de CloudFront `Host` es el de la función, así que los formularios de `admin.` dependen de `Sec-Fetch-Site`, que mandan todos los navegadores actuales.
+- ~~El nombre del dominio de la empresa y el del subdominio de administración.~~ Resuelto: ver «Dominio».
 
 ## Condición para revisar esta decisión
 
