@@ -137,7 +137,7 @@ def detalle(id: int, yo: dict = Depends(persona)):
 
 
 @router.post("/gastos", status_code=201, response_model=GastoRevisable, responses=errores(401, 403, 409, 413, 415, 422))
-def enviar(response: Response, archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."),
+def enviar(response: Response, archivo: UploadFile = File(..., description="Foto (JPG, PNG, WebP), PDF, correo (.eml) o confirmación en HTML (.html) de hasta 4,5 MB."),
            viaje_id: int | None = Form(None, description="Opcional. Sin él, se usa el viaje que corresponde hoy a la persona."),
            justificacion: str | None = Form(None, max_length=2000,
                                             description="Opcional. Para qué fue el gasto, con las palabras de la persona."),
@@ -159,7 +159,7 @@ def enviar(response: Response, archivo: UploadFile = File(..., description="Foto
         raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"archivo": "El archivo está vacío."})
     nombre = archivo.filename or "soporte"
     if not soportes.tipo_real(contenido, nombre):
-        raise ErrorApi(415, "UNSUPPORTED_MEDIA_TYPE", "Tipo de archivo no admitido. Se aceptan fotos (JPG, PNG, WebP), PDF y correos (.eml).")
+        raise ErrorApi(415, "UNSUPPORTED_MEDIA_TYPE", "Tipo de archivo no admitido. " + soportes.TIPOS_ADMITIDOS)
     # Con viaje indicado solo se acepta uno propio; si no lo es, el gasto queda sin viaje y en revisión
     viaje, _ = viajes.resolver_para_gasto(yo, viaje_id)
     try:
@@ -224,6 +224,8 @@ def contenido(id: int, yo: dict = Depends(persona)):
     if not archivo:
         raise _no_encontrado()
     datos, tipo = archivo
+    d = db.uno("select mime, nombre from documentos where id=:i", i=id)
     return Response(datos, media_type=tipo, headers={
-        "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
+        "Content-Disposition": soportes.disposicion(d["mime"], d["nombre"]), "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
         "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})

@@ -7,8 +7,8 @@
 <div class="{{ 'dos' if es_admin else '' }}">
 <form method="post" action="/gastos/cargar" enctype="multipart/form-data" class="tarjeta" id="carga">
   <h3>{{ 'Subir archivos o tomar foto' if es_admin else 'Toma la foto del recibo o elige el archivo' }}</h3>
-  <p><label for="archivos" class="eti" style="font-weight:400">Fotos, PDF o correos (.eml). Máximo 4,5 MB por archivo y 6 por envío; las fotos más pesadas se reducen antes de enviarse.</label>
-  <input id="archivos" type="file" name="archivos" multiple accept="image/*,application/pdf,.eml" required></p>
+  <p><label for="archivos" class="eti" style="font-weight:400">Fotos, PDF, correos (.eml) o confirmaciones en HTML (.html). Máximo 4,5 MB por archivo y 6 por envío; las fotos más pesadas se reducen antes de enviarse.</label>
+  <input id="archivos" type="file" name="archivos" multiple accept="image/*,application/pdf,.eml,.html,.htm" required></p>
   <div class="campos"><div><label for="viaje_1">Viaje</label><select id="viaje_1" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div>
   {% if es_admin %}<div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
   <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>

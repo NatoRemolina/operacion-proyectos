@@ -11,8 +11,19 @@ describe("archivo del recibo", () => {
     for (const type of ["message/rfc822", "", "application/octet-stream"]) {
       expect(validarArchivo({ size: 2_000, type, name: "correo_tiquete.eml" }), type).toBeNull();
     }
-    expect(validarArchivo({ size: 2_000, type: "text/html", name: "pagina.html" })).toBe("tipo_no_admitido");
     expect(validarArchivo({ size: 2_000, type: "application/octet-stream", name: "programa.exe" })).toBe("tipo_no_admitido");
+  });
+
+  it("acepta la confirmación de una reserva en HTML (.html o .htm), con o sin tipo", () => {
+    const casos: [string, string][] = [
+      ["text/html", "confirmacion_hotel.html"],
+      ["", "reserva.htm"],
+      ["application/octet-stream", "reserva.html"],
+    ];
+    for (const [type, name] of casos) {
+      expect(validarArchivo({ size: 2_000, type, name }), name).toBeNull();
+    }
+    expect(validarArchivo({ size: 2_000, type: "text/html", name: "pagina.php" })).toBe("tipo_no_admitido");
   });
 });
 

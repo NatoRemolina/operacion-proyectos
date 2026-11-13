@@ -1819,7 +1819,7 @@
             "type": "string",
             "format": "binary",
             "title": "Archivo",
-            "description": "Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."
+            "description": "Foto (JPG, PNG, WebP), PDF, correo (.eml) o confirmación en HTML (.html) de hasta 4,5 MB."
           },
           "viaje_id": {
             "anyOf": [

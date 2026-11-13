@@ -17,7 +17,8 @@ class SoporteRechazado(ValueError):
 
 EXTENSIONES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf"}
 # Un correo guardado que alguien sube llegó por correo, aunque lo suba desde la web, el celular o la API
-FORMATOS_DE_CORREO = ("message/rfc822",)
+FORMATOS_DE_CORREO = ("message/rfc822", "text/html")
+TIPOS_ADMITIDOS = "Se aceptan fotos (JPG, PNG, WebP), PDF, correos (.eml) y confirmaciones en HTML (.html)."
 CANALES_DE_SUBIDA = ("web", "celular")
 
 
@@ -26,6 +27,8 @@ def tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
     binario = extraccion.tipo_binario(contenido)
     if binario:
         return binario, EXTENSIONES[binario]
+    if nombre.lower().endswith((".html", ".htm")) and extraccion.parece_html(contenido):
+        return "text/html", "html"
     if nombre.lower().endswith(".eml"):
         cabecera = contenido[:4000].decode("utf-8", "ignore").lower()
         if not cabecera.lstrip().startswith("<") and sum(c in cabecera for c in ("from:", "subject:", "date:", "to:")) >= 2:
@@ -55,6 +58,14 @@ def _guardar(contenido: bytes, mime: str, extension: str) -> tuple[str, str]:
         return almacen.guardar(almacen.clave(huella, extension), contenido, mime), huella
     except Exception as e:
         raise SoporteRechazado(f"No se pudo guardar el archivo ({type(e).__name__}). Intenta de nuevo.") from e
+
+
+def disposicion(mime: str | None, nombre: str | None) -> str:
+    """Cómo se entrega el original: en línea, salvo la confirmación HTML reducida a texto, que solo se descarga."""
+    if mime != "text/plain":
+        return "inline"
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", Path(nombre or "soporte").stem)[:80] or "soporte"
+    return f'attachment; filename="{base}.txt"'
 
 
 def correo_de(texto: str | None) -> dict | None:
@@ -104,10 +115,16 @@ def registrar_envio(contenido: bytes, nombre: str, canal: str, usuario: dict | N
         raise SoporteRechazado(f"El archivo pesa {len(contenido) / 1e6:.1f} MB; el máximo es {config.MAX_BYTES_SOPORTE / 1e6:.1f} MB.")
     tipo = tipo_real(contenido, nombre)
     if not tipo:
-        raise SoporteRechazado("Tipo de archivo no admitido. Se aceptan fotos (JPG, PNG, WebP), PDF y correos (.eml).")
+        raise SoporteRechazado("Tipo de archivo no admitido. " + TIPOS_ADMITIDOS)
     mime, extension = tipo
     if mime in FORMATOS_DE_CORREO and canal in CANALES_DE_SUBIDA:
         canal = "correo"
+    if mime == "text/html":
+        # Una confirmación en HTML se guarda y se lee como texto plano: sin scripts, estilos ni enlaces activos
+        texto = extraccion.html_a_texto(contenido)
+        if not texto:
+            raise SoporteRechazado("La confirmación en HTML no tiene texto legible.")
+        contenido, mime, extension = texto.encode(), "text/plain", "txt"
     op = None
     clave = (clave_idempotencia or "").strip()
     if clave and usuario:
