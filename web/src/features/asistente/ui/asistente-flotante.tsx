@@ -196,7 +196,7 @@ function Asistente() {
         onClick={() => (abierto ? cerrar() : abrir())}
         aria-expanded={abierto}
         aria-controls={idPanel}
-        className={`fondo-ia fixed bottom-20 right-4 z-10 flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-full px-4 text-sobre-marca shadow-lg shadow-grafito/25 md:bottom-6 md:right-6 md:px-5 ${PRESIONAR} ${
+        className={`fondo-ia fixed bottom-20 right-4 z-10 flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-full px-4 text-sobre-grafito shadow-flotante md:bottom-6 md:right-6 md:px-5 ${PRESIONAR} ${
           abierto ? "max-md:hidden" : ""
         }`}
       >
@@ -214,7 +214,7 @@ function Asistente() {
         aria-modal="false"
         aria-labelledby={idTitulo}
         hidden={!abierto}
-        className="entrada-ia se-mueve fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden border-linea bg-superficie shadow-2xl shadow-grafito/30 md:inset-auto md:bottom-24 md:right-6 md:h-auto md:border md:max-h-[min(42rem,calc(100dvh-8rem))] md:w-[26rem] md:rounded-2xl [@media(max-height:30rem)]:overflow-y-auto"
+        className="entrada-ia se-mueve fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden border-linea bg-superficie md:inset-auto md:bottom-24 md:right-6 md:h-auto md:w-asistente md:max-h-[min(42rem,calc(100dvh-8rem))] md:rounded-2xl md:border md:shadow-flotante [@media(max-height:30rem)]:overflow-y-auto"
       >
         <div className="zona-oscura fondo-ia flex shrink-0 items-center gap-3 py-2.5 pl-4 pr-2 text-sobre-grafito">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-sobre-grafito/10 ring-1 ring-sobre-grafito/25">
@@ -343,7 +343,7 @@ function Asistente() {
                 disabled={ocupado || !texto.trim()}
                 aria-label="Enviar la pregunta"
                 title="Enviar"
-                className={`fondo-ia grid size-11 shrink-0 place-items-center rounded-xl text-sobre-marca shadow-sm disabled:opacity-40 ${PRESIONAR}`}
+                className={`grid size-11 shrink-0 place-items-center rounded-xl bg-marca text-sobre-marca hover:bg-marca-oscura disabled:opacity-40 ${PRESIONAR}`}
               >
                 <IconoEnviar className="size-5" />
               </button>
@@ -369,7 +369,7 @@ function Asistente() {
 function Bienvenida({ conVoz, deshabilitado, onElegir }: { conVoz: boolean; deshabilitado: boolean; onElegir: (p: string) => void }) {
   return (
     <div className="flex flex-col items-center px-1 pb-1 pt-3 text-center">
-      <span className="fondo-ia grid size-14 place-items-center rounded-2xl shadow-md shadow-grafito/20">
+      <span className="fondo-ia grid size-14 place-items-center rounded-2xl">
         <IconoChispa className="size-7 text-cian-claro" />
       </span>
       <p className="mt-3 text-lg font-bold text-texto">¿En qué te ayudo?</p>
@@ -398,7 +398,7 @@ function Bienvenida({ conVoz, deshabilitado, onElegir }: { conVoz: boolean; desh
 
 function Avatar() {
   return (
-    <span className="fondo-ia mt-0.5 grid size-8 shrink-0 place-items-center rounded-full shadow-sm" aria-hidden="true">
+    <span className="fondo-ia mt-0.5 grid size-8 shrink-0 place-items-center rounded-full" aria-hidden="true">
       <IconoChispa className="size-4 text-cian-claro" />
     </span>
   );
@@ -418,7 +418,7 @@ function VistaMensaje({
   if (m.rol === "persona") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-marca px-4 py-2.5 text-sobre-marca shadow-sm">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-marca px-4 py-2.5 text-sobre-marca">
           <p className="sr-only">Tú:</p>
           {m.porVoz ? (
             <p className="mb-0.5 flex items-center gap-1 text-xs font-bold">
@@ -463,7 +463,7 @@ function VistaRespuesta({ respuesta: r, onAbrirFuente }: { respuesta: RespuestaA
   return (
     <div className="flex gap-2.5">
       <Avatar />
-      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-linea bg-superficie px-4 py-3 shadow-sm">
+      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-linea bg-superficie px-4 py-3 shadow-tarjeta">
         <p className="sr-only">El asistente:</p>
         <TextoRespuesta texto={r.texto} />
         {fuentes.length > 0 ? (
@@ -522,7 +522,7 @@ function Segmentos({ segmentos }: { segmentos: readonly Segmento[] }) {
 
 function TextoRespuesta({ texto }: { texto: string }) {
   return (
-    <div className="space-y-2 text-[0.9375rem] leading-relaxed text-texto">
+    <div className="space-y-2 text-base leading-relaxed text-texto">
       {bloquesDeTexto(texto).map((b, i) => {
         if (b.tipo === "parrafo") {
           return (
@@ -556,7 +556,7 @@ function Pensando({ desde }: { desde: number }) {
   return (
     <div className="mt-4 flex gap-2.5">
       <Avatar />
-      <div className="rounded-2xl rounded-tl-md border border-linea bg-superficie px-4 py-3 shadow-sm">
+      <div className="rounded-2xl rounded-tl-md border border-linea bg-superficie px-4 py-3 shadow-tarjeta">
         <div className="flex items-center gap-2.5">
           <span className="flex gap-1" aria-hidden="true">
             <span className="punto-ia" />

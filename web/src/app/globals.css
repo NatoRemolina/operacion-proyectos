@@ -113,6 +113,8 @@
   /* Profundidad: la tarjeta apenas se separa del fondo; lo que flota (avisos, diálogos, menú) se separa más. */
   --shadow-tarjeta: 0 1px 2px rgb(17 28 36 / 0.05), 0 2px 6px rgb(17 28 36 / 0.04);
   --shadow-flotante: 0 4px 12px -2px rgb(17 28 36 / 0.12), 0 16px 40px -8px rgb(17 28 36 / 0.24);
+  /* Ancho del panel del asistente en escritorio: una columna de lectura cómoda junto a la pantalla. */
+  --container-asistente: 26rem;
   --text-base--line-height: 1.5;
   --text-sm--letter-spacing: 0.005em;
   --text-xs--letter-spacing: 0.02em;
@@ -207,12 +209,14 @@
 }
 
 /*
- * Asistente de IA: degradado grafito → cian oscuro (texto blanco 7,7:1 en el extremo más claro), puntos
- * de «pensando» y entrada del panel. Con movimiento reducido los puntos quedan quietos (regla de arriba).
+ * Asistente de IA: grafito sólido, el mismo de la barra lateral y la cabecera del celular (texto blanco 17:1,
+ * chispa cian claro 9,5:1). Así se reconoce como parte de la plataforma y no compite con la acción primaria de
+ * la pantalla, que es de color de marca. Puntos de «pensando» y entrada del panel; con movimiento reducido los
+ * puntos quedan quietos (regla de arriba).
  */
 @layer components {
   .fondo-ia {
-    background-image: linear-gradient(135deg, var(--grafito) 0%, var(--marca-oscura) 100%);
+    background-color: var(--grafito);
   }
   .punto-ia {
     width: 0.4rem;
