@@ -75,6 +75,32 @@ export interface GastosRepository {
   urlOriginal(documentoId: number): string | null;
   /** Añade una justificación escrita. Solo puede hacerlo quien hizo el gasto o quien viaja. */
   justificar(id: number, texto: string, signal?: AbortSignal): Promise<GastoDetalle>;
+  /** Dirección del Excel contable del periodo (se descarga con la sesión), o `null` si esta fuente no lo genera. */
+  urlLibroContable(periodo: PeriodoContable): string | null;
+}
+
+/** Periodo del Excel contable, por la fecha del recibo: `AAAA-MM-DD`, los dos días incluidos. */
+export interface PeriodoContable {
+  readonly desde: string;
+  readonly hasta: string;
+}
+
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const dia = (fecha: Date) =>
+  `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${String(fecha.getDate()).padStart(2, "0")}`;
+
+/** El mes en curso en la fecha local de quien mira (no en UTC: a las 23:00 en Miami ya es otro día en UTC). */
+export function mesEnCurso(hoy: Date = new Date()): PeriodoContable {
+  return {
+    desde: dia(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
+    hasta: dia(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)),
+  };
+}
+
+/** `null` si el periodo se puede descargar; si no, qué corregir. Las mismas reglas que el servidor. */
+export function problemaDePeriodo({ desde, hasta }: PeriodoContable): string | null {
+  if (!FECHA.test(desde) || !FECHA.test(hasta)) return "Elige la fecha inicial y la final.";
+  return hasta < desde ? "La fecha final no puede ser anterior a la inicial." : null;
 }
 
 export const JUSTIFICACION_MINIMO = 3;

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import acceso, eventos, exportacion, viajes
+from ..servicios import acceso, contable, eventos, exportacion, viajes
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -98,7 +98,7 @@ def proyecto(request: Request, pid: int):
                       "real": en_destino})
     faltantes = [f["nombre"] for f in filas if f["previsto"] and not f["real"]]
     return plantillas.TemplateResponse(request, "proyecto.html", _ctx(
-        p=p, filas=filas, faltantes=faltantes, decisiones=del_proyecto, viajes_proyecto=del_proyecto,
+        p=p, filas=filas, faltantes=faltantes, decisiones=del_proyecto, viajes_proyecto=del_proyecto, mes=contable.mes_en_curso(),
         tot_previsto=round(sum(f["previsto"] for f in filas), 2), tot_real=round(sum(f["real"] for f in filas), 2),
         pendientes=db.uno("select count(*) n from gastos where proyecto_id=:i and estado='revision'", i=pid)["n"],
         gastos=db.todos("""select g.*, v.nombre viajero from gastos g left join viajeros v on v.id=g.viajero_id

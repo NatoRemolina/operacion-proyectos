@@ -2,6 +2,12 @@
 <div class="fila"><div><h1>Gastos</h1><p class="sub">{% if ind %}{{ ind.auto }} de {{ ind.gastos }} entraron sin intervención ({{ ind.pct_auto }}%). {{ ind.revision }} esperan revisión.{% else %}Tus soportes y su estado. La revisión la hace administración.{% endif %}</p></div>
 <a class="boton der" href="/gastos/cargar">Cargar soportes</a></div>
 {% if aviso %}<p class="nota aviso">{{ aviso }}</p>{% endif %}
+<form method="get" action="/gastos/contable.xlsx" class="tarjeta" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+  <div><strong>Excel contable</strong><br><span class="eti">Los gastos aprobados del periodo, con su cuenta contable y el resumen por proyecto, cuenta y moneda.</span></div>
+  <label>Desde<br><input type="date" name="desde" value="{{ mes[0] }}" required></label>
+  <label>Hasta<br><input type="date" name="hasta" value="{{ mes[1] }}" required></label>
+  <button class="sec">Descargar Excel contable</button>
+</form>
 <p class="fila"><a class="chip {{ 'azul' if not estado }}" href="/gastos">Todos</a><a class="chip {{ 'azul' if estado == 'revision' }}" href="/gastos?estado=revision">En revisión</a><a class="chip {{ 'azul' if estado == 'aprobado_auto' }}" href="/gastos?estado=aprobado_auto">Aprobados automáticos</a><a class="chip {{ 'azul' if estado == 'aprobado' }}" href="/gastos?estado=aprobado">Aprobados por una persona</a></p>
 <div class="tarjeta tabla"><table>
 <tr><th>#</th><th>Fecha</th><th>Comercio</th><th>Categoría</th><th>Proyecto</th><th class="d">Total</th><th class="d">USD</th><th>Canal</th><th>Lectura</th><th>Estado</th></tr>

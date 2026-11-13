@@ -908,6 +908,122 @@
         }
       }
     },
+    "/api/v1/gastos/contable": {
+      "get": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Libro Contable",
+        "description": "Excel contable de los gastos aprobados (`aprobado` y `aprobado_auto`) del periodo, con el alcance de la sesión:\nadministración, todo; quien gestiona, sus proyectos y lo suyo; el resto, solo lo suyo. Un `proyecto_id` que la\npersona no gestiona responde 403, exista o no. Va antes de `/gastos/{id}` para que «contable» no se lea como id.",
+        "operationId": "libro_contable_api_v1_gastos_contable_get",
+        "parameters": [
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York).",
+              "title": "Desde"
+            },
+            "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York)."
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York).",
+              "title": "Hasta"
+            },
+            "description": "AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York)."
+          },
+          {
+            "name": "proyecto_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opcional. Solo administración o quien gestiona el proyecto.",
+              "title": "Proyecto Id"
+            },
+            "description": "Opcional. Solo administración o quien gestiona el proyecto."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "El libro (.xlsx) con las hojas «Gastos» y «Resumen»",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gastos/{id}": {
       "get": {
         "tags": [

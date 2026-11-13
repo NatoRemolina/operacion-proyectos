@@ -66,9 +66,10 @@ def sembrar():
     precios.cargar_respaldos()
     geografia.cargar()   # aeropuertos, lugares y países del mundo; sin cambios no recarga, pero deja su registro
     asegurar_supuestos()
-    from app.servicios import asistente, kpis  # metas de los indicadores y tope del asistente, visibles en Reglas desde el inicio
+    from app.servicios import asistente, contable, kpis  # metas, tope del asistente y cuentas contables, visibles en Reglas desde el inicio
     kpis.asegurar_metas()
     asistente.asegurar_regla()
+    contable.asegurar_cuentas()
     from datos import migracion
     migracion.sembrar_cargos()   # antes de las cuentas: las de demostración nacen con su cargo
     sembrar_cuentas()

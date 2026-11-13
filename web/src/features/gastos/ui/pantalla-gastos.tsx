@@ -13,6 +13,7 @@ import { EstadoVacio } from "@/shared/ui/estado-vacio";
 import { PRESIONAR } from "@/shared/ui/movimiento";
 import { useGastos } from "../application/gastos";
 import type { EstadoGasto } from "../domain/gastos";
+import { ID_PANEL_EXCEL, PanelExcelContable } from "./excel-contable";
 import { ListaGastos } from "./lista-gastos";
 
 const FILTROS: readonly { estado?: EstadoGasto; texto: string }[] = [
@@ -28,6 +29,7 @@ export function PantallaGastos({ estado: estadoInicial, viajeId: viajeInicial }:
   const esAdmin = permiso === "admin";
   const [estado, setEstado] = useState<EstadoGasto | undefined>(estadoInicial);
   const [viajeId, setViajeId] = useState<number | undefined>(viajeInicial);
+  const [excelAbierto, setExcelAbierto] = useState(false);
   const consulta = useGastos({ ...(estado ? { estado } : {}), ...(viajeId ? { viajeId } : {}) });
   const viajes = useViajes();
   const filtrando = Boolean(estado || viajeId);
@@ -45,11 +47,23 @@ export function PantallaGastos({ estado: estadoInicial, viajeId: viajeInicial }:
               : "Tus recibos con su estado y lo que sigue en cada uno."
         }
         accion={
-          <Link href="/gastos/nuevo" className={clasesBoton("primario")}>
-            Cargar recibo
-          </Link>
+          <>
+            <Boton
+              variante="secundario"
+              aria-expanded={excelAbierto}
+              aria-controls={excelAbierto ? ID_PANEL_EXCEL : undefined}
+              onClick={() => setExcelAbierto((a) => !a)}
+            >
+              Excel contable
+            </Boton>
+            <Link href="/gastos/nuevo" className={clasesBoton("primario")}>
+              Cargar recibo
+            </Link>
+          </>
         }
       />
+
+      {excelAbierto ? <PanelExcelContable permiso={permiso} /> : null}
 
       {/* Los estados en una fila propia y el viaje debajo: con los dos lado a lado, el último estado quedaba solo. */}
       <div className="flex flex-col gap-3">

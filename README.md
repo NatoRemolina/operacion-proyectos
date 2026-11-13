@@ -149,6 +149,12 @@ Además de la API v1, hay rutas JSON de **solo lectura y solo para administraci�
 - La revisión es versionada (`gastos.version`): si otra persona cambió el gasto mientras se revisaba, no se pisa (409 `EDIT_CONFLICT` en la API). Rechazar exige un motivo de 5 caracteres o más, que se guarda en `gastos.motivo_rechazo` y se le avisa a la persona. Misma regla en la web y en `POST /api/v1/gastos/{id}/revision` (ver `contracts/api-v1.md`).
 - Quién puede cambiar qué y qué queda registrado: `docs/trazabilidad.md`.
 
+**Excel contable.** Los gastos aprobados de un periodo salen en un `.xlsx` listo para contabilidad, sin copiar nada a mano (`app/servicios/contable.py`). La hoja «Gastos» trae una fila por gasto: fecha, viaje, proyecto, persona, proveedor, categoría y **cuenta contable**, base, impuesto, total, moneda, tasa y total en USD, quién aprobó y cuándo, alertas o excepción y el enlace al gasto en la plataforma. La hoja «Resumen» suma por proyecto, por cuenta y por moneda, y dice con qué parámetros se generó. La cuenta de cada categoría es un supuesto editable en «Reglas y supuestos» (claves `cuenta_contable_…`) que contabilidad debe confirmar con su plan de cuentas. Ningún texto queda como fórmula. Cada quien descarga lo que puede ver: administración, todo; quien gestiona, sus proyectos; el resto, lo suyo. Está en la lista de gastos y en el tablero de cada proyecto, en la web nueva (Gastos → «Excel contable») y en `GET /api/v1/gastos/contable`. Desde la consola, como administración y en solo lectura sobre la base de `DATABASE_URL`:
+
+```bash
+.venv/bin/python -m datos.exportar_contable --desde 2026-11-01 --hasta 2026-11-30 [--proyecto ID] --salida libro.xlsx
+```
+
 ```bash
 .venv/bin/python -m datos.comprobar_supabase   # solo lectura: tablas, columnas y permisos que espera esta versión
 ```

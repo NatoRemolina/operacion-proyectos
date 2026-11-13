@@ -1,6 +1,12 @@
 {% extends "base.html" %}{% import "_macros.html" as m %}{% block titulo %}{{ p.nombre }}{% endblock %}{% block cuerpo %}
 <div class="fila"><div><h1>{{ p.nombre }}</h1><p class="sub">{{ p.cliente }} · {{ p.ciudad }} · {{ p.fecha_inicio }} a {{ p.fecha_fin }}</p></div>
 <a class="boton sec der" href="/proyectos/{{ p.id }}/exportar.csv">Exportar gastos (CSV)</a></div>
+<form method="get" action="/gastos/contable.xlsx" class="tarjeta" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end"><input type="hidden" name="proyecto" value="{{ p.id }}">
+  <div><strong>Excel contable</strong><br><span class="eti">Los gastos aprobados de este proyecto en el periodo, con su cuenta contable.</span></div>
+  <label>Desde<br><input type="date" name="desde" value="{{ mes[0] }}" required></label>
+  <label>Hasta<br><input type="date" name="hasta" value="{{ mes[1] }}" required></label>
+  <button class="sec">Descargar Excel contable</button>
+</form>
 <div class="rejilla">
   <div class="tarjeta"><div class="eti">Previsto (presupuesto de los viajes)</div><div class="num">{{ tot_previsto|dinero }}</div></div>
   <div class="tarjeta"><div class="eti">Real aprobado</div><div class="num">{{ tot_real|dinero }}</div></div>

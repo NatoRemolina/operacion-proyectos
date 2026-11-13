@@ -4,14 +4,14 @@ Contrato en `contracts/api-v1.md`.
 """
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
 from ..api_v1.esquemas import Dinero, EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, errores
-from ..servicios import acceso, consultas, dinero, envios, justificaciones, revision, viajes
+from ..servicios import acceso, consultas, contable, dinero, envios, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
 
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
@@ -92,6 +92,32 @@ def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, pagina
     resultado = consultas.lista_gastos(yo, viaje_id, estado, limite, cursor)
     marcar_propios(resultado["items"], yo)
     return resultado
+
+
+@router.get("/gastos/contable", response_class=Response, responses={
+    **errores(401, 403, 404, 422),
+    200: {"description": "El libro (.xlsx) con las hojas «Gastos» y «Resumen»", "content": {contable.TIPO_XLSX: {}}}})
+def libro_contable(request: Request,
+                   desde: str | None = Query(None, description="AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York)."),
+                   hasta: str | None = Query(None, description="AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York)."),
+                   proyecto_id: int | None = Query(None, ge=1, le=contable.MAXIMO_ID,
+                                                   description="Opcional. Solo administración o quien gestiona el proyecto."),
+                   yo: dict = Depends(persona)):
+    """Excel contable de los gastos aprobados (`aprobado` y `aprobado_auto`) del periodo, con el alcance de la sesión:
+    administración, todo; quien gestiona, sus proyectos y lo suyo; el resto, solo lo suyo. Un `proyecto_id` que la
+    persona no gestiona responde 403, exista o no. Va antes de `/gastos/{id}` para que «contable» no se lea como id."""
+    mes = contable.mes_en_curso()
+    desde, hasta = desde or mes[0], hasta or mes[1]
+    try:
+        contenido = contable.libro(yo, desde, hasta, proyecto_id, enlace_base=contable.origen_publico(str(request.base_url)))
+    except contable.SinPermiso as e:
+        raise ErrorApi(403, "FORBIDDEN", str(e)) from e
+    except contable.ProyectoInexistente as e:
+        raise _no_encontrado() from e
+    except contable.FechaInvalida as e:
+        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {e.campo: str(e)}) from e
+    contable.registrar_descarga(desde, hasta, proyecto_id, "api")
+    return Response(contenido, media_type=contable.TIPO_XLSX, headers=contable.cabeceras_descarga(desde, hasta, proyecto_id))
 
 
 @router.get("/gastos/{id}", response_model=GastoRevisable, responses=errores(401, 404, 422))

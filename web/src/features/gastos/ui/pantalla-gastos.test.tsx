@@ -1,6 +1,6 @@
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { renderizarConFuente } from "@/test/renderizar";
 import { crearViajesMemoria } from "@/features/viajes/infrastructure/viajes-memoria";
@@ -56,6 +56,7 @@ describe("Mis gastos con fuentes intercambiables (ARCH-01)", () => {
       enviar: async () => gastoDePrueba(),
       urlOriginal: () => null,
       justificar: () => Promise.resolve(gastoDePrueba()),
+      urlLibroContable: () => null,
     };
 
     renderizarConFuente(<PantallaGastos />, { gastos: otraFuente });
@@ -75,6 +76,7 @@ describe("Mis gastos con fuentes intercambiables (ARCH-01)", () => {
       enviar: () => Promise.reject(new ErrorDeAplicacion("sesion_vencida")),
       urlOriginal: () => null,
       justificar: () => Promise.resolve(gastoDePrueba()),
+      urlLibroContable: () => null,
     };
     renderizarConFuente(<PantallaGastos />, { gastos: vencida });
     expect(await screen.findByRole("alert")).toHaveTextContent("Tu sesión venció");
@@ -117,3 +119,69 @@ describe("Mis gastos con fuentes intercambiables (ARCH-01)", () => {
   });
 });
 
+describe("Excel contable", () => {
+  // Solo se fija la fecha: los temporizadores siguen siendo reales para las consultas y los clics.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 13, 9, 30));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const conLibro = (): GastosRepository => ({
+    ...crearGastosMemoria({}),
+    urlLibroContable: ({ desde, hasta }) => `/api/v1/gastos/contable?desde=${desde}&hasta=${hasta}`,
+  });
+
+  async function abrir() {
+    const usuario = userEvent.setup();
+    const boton = screen.getByRole("button", { name: "Excel contable" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    await usuario.click(boton);
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+    return screen.getByRole("region", { name: "Excel contable" });
+  }
+
+  it("el botón abre el selector con el mes en curso y descarga ese periodo", async () => {
+    renderizarConFuente(<PantallaGastos />, { gastos: conLibro() });
+    const panel = await abrir();
+    expect(within(panel).getByLabelText("Desde")).toHaveValue("2026-11-01");
+    expect(within(panel).getByLabelText("Hasta")).toHaveValue("2026-11-30");
+    expect(within(panel).getByRole("link", { name: "Descargar Excel contable" })).toHaveAttribute(
+      "href",
+      "/api/v1/gastos/contable?desde=2026-11-01&hasta=2026-11-30",
+    );
+  });
+
+  it("al cambiar las fechas se descarga el periodo elegido", async () => {
+    renderizarConFuente(<PantallaGastos />, { gastos: conLibro() });
+    const panel = await abrir();
+    fireEvent.change(within(panel).getByLabelText("Desde"), { target: { value: "2026-10-01" } });
+    fireEvent.change(within(panel).getByLabelText("Hasta"), { target: { value: "2026-10-31" } });
+    expect(within(panel).getByRole("link", { name: "Descargar Excel contable" })).toHaveAttribute(
+      "href",
+      "/api/v1/gastos/contable?desde=2026-10-01&hasta=2026-10-31",
+    );
+  });
+
+  it("un periodo al revés no se descarga y dice qué corregir", async () => {
+    renderizarConFuente(<PantallaGastos />, { gastos: conLibro() });
+    const panel = await abrir();
+    const hasta = within(panel).getByLabelText("Hasta");
+    fireEvent.change(hasta, { target: { value: "2026-10-01" } });
+    expect(within(panel).queryByRole("link", { name: "Descargar Excel contable" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Descargar Excel contable" })).toBeDisabled();
+    expect(hasta).toHaveAccessibleDescription(/La fecha final no puede ser anterior a la inicial/);
+  });
+
+  it("con una fuente que no genera el libro lo explica en vez de ofrecer una descarga rota", async () => {
+    renderizarConFuente(<PantallaGastos />, { gastos: crearGastosMemoria({}) });
+    const panel = await abrir();
+    expect(within(panel).getByRole("button", { name: "Descargar Excel contable" })).toBeDisabled();
+    expect(within(panel).getByText(/con la plataforma conectada/)).toBeInTheDocument();
+  });
+
+  it("dice qué gastos entran según el permiso", async () => {
+    renderizarConFuente(<PantallaGastos />, { gastos: conLibro(), permiso: "colaborador" });
+    expect(await abrir()).toHaveTextContent("Solo tus gastos");
+  });
+});

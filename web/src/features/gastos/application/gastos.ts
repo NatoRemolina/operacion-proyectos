@@ -8,10 +8,12 @@ import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
 import { ErrorDeAplicacion, comoErrorDeAplicacion } from "@/shared/domain/errores";
 import {
   problemaDeJustificacion,
+  problemaDePeriodo,
   validarArchivo,
   type FiltroGastos,
   type GastoDetalle,
   type GastosRepository,
+  type PeriodoContable,
 } from "../domain/gastos";
 
 const contexto = crearContextoRepositorio<GastosRepository>("GastosRepository");
@@ -48,6 +50,12 @@ export function useGasto(id: number) {
 export function useUrlOriginal(documentoId: number | null): string | null {
   const repositorio = useGastosRepository();
   return documentoId === null ? null : repositorio.urlOriginal(documentoId);
+}
+
+/** Dirección del Excel contable del periodo, o `null` si el periodo no sirve o la fuente no lo genera. */
+export function useUrlLibroContable(periodo: PeriodoContable): string | null {
+  const repositorio = useGastosRepository();
+  return problemaDePeriodo(periodo) ? null : repositorio.urlLibroContable(periodo);
 }
 
 /**

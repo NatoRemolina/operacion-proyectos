@@ -156,5 +156,10 @@ export function crearGastosMemoria(opciones: {
       }
       return url;
     },
+
+    // El libro lo arma el servidor (cuentas contables, alcance por permiso): en memoria no se imita.
+    urlLibroContable() {
+      return null;
+    },
   };
 }
