@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { Distintivo } from "@/shared/ui/distintivo";
+import { Alerta } from "@/shared/ui/estado";
 import { formatearDinero } from "@/shared/ui/formato";
 import { GIRO, PRESIONAR } from "@/shared/ui/movimiento";
 import {
@@ -11,9 +12,12 @@ import {
   hora,
   segmentosCosto,
   textoOrigenDato,
+  type AnalisisVuelo,
   type OpcionVuelo,
   type SegmentoCosto,
+  type TarifaLeida,
 } from "../domain/cotizar";
+import { useAnalisisVuelo, useRegistrarFuente } from "../application/cotizar";
 
 const COLOR: Record<SegmentoCosto["tipo"], string> = {
   precio: "bg-marca",
@@ -132,6 +136,7 @@ export function OpcionDeVuelo({
   elegido,
   onElegir,
   nombreGrupo,
+  cotizacionId,
 }: {
   vuelo: OpcionVuelo;
   maximo: number;
@@ -139,8 +144,18 @@ export function OpcionDeVuelo({
   elegido: boolean;
   onElegir: () => void;
   nombreGrupo: string;
+  cotizacionId: number;
 }) {
   const [abierto, setAbierto] = useState(false);
+  const registrarFuente = useRegistrarFuente(cotizacionId);
+  const analisis = useAnalisisVuelo(cotizacionId, vuelo.id);
+  // Abrir el desglose abre también la página del vuelo en Google Flights (el mismo enlace, en otra pestaña) y pide
+  // leerla. El servidor reutiliza una lectura de menos de una hora: volver a abrir no gasta otra.
+  function abrirDesglose() {
+    setAbierto(true);
+    registrarFuente("vuelos", { vueloId: vuelo.id });
+    if (!analisis.isPending) analisis.mutate();
+  }
   const titulo = useId();
   const desglose = useId();
   const origen = textoOrigenDato(vuelo.origen_dato);
@@ -231,22 +246,208 @@ export function OpcionDeVuelo({
         </ul>
       ) : null}
       <div className={sangria}>
-        <button
-          type="button"
-          aria-expanded={abierto}
-          aria-controls={desglose}
-          onClick={() => setAbierto((a) => !a)}
-          className={`-ml-1 inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
-        >
-          <span aria-hidden="true" className={`${GIRO} ${abierto ? "rotate-90" : ""}`}>
-            ›
-          </span>
-          {abierto ? "Ocultar desglose" : "Ver desglose"}
-        </button>
-        <div id={desglose} className={abierto ? "mt-2" : ""}>
-          {abierto ? <Desglose vuelo={vuelo} /> : null}
+        {abierto ? (
+          <button
+            type="button"
+            aria-expanded
+            aria-controls={desglose}
+            onClick={() => setAbierto(false)}
+            className={`-ml-1 inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
+          >
+            <span aria-hidden="true" className={`${GIRO} rotate-90`}>
+              ›
+            </span>
+            Ocultar desglose
+          </button>
+        ) : (
+          <a
+            href={vuelo.fuente_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-expanded={false}
+            aria-controls={desglose}
+            aria-label="Ver desglose (abre también el vuelo en Google Flights en otra pestaña)"
+            onClick={abrirDesglose}
+            onAuxClick={(e) => {
+              if (e.button === 1) abrirDesglose();
+            }}
+            className={`-ml-1 inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
+          >
+            <span aria-hidden="true" className={GIRO}>
+              ›
+            </span>
+            Ver desglose
+            <span aria-hidden="true">↗</span>
+          </a>
+        )}
+        <div id={desglose} className={abierto ? "mt-2 flex flex-col gap-4" : ""}>
+          {abierto ? (
+            <>
+              <Desglose vuelo={vuelo} />
+              <DetalleGoogle
+                pendiente={analisis.isPending}
+                error={analisis.error ? "No hubo conexión con el servidor." : null}
+                analisis={analisis.data ?? null}
+              />
+            </>
+          ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+/** «HH:MM» en la hora local de quien mira. */
+function horaLocal(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function Lista({ titulo, items }: { titulo: string; items: readonly string[] }) {
+  if (!items.length) return null;
+  return (
+    <p className="text-sm">
+      <span className="font-semibold">{titulo}: </span>
+      {items.join(" · ")}
+    </p>
+  );
+}
+
+function FichaTarifa({ t }: { t: TarifaLeida }) {
+  return (
+    <li className="flex flex-col gap-1 rounded-tarjeta border border-linea p-3">
+      <p className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <span>
+          <span className="font-semibold">{t.nombre}</span>
+          <span className="text-sm text-texto-secundario"> · {t.vendedor}</span>
+        </span>
+        <span className="font-bold tabular-nums">{formatearDinero(t.precio.toFixed(2))}</span>
+      </p>
+      <Lista titulo="Equipaje" items={t.equipaje} />
+      <Lista titulo="Cambios" items={t.cambios} />
+      <Lista titulo="Reembolso" items={t.reembolso} />
+      <Lista titulo="Incluye" items={t.otras} />
+    </li>
+  );
+}
+
+/**
+ * Lo leído de la página del vuelo en Google Flights, como complemento del desglose: no reemplaza el precio del
+ * buscador (si difiere, lo dice). El texto de la página va tal como lo muestra Google, en inglés.
+ */
+function DetalleGoogle({
+  pendiente,
+  error,
+  analisis,
+}: {
+  pendiente: boolean;
+  error: string | null;
+  analisis: AnalisisVuelo | null;
+}) {
+  const lectura = pendiente || analisis?.estado === "pendiente";
+  return (
+    <section aria-label="Detalle de Google Flights" className="flex flex-col gap-3 border-t border-linea pt-3">
+      <p role="status" className={`text-sm ${lectura ? "text-texto-secundario" : "font-semibold"}`}>
+        {lectura
+          ? "Leyendo la página del vuelo…"
+          : error
+            ? `No se pudo leer: ${error}`
+            : !analisis
+              ? ""
+              : analisis.estado === "listo"
+                ? `Detalle leído de Google Flights a las ${horaLocal(analisis.leido)}`
+                : analisis.estado === "fallido"
+                  ? `No se pudo leer: ${analisis.motivo ?? "sin motivo"}.`
+                  : analisis.motivo}
+      </p>
+      {!lectura && analisis?.estado === "listo" && analisis.datos ? <Leido a={analisis} /> : null}
+    </section>
+  );
+}
+
+function Leido({ a }: { a: AnalisisVuelo }) {
+  const d = a.datos!;
+  return (
+    <>
+      {a.aviso_precio ? (
+        <Alerta tono="aviso" titulo="El precio de la página no es el del buscador">
+          <p>{a.aviso_precio}</p>
+        </Alerta>
+      ) : null}
+      {d.tarifas.length ? (
+        <div className="flex flex-col gap-2">
+          <h4 className="font-semibold">Tarifas y qué incluye cada una</h4>
+          <ul className="flex flex-col gap-2">
+            {d.tarifas.map((t) => (
+              <FichaTarifa key={`${t.vendedor}-${t.nombre}-${t.precio}`} t={t} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {d.vendedores.length ? (
+        <div className="flex flex-col gap-1">
+          <h4 className="font-semibold">Precio por vendedor</h4>
+          <ul className="flex flex-col gap-1 text-sm">
+            {d.vendedores.map((v) => (
+              <li key={v.vendedor} className="flex flex-wrap justify-between gap-x-3">
+                <span>
+                  {v.vendedor} <span className="text-texto-secundario">({v.aerolinea ? "aerolínea" : "agencia"})</span>
+                </span>
+                <span className="tabular-nums">
+                  {v.precio_desde === null ? "sin precio" : `desde ${formatearDinero(v.precio_desde.toFixed(2))}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {d.tramos.length ? (
+        <div className="flex flex-col gap-1">
+          <h4 className="font-semibold">Escalas</h4>
+          <ul className="flex flex-col gap-1 text-sm">
+            {d.tramos.map((t, i) => (
+              <li key={`${t.ruta}-${i}`}>
+                <span className="font-semibold">{t.ruta ?? "Tramo"}</span>
+                {t.fecha ? ` · ${t.fecha}` : ""}
+                {t.sale && t.llega ? ` · ${t.sale} – ${t.llega}` : ""}
+                {t.escalas ? ` · ${t.escalas}` : ""}
+                {t.detalle_escalas.length ? ` (${t.detalle_escalas.join(", ")})` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {d.regreso_elegido ? (
+        <p className="text-sm text-texto-secundario">
+          Para ver las opciones de reserva, la lectura eligió el regreso más barato que mostró la página
+          {d.regreso_elegido.sale ? ` (sale ${d.regreso_elegido.sale}` : " ("}
+          {d.regreso_elegido.aerolinea ? `, ${d.regreso_elegido.aerolinea}` : ""}, {formatearDinero(d.regreso_elegido.precio.toFixed(2))} ida y vuelta).
+        </p>
+      ) : null}
+      {d.avisos.map((x) => (
+        <p key={x} className="text-sm text-texto-secundario">
+          {x}
+        </p>
+      ))}
+      {a.captura_url ? (
+        <a href={a.captura_url} target="_blank" rel="noopener noreferrer" className="block self-start">
+          {/* eslint-disable-next-line @next/next/no-img-element -- la captura viene de la API con la sesión: no pasa por el optimizador */}
+          <img
+            src={a.captura_url}
+            alt="Captura de la página de Google Flights leída, como evidencia"
+            loading="lazy"
+            className="max-h-72 w-full max-w-xl rounded-tarjeta border border-linea object-cover object-top"
+          />
+        </a>
+      ) : null}
+      <p className="text-xs text-texto-secundario">
+        Lo leído no reemplaza el precio del buscador: es una verificación.{" "}
+        {a.url ? (
+          <a href={a.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-3">
+            Página leída
+          </a>
+        ) : null}
+      </p>
+    </>
   );
 }

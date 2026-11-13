@@ -10,7 +10,9 @@ import type {
   Cotizacion,
   CotizarRepository,
   DecisionPedida,
+  AnalisisVuelo,
   DestinoFuente,
+  ObjetivoFuente,
   PedidoCotizacion,
 } from "../domain/cotizar";
 
@@ -190,9 +192,26 @@ export function useDecidir(id: number) {
 export function useRegistrarFuente(id: number) {
   const repositorio = useCotizarRepository();
   return useCallback(
-    (destino: DestinoFuente, hotelId?: number) => {
-      repositorio.registrarFuente(id, destino, hotelId).catch(() => {});
+    (destino: DestinoFuente, objetivo?: ObjetivoFuente) => {
+      repositorio.registrarFuente(id, destino, objetivo).catch(() => {});
     },
     [repositorio, id],
   );
+}
+
+/**
+ * Caso de uso «leer la página del vuelo»: se pide al abrir el desglose. Lo leído no cambia la comparación; un error de
+ * red se muestra como lectura fallida, no interrumpe el desglose.
+ */
+export function useAnalisisVuelo(id: number, vueloId: number) {
+  const repositorio = useCotizarRepository();
+  return useMutation<AnalisisVuelo, ErrorDeAplicacion, void>({
+    mutationFn: async () => {
+      try {
+        return await repositorio.analizarVuelo(id, vueloId);
+      } catch (error) {
+        throw comoErrorDeAplicacion(error);
+      }
+    },
+  });
 }

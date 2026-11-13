@@ -6,6 +6,7 @@ import { formatearDinero } from "@/shared/ui/formato";
 import { renderizarConFuente } from "@/test/renderizar";
 import type { Cotizacion, CotizarRepository, OpcionHotel } from "../domain/cotizar";
 import { crearCotizarMemoria } from "../infrastructure/cotizar-memoria";
+import { ANALISIS_EJEMPLO } from "../infrastructure/ejemplo-analisis";
 import { COTIZACION_MOAB, FORMULARIO_EJEMPLO } from "../infrastructure/ejemplo-moab";
 import { PantallaCotizacion } from "./pantalla-cotizacion";
 
@@ -218,7 +219,7 @@ describe("Comparación de una cotización", () => {
     expect(guardar.className).toMatch(/se-mueve/);
     expect(guardar.className).toMatch(/active:scale-97/);
     expect(guardar.className).toMatch(/duration-100/);
-    const flecha = screen.getAllByRole("button", { name: /Ver desglose/ })[0]!.querySelector("[aria-hidden]")!;
+    const flecha = screen.getAllByRole("link", { name: /Ver desglose/ })[0]!.querySelector("[aria-hidden]")!;
     // La flecha conserva el giro (indica si está abierto); con movimiento reducido cambia sin animación
     expect(flecha.className).toMatch(/transition-\[rotate\]/);
     expect(flecha.className).toMatch(/motion-reduce:transition-none/);
@@ -365,8 +366,60 @@ describe("Comparación de una cotización", () => {
     expect(uno).toHaveAttribute("href", hotel.fuente_url);
     expect(uno).toHaveAttribute("target", "_blank");
     await usuario.pointer({ keys: "[MouseMiddle]", target: uno });   // abrir en otra pestaña con el botón central
-    expect(registrarFuente).toHaveBeenLastCalledWith(12, "hoteles", 90);
+    expect(registrarFuente).toHaveBeenLastCalledWith(12, "hoteles", { hotelId: 90 });
     // el enlace no elige el hotel
     expect(screen.getByRole("radio", { name: `Tru by Hilton Moab, costo total ${dinero("243.00")}` })).not.toBeChecked();
+  });
+
+  it("al abrir el desglose abre el vuelo en Google Flights con el mismo enlace y muestra lo leído de la página", async () => {
+    const usuario = userEvent.setup();
+    const registrarFuente = vi.fn<CotizarRepository["registrarFuente"]>().mockResolvedValue(undefined);
+    let responder: (a: typeof ANALISIS_EJEMPLO) => void = () => {};
+    const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>(
+      () => new Promise((r) => { responder = r; }),
+    );
+    renderizarConFuente(<PantallaCotizacion id={12} />, {
+      cotizar: repositorio(COTIZACION_MOAB, { registrarFuente, analizarVuelo }),
+    });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    const ver = within(tarjeta).getByRole("link", { name: /^Ver desglose/ });
+    expect(ver).toHaveAttribute("href", RECOMENDADA.fuente_url);
+    expect(ver).toHaveAttribute("target", "_blank");
+    expect(ver).toHaveAttribute("rel", "noopener noreferrer");
+    await usuario.click(ver);
+    expect(registrarFuente).toHaveBeenLastCalledWith(12, "vuelos", { vueloId: RECOMENDADA.id });
+    expect(analizarVuelo).toHaveBeenCalledWith(12, RECOMENDADA.id);
+    // el desglose del buscador se ve enseguida; la lectura llega después
+    expect(within(tarjeta).getByRole("table", { name: /Desglose del costo total esperado/ })).toBeInTheDocument();
+    expect(within(tarjeta).getByRole("status")).toHaveTextContent("Leyendo la página del vuelo…");
+    responder({ ...ANALISIS_EJEMPLO, opcion_id: RECOMENDADA.id, leido: "2026-11-13T15:10:00Z", captura_url: "/api/v1/captura.png" });
+    expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las \d\d:\d\d$/)).toBeInTheDocument();
+    const detalle = within(tarjeta).getByRole("region", { name: "Detalle de Google Flights" });
+    expect(within(detalle).getByText("El precio de la página no es el del buscador")).toBeInTheDocument();
+    expect(within(detalle).getByText(/La comparación sigue usando el precio del buscador/)).toBeInTheDocument();
+    expect(within(detalle).getByText("Basic Economy")).toBeInTheDocument();
+    expect(within(detalle).getAllByText(/1st checked bag: \$110/).length).toBeGreaterThan(0);
+    expect(within(detalle).getAllByText(/Full refunds/).length).toBe(1);
+    expect(within(detalle).getByText("Precio por vendedor").nextElementSibling).toHaveTextContent(/American \(aerolínea\)desde/);
+    expect(within(detalle).getByRole("img", { name: /Captura de la página de Google Flights/ })).toHaveAttribute("src", "/api/v1/captura.png");
+    // el precio del buscador no cambia en la tarjeta
+    expect(within(tarjeta).getAllByText(dinero(RECOMENDADA.precio_usd)).length).toBeGreaterThan(0);
+    // cerrar no abre otra pestaña: es un botón
+    expect(within(tarjeta).getByRole("button", { name: "Ocultar desglose" })).toBeInTheDocument();
+  });
+
+  it("si la lectura falla o no está disponible, el desglose lo dice y muestra solo lo del buscador", async () => {
+    const usuario = userEvent.setup();
+    const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>()
+      .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, estado: "fallido", motivo: "la página pidió verificación", datos: null })
+      .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, estado: "no_disponible", datos: null,
+        motivo: "Llegaste al tope de lecturas de Google Flights de hoy: el desglose muestra solo lo del buscador." });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo }) });
+    const [primera, segunda] = (await screen.findAllByRole("link", { name: /^Ver desglose/ })).map((a) => a.closest("[role=group]") as HTMLElement);
+    await usuario.click(within(primera!).getByRole("link", { name: /^Ver desglose/ }));
+    expect(await within(primera!).findByText("No se pudo leer: la página pidió verificación.")).toBeInTheDocument();
+    await usuario.click(within(segunda!).getByRole("link", { name: /^Ver desglose/ }));
+    expect(await within(segunda!).findByText(/Llegaste al tope de lecturas de Google Flights de hoy/)).toBeInTheDocument();
+    expect(within(segunda!).queryByText("Tarifas y qué incluye cada una")).toBeNull();
   });
 });

@@ -401,6 +401,7 @@ function FormularioDecision({
               elegido={v.id === vueloId}
               onElegir={() => setVueloId(v.id)}
               nombreGrupo={nombreGrupo}
+              cotizacionId={c.id}
             />
           ))}
         </div>
@@ -691,7 +692,7 @@ function Hoteles({
       texto="Ver en Google Hotels"
       contexto={h.nombre}
       variante="texto"
-      onAbrir={() => registrarFuente("hoteles", h.id)}
+      onAbrir={() => registrarFuente("hoteles", { hotelId: h.id })}
     />
   );
   if (!c.hoteles.length) {

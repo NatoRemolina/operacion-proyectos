@@ -140,6 +140,8 @@ export interface OpcionVuelo {
   readonly frente_esperado_pct: number | null;
   /** Costo del vuelo más el del hotel recomendado (una suma, no todas las combinaciones); null sin hotel. */
   readonly total_con_hotel_usd: Dinero;
+  /** Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida. */
+  readonly fuente_url: string;
 }
 
 export interface LineaHotel {
@@ -237,6 +239,73 @@ export interface Cotizacion {
 
 /** Qué fuente abre la persona: la URL la arma el servidor, nunca la web. */
 export type DestinoFuente = "vuelos" | "hoteles";
+/** Con `vueloId` o `hotelId`, la página de ese vuelo u hotel; sin ellos, la búsqueda completa. */
+export interface ObjetivoFuente {
+  readonly vueloId?: number;
+  readonly hotelId?: number;
+}
+
+/** Lo leído de la página del vuelo en Google Flights (texto tal como lo muestra la página, en inglés). */
+export interface TramoLeido {
+  readonly fecha: string | null;
+  readonly sale: string | null;
+  readonly llega: string | null;
+  readonly aerolinea: string | null;
+  readonly duracion: string | null;
+  readonly ruta: string | null;
+  readonly escalas: string | null;
+  readonly detalle_escalas: readonly string[];
+  readonly emisiones: string | null;
+}
+
+export interface TarifaLeida {
+  readonly vendedor: string;
+  readonly nombre: string;
+  readonly precio: number;
+  readonly equipaje: readonly string[];
+  readonly cambios: readonly string[];
+  readonly reembolso: readonly string[];
+  readonly otras: readonly string[];
+}
+
+export interface DetalleLeido {
+  readonly precio_total: number | null;
+  readonly tramos: readonly TramoLeido[];
+  readonly tarifas: readonly TarifaLeida[];
+  readonly vendedores: readonly { readonly vendedor: string; readonly aerolinea: boolean; readonly precio_desde: number | null }[];
+  readonly equipaje: readonly string[];
+  readonly cambios: readonly string[];
+  readonly reembolso: readonly string[];
+  readonly regreso_elegido: {
+    readonly precio: number;
+    readonly aerolinea: string | null;
+    readonly escalas: string | null;
+    readonly sale: string | null;
+    readonly llega: string | null;
+  } | null;
+  readonly notas: readonly string[];
+  readonly avisos: readonly string[];
+}
+
+/** La lectura de la página del vuelo. `no_disponible`: no se leyó (apagado, topes, otra lectura); `motivo` lo dice. */
+export interface AnalisisVuelo {
+  readonly id: number | null;
+  readonly opcion_id: number;
+  readonly estado: "pendiente" | "listo" | "fallido" | "no_disponible";
+  readonly motivo: string | null;
+  readonly url: string | null;
+  /** Cuándo terminó la lectura (UTC). */
+  readonly leido: string | null;
+  readonly duracion_ms: number | null;
+  /** Lectura de menos de 60 minutos del mismo vuelo: no se abrió la página otra vez. */
+  readonly reutilizado: boolean;
+  readonly precio_buscador_usd: Dinero;
+  /** Si la página muestra otro precio que el buscador. La comparación sigue con el del buscador. */
+  readonly aviso_precio: string | null;
+  readonly datos: DetalleLeido | null;
+  /** Dirección completa de la captura PNG, lista para `<img>`. */
+  readonly captura_url: string | null;
+}
 
 export interface CotizarRepository {
   /** Proyectos, quién puede viajar y razones de la decisión, según el permiso de la persona. */
@@ -252,7 +321,9 @@ export interface CotizarRepository {
   /** Guarda la decisión y crea el viaje, pendiente de aprobación. La clave evita decidir dos veces al reintentar. */
   decidir(id: number, decision: DecisionPedida, claveIdempotencia: string): Promise<Cotizacion>;
   /** Deja el rastro de que la persona abrió la fuente de los precios (quién, qué cotización y adónde). */
-  registrarFuente(id: number, destino: DestinoFuente, hotelId?: number): Promise<void>;
+  registrarFuente(id: number, destino: DestinoFuente, objetivo?: ObjetivoFuente): Promise<void>;
+  /** Lee la página del vuelo en Google Flights (unos segundos) o devuelve la lectura de menos de una hora. */
+  analizarVuelo(id: number, vueloId: number): Promise<AnalisisVuelo>;
 }
 
 // ---------- reglas del campo de lugar ----------

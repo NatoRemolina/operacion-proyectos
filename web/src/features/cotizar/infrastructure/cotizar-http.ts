@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { consulta, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type {
+  AnalisisVuelo,
   Cotizacion,
   CotizarRepository,
   FormularioCotizacion,
@@ -100,6 +101,7 @@ const vueloSchema = z.object({
   esperado_usd: dineroSchema,
   frente_esperado_pct: z.number().int().nullable(),
   total_con_hotel_usd: dineroSchema,
+  fuente_url: z.string(),
 });
 
 const hotelSchema = z.object({
@@ -190,6 +192,65 @@ export const cotizacionSchema = z.object({
   bloqueo: z.string().nullable(),
 }) satisfies z.ZodType<Cotizacion>;
 
+const lista = z.array(z.string());
+const analisisSchema = z.object({
+  id: z.number().int().nullable(),
+  opcion_id: z.number().int(),
+  estado: z.enum(["pendiente", "listo", "fallido", "no_disponible"]),
+  motivo: z.string().nullable(),
+  url: z.string().nullable(),
+  leido: z.string().nullable(),
+  duracion_ms: z.number().int().nullable(),
+  reutilizado: z.boolean(),
+  precio_buscador_usd: dineroSchema,
+  aviso_precio: z.string().nullable(),
+  datos: z
+    .object({
+      precio_total: z.number().nullable(),
+      tramos: z.array(
+        z.object({
+          fecha: z.string().nullable(),
+          sale: z.string().nullable(),
+          llega: z.string().nullable(),
+          aerolinea: z.string().nullable(),
+          duracion: z.string().nullable(),
+          ruta: z.string().nullable(),
+          escalas: z.string().nullable(),
+          detalle_escalas: lista,
+          emisiones: z.string().nullable(),
+        }),
+      ),
+      tarifas: z.array(
+        z.object({
+          vendedor: z.string(),
+          nombre: z.string(),
+          precio: z.number(),
+          equipaje: lista,
+          cambios: lista,
+          reembolso: lista,
+          otras: lista,
+        }),
+      ),
+      vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
+      equipaje: lista,
+      cambios: lista,
+      reembolso: lista,
+      regreso_elegido: z
+        .object({
+          precio: z.number(),
+          aerolinea: z.string().nullable().default(null),
+          escalas: z.string().nullable().default(null),
+          sale: z.string().nullable().default(null),
+          llega: z.string().nullable().default(null),
+        })
+        .nullable(),
+      notas: lista,
+      avisos: lista,
+    })
+    .nullable(),
+  captura_url: z.string().nullable(),
+});
+
 const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), url: z.string() });
 
 export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
@@ -214,8 +275,14 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
       });
     },
-    async registrarFuente(id, destino, hotelId) {
-      await cliente.postJson(`/cotizaciones/${id}/fuente`, { destino, hotel_id: hotelId ?? null }, enlaceFuenteSchema);
+    async registrarFuente(id, destino, objetivo) {
+      const cuerpo = { destino, vuelo_id: objetivo?.vueloId ?? null, hotel_id: objetivo?.hotelId ?? null };
+      await cliente.postJson(`/cotizaciones/${id}/fuente`, cuerpo, enlaceFuenteSchema);
+    },
+    async analizarVuelo(id, vueloId): Promise<AnalisisVuelo> {
+      const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema);
+      // La API da la ruta con su prefijo; la web la pide a la misma base que el resto
+      return { ...a, captura_url: a.captura_url ? cliente.url(a.captura_url.replace(/^\/api\/v1(?=\/)/, "")) : null };
     },
   };
 }
