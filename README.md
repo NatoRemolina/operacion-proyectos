@@ -27,7 +27,7 @@ persona (P-0007) ─► cotización ─► decisión ─► VIAJE (V-2026-0012, 
 | Asistente de administración | Preguntas en lenguaje natural sobre lo que reportó cada persona, con cifras exactas y fuentes citadas por su código; opcionalmente con un asesor (agente alojado) que también lee justificaciones y cotizaciones |
 | Monitoreo | Catálogo único de métricas, auditoría, errores con identificador, calidad de los datos |
 | API JSON v1 | Contrato para la web nueva (`contracts/api-v1.md`) |
-| Web nueva (Next.js) | Recorrido mínimo sobre la API v1: entrar, mis viajes, mis gastos, enviar un recibo (`web/`) |
+| Web nueva (Next.js) | Sobre la API v1 (`web/`): cotizar desde y hacia cualquier lugar, comparar con desglose y decidir; mis viajes y mis gastos, con carga de recibos y justificación; y, para administración, resumen, viajes por aprobar (con la reconfirmación del precio) y revisión de gastos |
 
 ## Ejecutar
 
@@ -74,6 +74,17 @@ Solo existen en local (SQLite, o PostgreSQL con `CUENTAS_DEMO=1`). En una base c
 7. *Monitoreo* → viajes, gastos, búsquedas, auditoría y calidad de datos.
 
 Para presentar paso a paso (Miami → Moab con traslado, aprobación por otra cuenta, gastos y monitoreo del vuelo), ver «Guía de demostración» más abajo.
+
+### El mismo recorrido en la web nueva
+
+Con `make entorno-web`, en http://127.0.0.1:8088 y las mismas cuentas:
+
+1. **Como colaborador:** *Cotizar* → origen y destino (un país, una ciudad, un pueblo o un código) → *Buscar y comparar* → ver el desglose de cada opción → elegir y *Guardar decisión*. El viaje aparece en *Viajes*, esperando la aprobación de administración.
+2. **Como administración:** *Viajes* → *Por aprobar* → aprobar o rechazar con motivo. Si el precio reconfirmado subió más de la tolerancia, la web muestra «Precio por confirmar» y el botón para aprobar con el precio nuevo.
+3. **Como colaborador:** *Gastos* → *Cargar recibo* → elegir el viaje (o dejarlo en automático), el archivo y para qué fue. El estado se ve en la lista y en el detalle; si se rechaza, el detalle ofrece cargar el recibo de nuevo.
+4. **Como administración:** *Gastos* → revisión: la decisión va arriba, con «Por qué va a revisión»; aprobar o rechazar con motivo.
+
+Lo que la web nueva todavía no tiene sigue en la plataforma actual (127.0.0.1:8000), y la web enlaza allí cuando hace falta: corregir los datos leídos de un gasto y aprobarlo con excepción, KPIs, asistente, monitoreo, reglas, proyectos y usuarios. Las dos comparten la base, así que lo hecho en una se ve en la otra.
 
 ## Cotizar desde y hacia cualquier lugar del mundo
 
@@ -140,13 +151,19 @@ Además de la API v1, hay rutas JSON de **solo lectura y solo para administraci�
 
 **Respaldo de la base publicada.** El plan gratuito de Supabase no hace respaldos automáticos. `make respaldar` copia la base y los recibos en solo lectura, con conteos y huellas, y `make verificar-respaldo` ensaya la restauración en una base nueva del proyecto de pruebas. Procedimiento, cifrado de la copia y vuelta atrás: `docs/respaldo.md`.
 
+**Llevar lo cotizado de un entorno a otro.** `datos/importar_entorno.py` copia cotizaciones, decisiones, viajes, tramos y respuestas del buscador de una base a otra (por ejemplo, de Docker al proyecto de pruebas), emparejando personas por correo y proyectos y viajeros por nombre. `ensayo` dice qué entraría sin escribir nada; `aplicar` lo carga, sin duplicar en una segunda corrida. Nunca escribe en la base publicada.
+
+```bash
+ORIGEN_URL=postgresql://... DESTINO_URL=postgresql://... .venv/bin/python -m datos.importar_entorno ensayo
+```
+
 ## Guía de demostración (en local, con Docker)
 
 Todo corre en local con una base PostgreSQL desechable y **sin claves**: no toca la base ni los servicios publicados.
 
 **Qué es simulado.** Sin clave del buscador, las cotizaciones usan respuestas reales guardadas en `datos/respaldo/` (Miami a Moab y Las Vegas, capturadas el 11 de noviembre de 2026), y la lectura de recibos usa las lecturas guardadas de los ejemplos. El estado del vuelo usa una respuesta de ejemplo escrita a mano con la forma que documenta el proveedor (no es una consulta real) y una fecha fija. Telegram no está conectado: los avisos quedan en el tablero. La reconfirmación del precio al aprobar necesita la clave: sin ella aprueba con el aviso «precio no reconfirmado».
 
-1. **Levantar el entorno.** `make entorno` (plataforma en http://127.0.0.1:8000) o `make entorno-web` (además la web nueva en http://127.0.0.1:8088). `make entorno-abajo` lo detiene y conserva los datos; `docker compose down -v` los borra.
+1. **Levantar el entorno.** `make entorno` (plataforma en http://127.0.0.1:8000) o `make entorno-web` (además la web nueva en http://127.0.0.1:8088). `make entorno-abajo` lo detiene y conserva los datos; `docker compose down -v` los borra. Los pasos 3 a 8 se pueden hacer igual en la web nueva (ver «El mismo recorrido en la web nueva»); el paso 9 se ve en la plataforma actual.
 2. **Cuentas de demostración** (la pantalla de ingreso muestra tres con sus contraseñas): `admin@demo.local` (administración), `piloto@demo.local` (colaborador) y `gestor@demo.local` (gestor de proyecto). Hay una cuarta colaboradora, `piloto2@demo.local`, con la contraseña `demo-piloto2-2026` (cuentas de `datos/semilla.py`, solo en local).
 3. **Cotizar Miami → Moab** con `piloto@demo.local`: *Cotizar viaje*, 8 a 11 de diciembre de 2026 (las fechas de la respuesta guardada).
    - **Origen:** escribir **MIA** y elegir «Miami International Airport (MIA)», no la ciudad Miami: la ciudad marca también OPF, FLL y BIM, y esa combinación no tiene respuesta guardada (si se elige la ciudad, desmarcar esos tres).
@@ -262,7 +279,7 @@ Copiar `.env.example` a `.env`. Cada bloque activa una parte; sin ninguno la pla
 - El ahorro que muestra la analítica es un valor esperado bajo supuestos editables, no dinero ya ahorrado.
 - Los precios son una foto del momento de la consulta; cada opción muestra su origen.
 - La distancia y el tiempo por carretera son una estimación (línea recta × factor ÷ velocidad), sin mapas ni rutas reales, y no hay tren, bus ni ferri.
-- La cotización con el buscador mundial está en las pantallas actuales; la web Next.js todavía no la ofrece.
+- La web Next.js cubre cotizar, viajes, gastos y la aprobación y revisión de administración; corregir un gasto, aprobar con excepción, KPIs, asistente, monitoreo, reglas, proyectos y usuarios siguen en las pantallas actuales.
 - Con el asesor, una respuesta del asistente tarda más que sin él (hasta un tope de 75 s; no hay una medición del tiempo típico); si el asesor falla o llega a su tope de gasto del día, responde el asistente sin él y lo dice.
 - Varias reglas de aerolíneas vienen de fuentes secundarias o están sin verificar; la página *Reglas* lo indica.
 - El canal de Telegram se probó con un bot simulado.
