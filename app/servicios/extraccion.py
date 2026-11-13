@@ -58,7 +58,8 @@ def parece_html(contenido: bytes) -> bool:
 
 class _TextoDeHtml(HTMLParser):
     """Se queda solo con el texto visible: descarta scripts, estilos y lo incrustado, y de los enlaces deja la palabra."""
-    OMITIR = {"script", "style", "noscript", "template", "svg", "math", "iframe", "object", "embed", "canvas"}
+    # Solo etiquetas que se cierran: una sin cierre (como <embed>) dejaría fuera todo el texto que la sigue
+    OMITIR = {"script", "style", "noscript", "template", "svg", "math", "iframe", "object", "canvas"}
     BLOQUES = {"p", "div", "br", "tr", "li", "ul", "ol", "table", "thead", "tbody", "tfoot", "caption", "title", "hr",
                "h1", "h2", "h3", "h4", "h5", "h6", "section", "article", "header", "footer", "main", "address",
                "blockquote", "pre", "dt", "dd", "dl", "form", "fieldset", "nav", "aside"}

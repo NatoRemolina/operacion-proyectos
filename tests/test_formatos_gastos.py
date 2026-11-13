@@ -389,3 +389,10 @@ def test_el_buzon_simulado_lista_y_lee_los_materiales_nuevos(cliente, viaje_apro
             (e["comercio"], e["fecha"], e["categoria"], e["total"], e["moneda"]), f["archivo"]
         assert f["origen_dato"] == "guardado"
         assert f["canal"] == ("correo" if f["archivo"] in correos else "web")
+
+
+def test_una_etiqueta_sin_cierre_no_se_traga_el_resto_de_la_confirmacion():
+    from app.servicios import extraccion
+    texto = extraccion.html_a_texto(b"<html><body><p>Hotel Uno</p><embed src='x.swf'><p>Total USD 99.00</p>"
+                                    b"<svg/><p>Pagado con Visa</p></body></html>")
+    assert texto.splitlines() == ["Hotel Uno", "Total USD 99.00", "Pagado con Visa"]
