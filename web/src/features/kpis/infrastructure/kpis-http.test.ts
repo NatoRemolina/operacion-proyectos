@@ -17,7 +17,7 @@ describe("KPIs por HTTP", () => {
     const repo = crearKpisHttp(crearClienteHttp("/api/v1"));
     const t = await repo.tablero({ proyecto_id: 1, desde: "2026-11-01", hasta: null });
     expect(fetch.mock.calls[0]![0]).toBe("/api/v1/kpis?proyecto_id=1&desde=2026-11-01");
-    expect(t.kpis).toHaveLength(3);
+    expect(t.kpis).toHaveLength(4);
   });
 
   it("pide la ficha de una persona", async () => {

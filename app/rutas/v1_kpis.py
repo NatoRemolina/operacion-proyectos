@@ -35,7 +35,7 @@ def _tablero(t: dict) -> dict:
         "filtros": t["filtros"], "retos": [{"reto": r, "nombre": n} for r, n in kpis.RETOS.items()],
         "proyectos": tablero.proyectos(), "kpis": t["kpis"],
         "resumen": {"verde": resumen.get("verde", 0), "ambar": resumen.get("ambar", 0), "rojo": resumen.get("rojo", 0),
-                    "sin_datos": resumen.get("sin datos", 0)},
+                    "sin_datos": resumen.get("sin datos", 0), "fuera_de_rango": resumen.get("fuera de rango", 0)},
         "tendencia": t["tendencia"],
         "cotizacion": {**{k: pares(c[k]) for k in ("cotizaciones_por_persona", "cotizaciones_por_ruta", "consultas_por_origen",
                                                     "consultas_por_tipo", "consultas_por_persona", "consultas_por_ruta")},

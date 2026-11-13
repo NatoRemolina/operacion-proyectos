@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-EstadoKpi = Literal["verde", "ambar", "rojo", "sin datos"]
+EstadoKpi = Literal["verde", "ambar", "rojo", "sin datos", "fuera de rango"]
 
 
 class Filtros(BaseModel):
@@ -47,6 +47,7 @@ class ResumenEstados(BaseModel):
     ambar: int
     rojo: int
     sin_datos: int
+    fuera_de_rango: int = Field(description="Valores imposibles para el indicador (por ejemplo, días negativos): un dato malo, no un logro.")
 
 
 class PuntoTendencia(BaseModel):

@@ -35,9 +35,9 @@ def test_el_tablero_trae_los_indicadores_de_los_dos_retos_con_meta_y_semaforo(cl
     k = t["kpis"][0]
     assert set(k) == {"nombre", "titulo", "unidad", "para_que", "formula", "sentido", "meta", "alerta", "responsable", "reto",
                       "principal", "valor", "estado", "estado_texto"}
-    assert all(x["estado"] in ("verde", "ambar", "rojo", "sin datos") for x in t["kpis"])
+    assert all(x["estado"] in ("verde", "ambar", "rojo", "sin datos", "fuera de rango") for x in t["kpis"])
     # El resumen cuenta los cuatro estados aunque alguno esté en cero
-    assert set(t["resumen"]) == {"verde", "ambar", "rojo", "sin_datos"}
+    assert set(t["resumen"]) == {"verde", "ambar", "rojo", "sin_datos", "fuera_de_rango"}
     assert sum(t["resumen"].values()) == len(t["kpis"])
 
 
@@ -132,3 +132,29 @@ def test_la_pantalla_y_la_api_exportan_lo_mismo(cliente, viaje_aprobado):
     jinja = cliente.get("/admin/kpis/exportar.csv", params={"que": "personas"}).text
     v1 = cliente.get(f"{V1}/exportar.csv", params={"que": "personas"}).text
     assert jinja == v1
+
+
+# ---------- valores imposibles (hallazgo M-20 del QA) ----------
+def test_un_valor_negativo_donde_no_tiene_sentido_queda_fuera_de_rango():
+    # −28 días del recibo a la carga (un recibo con fecha futura) no está «en meta» aunque sea menor que la meta
+    assert kpis.estado(-28, "menor", 3, 10, kpis.RANGOS["dias_recibo_a_carga"]) == "fuera de rango"
+    assert kpis.estado(-5, "mayor", 21, 7, kpis.RANGOS["anticipacion_compra"]) == "fuera de rango"
+    # Una proporción no pasa de 100 %
+    assert kpis.estado(130, "mayor", 60, 30, kpis.RANGOS["tasa_reutilizacion"]) == "fuera de rango"
+    # El ahorro sí puede ser negativo: elegir algo más caro que lo más barato que sirve
+    assert kpis.estado(-40, "mayor", 100, 0, kpis.RANGOS["ahorro_capturado"]) == "rojo"
+    assert kpis.estado(2, "menor", 3, 10, kpis.RANGOS["dias_recibo_a_carga"]) == "verde"
+    assert kpis.estado(None, "menor", 3, 10, kpis.RANGOS["dias_recibo_a_carga"]) == "sin datos"
+    assert kpis.ESTADOS["fuera de rango"] == "Fuera de rango"
+
+
+def test_el_tablero_y_la_tendencia_marcan_fuera_de_rango(cliente, monkeypatch):
+    from app.servicios import metricas
+    original = metricas.CATALOGO["dias_recibo_a_carga"]
+    monkeypatch.setitem(metricas.CATALOGO, "dias_recibo_a_carga", (*original[:3], lambda f: -28))
+    t = cliente.get(V1).json()
+    k = next(x for x in t["kpis"] if x["nombre"] == "dias_recibo_a_carga")
+    assert k["valor"] == -28 and k["estado"] == "fuera de rango" and k["estado_texto"] == "Fuera de rango"
+    assert t["resumen"]["fuera_de_rango"] >= 1 and sum(t["resumen"].values()) == len(t["kpis"])
+    fila = next(f for f in t["tendencia"]["filas"] if f["nombre"] == "dias_recibo_a_carga")
+    assert all(p["estado"] == "fuera de rango" for p in fila["puntos"])

@@ -84,7 +84,14 @@ KPIS = {
 # datos: sin viajes, «cero viajes sobre presupuesto» se pintaría de verde sin que nada lo respalde.
 SECCIONES = {"gastos": metricas.gastos, "viajes": metricas.viajes, "busquedas": metricas.busquedas}
 RETOS = {1: "Cotización de viajes", 2: "Gastos (mirada de Finanzas)"}
-ESTADOS = {"verde": "En meta", "ambar": "Atención", "rojo": "Fuera de meta", "sin datos": "Sin datos"}
+ESTADOS = {"verde": "En meta", "ambar": "Atención", "rojo": "Fuera de meta", "sin datos": "Sin datos", "fuera de rango": "Fuera de rango"}
+# Valores posibles de cada indicador (mínimo, máximo). Un valor fuera no es un logro sino un dato malo (por ejemplo, un recibo
+# con fecha futura da días negativos): sin esto «−28 días» se pintaría «en meta» por ser menor que la meta.
+# El ahorro puede ser negativo (se eligió algo más caro que lo más barato que sirve); las proporciones no pasan de 100 %.
+PROPORCIONES = ("tasa_reutilizacion", "tasa_consultas_fallidas", "cupo_usado", "acuerdo_recomendacion", "tasa_sin_intervencion",
+                "tasa_correccion")
+RANGOS = {n: (None, None) if n in ("ahorro_identificado", "ahorro_capturado", "captura_ahorro")
+          else (0, 100) if n in PROPORCIONES else (0, None) for n in KPIS}
 # Los que dicen algo de una persona. El cupo es de la cuenta; el costo de lectura, las fallas y la espera del buscador no dependen de ella
 DE_PERSONA = [n for n in KPIS if n not in ("cupo_usado", "costo_por_recibo", "tasa_consultas_fallidas", "latencia_buscador")]
 
@@ -111,10 +118,14 @@ def _numero(cat: dict, nombre: str, clave: str, defecto: float) -> float:
         return defecto
 
 
-def estado(valor, sentido: str, meta: float, alerta: float) -> str:
-    """Verde si cumple la meta, ámbar entre la meta y el umbral de alerta, rojo pasado el umbral. Sin valor no hay color."""
+def estado(valor, sentido: str, meta: float, alerta: float, rango: tuple = (None, None)) -> str:
+    """Verde si cumple la meta, ámbar entre la meta y el umbral de alerta, rojo pasado el umbral. Sin valor no hay color,
+    y un valor imposible para el indicador (fuera de `rango`) queda «fuera de rango», nunca en meta."""
     if valor is None:
         return "sin datos"
+    minimo, maximo = rango
+    if (minimo is not None and valor < minimo) or (maximo is not None and valor > maximo):
+        return "fuera de rango"
     if sentido == "mayor":
         return "verde" if valor >= meta else "ambar" if valor >= alerta else "rojo"
     return "verde" if valor <= meta else "ambar" if valor <= alerta else "rojo"
@@ -139,7 +150,7 @@ def evaluar(f: dict, nombres: list[str] | None = None) -> list[dict]:
             titulo, unidad, para_que, _ = metricas.CATALOGO[nombre]
             meta, alerta = _numero(cat, nombre, "meta", k["meta"]), _numero(cat, nombre, "umbral_alerta", k["alerta"])
             valor = _valor(nombre, f)
-            e = estado(valor, k["sentido"], meta, alerta)
+            e = estado(valor, k["sentido"], meta, alerta, RANGOS[nombre])
             salida.append({"nombre": nombre, "titulo": titulo, "unidad": unidad, "para_que": para_que, "formula": k["formula"],
                            "sentido": k["sentido"], "meta": meta, "alerta": alerta, "responsable": k["responsable"],
                            "reto": k["reto"], "principal": k.get("principal", False), "valor": valor,
@@ -165,7 +176,7 @@ def tendencia(f: dict, semanas: int = 8) -> dict:
             for n in principales:
                 valor = _valor(n, fs)
                 filas[n].append({"valor": valor, "estado": estado(valor, KPIS[n]["sentido"], _numero(cat, n, "meta", KPIS[n]["meta"]),
-                                                                   _numero(cat, n, "umbral_alerta", KPIS[n]["alerta"]))})
+                                                                   _numero(cat, n, "umbral_alerta", KPIS[n]["alerta"]), RANGOS[n])})
     return {"semanas": [i.isoformat() for i in inicios],
             "filas": [{"nombre": n, "titulo": metricas.CATALOGO[n][0], "unidad": metricas.CATALOGO[n][1], "puntos": filas[n]}
                       for n in principales]}

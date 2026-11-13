@@ -1,6 +1,7 @@
 /** Indicadores con meta y semáforo (solo administración). Mismo contrato que `GET /api/v1/kpis`. */
 
-export type EstadoKpi = "verde" | "ambar" | "rojo" | "sin datos";
+/** «fuera de rango»: un valor imposible para el indicador (por ejemplo, días negativos). Es un dato malo, nunca un logro. */
+export type EstadoKpi = "verde" | "ambar" | "rojo" | "sin datos" | "fuera de rango";
 
 export interface FiltrosTablero {
   readonly proyecto_id: number | null;
@@ -81,7 +82,13 @@ export interface TableroKpis {
   readonly retos: readonly { readonly reto: number; readonly nombre: string }[];
   readonly proyectos: readonly { readonly id: number; readonly nombre: string }[];
   readonly kpis: readonly Kpi[];
-  readonly resumen: { readonly verde: number; readonly ambar: number; readonly rojo: number; readonly sin_datos: number };
+  readonly resumen: {
+    readonly verde: number;
+    readonly ambar: number;
+    readonly rojo: number;
+    readonly sin_datos: number;
+    readonly fuera_de_rango: number;
+  };
   readonly tendencia: { readonly semanas: readonly string[]; readonly filas: readonly FilaTendencia[] };
   readonly cotizacion: {
     readonly cotizaciones_por_persona: readonly Par[];
@@ -250,5 +257,7 @@ export function textoMeta(k: Pick<Kpi, "sentido" | "meta" | "alerta" | "unidad">
 
 /** El tono visual de cada estado del semáforo; el texto siempre lo acompaña. */
 export function tonoDeEstado(estado: EstadoKpi): "exito" | "aviso" | "error" | "neutro" {
-  return estado === "verde" ? "exito" : estado === "ambar" ? "aviso" : estado === "rojo" ? "error" : "neutro";
+  if (estado === "verde") return "exito";
+  if (estado === "ambar" || estado === "fuera de rango") return "aviso";
+  return estado === "rojo" ? "error" : "neutro";
 }

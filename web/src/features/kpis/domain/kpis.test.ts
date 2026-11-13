@@ -27,6 +27,12 @@ describe("KPIs: dominio", () => {
   });
 
   it("cada estado del semáforo tiene su tono", () => {
-    expect(["verde", "ambar", "rojo", "sin datos"].map((e) => tonoDeEstado(e as never))).toEqual(["exito", "aviso", "error", "neutro"]);
+    expect(["verde", "ambar", "rojo", "sin datos", "fuera de rango"].map((e) => tonoDeEstado(e as never))).toEqual([
+      "exito",
+      "aviso",
+      "error",
+      "neutro",
+      "aviso",
+    ]);
   });
 });

@@ -33,6 +33,11 @@ function Resumen({ t }: { t: TableroKpis }) {
       <li>
         <SemaforoKpi estado="sin datos">{t.resumen.sin_datos} sin datos</SemaforoKpi>
       </li>
+      {t.resumen.fuera_de_rango ? (
+        <li>
+          <SemaforoKpi estado="fuera de rango">{t.resumen.fuera_de_rango} fuera de rango</SemaforoKpi>
+        </li>
+      ) : null}
     </ul>
   );
 }

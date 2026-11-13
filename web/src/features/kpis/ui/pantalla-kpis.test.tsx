@@ -34,6 +34,15 @@ describe("Pantalla de KPIs", () => {
     expect(screen.getByText("1 fuera de meta")).toBeInTheDocument();
   });
 
+  it("un valor imposible (−28 días) sale «Fuera de rango», nunca «En meta» (M-20)", async () => {
+    montar(<PantallaKpis filtros={SIN} />, crearKpisMemoria({ tablero: TABLERO_EJEMPLO }));
+    const tarjeta = await screen.findByRole("article", { name: "Mediana de días del recibo a la carga" });
+    expect(within(tarjeta).getByText("Fuera de rango")).toBeInTheDocument();
+    expect(within(tarjeta).queryByText("En meta")).not.toBeInTheDocument();
+    expect(within(tarjeta).getByText(/no es posible para el indicador/)).toBeInTheDocument();
+    expect(screen.getByText("1 fuera de rango")).toBeInTheDocument();
+  });
+
   it("la tendencia, las personas con su ficha y la ejecución por viaje", async () => {
     montar(<PantallaKpis filtros={SIN} />, crearKpisMemoria({ tablero: TABLERO_EJEMPLO }));
     expect(await screen.findByRole("region", { name: "Tendencia semanal (se desliza de lado)" })).toBeInTheDocument();

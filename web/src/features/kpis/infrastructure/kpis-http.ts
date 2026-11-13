@@ -2,7 +2,7 @@ import { z } from "zod";
 import { consulta, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import { parametrosDeFiltros, type FichaPersona, type KpisRepository, type TableroKpis } from "../domain/kpis";
 
-const estado = z.enum(["verde", "ambar", "rojo", "sin datos"]);
+const estado = z.enum(["verde", "ambar", "rojo", "sin datos", "fuera de rango"]);
 const n = z.number().nullable();
 const txt = z.string().nullable();
 
@@ -31,7 +31,13 @@ export const tableroSchema = z.object({
   retos: z.array(z.object({ reto: z.number().int(), nombre: z.string() })),
   proyectos: z.array(z.object({ id: z.number().int(), nombre: z.string() })),
   kpis: z.array(kpiSchema),
-  resumen: z.object({ verde: z.number().int(), ambar: z.number().int(), rojo: z.number().int(), sin_datos: z.number().int() }),
+  resumen: z.object({
+    verde: z.number().int(),
+    ambar: z.number().int(),
+    rojo: z.number().int(),
+    sin_datos: z.number().int(),
+    fuera_de_rango: z.number().int(),
+  }),
   tendencia: z.object({
     semanas: z.array(z.string()),
     filas: z.array(

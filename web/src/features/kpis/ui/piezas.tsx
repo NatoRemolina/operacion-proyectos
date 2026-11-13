@@ -9,6 +9,7 @@ const BORDE: Record<EstadoKpi, string> = {
   ambar: "border-l-aviso",
   rojo: "border-l-error",
   "sin datos": "border-l-neutro",
+  "fuera de rango": "border-l-aviso",
 };
 
 export function SemaforoKpi({ estado, children }: { estado: EstadoKpi; children: ReactNode }) {
@@ -35,6 +36,11 @@ export function TarjetaKpi({ kpi }: { kpi: Kpi }) {
       <p className="text-sm text-texto-secundario">
         {textoMeta(kpi)} · {kpi.responsable}
       </p>
+      {kpi.estado === "fuera de rango" ? (
+        <p className="text-sm font-semibold text-aviso">
+          Este valor no es posible para el indicador: revisa los datos de origen (por ejemplo, fechas futuras).
+        </p>
+      ) : null}
       <p className="text-sm text-texto-secundario">Sirve para: {kpi.para_que}</p>
       <details className="text-sm">
         <summary className="min-h-11 cursor-pointer content-center font-semibold">Cómo se calcula</summary>

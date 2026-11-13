@@ -4945,7 +4945,8 @@
               "verde",
               "ambar",
               "rojo",
-              "sin datos"
+              "sin datos",
+              "fuera de rango"
             ],
             "title": "Estado"
           },
@@ -6261,7 +6262,8 @@
               "verde",
               "ambar",
               "rojo",
-              "sin datos"
+              "sin datos",
+              "fuera de rango"
             ],
             "title": "Estado"
           }
@@ -6616,6 +6618,11 @@
           "sin_datos": {
             "type": "integer",
             "title": "Sin Datos"
+          },
+          "fuera_de_rango": {
+            "type": "integer",
+            "title": "Fuera De Rango",
+            "description": "Valores imposibles para el indicador (por ejemplo, días negativos): un dato malo, no un logro."
           }
         },
         "type": "object",
@@ -6623,7 +6630,8 @@
           "verde",
           "ambar",
           "rojo",
-          "sin_datos"
+          "sin_datos",
+          "fuera_de_rango"
         ],
         "title": "ResumenEstados"
       },
