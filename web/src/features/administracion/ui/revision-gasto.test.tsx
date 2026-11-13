@@ -408,6 +408,20 @@ describe("Revisar un gasto", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Ni con excepción se aprueba un gasto sin total.");
   });
 
+  it("si el servidor rechaza la categoría, el error queda junto a su selector", async () => {
+    const usuario = userEvent.setup();
+    montar({
+      revisar: async () => {
+        throw new ErrorDeAplicacion("validacion", { mensaje: "Hay datos que no son válidos.", campos: { categoria: "Esa categoría no existe." } });
+      },
+    });
+    const correccion = await screen.findByRole("region", { name: "Corregir los datos" });
+    await usuario.selectOptions(within(correccion).getByLabelText("Categoría"), "otros");
+    await usuario.click(within(correccion).getByRole("button", { name: "Guardar correcciones" }));
+    expect(await within(correccion).findByText("Esa categoría no existe.")).toBeInTheDocument();
+    expect(within(correccion).getByLabelText("Categoría")).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("las justificaciones muestran el texto y la nota de voz se escucha aquí", async () => {
     montar({
       gastos: [

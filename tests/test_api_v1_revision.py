@@ -223,3 +223,23 @@ def test_lo_aprobado_sin_cambios_cuenta_como_aprobado_en_revision(cliente, nuevo
     assert fila["aprobado_en_revision"]   # el Excel dice quién lo aprobó, no «automática»
     assert {"aprobado en revisión", "revisado, sigue en revisión"} <= set(memoria.EVENTOS_RELEVANTES)
     assert "aprobado en revisión" in metricas.PASOS_APROBACION
+
+
+# ---------- ronda 1: la categoría tiene que ser del catálogo ----------
+def test_una_categoria_que_no_existe_responde_422_en_su_campo(cliente, nuevo_viaje):
+    gid = _gasto_de_viaje(nuevo_viaje(), "Sonda categoría inventada")
+    r = cliente.post(f"{V1}/gastos/{gid}/revision", headers=_csrf(cliente),
+                     json={"version": 0, "accion": "guardar", "categoria": "joyeria"})
+    cuerpo = _error(r, 422, "VALIDATION_ERROR")
+    assert "categoria" in cuerpo["error"]["fields"] and "Transporte terrestre" in cuerpo["error"]["fields"]["categoria"]
+    g = db.uno("select categoria, version from gastos where id=:i", i=gid)
+    assert g["categoria"] == "otros" and g["version"] == 0
+
+
+def test_la_pantalla_de_administracion_tampoco_acepta_una_categoria_inventada(cliente, nuevo_viaje):
+    v = nuevo_viaje()
+    gid = _gasto_de_viaje(v, "Sonda categoría Jinja")
+    r = cliente.post(f"/gastos/{gid}", data={"accion": "guardar", "version": 0, "categoria": "joyeria", "comercio": "Sonda categoría Jinja",
+                                             "fecha": v["ida"], "total": "20", "moneda": "USD"}, follow_redirects=False)
+    assert r.status_code == 303 and "revision=" in r.headers["location"]
+    assert db.uno("select categoria, version from gastos where id=:i", i=gid) == {"categoria": "otros", "version": 0}

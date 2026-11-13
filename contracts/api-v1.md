@@ -204,6 +204,7 @@ Los campos de datos que no se mandan se conservan; los importes van como cadena.
 - `rechazar` exige `motivo` de 5 caracteres o más (si no, 422); se guarda en `motivo_rechazo`, queda en el evento y le llega a la persona por Telegram si tiene el chat vinculado.
 - `aprobar` vuelve a evaluar las reglas con el viaje bloqueado: si no pasan, guarda las correcciones y el gasto sigue en `revision` (200, con sus `motivos`). `excepcion` aprueba con `motivo` de 8 caracteres o más, salvo un importe o una fecha que no son válidos, o sin total, moneda o tasa (422).
 - Un importe que no es un número finito: 422 por campo. Uno negativo o cero se guarda y queda en revisión con `importe_invalido`.
+- Una `categoria` que no está en el catálogo de la plataforma: 422 con `fields.categoria` y no se aplica nada (también en la pantalla de administración).
 - 200 `GastoDetalle` con la `version` nueva. 404 si el gasto no existe.
 
 ### `POST /gastos/{id}/justificaciones`

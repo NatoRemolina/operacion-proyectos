@@ -291,6 +291,8 @@ def revisar(id: int, datos: RevisionGasto, yo: dict = Depends(escritura)):
         raise ErrorApi(403, "FORBIDDEN", str(e)) from e
     except revision.ConflictoRevision as e:
         raise ErrorApi(409, "EDIT_CONFLICT", str(e)) from e
+    except revision.CampoInvalido as e:
+        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {e.campo: str(e)}) from e
     except ValueError as e:
         raise ErrorApi(422, "VALIDATION_ERROR", str(e)) from e
     return _revisable(yo, id)
