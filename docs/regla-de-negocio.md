@@ -197,6 +197,13 @@ Son tres cifras distintas, y es correcto que no coincidan.
 
 Por eso un viaje con un costo esperado de 980 USD puede tener un presupuesto de 1.153 USD.
 
+### Verificar cada precio contra su fuente
+
+- **Enlace a la fuente.** La comparación lleva «Ver en Google Flights» (la búsqueda de vuelos) y «Ver en Google Hotels» (la de hoteles y la de cada hotel), con las mismas rutas, aeropuertos y fechas que se le pidieron al buscador. El enlace sale de la respuesta guardada del buscador (`search_metadata`); si falta, se construye. Solo se enlaza a `https://www.google.com/travel/...` y la dirección la arma siempre el servidor. Cada clic queda en la bitácora de la cotización (`fuente abierta`: quién y adónde).
+- **Lectura de la página del vuelo.** Al abrir «Ver desglose» de un vuelo se abre su página en Google Flights en otra pestaña y la plataforma la lee con un navegador (servicio `analizador`): tarifas y qué incluye cada una, equipaje, cambios y reembolso, escalas, precio por vendedor y una captura como evidencia. Para llegar a las opciones de reserva elige el regreso más barato que muestra la página, como hace la plataforma al decidir.
+- **Lo leído no reemplaza el precio del buscador**: la comparación, la recomendación y el presupuesto siguen con el buscador. Si la página muestra otro precio, el desglose lo avisa. Al decidir, la lectura vigente se copia a la decisión (`desglose.analisis_google`) como evidencia.
+- **Límites.** Una lectura por vuelo y fechas, reutilizada durante 60 minutos; topes editables por día de `analisis_persona_dia` (10) y `analisis_vuelo_dia` (40 en total); una lectura a la vez. Si la página pide verificación o aceptar condiciones, la lectura queda fallida con ese motivo: nunca se resuelven, nunca se inicia sesión ni se llena un formulario. Con los topes alcanzados, con `ANALIZADOR=apagado` o sin analizador, el desglose muestra solo lo del buscador y lo dice.
+
 ## 9. Fidelización
 
 **Aerolíneas** (`costo.evaluar`):
