@@ -209,3 +209,65 @@ def test_con_el_tiquete_comprado_no_se_cambia_el_vuelo_sin_cancelar_la_compra(pi
     assert (fila["id"], fila["estado"], fila["activa"]) == (c["id"], "comprada", 1)   # sigue a la vista en la bandeja
     vista = piloto.get(f"{V1}/cotizaciones/{cot['id']}").json()
     assert vista["puede_decidir"] is False and "cancélala en Compras" in vista["bloqueo"]
+
+
+# ---------- ronda 2 · punto 14: la compra se crea dentro de la transacción de la decisión ----------
+def _cotizar(c: TestClient) -> dict:
+    pedido = {"proyecto_id": 1, "origen": {"texto": "Miami (MIA)"}, "destino": {"texto": "Las Vegas (LAS)"},
+              "ida": "2026-12-08", "regreso": "2026-12-11"}
+    r = c.post(f"{V1}/cotizaciones", json=pedido, headers=_csrf(c))
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_si_la_compra_choca_la_decision_no_se_guarda_y_responde_409(piloto, monkeypatch):
+    cot = _cotizar(piloto)
+    real = compras.solicitar
+
+    def con_choque(did, usuario):
+        hecha = real(did, usuario)
+        # otra compra activa del mismo viaje en el mismo instante: el índice único ux_compras_viaje_activa la rechaza
+        db.insertar("compras", viaje_id=hecha["viaje_id"], solicitud_id=hecha["solicitud_id"], activa=1, estado="solicitada",
+                    creado=db.ahora(), actualizado=db.ahora(), version=1, moneda="USD")
+        return hecha
+    monkeypatch.setattr(compras, "solicitar", con_choque)
+    r = piloto.post(f"{V1}/cotizaciones/{cot['id']}/decision", json={"vuelo_id": cot["recomendada_id"]}, headers=_csrf(piloto))
+    assert r.status_code == 409 and r.json()["error"]["code"] == "DECISION_LOCKED", r.text
+    # todo o nada: ni la decisión, ni el viaje, ni la compra
+    assert db.uno("select id from decisiones where solicitud_id=:s", s=cot["id"]) is None
+    assert db.uno("select id from viajes where solicitud_id=:s", s=cot["id"]) is None
+    assert db.uno("select estado from solicitudes where id=:s", s=cot["id"])["estado"] != "decidido"
+
+
+def test_repetir_la_decision_crea_la_compra_que_falte(piloto):
+    cot = _decidir(piloto)
+    db.ejecutar("delete from compras where viaje_id=:v", v=cot["viaje"]["id"])
+    r = piloto.post(f"{V1}/cotizaciones/{cot['id']}/decision", json={"vuelo_id": cot["recomendada_id"]}, headers=_csrf(piloto))
+    assert r.status_code == 200, r.text
+    assert r.json()["compra"]["estado"] == "solicitada"
+    assert db.uno("select count(*) n from compras where viaje_id=:v and activa=1", v=cot["viaje"]["id"])["n"] == 1
+    # repetirla otra vez no crea otra
+    piloto.post(f"{V1}/cotizaciones/{cot['id']}/decision", json={"vuelo_id": cot["recomendada_id"]}, headers=_csrf(piloto))
+    assert db.uno("select count(*) n from compras where viaje_id=:v", v=cot["viaje"]["id"])["n"] == 1
+
+
+def test_la_migracion_rellena_la_compra_de_los_viajes_decididos(piloto, cliente):
+    pendiente, aprobado, rechazado = _decidir(piloto), _decidir(piloto), _decidir(piloto)
+    _aprobar_viaje(cliente, aprobado["viaje"]["id"])
+    r = cliente.post(f"{V1}/viajes/{rechazado['viaje']['id']}/estado", json={"accion": "rechazar", "motivo": "No va"},
+                     headers=_csrf(cliente))
+    assert r.status_code == 200, r.text
+    viajes_ = [c["viaje"]["id"] for c in (pendiente, aprobado, rechazado)]
+    for v in viajes_:
+        db.ejecutar("delete from compras where viaje_id=:v", v=v)
+    assert compras.rellenar() >= 2
+    for cot in (pendiente, aprobado):
+        c = _compra(cot)
+        assert (c["estado"], c["decision_id"], c["version"]) == ("solicitada", cot["decision"]["id"], 1)
+        assert c["precio_cotizado"] is not None
+        assert db.uno("""select id from eventos where entidad='compra' and entidad_id=:i
+                         and paso='solicitud de compra'""", i=c["id"])
+    assert _compra(rechazado) is None                 # un viaje rechazado no se compra
+    assert compras.rellenar() == 0                    # idempotente
+    from datos import migracion
+    assert migracion.migrar()["compras_rellenadas"] == 0   # la migración la llama

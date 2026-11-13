@@ -292,6 +292,7 @@ def migrar() -> dict:
     hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas(),
               "reglas_vendedor": cotizacion.asegurar_reglas_vendedor()}
     _indices()
+    hechos["compras_rellenadas"] = compras.rellenar()   # después del índice único de la compra activa
     if not config.ES_SQLITE:
         hechos.update(_restricciones_postgres())
         _permisos_postgres()

@@ -11,7 +11,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import parse_qsl, urlsplit
 
-from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint, text
 from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
@@ -458,6 +458,8 @@ REGLA_VENDEDOR = ("enlace_vendedor_persona_dia", str(TOPE_VENDEDOR_DIA),
                   "Búsquedas pagas por persona y día del enlace a la página oficial del vendedor: el regreso y las opciones "
                   "de reserva, también las fallidas. El mismo itinerario dentro de la hora no vuelve a contar. Alcanzado, "
                   "«Ver desglose» lleva a Google Flights.")
+BLOQUEO_DECISION = 7_311_805   # cerrojo de transacción (PostgreSQL) por cotización: una decisión a la vez
+CHOQUE_DECISION = "Otra persona guardó una decisión de esta cotización al mismo tiempo: recarga la página y vuelve a intentarlo."
 REPETICIONES_HORA = 6   # el mismo itinerario, la misma persona, en una hora: más que esto va a Google Flights
 REUSO_VENDEDOR = timedelta(hours=1)
 
@@ -553,7 +555,13 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
         raise FueraDeAlcance(NO_DECIDE)
     previa = c["decision"]
     if previa and previa["vuelo_id"] == vuelo_id and (previa["hotel_id"] or 0) == hotel_id and (previa["motivo"] or "") == motivo.strip()[:300]:
-        return {"repetida": True, "decision_id": previa["id"], "viaje": viajes.de_solicitud(sid)}
+        el_viaje = viajes.de_solicitud(sid)
+        if el_viaje and not db.uno("select id from compras where viaje_id=:v and activa=1", v=el_viaje["id"]):
+            try:   # el mismo envío otra vez crea la solicitud de compra que falte (por ejemplo, de antes de existir compras)
+                compras.solicitar(previa["id"], usuario)
+            except IntegrityError:
+                pass   # otra petición la creó en el mismo instante
+        return {"repetida": True, "decision_id": previa["id"], "viaje": el_viaje}
     bloqueo = viajes.bloquea_decision(sid) or compras.bloqueo(sid)
     if bloqueo:
         raise DecisionBloqueada(bloqueo)
@@ -609,52 +617,65 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
         lineas.append({"concepto": f"Carro de alquiler ({c['noches']} días x {c['sol']['carro_dia']:.0f})",
                        "valor": c["carro"], "origen": "supuesto", "grupo": "alquiler_carro"})
     total = round(sum(l["valor"] for l in lineas), 2)
-    did = db.insertar("decisiones", solicitud_id=sid, proyecto_id=c["sol"]["proyecto_id"], vuelo_id=vuelo_id,
-                      hotel_id=hotel["id"] if hotel else None, tarifa=vuelo["ev"]["tarifa"]["nombre"],
-                      desglose={"lineas": lineas, "avisos": vuelo["ev"]["avisos"], "vuelo": vuelo["v"], "regreso": regreso,
-                                "precio_tarifa": vuelo["ev"]["tarifa"]["precio"], "origen_tarifas": vuelo.get("origen_tarifas"),
-                                "hotel": hotel["h"] if hotel else None, "hotel_evaluado": hotel["ev"] if hotel else None,
-                                "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
-                                "aviso": c["aviso"], "baterias": c["baterias"], "aviso_tope": aviso_tope,
-                                # lo leído de Google Flights en la última hora: evidencia, no cambia el total
-                                "analisis_google": analizador.para_decision(sid, vuelo_id),
-                                # lo que se evita frente a la opción más barata que sirve, por costo esperado
-                                "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
-                      total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=usuario["id"],
-                      razones=razones, recomendado_id=recomendado["id"] if recomendado else None,
-                      siguio_recomendacion=1 if siguio else 0, posicion_elegida=posicion)
-    # Foto de todo lo que se mostró: las reglas y las tarifas pueden cambiar después
-    db.insertar_varios("elecciones", [
-        {"decision_id": did, "solicitud_id": sid, "opcion_id": o["id"], "tipo": "vuelo", "posicion": i + 1,
-         "elegida": int(o["id"] == vuelo["id"]), "recomendada": int(bool(recomendado) and o["id"] == recomendado["id"]),
-         "descartada": int(bool(o["ev"]["descartada"])), "precio": o["v"]["precio"], "costo_esperado": o["ev"]["total"],
-         "rasgos": {"aerolinea": o["v"]["aerolinea"], "escalas": o["v"]["escalas"], "duracion_min": o["v"]["duracion_min"],
-                    "sale": o["v"]["sale"][11:], "llega": o["v"]["llega"][11:], "tarifa": o["ev"]["tarifa"]["nombre"],
-                    "permite_cambio": o["ev"]["tarifa"]["permite_cambio"], "tarifas_reales": o["ev"]["tarifas_reales"],
-                    "frente_esperado": o.get("frente_esperado"), "prob_cambio": c["sol"]["prob_cambio"],
-                    # para medir el modelo frente a lo cotizado y lo pagado (frente datos-modelo)
-                    "esperado": o.get("esperado"), "precio_buscador": o["v"]["precio"],
-                    "baterias": c["sol"]["baterias_n"], "maleta": c["sol"]["maleta"]},
-         "creado": db.ahora()} for i, o in enumerate(orden)] + [
-        {"decision_id": did, "solicitud_id": sid, "opcion_id": h["id"], "tipo": "hotel", "posicion": i + 1,
-         "elegida": int(bool(hotel) and h["id"] == hotel["id"]), "recomendada": int(h is c["hotel_recomendado"]),
-         "descartada": int(bool(h["ev"]["descartado"])), "precio": h["h"]["total"], "costo_esperado": h["ev"]["total"],
-         "rasgos": {"calificacion": h["h"]["calificacion"], "clase": h["h"]["clase"], "programa": h["programa"],
-                    "socio": h["ev"]["socio"]},
-         "creado": db.ahora()} for i, h in enumerate(c["hoteles"] + c["hoteles_descartados"])])
-    # Origen y destino pasan a los aeropuertos reales del vuelo elegido
-    reales = {k: vuelo["v"][campo] for k, campo in (("origen", "desde"), ("destino", "hasta")) if vuelo["v"].get(campo)}
-    db.actualizar("solicitudes", sid, estado="decidido", **reales)
-    eventos.registrar("solicitud", sid, "decisión guardada", f"Total previsto {total:.2f} USD (ficha #{did})", aprobado_por or "usuario")
-    for l in lineas:
-        if l.get("calculo"):   # cada traslado que entra al presupuesto deja su cuenta en la bitácora
-            k = l["calculo"]
-            eventos.registrar("solicitud", sid, "traslado calculado",
-                              f"{l['concepto']}: {k['km_linea_recta']} km en línea recta x {k['factor']} = {k['km_carretera']} km "
-                              f"a {k['usd_km']} USD/km ida y vuelta = {l['valor']:.2f} USD; {k['horas']} h a {k['velocidad_kmh']:g} km/h",
-                              "reglas editables (supuesto)")
-    # La decisión asigna el viaje a la persona: nace con su código y queda a la espera de que administración apruebe el presupuesto
-    el_viaje = viajes.crear_desde_decision(did)
-    monitoreo_vuelos.registrar_tramos(el_viaje["id"], vuelo["v"], regreso)
-    compras.solicitar(did, usuario)   # la solicitud de compra del tiquete nace con la decisión
+    # Todo o nada: la decisión, sus elecciones, el viaje, sus tramos y la solicitud de compra. Un choque con otra
+    # decisión al mismo tiempo (o con la compra activa del viaje) responde 409 y no deja nada a medias.
+    try:
+        with db.transaccion() as conexion:
+            if not config.ES_SQLITE:   # en SQLite, BEGIN IMMEDIATE ya pone en fila
+                conexion.execute(text("select pg_advisory_xact_lock(:k, :s)"), {"k": BLOQUEO_DECISION, "s": sid})
+            bloqueo = viajes.bloquea_decision(sid) or compras.bloqueo(sid)   # releído bajo el cerrojo
+            if bloqueo:
+                raise DecisionBloqueada(bloqueo)
+            did = db.insertar("decisiones", solicitud_id=sid, proyecto_id=c["sol"]["proyecto_id"], vuelo_id=vuelo_id,
+                              hotel_id=hotel["id"] if hotel else None, tarifa=vuelo["ev"]["tarifa"]["nombre"],
+                              desglose={"lineas": lineas, "avisos": vuelo["ev"]["avisos"], "vuelo": vuelo["v"], "regreso": regreso,
+                                        "precio_tarifa": vuelo["ev"]["tarifa"]["precio"], "origen_tarifas": vuelo.get("origen_tarifas"),
+                                        "hotel": hotel["h"] if hotel else None, "hotel_evaluado": hotel["ev"] if hotel else None,
+                                        "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
+                                        "aviso": c["aviso"], "baterias": c["baterias"], "aviso_tope": aviso_tope,
+                                        # lo leído de Google Flights en la última hora: evidencia, no cambia el total
+                                        "analisis_google": analizador.para_decision(sid, vuelo_id),
+                                        # lo que se evita frente a la opción más barata que sirve, por costo esperado
+                                        "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
+                              total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=usuario["id"],
+                              razones=razones, recomendado_id=recomendado["id"] if recomendado else None,
+                              siguio_recomendacion=1 if siguio else 0, posicion_elegida=posicion)
+            # Foto de todo lo que se mostró: las reglas y las tarifas pueden cambiar después
+            db.insertar_varios("elecciones", [
+                {"decision_id": did, "solicitud_id": sid, "opcion_id": o["id"], "tipo": "vuelo", "posicion": i + 1,
+                 "elegida": int(o["id"] == vuelo["id"]), "recomendada": int(bool(recomendado) and o["id"] == recomendado["id"]),
+                 "descartada": int(bool(o["ev"]["descartada"])), "precio": o["v"]["precio"], "costo_esperado": o["ev"]["total"],
+                 "rasgos": {"aerolinea": o["v"]["aerolinea"], "escalas": o["v"]["escalas"], "duracion_min": o["v"]["duracion_min"],
+                            "sale": o["v"]["sale"][11:], "llega": o["v"]["llega"][11:], "tarifa": o["ev"]["tarifa"]["nombre"],
+                            "permite_cambio": o["ev"]["tarifa"]["permite_cambio"], "tarifas_reales": o["ev"]["tarifas_reales"],
+                            "frente_esperado": o.get("frente_esperado"), "prob_cambio": c["sol"]["prob_cambio"],
+                            # para medir el modelo frente a lo cotizado y lo pagado (frente datos-modelo)
+                            "esperado": o.get("esperado"), "precio_buscador": o["v"]["precio"],
+                            "baterias": c["sol"]["baterias_n"], "maleta": c["sol"]["maleta"]},
+                 "creado": db.ahora()} for i, o in enumerate(orden)] + [
+                {"decision_id": did, "solicitud_id": sid, "opcion_id": h["id"], "tipo": "hotel", "posicion": i + 1,
+                 "elegida": int(bool(hotel) and h["id"] == hotel["id"]), "recomendada": int(h is c["hotel_recomendado"]),
+                 "descartada": int(bool(h["ev"]["descartado"])), "precio": h["h"]["total"], "costo_esperado": h["ev"]["total"],
+                 "rasgos": {"calificacion": h["h"]["calificacion"], "clase": h["h"]["clase"], "programa": h["programa"],
+                            "socio": h["ev"]["socio"]},
+                 "creado": db.ahora()} for i, h in enumerate(c["hoteles"] + c["hoteles_descartados"])])
+            # Origen y destino pasan a los aeropuertos reales del vuelo elegido
+            reales = {k: vuelo["v"][campo] for k, campo in (("origen", "desde"), ("destino", "hasta")) if vuelo["v"].get(campo)}
+            db.actualizar("solicitudes", sid, estado="decidido", **reales)
+            eventos.registrar("solicitud", sid, "decisión guardada", f"Total previsto {total:.2f} USD (ficha #{did})", aprobado_por or "usuario")
+            for l in lineas:
+                if l.get("calculo"):   # cada traslado que entra al presupuesto deja su cuenta en la bitácora
+                    k = l["calculo"]
+                    eventos.registrar("solicitud", sid, "traslado calculado",
+                                      f"{l['concepto']}: {k['km_linea_recta']} km en línea recta x {k['factor']} = {k['km_carretera']} km "
+                                      f"a {k['usd_km']} USD/km ida y vuelta = {l['valor']:.2f} USD; {k['horas']} h a {k['velocidad_kmh']:g} km/h",
+                                      "reglas editables (supuesto)")
+            # La decisión asigna el viaje a la persona: nace con su código y queda a la espera de que administración apruebe el presupuesto
+            el_viaje = viajes.crear_desde_decision(did)
+            monitoreo_vuelos.registrar_tramos(el_viaje["id"], vuelo["v"], regreso)
+            compras.solicitar(did, usuario)   # la solicitud de compra del tiquete nace con la decisión
+    except IntegrityError as e:
+        raise DecisionBloqueada(CHOQUE_DECISION) from e
+    except compras.CompraBloqueada as e:
+        raise DecisionBloqueada(str(e)) from e
     return {"repetida": False, "decision_id": did, "viaje": el_viaje}

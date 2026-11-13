@@ -17,6 +17,7 @@ from decimal import Decimal
 from urllib.parse import urlsplit
 
 from sqlalchemy import Column, Float, Integer, Text, text
+from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
 from . import eventos, viajes
@@ -99,6 +100,23 @@ def solicitar(decision_id: int, usuario: dict) -> dict:
                               activa=1, estado="solicitada", creado=db.ahora(), version=1, moneda="USD", **datos)
     eventos.registrar("compra", cid, "solicitud de compra", f"{viaje['codigo']} · decisión #{decision_id}", usuario["nombre"])
     return uno(cid)
+
+
+
+def rellenar() -> int:
+    """Migración: los viajes ya decididos (pendientes o aprobados) que no tienen compra activa reciben una en
+    «solicitada», con la decisión vigente y quien la tomó. Idempotente; devuelve cuántas creó."""
+    hechas = 0
+    for f in db.todos("""select v.decision_id, d.usuario_id from viajes v join decisiones d on d.id=v.decision_id
+                         where v.estado in ('pendiente_aprobacion', 'aprobado')
+                           and not exists (select 1 from compras c where c.viaje_id=v.id and c.activa=1)
+                         order by v.id"""):
+        try:
+            solicitar(f["decision_id"], {"id": f["usuario_id"], "nombre": "migración"})
+            hechas += 1
+        except IntegrityError:
+            pass   # otra petición la creó en el mismo instante
+    return hechas
 
 
 # ---------- leer ----------
