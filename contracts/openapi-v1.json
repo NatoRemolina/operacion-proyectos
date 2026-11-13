@@ -1464,6 +1464,500 @@
         }
       }
     },
+    "/api/v1/kpis": {
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Tablero Kpis",
+        "description": "Indicadores de los dos retos con meta, semáforo y tendencia semanal, sus desgloses y la tabla de personas.",
+        "operationId": "tablero_kpis_api_v1_kpis_get",
+        "parameters": [
+          {
+            "name": "proyecto_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0 o ausente: todos los proyectos.",
+              "default": 0,
+              "title": "Proyecto Id"
+            },
+            "description": "0 o ausente: todos los proyectos."
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Desde"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Hasta"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableroKpis"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kpis/personas/{id}": {
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Ficha",
+        "description": "Todo lo de una persona por su ID y su línea de tiempo. Deja el evento «ficha consultada», como la pantalla.",
+        "operationId": "ficha_api_v1_kpis_personas__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FichaPersona"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kpis/exportar.csv": {
+      "get": {
+        "tags": [
+          "kpis"
+        ],
+        "summary": "Exportar",
+        "description": "El mismo CSV que la pantalla, con los mismos filtros. Deja el evento «exportación».",
+        "operationId": "exportar_api_v1_kpis_exportar_csv_get",
+        "parameters": [
+          {
+            "name": "que",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "kpis",
+                "consultas",
+                "personas"
+              ],
+              "type": "string",
+              "description": "Indicadores, consultas al buscador o personas.",
+              "title": "Que"
+            },
+            "description": "Indicadores, consultas al buscador o personas."
+          },
+          {
+            "name": "proyecto_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0 o ausente: todos los proyectos.",
+              "default": 0,
+              "title": "Proyecto Id"
+            },
+            "description": "0 o ausente: todos los proyectos."
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Desde"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Hasta"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/monitoreo": {
+      "get": {
+        "tags": [
+          "monitoreo"
+        ],
+        "summary": "Pestana",
+        "description": "Las cifras y tablas de una pestaña con los filtros. La auditoría no se filtra por proyecto, como en la pantalla.",
+        "operationId": "pestana_api_v1_monitoreo_get",
+        "parameters": [
+          {
+            "name": "pestana",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "viajes",
+                "gastos",
+                "busquedas",
+                "modelo",
+                "cupos",
+                "auditoria",
+                "calidad"
+              ],
+              "type": "string",
+              "description": "Sin pestaña: gastos.",
+              "default": "gastos",
+              "title": "Pestana"
+            },
+            "description": "Sin pestaña: gastos."
+          },
+          {
+            "name": "proyecto_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0 o ausente: todos los proyectos.",
+              "default": 0,
+              "title": "Proyecto Id"
+            },
+            "description": "0 o ausente: todos los proyectos."
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Desde"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Hasta"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PestanaMonitoreo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/monitoreo/exportar.csv": {
+      "get": {
+        "tags": [
+          "monitoreo"
+        ],
+        "summary": "Exportar",
+        "description": "El mismo CSV de la pantalla con los filtros. Deja el evento «exportación».",
+        "operationId": "exportar_api_v1_monitoreo_exportar_csv_get",
+        "parameters": [
+          {
+            "name": "vista",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "v_h_viaje",
+                "v_h_gasto",
+                "v_h_busqueda",
+                "v_h_decision",
+                "v_h_lectura",
+                "v_h_evento",
+                "v_h_consulta"
+              ],
+              "type": "string",
+              "description": "Un hecho de la capa analítica.",
+              "title": "Vista"
+            },
+            "description": "Un hecho de la capa analítica."
+          },
+          {
+            "name": "proyecto_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0 o ausente: todos los proyectos.",
+              "default": 0,
+              "title": "Proyecto Id"
+            },
+            "description": "0 o ausente: todos los proyectos."
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Desde"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Una fecha no válida se ignora.",
+              "default": "",
+              "title": "Hasta"
+            },
+            "description": "AAAA-MM-DD. Una fecha no válida se ignora."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/reglas": {
       "get": {
         "tags": [
@@ -1883,6 +2377,148 @@
           }
         }
       }
+    },
+    "/api/v1/vuelos": {
+      "get": {
+        "tags": [
+          "vuelos"
+        ],
+        "summary": "Vuelos",
+        "description": "Tramos de los viajes aprobados. Pensado para pedirse cada 15 s con la pestaña visible: cada tramo se consulta solo\ndentro de su ventana (desde 3 h antes de salir hasta la llegada), con caché y topes.",
+        "operationId": "vuelos_api_v1_vuelos_get",
+        "parameters": [
+          {
+            "name": "fecha",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Sin fecha (o no válida): hoy y los vuelos en curso.",
+              "default": "",
+              "title": "Fecha"
+            },
+            "description": "AAAA-MM-DD. Sin fecha (o no válida): hoy y los vuelos en curso."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VuelosDelDia"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vuelos/{tramo_id}/actualizar": {
+      "post": {
+        "tags": [
+          "vuelos"
+        ],
+        "summary": "Actualizar",
+        "description": "Salta la caché (una vez por minuto), nunca la ventana ni los topes. Si no consulta, `motivo` dice por qué.",
+        "operationId": "actualizar_api_v1_vuelos__tramo_id__actualizar_post",
+        "parameters": [
+          {
+            "name": "tramo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Tramo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoActualizacion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2062,6 +2698,67 @@
         ],
         "title": "AeropuertoSugerido"
       },
+      "AvisoVuelo": {
+        "properties": {
+          "momento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Momento"
+          },
+          "texto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto"
+          },
+          "enviado": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enviado"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "retraso": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retraso"
+          }
+        },
+        "type": "object",
+        "title": "AvisoVuelo"
+      },
       "Body_dictar_api_v1_asistente_voz_post": {
         "properties": {
           "audio": {
@@ -2194,6 +2891,85 @@
           "nombre"
         ],
         "title": "Categoria"
+      },
+      "Cifra": {
+        "properties": {
+          "etiqueta": {
+            "type": "string",
+            "title": "Etiqueta"
+          },
+          "valor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor",
+            "description": "Null si no hay datos."
+          },
+          "unidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidad",
+            "description": "`%`, `USD`, `h`, `s`... o null si es un conteo."
+          },
+          "pie": {
+            "type": "string",
+            "title": "Pie"
+          }
+        },
+        "type": "object",
+        "required": [
+          "etiqueta",
+          "valor",
+          "unidad",
+          "pie"
+        ],
+        "title": "Cifra"
+      },
+      "Columna": {
+        "properties": {
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          },
+          "unidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidad",
+            "description": "`USD` o `%` si la columna es una cifra con unidad."
+          },
+          "fin": {
+            "type": "boolean",
+            "title": "Fin",
+            "description": "Cifra: se alinea a la derecha."
+          }
+        },
+        "type": "object",
+        "required": [
+          "texto",
+          "unidad",
+          "fin"
+        ],
+        "title": "Columna"
       },
       "CorreoDelSoporte": {
         "properties": {
@@ -2528,6 +3304,166 @@
         ],
         "title": "Cotizacion"
       },
+      "CotizacionPersona": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "origen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen"
+          },
+          "destino": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destino"
+          },
+          "ida": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ida"
+          },
+          "regreso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regreso"
+          },
+          "estado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estado"
+          },
+          "creado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creado"
+          },
+          "proyecto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proyecto"
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viaje",
+            "description": "Código del viaje que nació de la cotización, si lo hay."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "origen",
+          "destino",
+          "ida",
+          "regreso",
+          "estado",
+          "creado",
+          "proyecto",
+          "viaje"
+        ],
+        "title": "CotizacionPersona"
+      },
+      "Cupo": {
+        "properties": {
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
+          },
+          "mensual": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mensual"
+          },
+          "usadas": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usadas"
+          },
+          "restantes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restantes"
+          }
+        },
+        "type": "object",
+        "title": "Cupo"
+      },
       "DatosRevision": {
         "properties": {
           "gasto_id": {
@@ -2811,6 +3747,82 @@
         "title": "DestinoFuente",
         "description": "Dónde se ve una fuente: la pantalla del viaje, del gasto o de la cotización con ese id."
       },
+      "DetalleCotizacion": {
+        "properties": {
+          "cotizaciones_por_persona": {
+            "items": {
+              "$ref": "#/components/schemas/Par"
+            },
+            "type": "array",
+            "title": "Cotizaciones Por Persona"
+          },
+          "cotizaciones_por_ruta": {
+            "items": {
+              "$ref": "#/components/schemas/Par"
+            },
+            "type": "array",
+            "title": "Cotizaciones Por Ruta"
+          },
+          "consultas_por_origen": {
+            "items": {
+              "$ref": "#/components/schemas/Par"
+            },
+            "type": "array",
+            "title": "Consultas Por Origen"
+          },
+          "consultas_por_tipo": {
+            "items": {
+              "$ref": "#/components/schemas/Par"
+            },
+            "type": "array",
+            "title": "Consultas Por Tipo"
+          },
+          "consultas_por_persona": {
+            "items": {
+              "$ref": "#/components/schemas/Par"
+            },
+            "type": "array",
+            "title": "Consultas Por Persona"
+          },
+          "consultas_por_ruta": {
+            "items": {
+              "$ref": "#/components/schemas/Par"
+            },
+            "type": "array",
+            "title": "Consultas Por Ruta"
+          },
+          "errores_buscador": {
+            "items": {
+              "$ref": "#/components/schemas/FallaBuscador"
+            },
+            "type": "array",
+            "title": "Errores Buscador"
+          },
+          "cupo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cupo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null sin clave del buscador configurada."
+          }
+        },
+        "type": "object",
+        "required": [
+          "cotizaciones_por_persona",
+          "cotizaciones_por_ruta",
+          "consultas_por_origen",
+          "consultas_por_tipo",
+          "consultas_por_persona",
+          "consultas_por_ruta",
+          "errores_buscador",
+          "cupo"
+        ],
+        "title": "DetalleCotizacion"
+      },
       "DetalleError": {
         "properties": {
           "code": {
@@ -2837,6 +3849,66 @@
         ],
         "title": "DetalleError"
       },
+      "DetalleGastos": {
+        "properties": {
+          "por_viaje": {
+            "items": {
+              "$ref": "#/components/schemas/EjecucionViaje"
+            },
+            "type": "array",
+            "title": "Por Viaje"
+          },
+          "por_proyecto": {
+            "items": {
+              "$ref": "#/components/schemas/EjecucionGrupo"
+            },
+            "type": "array",
+            "title": "Por Proyecto"
+          },
+          "por_categoria": {
+            "items": {
+              "$ref": "#/components/schemas/EjecucionGrupo"
+            },
+            "type": "array",
+            "title": "Por Categoria"
+          },
+          "por_moneda": {
+            "items": {
+              "$ref": "#/components/schemas/GastoPorMoneda"
+            },
+            "type": "array",
+            "title": "Por Moneda"
+          },
+          "revision_antiguas": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionAntigua"
+            },
+            "type": "array",
+            "title": "Revision Antiguas"
+          },
+          "real_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Real Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "por_viaje",
+          "por_proyecto",
+          "por_categoria",
+          "por_moneda",
+          "revision_antiguas",
+          "real_total"
+        ],
+        "title": "DetalleGastos"
+      },
       "EdicionRegla": {
         "properties": {
           "valor": {
@@ -2852,6 +3924,188 @@
           "valor"
         ],
         "title": "EdicionRegla"
+      },
+      "EjecucionGrupo": {
+        "properties": {
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre"
+          },
+          "presupuesto": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto"
+          },
+          "gastado": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gastado"
+          },
+          "pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nombre",
+          "presupuesto",
+          "gastado",
+          "pct"
+        ],
+        "title": "EjecucionGrupo"
+      },
+      "EjecucionViaje": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "titular": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titular"
+          },
+          "ruta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ruta"
+          },
+          "ida": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ida"
+          },
+          "estado": {
+            "type": "string",
+            "title": "Estado"
+          },
+          "presupuesto": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto"
+          },
+          "gastado": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gastado"
+          },
+          "en_revision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "En Revision"
+          },
+          "pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "titular",
+          "ruta",
+          "ida",
+          "estado",
+          "presupuesto",
+          "gastado",
+          "en_revision",
+          "pct"
+        ],
+        "title": "EjecucionViaje"
+      },
+      "Enlace": {
+        "properties": {
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          },
+          "href": {
+            "type": "string",
+            "title": "Href",
+            "description": "Ruta de la web, por ejemplo `/viajes/7`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "texto",
+          "href"
+        ],
+        "title": "Enlace"
       },
       "Equipo": {
         "properties": {
@@ -2875,6 +4129,467 @@
           "texto"
         ],
         "title": "Equipo"
+      },
+      "EventoPersona": {
+        "properties": {
+          "momento": {
+            "type": "string",
+            "title": "Momento"
+          },
+          "entidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entidad"
+          },
+          "entidad_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entidad Id"
+          },
+          "paso": {
+            "type": "string",
+            "title": "Paso"
+          },
+          "detalle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detalle"
+          },
+          "fuente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fuente"
+          },
+          "quien": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quien"
+          }
+        },
+        "type": "object",
+        "required": [
+          "momento",
+          "entidad",
+          "entidad_id",
+          "paso",
+          "detalle",
+          "fuente",
+          "quien"
+        ],
+        "title": "EventoPersona"
+      },
+      "EvidenciaPersona": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "tipo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo"
+          },
+          "canal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canal"
+          },
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre"
+          },
+          "creado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creado"
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viaje"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tipo",
+          "canal",
+          "nombre",
+          "creado",
+          "viaje"
+        ],
+        "title": "EvidenciaPersona"
+      },
+      "FallaBuscador": {
+        "properties": {
+          "momento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Momento"
+          },
+          "tipo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "momento",
+          "tipo",
+          "error"
+        ],
+        "title": "FallaBuscador"
+      },
+      "FichaPersona": {
+        "properties": {
+          "usuario": {
+            "$ref": "#/components/schemas/UsuarioFicha"
+          },
+          "totales": {
+            "$ref": "#/components/schemas/TotalesPersona"
+          },
+          "indicadores": {
+            "items": {
+              "$ref": "#/components/schemas/Kpi"
+            },
+            "type": "array",
+            "title": "Indicadores"
+          },
+          "cotizaciones": {
+            "items": {
+              "$ref": "#/components/schemas/CotizacionPersona"
+            },
+            "type": "array",
+            "title": "Cotizaciones"
+          },
+          "viajes": {
+            "items": {
+              "$ref": "#/components/schemas/ViajePersona"
+            },
+            "type": "array",
+            "title": "Viajes"
+          },
+          "gastos": {
+            "items": {
+              "$ref": "#/components/schemas/GastoPersona"
+            },
+            "type": "array",
+            "title": "Gastos"
+          },
+          "evidencias": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenciaPersona"
+            },
+            "type": "array",
+            "title": "Evidencias"
+          },
+          "eventos": {
+            "items": {
+              "$ref": "#/components/schemas/EventoPersona"
+            },
+            "type": "array",
+            "title": "Eventos",
+            "description": "Línea de tiempo: los hechos sobre lo suyo, del más reciente al más antiguo (200 como máximo)."
+          },
+          "gastos_por_estado": {
+            "items": {
+              "$ref": "#/components/schemas/Par"
+            },
+            "type": "array",
+            "title": "Gastos Por Estado"
+          },
+          "gastos_por_canal": {
+            "items": {
+              "$ref": "#/components/schemas/Par"
+            },
+            "type": "array",
+            "title": "Gastos Por Canal"
+          }
+        },
+        "type": "object",
+        "required": [
+          "usuario",
+          "totales",
+          "indicadores",
+          "cotizaciones",
+          "viajes",
+          "gastos",
+          "evidencias",
+          "eventos",
+          "gastos_por_estado",
+          "gastos_por_canal"
+        ],
+        "title": "FichaPersona"
+      },
+      "FilaCargo": {
+        "properties": {
+          "cargo": {
+            "type": "string",
+            "title": "Cargo"
+          },
+          "viajes": {
+            "type": "integer",
+            "title": "Viajes"
+          },
+          "gasto_usd": {
+            "type": "number",
+            "title": "Gasto Usd"
+          },
+          "en_revision": {
+            "type": "number",
+            "title": "En Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cargo",
+          "viajes",
+          "gasto_usd",
+          "en_revision"
+        ],
+        "title": "FilaCargo"
+      },
+      "FilaPersona": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "rol": {
+            "type": "string",
+            "title": "Rol"
+          },
+          "rol_texto": {
+            "type": "string",
+            "title": "Rol Texto"
+          },
+          "activo": {
+            "type": "boolean",
+            "title": "Activo"
+          },
+          "cotizaciones": {
+            "type": "integer",
+            "title": "Cotizaciones"
+          },
+          "viajes": {
+            "type": "integer",
+            "title": "Viajes"
+          },
+          "presupuesto": {
+            "type": "number",
+            "title": "Presupuesto"
+          },
+          "gastado": {
+            "type": "number",
+            "title": "Gastado"
+          },
+          "en_revision": {
+            "type": "number",
+            "title": "En Revision"
+          },
+          "ejecucion": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ejecucion"
+          },
+          "gastos": {
+            "type": "integer",
+            "title": "Gastos"
+          },
+          "gastos_revision": {
+            "type": "integer",
+            "title": "Gastos Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "nombre",
+          "rol",
+          "rol_texto",
+          "activo",
+          "cotizaciones",
+          "viajes",
+          "presupuesto",
+          "gastado",
+          "en_revision",
+          "ejecucion",
+          "gastos",
+          "gastos_revision"
+        ],
+        "title": "FilaPersona"
+      },
+      "FilaTendencia": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "unidad": {
+            "type": "string",
+            "title": "Unidad"
+          },
+          "puntos": {
+            "items": {
+              "$ref": "#/components/schemas/PuntoTendencia"
+            },
+            "type": "array",
+            "title": "Puntos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nombre",
+          "titulo",
+          "unidad",
+          "puntos"
+        ],
+        "title": "FilaTendencia"
+      },
+      "Filtros": {
+        "properties": {
+          "proyecto_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proyecto Id"
+          },
+          "desde": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desde",
+            "description": "AAAA-MM-DD"
+          },
+          "hasta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hasta",
+            "description": "AAAA-MM-DD"
+          }
+        },
+        "type": "object",
+        "title": "Filtros"
       },
       "FormularioCotizacion": {
         "properties": {
@@ -2966,6 +4681,181 @@
           "destino"
         ],
         "title": "FuenteAsistente"
+      },
+      "GastoPersona": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "estado": {
+            "type": "string",
+            "title": "Estado"
+          },
+          "creado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creado"
+          },
+          "canal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canal"
+          },
+          "viaje": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viaje"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "comercio",
+          "fecha",
+          "categoria",
+          "total",
+          "moneda",
+          "total_usd",
+          "estado",
+          "creado",
+          "canal",
+          "viaje"
+        ],
+        "title": "GastoPersona"
+      },
+      "GastoPorMoneda": {
+        "properties": {
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "gastos": {
+            "type": "integer",
+            "title": "Gastos"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "moneda",
+          "gastos",
+          "total",
+          "total_usd"
+        ],
+        "title": "GastoPorMoneda"
       },
       "GastoResumen": {
         "properties": {
@@ -3437,6 +5327,106 @@
           "creado"
         ],
         "title": "Justificacion"
+      },
+      "Kpi": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "title": "Nombre",
+            "description": "Nombre estable del indicador, el mismo de `/api/metricas`."
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "unidad": {
+            "type": "string",
+            "title": "Unidad"
+          },
+          "para_que": {
+            "type": "string",
+            "title": "Para Que"
+          },
+          "formula": {
+            "type": "string",
+            "title": "Formula"
+          },
+          "sentido": {
+            "type": "string",
+            "enum": [
+              "mayor",
+              "menor"
+            ],
+            "title": "Sentido",
+            "description": "Hacia dónde es mejor."
+          },
+          "meta": {
+            "type": "number",
+            "title": "Meta"
+          },
+          "alerta": {
+            "type": "number",
+            "title": "Alerta",
+            "description": "Umbral de alerta: pasado este valor el semáforo está en rojo."
+          },
+          "responsable": {
+            "type": "string",
+            "title": "Responsable"
+          },
+          "reto": {
+            "type": "integer",
+            "title": "Reto"
+          },
+          "principal": {
+            "type": "boolean",
+            "title": "Principal"
+          },
+          "valor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor",
+            "description": "Null si no hay datos: entonces no hay color."
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "verde",
+              "ambar",
+              "rojo",
+              "sin datos",
+              "fuera de rango"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nombre",
+          "titulo",
+          "unidad",
+          "para_que",
+          "formula",
+          "sentido",
+          "meta",
+          "alerta",
+          "responsable",
+          "reto",
+          "principal",
+          "valor",
+          "estado",
+          "estado_texto"
+        ],
+        "title": "Kpi"
       },
       "LadoCotizacion": {
         "properties": {
@@ -4273,6 +6263,24 @@
         "title": "NuevaJustificacion",
         "description": "Para qué fue el gasto, con las palabras de la persona."
       },
+      "Opcion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre"
+        ],
+        "title": "Opcion"
+      },
       "OpcionHotel": {
         "properties": {
           "id": {
@@ -4636,6 +6644,38 @@
         ],
         "title": "OpcionVuelo"
       },
+      "Par": {
+        "properties": {
+          "etiqueta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Etiqueta"
+          },
+          "valor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "etiqueta",
+          "valor"
+        ],
+        "title": "Par"
+      },
       "Persona": {
         "properties": {
           "id": {
@@ -4686,6 +6726,116 @@
           "cargo"
         ],
         "title": "Persona"
+      },
+      "PestanaDisponible": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "enum": [
+              "viajes",
+              "gastos",
+              "busquedas",
+              "modelo",
+              "cupos",
+              "auditoria",
+              "calidad"
+            ],
+            "title": "Clave"
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clave",
+          "titulo"
+        ],
+        "title": "PestanaDisponible"
+      },
+      "PestanaMonitoreo": {
+        "properties": {
+          "pestana": {
+            "type": "string",
+            "enum": [
+              "viajes",
+              "gastos",
+              "busquedas",
+              "modelo",
+              "cupos",
+              "auditoria",
+              "calidad"
+            ],
+            "title": "Pestana"
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "nota": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nota"
+          },
+          "pestanas": {
+            "items": {
+              "$ref": "#/components/schemas/PestanaDisponible"
+            },
+            "type": "array",
+            "title": "Pestanas"
+          },
+          "filtros": {
+            "$ref": "#/components/schemas/Filtros"
+          },
+          "proyectos": {
+            "items": {
+              "$ref": "#/components/schemas/Opcion"
+            },
+            "type": "array",
+            "title": "Proyectos"
+          },
+          "cifras": {
+            "items": {
+              "$ref": "#/components/schemas/Cifra"
+            },
+            "type": "array",
+            "title": "Cifras"
+          },
+          "tablas": {
+            "items": {
+              "$ref": "#/components/schemas/Tabla"
+            },
+            "type": "array",
+            "title": "Tablas"
+          },
+          "exportar": {
+            "items": {
+              "$ref": "#/components/schemas/VistaExportable"
+            },
+            "type": "array",
+            "title": "Exportar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pestana",
+          "titulo",
+          "nota",
+          "pestanas",
+          "filtros",
+          "proyectos",
+          "cifras",
+          "tablas",
+          "exportar"
+        ],
+        "title": "PestanaMonitoreo"
       },
       "PreguntaAsistente": {
         "properties": {
@@ -4763,6 +6913,38 @@
           "para_otra_persona"
         ],
         "title": "ProyectoOpcion"
+      },
+      "PuntoTendencia": {
+        "properties": {
+          "valor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "verde",
+              "ambar",
+              "rojo",
+              "sin datos",
+              "fuera de rango"
+            ],
+            "title": "Estado"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valor",
+          "estado"
+        ],
+        "title": "PuntoTendencia"
       },
       "Razon": {
         "properties": {
@@ -5020,6 +7202,49 @@
         ],
         "title": "RespuestaError"
       },
+      "ResultadoActualizacion": {
+        "properties": {
+          "consultado": {
+            "type": "boolean",
+            "title": "Consultado"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo",
+            "description": "Por qué no se consultó: fuera de la ventana, tope, consultado hace menos de 1 min..."
+          },
+          "mensaje": {
+            "type": "string",
+            "title": "Mensaje"
+          },
+          "tramo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TramoVuelo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "El tramo actualizado; null si su viaje ya no está aprobado."
+          }
+        },
+        "type": "object",
+        "required": [
+          "consultado",
+          "motivo",
+          "mensaje",
+          "tramo"
+        ],
+        "title": "ResultadoActualizacion"
+      },
       "ResultadoCambioEstado": {
         "properties": {
           "viaje": {
@@ -5157,6 +7382,119 @@
           "datos_demostracion"
         ],
         "title": "ResumenAdmin"
+      },
+      "ResumenEstados": {
+        "properties": {
+          "verde": {
+            "type": "integer",
+            "title": "Verde"
+          },
+          "ambar": {
+            "type": "integer",
+            "title": "Ambar"
+          },
+          "rojo": {
+            "type": "integer",
+            "title": "Rojo"
+          },
+          "sin_datos": {
+            "type": "integer",
+            "title": "Sin Datos"
+          },
+          "fuera_de_rango": {
+            "type": "integer",
+            "title": "Fuera De Rango",
+            "description": "Valores imposibles para el indicador (por ejemplo, días negativos): un dato malo, no un logro."
+          }
+        },
+        "type": "object",
+        "required": [
+          "verde",
+          "ambar",
+          "rojo",
+          "sin_datos",
+          "fuera_de_rango"
+        ],
+        "title": "ResumenEstados"
+      },
+      "Reto": {
+        "properties": {
+          "reto": {
+            "type": "integer",
+            "title": "Reto"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reto",
+          "nombre"
+        ],
+        "title": "Reto"
+      },
+      "RevisionAntigua": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "persona": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persona"
+          },
+          "total_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Usd"
+          },
+          "dias": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dias"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "comercio",
+          "persona",
+          "total_usd",
+          "dias"
+        ],
+        "title": "RevisionAntigua"
       },
       "RevisionGasto": {
         "properties": {
@@ -5383,6 +7721,147 @@
         ],
         "title": "SoporteRevision"
       },
+      "Tabla": {
+        "properties": {
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "columnas": {
+            "items": {
+              "$ref": "#/components/schemas/Columna"
+            },
+            "type": "array",
+            "title": "Columnas"
+          },
+          "filas": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Enlace"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Filas"
+          },
+          "vacio": {
+            "type": "string",
+            "title": "Vacio",
+            "description": "Qué decir si no hay filas."
+          },
+          "nota": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nota"
+          },
+          "barras": {
+            "type": "boolean",
+            "title": "Barras",
+            "description": "La segunda columna se puede dibujar como barra (embudo, categorías)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "titulo",
+          "columnas",
+          "filas",
+          "vacio",
+          "nota",
+          "barras"
+        ],
+        "title": "Tabla"
+      },
+      "TableroKpis": {
+        "properties": {
+          "filtros": {
+            "$ref": "#/components/schemas/Filtros"
+          },
+          "retos": {
+            "items": {
+              "$ref": "#/components/schemas/Reto"
+            },
+            "type": "array",
+            "title": "Retos"
+          },
+          "proyectos": {
+            "items": {
+              "$ref": "#/components/schemas/Opcion"
+            },
+            "type": "array",
+            "title": "Proyectos",
+            "description": "Para el filtro de proyecto."
+          },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/Kpi"
+            },
+            "type": "array",
+            "title": "Kpis"
+          },
+          "resumen": {
+            "$ref": "#/components/schemas/ResumenEstados"
+          },
+          "tendencia": {
+            "$ref": "#/components/schemas/Tendencia"
+          },
+          "cotizacion": {
+            "$ref": "#/components/schemas/DetalleCotizacion"
+          },
+          "gastos": {
+            "$ref": "#/components/schemas/DetalleGastos"
+          },
+          "personas": {
+            "items": {
+              "$ref": "#/components/schemas/FilaPersona"
+            },
+            "type": "array",
+            "title": "Personas"
+          },
+          "por_cargo": {
+            "items": {
+              "$ref": "#/components/schemas/FilaCargo"
+            },
+            "type": "array",
+            "title": "Por Cargo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filtros",
+          "retos",
+          "proyectos",
+          "kpis",
+          "resumen",
+          "tendencia",
+          "cotizacion",
+          "gastos",
+          "personas",
+          "por_cargo"
+        ],
+        "title": "TableroKpis"
+      },
       "Tarifa": {
         "properties": {
           "nombre": {
@@ -5406,6 +7885,31 @@
           "reales"
         ],
         "title": "Tarifa"
+      },
+      "Tendencia": {
+        "properties": {
+          "semanas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Semanas",
+            "description": "Lunes de cada semana, de la más antigua a la más reciente."
+          },
+          "filas": {
+            "items": {
+              "$ref": "#/components/schemas/FilaTendencia"
+            },
+            "type": "array",
+            "title": "Filas"
+          }
+        },
+        "type": "object",
+        "required": [
+          "semanas",
+          "filas"
+        ],
+        "title": "Tendencia"
       },
       "Titular": {
         "properties": {
@@ -5437,6 +7941,368 @@
         ],
         "title": "Titular"
       },
+      "TotalesPersona": {
+        "properties": {
+          "presupuesto": {
+            "type": "number",
+            "title": "Presupuesto"
+          },
+          "gastado": {
+            "type": "number",
+            "title": "Gastado"
+          },
+          "en_revision": {
+            "type": "number",
+            "title": "En Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "presupuesto",
+          "gastado",
+          "en_revision"
+        ],
+        "title": "TotalesPersona"
+      },
+      "TramoVuelo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "viaje_id": {
+            "type": "integer",
+            "title": "Viaje Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo",
+            "description": "Código del viaje, por ejemplo V-2026-0007."
+          },
+          "titular": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titular"
+          },
+          "sentido": {
+            "type": "string",
+            "title": "Sentido",
+            "description": "`ida` o `regreso`."
+          },
+          "orden": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orden"
+          },
+          "aerolinea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aerolinea"
+          },
+          "numero": {
+            "type": "string",
+            "title": "Numero"
+          },
+          "fecha": {
+            "type": "string",
+            "title": "Fecha"
+          },
+          "desde": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desde"
+          },
+          "hasta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hasta"
+          },
+          "sale_programada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Programada"
+          },
+          "llega_programada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega Programada"
+          },
+          "llega_estimada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega Estimada"
+          },
+          "estado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estado",
+            "description": "programado, a tiempo, retrasado, cancelado, aterrizado, desviado o sin datos."
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "retraso": {
+            "type": "integer",
+            "title": "Retraso",
+            "description": "Minutos: el mayor entre la salida y la llegada."
+          },
+          "retraso_salida": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retraso Salida"
+          },
+          "retraso_llegada": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retraso Llegada"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal"
+          },
+          "puerta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Puerta"
+          },
+          "consultas": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consultas"
+          },
+          "actualizado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualizado"
+          },
+          "hace_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hace Min",
+            "description": "Minutos desde la última consulta; null si nunca se consultó."
+          },
+          "llegar_antes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llegar Antes"
+          },
+          "en_destino": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "En Destino",
+            "description": "Llegada estimada más el traslado, en el último tramo de ida."
+          },
+          "no_llega": {
+            "type": "boolean",
+            "title": "No Llega",
+            "description": "Con el retraso no llega a la hora límite de la grabación."
+          },
+          "omitida": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omitida",
+            "description": "Último motivo para no consultar (ventana, tope, caché...)."
+          },
+          "ultima_consulta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ultima Consulta"
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvisoVuelo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Último aviso al viajero."
+          },
+          "origen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen",
+            "description": "`en vivo` o `guardado`; null si nunca trajo datos."
+          },
+          "origen_texto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen Texto",
+            "description": "«En vivo» o «Estado de ejemplo» (la respuesta guardada del repositorio)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "viaje_id",
+          "codigo",
+          "titular",
+          "sentido",
+          "orden",
+          "aerolinea",
+          "numero",
+          "fecha",
+          "desde",
+          "hasta",
+          "sale_programada",
+          "llega_programada",
+          "llega_estimada",
+          "estado",
+          "estado_texto",
+          "retraso",
+          "retraso_salida",
+          "retraso_llegada",
+          "terminal",
+          "puerta",
+          "consultas",
+          "actualizado",
+          "hace_min",
+          "llegar_antes",
+          "en_destino",
+          "no_llega",
+          "omitida",
+          "ultima_consulta",
+          "aviso",
+          "origen",
+          "origen_texto"
+        ],
+        "title": "TramoVuelo"
+      },
       "Transcripcion": {
         "properties": {
           "texto": {
@@ -5450,6 +8316,97 @@
           "texto"
         ],
         "title": "Transcripcion"
+      },
+      "UsuarioFicha": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "correo": {
+            "type": "string",
+            "title": "Correo"
+          },
+          "rol": {
+            "type": "string",
+            "title": "Rol"
+          },
+          "rol_texto": {
+            "type": "string",
+            "title": "Rol Texto"
+          },
+          "activo": {
+            "type": "boolean",
+            "title": "Activo"
+          },
+          "creado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creado"
+          },
+          "cargo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cargo"
+          },
+          "viajero": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viajero"
+          },
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "nombre",
+          "correo",
+          "rol",
+          "rol_texto",
+          "activo",
+          "creado",
+          "cargo",
+          "viajero",
+          "base"
+        ],
+        "title": "UsuarioFicha"
       },
       "ViajeAsignable": {
         "properties": {
@@ -5822,6 +8779,142 @@
         ],
         "title": "ViajeDetalle"
       },
+      "ViajePersona": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "origen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen"
+          },
+          "destino": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destino"
+          },
+          "ida": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ida"
+          },
+          "regreso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regreso"
+          },
+          "estado": {
+            "type": "string",
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "proyecto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proyecto"
+          },
+          "presupuesto_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto Usd"
+          },
+          "gastado": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gastado"
+          },
+          "en_revision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "En Revision"
+          },
+          "pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "origen",
+          "destino",
+          "ida",
+          "regreso",
+          "estado",
+          "estado_texto",
+          "proyecto",
+          "presupuesto_usd",
+          "gastado",
+          "en_revision",
+          "pct"
+        ],
+        "title": "ViajePersona"
+      },
       "ViajeResumen": {
         "properties": {
           "id": {
@@ -6036,6 +9129,60 @@
           "soy_yo"
         ],
         "title": "ViajeroOpcion"
+      },
+      "VistaExportable": {
+        "properties": {
+          "vista": {
+            "type": "string",
+            "title": "Vista",
+            "description": "Valor de `vista` para `GET /monitoreo/exportar.csv`."
+          },
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "vista",
+          "texto"
+        ],
+        "title": "VistaExportable"
+      },
+      "VuelosDelDia": {
+        "properties": {
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha",
+            "description": "El día pedido; null es hoy más los vuelos en curso de ayer o mañana."
+          },
+          "hoy": {
+            "type": "string",
+            "title": "Hoy",
+            "description": "Hoy en UTC."
+          },
+          "tramos": {
+            "items": {
+              "$ref": "#/components/schemas/TramoVuelo"
+            },
+            "type": "array",
+            "title": "Tramos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fecha",
+          "hoy",
+          "tramos"
+        ],
+        "title": "VuelosDelDia"
       }
     }
   }

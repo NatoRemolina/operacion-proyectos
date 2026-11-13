@@ -17,6 +17,15 @@ import { crearGastosMemoria } from "@/features/gastos/infrastructure/gastos-memo
 import type { ViajesRepository } from "@/features/viajes/domain/viajes";
 import { crearViajesHttp } from "@/features/viajes/infrastructure/viajes-http";
 import { crearViajesMemoria } from "@/features/viajes/infrastructure/viajes-memoria";
+import type { KpisRepository } from "@/features/kpis/domain/kpis";
+import { crearKpisHttp } from "@/features/kpis/infrastructure/kpis-http";
+import { crearKpisMemoria } from "@/features/kpis/infrastructure/kpis-memoria";
+import type { MonitoreoRepository } from "@/features/monitoreo/domain/monitoreo";
+import { crearMonitoreoHttp } from "@/features/monitoreo/infrastructure/monitoreo-http";
+import { crearMonitoreoMemoria } from "@/features/monitoreo/infrastructure/monitoreo-memoria";
+import type { VuelosRepository } from "@/features/vuelos/domain/vuelos";
+import { crearVuelosHttp } from "@/features/vuelos/infrastructure/vuelos-http";
+import { crearVuelosMemoria } from "@/features/vuelos/infrastructure/vuelos-memoria";
 import type { FuenteDatos } from "@/config/configuracion";
 import type { ModoDemo } from "@/shared/application/modo";
 import { crearClienteHttp } from "@/shared/infrastructure/cliente-http";
@@ -30,6 +39,9 @@ export interface Repositorios {
   cotizar: CotizarRepository;
   administracion: AdministracionRepository;
   asistente: AsistenteRepository;
+  kpis: KpisRepository;
+  monitoreo: MonitoreoRepository;
+  vuelos: VuelosRepository;
   demo: ModoDemo | null;
 }
 
@@ -77,6 +89,10 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
       administracion: crearAdministracionMemoria({ sesion, latenciaMs }),
       // Igual que el resumen: el asistente es de administración y la cuenta de demostración no lo es.
       asistente: crearAsistenteMemoria({ sesion, latenciaMs }),
+      // Tablero de administración: la cuenta de demostración no lo ve, como en la API.
+      kpis: crearKpisMemoria({ sesion, latenciaMs }),
+      monitoreo: crearMonitoreoMemoria({ sesion, latenciaMs }),
+      vuelos: crearVuelosMemoria({ sesion, latenciaMs }),
       demo: {
         cuentas: [
           { correo: CUENTA_DEMO.persona.correo, clave: CUENTA_DEMO.clave, descripcion: "Piloto" },
@@ -92,6 +108,9 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     cotizar: crearCotizarHttp(cliente),
     administracion: crearAdministracionHttp(cliente),
     asistente: crearAsistenteHttp(cliente),
+    kpis: crearKpisHttp(cliente),
+    monitoreo: crearMonitoreoHttp(cliente),
+    vuelos: crearVuelosHttp(cliente),
     demo: null,
   };
 }

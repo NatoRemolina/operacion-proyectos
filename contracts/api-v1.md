@@ -357,7 +357,7 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 
 ## Fuera de este contrato (siguientes fases)
 
-Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
+Reproceso de una lectura fallida y las pantallas de analítica de precios y flujo de la información, que siguen en la plataforma anterior. La hoja de ruta está en `docs/informe-tecnico.md`.
 
 ## Revisión completa de gastos
 
@@ -424,3 +424,49 @@ Cuerpo JSON `{"valor": "0.25"}` (hasta 500 caracteres) y `X-CSRF-Token`. 200 `Re
 - Una regla numérica sigue siendo numérica: se acepta la coma decimal («0,25» se guarda «0.25»); un texto, un negativo, un vacío o un valor no finito responden 422 `VALIDATION_ERROR` con `fields.valor` y no se guarda nada.
 - Una regla de texto guarda el texto sin espacios al principio ni al final.
 - Deja el evento «regla editada» con el valor anterior y el nuevo. 404 si la regla no existe.
+## KPIs
+
+Solo administración, como la pantalla `/admin/kpis`: otra cuenta recibe 403 `FORBIDDEN`. Las cifras salen de la misma definición que la pantalla y que `/api/metricas` (`app/servicios/kpis.py`). Filtros comunes: `proyecto_id` (0 o ausente: todos), `desde` y `hasta` (`AAAA-MM-DD`; una fecha que no es válida se ignora, como en la pantalla).
+
+### `GET /kpis`
+200 `TableroKpis`:
+
+- `kpis`: cada indicador de los dos retos con `valor` (número en su `unidad`, o `null` sin datos), `meta`, `alerta`, `sentido` (`mayor` o `menor` es mejor), `estado` (`verde`, `ambar`, `rojo`, `sin datos` o `fuera de rango`), `responsable`, `formula` y `principal`. `fuera de rango` es un valor imposible para el indicador (días u horas negativos, una proporción sobre 100 %): un dato malo que hay que revisar, nunca en meta. El ahorro sí puede ser negativo.
+- `resumen`: cuántos hay en cada estado (`verde`, `ambar`, `rojo`, `sin_datos`, `fuera_de_rango`). `tendencia`: los principales semana a semana (8 semanas, de lunes a domingo, hasta `hasta` u hoy).
+- `cotizacion` y `gastos`: los desgloses de la pantalla. Los conteos van como `{etiqueta, valor}`.
+- `personas` (una fila por cuenta con lo suyo) y `por_cargo`. `proyectos` y `retos` sirven para armar los filtros y los títulos.
+
+### `GET /kpis/personas/{id}`
+200 `FichaPersona`: datos de la cuenta (sin contraseña), totales, indicadores de la persona, cotizaciones, viajes, gastos, evidencias y `eventos`, la línea de tiempo con los hechos sobre lo suyo (200 como máximo, del más reciente). Deja el evento «ficha consultada». Una persona que no existe: 404.
+
+### `GET /kpis/exportar.csv?que=kpis|consultas|personas`
+El mismo CSV de la pantalla con los filtros comunes, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Otro valor de `que`: 422.
+
+## Monitoreo
+
+Solo administración, como `/admin/monitoreo`: otra cuenta recibe 403 `FORBIDDEN`. Mismos filtros que los KPIs. Las cifras salen del catálogo de métricas (`app/servicios/metricas.py`), la misma definición de la pantalla.
+
+### `GET /monitoreo?pestana=viajes|gastos|busquedas|modelo|cupos|auditoria|calidad`
+200 `PestanaMonitoreo` (sin `pestana`: gastos; otra: 422). Cada pestaña llega lista para mostrar:
+
+- `cifras`: `{etiqueta, valor, unidad, pie}`; `valor` es `null` sin datos.
+- `tablas`: `{titulo, columnas, filas, vacio, nota, barras}`. Cada columna dice su `unidad` (`USD`, `%`) si es una cifra. Una celda es texto, número, `null` o un enlace `{texto, href}` a una página de la web (`/viajes/7`). `barras` marca las tablas cuya segunda columna se puede dibujar (embudo, gasto por categoría).
+- `exportar`: las vistas de la pestaña que se pueden descargar.
+- La pestaña Modelo incluye el costo del asesor, con su tope diario (supuesto `asesor_usd_dia`). La Auditoría no se filtra por proyecto.
+
+### `GET /monitoreo/exportar.csv?vista=v_h_…`
+El mismo CSV de la pantalla con los filtros, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Solo las vistas de la capa analítica (`v_h_viaje`, `v_h_gasto`, `v_h_busqueda`, `v_h_decision`, `v_h_lectura`, `v_h_evento`, `v_h_consulta`); otra: 422.
+
+## Vuelos
+
+Estado de cada tramo de los viajes aprobados, el día del viaje. Solo administración, como el tablero de `/admin/viajes`: otra cuenta (también quien viaja) recibe 403 `FORBIDDEN`. Las reglas (ventana, caché, topes y avisos al viajero) son las de `app/servicios/monitoreo_vuelos.py`.
+
+### `GET /vuelos?fecha=AAAA-MM-DD`
+200 `VuelosDelDia` con `tramos`. Sin fecha (o con una no válida): los de hoy (UTC) más los de ayer o mañana que están en su ventana.
+
+- Pensado para pedirse cada 15 s con la pestaña visible: cada tramo se consulta solo dentro de su ventana (desde 3 h antes de la salida hasta la llegada), con caché y topes por tramo, viaje y día; fuera de eso responde lo último conocido.
+- Cada tramo: estado (`estado` y `estado_texto`), `retraso` en minutos, `terminal` y `puerta`, horas locales programadas y estimadas, `no_llega` (con el retraso no llega a la hora límite de la grabación), `omitida` (por qué no se consultó la última vez) y `aviso` (el último aviso al viajero).
+- `origen`: `en vivo` o `guardado`; `origen_texto`: «En vivo» o «Estado de ejemplo» (la respuesta guardada del repositorio, que se usa sin clave del buscador o si la consulta falla). Null si el tramo nunca trajo datos.
+
+### `POST /vuelos/{tramo_id}/actualizar`
+Con `X-CSRF-Token`, sin cuerpo. «Actualizar ahora»: salta la caché (una vez por minuto), nunca la ventana ni los topes. 200 `ResultadoActualizacion` con `consultado`, `motivo` si no consultó, `mensaje` en palabras y el `tramo` actualizado. Un tramo que no existe: 404.

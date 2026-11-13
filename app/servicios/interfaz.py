@@ -9,7 +9,8 @@ import re
 from .. import config
 
 # Lo que sigue sirviendo la aplicación aunque las pantallas anteriores estén retiradas
-SIGUEN = ("/api", "/static", "/salud", "/telegram/", "/openapi.json", "/favicon")
+SIGUEN = ("/api", "/static", "/salud", "/telegram/", "/openapi.json", "/favicon",
+          "/analitica", "/flujo")   # todavía sin pantalla en la web
 
 # Ruta anterior (expresión completa) → ruta de la web; `{n}` es el número capturado
 EQUIVALENCIAS: list[tuple[str, str]] = [
@@ -33,8 +34,6 @@ EQUIVALENCIAS: list[tuple[str, str]] = [
     (r"/admin/kpis/persona/(\d+)(?:/.*)?", "/kpis/persona/{n}"),
     (r"/admin/kpis(?:/.*)?", "/kpis"),
     (r"/admin/monitoreo(?:/.*)?", "/monitoreo"),
-    (r"/analitica(?:/.*)?", "/analitica"),
-    (r"/flujo(?:/.*)?", "/flujo"),
 ]
 
 

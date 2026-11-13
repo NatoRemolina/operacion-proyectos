@@ -7,6 +7,9 @@ import { AsistenteRepositoryProvider } from "@/features/asistente/application/as
 import { AuthRepositoryProvider } from "@/features/auth/application/sesion";
 import { CotizarRepositoryProvider } from "@/features/cotizar/application/cotizar";
 import { GastosRepositoryProvider } from "@/features/gastos/application/gastos";
+import { KpisRepositoryProvider } from "@/features/kpis/application/kpis";
+import { MonitoreoRepositoryProvider } from "@/features/monitoreo/application/monitoreo";
+import { VuelosRepositoryProvider } from "@/features/vuelos/application/vuelos";
 import { ViajesRepositoryProvider } from "@/features/viajes/application/viajes";
 import { leerBaseApi, type FuenteDatos } from "@/config/configuracion";
 import { crearQueryClient } from "@/shared/application/consultas";
@@ -33,8 +36,14 @@ export function Proveedores({ fuente, children }: { fuente: FuenteDatos; childre
               <CotizarRepositoryProvider repositorio={repositorios.cotizar}>
                 <AdministracionRepositoryProvider repositorio={repositorios.administracion}>
                   <AsistenteRepositoryProvider repositorio={repositorios.asistente}>
-                    {repositorios.demo ? <AvisoDemo /> : null}
-                    {children}
+                    <KpisRepositoryProvider repositorio={repositorios.kpis}>
+                      <MonitoreoRepositoryProvider repositorio={repositorios.monitoreo}>
+                        <VuelosRepositoryProvider repositorio={repositorios.vuelos}>
+                          {repositorios.demo ? <AvisoDemo /> : null}
+                          {children}
+                        </VuelosRepositoryProvider>
+                      </MonitoreoRepositoryProvider>
+                    </KpisRepositoryProvider>
                   </AsistenteRepositoryProvider>
                 </AdministracionRepositoryProvider>
               </CotizarRepositoryProvider>

@@ -580,7 +580,7 @@ def h_kpi(r: Rastro, nombre: str = "", filtros: dict | None = None, **_) -> dict
     if str(nombre or "").strip().lower() in ("todos", "tablero"):   # todo el tablero en una consulta, como la pantalla de KPIs
         filas = kpis.evaluar(f)
         return {"filtros": f, "nota": "Al responder, nombra cada indicador por su «titulo»; «nombre» es la clave interna.",
-                "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos")},
+                "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos", "fuera de rango")},
                 "indicadores": [{"nombre": k["nombre"], "titulo": k["titulo"], "valor": k["valor"], "unidad": k["unidad"], "meta": k["meta"],
                                  "umbral_alerta": k["alerta"], "sentido": k["sentido"], "semaforo": k["estado"]} for k in filas]}
     res = metricas.valor(nombre, f)
@@ -930,8 +930,9 @@ def _determinista(pregunta: str, r: Rastro) -> str:
     elif _TABLERO.search(q):   # «¿cómo van los indicadores?»: el tablero completo, como la pantalla de KPIs
         t = ejecutar(r, "kpi", {"nombre": "todos"})
         res = t["resumen"]
-        lineas = [f"Tablero de indicadores: {res['rojo']} en rojo, {res['ambar']} en ámbar, {res['verde']} en verde y {res['sin datos']} sin datos."]
-        for estado, texto in (("rojo", "En rojo"), ("ambar", "En ámbar")):
+        lineas = [f"Tablero de indicadores: {res['rojo']} en rojo, {res['ambar']} en ámbar, {res['verde']} en verde y {res['sin datos']} sin datos."
+                  + (f" {res['fuera de rango']} con un valor imposible (fuera de rango): revisar sus datos." if res["fuera de rango"] else "")]
+        for estado, texto in (("rojo", "En rojo"), ("ambar", "En ámbar"), ("fuera de rango", "Fuera de rango")):
             lineas += [f"- {texto}: {k['titulo']}: {_cifra(k['valor'], k['unidad'])} (meta {_cifra(k['meta'], k['unidad'])})."
                        for k in t["indicadores"] if k["semaforo"] == estado]
         partes.append("\n".join(lineas))

@@ -25,7 +25,7 @@ def test_cada_pantalla_anterior_tiene_su_equivalente(retirada, anterior, nueva):
     assert interfaz.destino(anterior) == WEB + nueva
 
 
-@pytest.mark.parametrize("ruta", ["/api/v1/gastos", "/api/viajes", "/salud", "/static/estilo.css", "/telegram/webhook"])
+@pytest.mark.parametrize("ruta", ["/api/v1/gastos", "/api/viajes", "/salud", "/static/estilo.css", "/telegram/webhook", "/analitica", "/flujo"])
 def test_la_api_y_lo_tecnico_siguen_aqui(retirada, ruta):
     assert interfaz.destino(ruta) is None
 
