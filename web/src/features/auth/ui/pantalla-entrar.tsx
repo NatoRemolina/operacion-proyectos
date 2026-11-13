@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type MouseEvent, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useModoDemo } from "@/shared/application/modo";
+import { clasesBoton } from "@/shared/ui/boton";
 import { Marca } from "@/shared/ui/marco-privado";
 import { useEntrar, useSesion } from "../application/sesion";
 import { destinoSeguro } from "../domain/auth";
@@ -41,7 +42,7 @@ const BENEFICIOS = [
   },
   {
     titulo: "Recibos leídos y validados solos",
-    texto: "Foto, PDF o correo; las reglas aprueban o piden revisión.",
+    texto: "Foto, PDF, correo o confirmación HTML; las reglas aprueban o piden revisión.",
     icono: (
       <>
         <path d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z" />
@@ -60,6 +61,17 @@ const BENEFICIOS = [
     ),
   },
 ] as const;
+
+/**
+ * «Ingresar» en pantallas angostas: baja hasta el formulario con su título a la vista y deja el foco en el correo.
+ * Sin JavaScript, el enlace igual lleva a #contenido. Con él se evita ese salto, porque el navegador, al ir al
+ * ancla, mueve el foco y el correo lo perdería.
+ */
+function irAlFormulario(evento: MouseEvent<HTMLAnchorElement>) {
+  evento.preventDefault();
+  document.getElementById("contenido")?.scrollIntoView({ block: "start" });
+  document.getElementById("correo")?.focus({ preventScroll: true });
+}
 
 export function PantallaEntrar() {
   const router = useRouter();
@@ -80,16 +92,24 @@ export function PantallaEntrar() {
     : null;
 
   // Orden del documento = orden visual en el celular: presentación, formulario, beneficios. En escritorio el
-  // formulario ocupa la columna derecha. La presentación no tiene nada enfocable: tras el título, lo primero
-  // que alcanza el teclado es el correo.
+  // formulario ocupa la columna derecha. Por debajo de lg el formulario queda bajo el borde, así que arriba va
+  // «Ingresar»: baja hasta el formulario y deja el foco en el correo. En escritorio no se muestra y la
+  // presentación no tiene nada enfocable: tras el título, lo primero que alcanza el teclado es el correo.
   return (
     <div className="grid flex-1 bg-carta lg:grid-cols-[minmax(0,1fr)_25rem] lg:grid-rows-[1fr_auto] xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
       <section
         aria-label="Presentación"
         className="min-w-0 px-4 pb-12 pt-5 sm:px-10 sm:pt-8 lg:col-start-1 lg:row-start-1 lg:pb-2 lg:pl-10 lg:pr-6 lg:pt-8 xl:pl-16 xl:pr-10"
       >
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
           <Marca fondo="claro" />
+          <a
+            href="#contenido"
+            onClick={irAlFormulario}
+            className={clasesBoton("primario", "lg:hidden")}
+          >
+            Ingresar
+          </a>
         </div>
         <div className="lg:max-w-[38rem]">
         <p className="mt-8 text-balance text-[2.125rem] font-extrabold leading-[1.04] tracking-[-0.035em] sm:text-5xl lg:mt-8 xl:text-[3.25rem]">
