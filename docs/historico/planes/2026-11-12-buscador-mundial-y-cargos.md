@@ -44,9 +44,9 @@ Entradas que el diseño implica y que ninguna prueba obvia cubre; cada una tiene
 
 ### Tarea 1: Unir la web Next.js a `dev`
 
-**Archivos:** rama `worktree-web-next` → `dev`. Sin cambios de código salvo conflictos.
+**Archivos:** rama de la web nueva → `dev`. Sin cambios de código salvo conflictos.
 
-- [ ] **Paso 1:** `git merge --no-ff worktree-web-next` en `dev`. Esperado: sin conflictos (la rama solo toca `web/`).
+- [ ] **Paso 1:** unir la rama de la web nueva en `dev` (`git merge --no-ff`). Esperado: sin conflictos (la rama solo toca `web/`).
 - [ ] **Paso 2:** backend `.venv/bin/python -m pytest -q` en verde; en `web/`: `npm ci`, `npx tsc --noEmit`, `npx eslint --max-warnings=0 .`, `npx vitest run` en verde.
 - [ ] **Paso 3:** `make entorno-web` y recorrido en `http://127.0.0.1:8088`: entrar como `piloto@demo.local`, ver viajes, enviar un recibo con justificación, verlo en `127.0.0.1:8000`. Apagar con `make entorno-abajo`.
 - [ ] **Paso 4:** commit del merge (mensaje por defecto de git en español: «Une la web Next.js a dev»).

@@ -23,7 +23,7 @@ cotización ──► decisión (opción elegida + porqué)
 
 1. **Persona.** Toda cuenta tiene un código `P-NNNN` (el identificador de la fila en `usuarios`) y un perfil de viajero: todos los permisos viajan (`acceso.crear_usuario`, `acceso.crear_perfil_viajero`).
 2. **Cotización.** Compara vuelos y hoteles por su costo total esperado (ver «Costo esperado y presupuesto»). Queda en `solicitudes`, con sus opciones en `opciones`.
-3. **Decisión.** La persona elige un vuelo (y, si hay, un hotel). Si no sigue la recomendación, tiene que decir por qué. Queda en `decisiones`, con todas las opciones mostradas en `elecciones`.
+3. **Decisión.** La persona elige un vuelo (y, si hay, un hotel). Si no elige el vuelo recomendado, tiene que decir por qué; elegir otro hotel no lo exige. Queda en `decisiones`, con todas las opciones mostradas en `elecciones`.
 4. **Viaje.** La decisión crea el viaje de la cotización o actualiza el que ya tiene (`viajes.crear_desde_decision`): una cotización, un viaje (índice único en `viajes.solicitud_id`). El código es `V-AAAA-NNNN`: el año de creación y el identificador de la fila (`viajes.codigo_viaje`), así que no se repite ni se desfasa. Nace en `pendiente_aprobacion` con su presupuesto (`viajes.presupuesto_de`).
 5. **Aprobación.** Administración aprueba o rechaza el presupuesto. Al aprobar se reconfirma el precio del vuelo (ver «Umbrales»).
 6. **Gastos.** Cada recibo, por cualquier canal, se lee, se asigna a un viaje y se valida (`gastos.registrar`, `validacion.revisar`).
@@ -53,7 +53,7 @@ cotización ──► decisión (opción elegida + porqué)
 | Estado | Qué significa | Quién lo pone |
 |---|---|---|
 | `procesando` | El recibo llegó y se está leyendo | `gastos.registrar` |
-| `revision` | Algún motivo bloquea: lo decide una persona | `validacion.revisar`, o `envios.recuperar_si_atascado` si la lectura no terminó en 5 minutos |
+| `revision` | Algún motivo bloquea: lo decide una persona | `validacion.revisar`; `envios.marcar_interrumpido` si la lectura lanza un error; `envios.recuperar_si_atascado` si no terminó en 5 minutos |
 | `aprobado_auto` | Todas las validaciones en verde: aprobado sin intervención | `validacion.revisar` |
 | `aprobado` | Lo aprobó una persona de administración, corregido o con excepción | `revision.guardar` |
 | `rechazado` | Lo rechazó una persona de administración, con motivo | `revision.guardar` |
@@ -72,7 +72,7 @@ El **permiso** (`usuarios.rol`, restricción `ck_usuarios_rol`) decide qué se p
 
 Detalles que el código hace cumplir:
 
-- **Ver no es modificar.** Cargar un gasto a un viaje exige que el viaje sea propio (`acceso.es_propio`); verlo no basta. Por la API v1, un `viaje_id` ajeno deja el gasto sin viaje y en revisión.
+- **Ver no es modificar.** Cargar un gasto a un viaje exige que el viaje sea propio (`acceso.es_propio`); verlo no basta. Administración cuenta como propietaria de cualquier viaje en esa comprobación, así que puede cargar en viajes ajenos. Por la API v1, un `viaje_id` ajeno deja el gasto sin viaje y en revisión.
 - **Cotizar para otra persona.** Administración puede en cualquier proyecto; el gestor, solo en los que gestiona; el colaborador, nunca (403 `FORBIDDEN`). El gestor decide las cotizaciones que creó para otra persona dentro de su alcance; una cotización ajena que solo ve no la decide (403 `FORBIDDEN`). Registrar un viajero nuevo es tarea de administración.
 - **Justificar.** Solo justifica quien hizo el gasto o quien viaja (`justificaciones.puede_justificar`): el gestor y administración la ven, pero no escriben en nombre de otra persona.
 - **Lo que no se ve se responde como si no existiera** (404 `NOT_FOUND` en la API v1).
@@ -109,8 +109,8 @@ Detalles que el código hace cumplir:
 | `fuera_de_fechas` | Fecha fuera del proyecto | Bloquea | Solo sin viaje: la fecha cae fuera de las fechas del proyecto (un tiquete anterior al inicio es `compra_anticipada`) |
 | `sin_tasa` | Moneda sin tasa de cambio | Bloquea | No hay tasa configurada para la moneda (hoy hay EUR y COP). Sin total en USD, ni con excepción se aprueba |
 | `duplicado` | Posible duplicado | Bloquea | Otro gasto no rechazado con el mismo comercio (sin tildes, mayúsculas ni signos), la misma fecha, el mismo total y la misma moneda |
-| `duplicado_aproximado` | Parecido a otro gasto | Bloquea | Mismo comercio, fecha a un día o menos e importe a menos del 1 % |
-| `atipico` | Importe atípico | Bloquea | Con al menos 4 gastos aprobados de la misma categoría y moneda, el total supera la mediana + 3,5 desviaciones robustas y el doble de la mediana (`inteligencia.es_atipico`). Con menos historia no opina |
+| `duplicado_aproximado` | Parecido a otro gasto | Bloquea | Mismo comercio, fecha a un día o menos e importe con una diferencia del 1 % o menos |
+| `atipico` | Importe atípico | Bloquea | Con al menos 4 gastos aprobados de la misma categoría y moneda, el total supera la mediana + 3,5 desviaciones robustas (tres veces la mediana si todos los importes son iguales) y el doble de la mediana (`inteligencia.es_atipico`). Con menos historia no opina |
 | `sin_puntos` | Fidelización perdida | **Solo avisa** | Un hotel reservado por una agencia (Booking, Expedia, Hotels.com…): esa estadía no acumula puntos en el programa del hotel |
 | `compra_anticipada` | Compra anticipada | **Solo avisa** | Con viaje: vuelo, hotel, alquiler de carro o compras del proyecto con fecha anterior al viaje (`validacion.SE_COMPRAN_ANTES`). Sin viaje: un vuelo anterior al inicio del proyecto |
 | `lectura_fallida` | Lectura fallida | Bloquea | La lectura del recibo falló, o el gasto quedó en `procesando` más de 5 minutos. Una lectura fallida nunca se aprueba sola |
@@ -125,7 +125,7 @@ En resumen: de los 20 códigos, **17 bloquean**, **3 solo avisan** (`fecha_futur
 **Revisión por una persona** (`revision.guardar`, la misma regla en la web y en la API v1):
 
 - **Aprobar** vuelve a evaluar las reglas con los datos corregidos y el viaje bloqueado; solo aprueba si ya no queda ningún motivo que bloquee.
-- **Aprobar con excepción** aprueba aunque quede un motivo, con un porqué de 8 caracteres o más que queda en las alertas del gasto. No se puede con `importe_invalido`, `fecha_invalida`, sin total, sin moneda o sin tasa de cambio (`revision.SIN_EXCEPCION`).
+- **Aprobar con excepción** aprueba aunque quede un motivo, con un porqué de 8 caracteres o más que queda en las alertas del gasto. No se puede con `importe_invalido` ni `fecha_invalida` (`revision.SIN_EXCEPCION`), ni sin total, sin moneda o sin tasa de cambio (la condición de `revision._aplicar`).
 - **Rechazar** exige un motivo de 5 caracteres o más, que se guarda en `gastos.motivo_rechazo` y se le avisa a la persona.
 - **Versión esperada.** Quien revisa manda la versión que vio; si el gasto cambió mientras tanto, no se aplica nada (409 `EDIT_CONFLICT` en la API).
 
@@ -139,9 +139,9 @@ En resumen: de los 20 códigos, **17 bloquean**, **3 solo avisan** (`fecha_futur
 | Tolerancia de subida del precio al aprobar | 5 % | Regla `tolerancia_precio_aprobacion` (0.05) | Sí |
 | Motivo para rechazar un viaje o un gasto | 5 caracteres o más | `viajes.cambiar_estado`; `revision.MINIMO_RECHAZO` | No |
 | Motivo para aprobar un gasto con excepción | 8 caracteres o más | `revision.MINIMO_EXCEPCION` | No |
-| Porqué de la decisión | Obligatorio (5 caracteres o más) **solo si no se sigue la recomendación** | `cotizacion.decidir` | No |
+| Porqué de la decisión | Obligatorio (5 caracteres o más) **solo si no se elige el vuelo recomendado** | `cotizacion.decidir` | No |
 | Diferencia para «el total no cuadra» | 0,02 | `validacion.revisar` | No |
-| Duplicado aproximado | ±1 día e importe a menos del 1 % | `validacion.revisar` | No |
+| Duplicado aproximado | ±1 día e importe con una diferencia del 1 % o menos | `validacion.revisar` | No |
 | Historia mínima para `atipico` | 4 gastos aprobados de la misma categoría y moneda | `inteligencia.MIN_HISTORIA` | No |
 | Gasto atascado en lectura | 5 minutos | `envios.VIGENCIA` | No |
 | Viáticos por día | 75 USD | Regla `viaticos_dia_usd` | Sí |
@@ -157,7 +157,7 @@ Al **aprobar**, administración reconfirma el precio del vuelo con el buscador. 
 
 `viajes.resolver_para_gasto(persona, viaje_indicado)` decide, en este orden:
 
-1. **El viaje que la persona indica** (en la web, en la API con `viaje_id` o en Telegram con el código `V-…` en el mensaje), solo si es suyo. Si no lo es, el gasto queda sin viaje.
+1. **El viaje que la persona indica** (en la web, en la API con `viaje_id` o en Telegram con el código `V-…` en el mensaje), solo si es suyo (para administración, cualquiera). Si no lo es, el gasto queda sin viaje.
 2. **El viaje que fijó como activo** (en Telegram), si sigue aprobado y lo puede ver.
 3. **El viaje aprobado que está en curso hoy** (de un día antes de la ida a dos después del regreso). Si hay más de uno, pregunta.
 4. **El próximo viaje aprobado** (los tiquetes se compran antes). Si hay dos que salen el mismo día, pregunta.
@@ -179,21 +179,21 @@ Cada gasto puede llevar una o varias justificaciones: para qué fue, por escrito
 
 ## 8. Costo esperado y presupuesto
 
-Son dos cifras distintas, y es correcto que no coincidan.
+Son tres cifras distintas, y es correcto que no coincidan.
 
-| | Costo total esperado | Presupuesto del viaje |
-|---|---|---|
-| Para qué | Ordenar y recomendar opciones | Lo que se espera pagar; contra él se validan los gastos |
-| Dónde | Comparación y ficha de la decisión (`costo.evaluar`, `costo.evaluar_hotel`) | `viajes.presupuesto_de` |
-| Precio del tiquete, equipaje de mano y maleta | Sí | Sí |
-| Riesgo de cambio de fecha (probabilidad × costo) | Sí | **No**: es valor esperado |
-| Millas del viajero y de la cuenta de empresa (restan) | Sí | **No**: es valor esperado |
-| Traslado por carretera (taxi o combustible) | Sí | Sí: se pagará, aunque sea un supuesto |
-| Tarifa del hotel | Sí | Sí |
-| Tarifa de miembro del hotel (resta) | Sí, con membresía | Sí, con membresía: es un descuento que se paga de menos |
-| Puntos del programa del hotel (restan) | Sí, con membresía | **No**: es valor esperado, como las millas |
-| Carro de alquiler | Sí | Sí |
-| Viáticos (días del viaje × `viaticos_dia_usd`) | No | Sí |
+| | Comparación | Ficha de la decisión | Presupuesto del viaje |
+|---|---|---|---|
+| Para qué | Ordenar y recomendar vuelos y hoteles | El costo total esperado de lo elegido | Lo que se espera pagar; contra él se validan los gastos |
+| Dónde | `costo.evaluar` (vuelos), `costo.evaluar_hotel` (hoteles) y el total del viaje con el hotel recomendado | `decisiones.total`, calculado en `cotizacion.decidir` | `viajes.presupuesto_de` |
+| Precio del tiquete, equipaje de mano y maleta | Sí | Sí | Sí |
+| Riesgo de cambio de fecha (probabilidad × costo) | Sí | Sí | **No**: es valor esperado |
+| Millas del viajero y de la cuenta de empresa (restan) | Sí | Sí | **No**: es valor esperado |
+| Traslado por carretera (taxi o combustible) | Sí | Sí | Sí: se pagará, aunque sea un supuesto |
+| Tarifa del hotel | Sí | Sí | Sí |
+| Tarifa de miembro del hotel (resta) | Sí, con membresía | Sí, con membresía | Sí, con membresía: es un descuento que se paga de menos |
+| Puntos del programa del hotel (restan) | Sí, con membresía: ordenan los hoteles | **No** | **No**: es valor esperado, como las millas |
+| Carro de alquiler | **No** | Sí | Sí |
+| Viáticos (días del viaje × `viaticos_dia_usd`) | No | No | Sí |
 
 Por eso un viaje con un costo esperado de 980 USD puede tener un presupuesto de 1.153 USD.
 
@@ -208,7 +208,7 @@ Por eso un viaje con un costo esperado de 980 USD puede tener un presupuesto de 
 **Hoteles** (`costo.evaluar_hotel`):
 
 - El programa se reconoce por la **marca** que aparece en el nombre del hotel (`costo.programa_hotel`): Marriott Bonvoy, Hilton Honors (Hampton, DoubleTree…), World of Hyatt, IHG One Rewards (Holiday Inn, Crowne Plaza…) y ALL Accor (Novotel, Ibis…). Marcas, puntos por USD, valor del punto y descuento de miembro son reglas editables con su fuente y confianza «supuesto».
-- La tarifa de miembro y los puntos **solo restan con membresía** del viajero o de la empresa en ese programa, o si la regla `inscripcion_gratis_hotel` vale «sí» (por defecto «no»). Sin ellas, inscribirse aparece como oportunidad.
+- La tarifa de miembro y los puntos **solo restan con membresía** (los puntos, solo en la comparación: no entran en la ficha ni en el presupuesto) del viajero o de la empresa en ese programa, o si la regla `inscripcion_gratis_hotel` vale «sí» (por defecto «no»). Sin ellas, inscribirse aparece como oportunidad.
 - Los hoteles se ordenan por **costo total** (tarifa, tarifa de miembro y puntos) y el primero es el **hotel recomendado**; el más barato se marca aparte si no es el mismo.
 - Un hotel con **calificación por debajo de 3,5** (`hotel_calificacion_minima`) se descarta con su razón. Sin calificación no se descarta: falta el dato, no es un mal hotel.
 - La membresía de hotel de la semilla (Andrés Molina en Hilton Honors) y las de aerolínea son inventadas y se rotulan «Dato de ejemplo».

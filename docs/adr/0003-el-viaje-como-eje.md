@@ -41,7 +41,7 @@ La regla completa está en [`regla-de-negocio.md`](../regla-de-negocio.md) y el 
 
 - **La unión dejó de ser lo primero que se recorta:** la asignación automática y el control del presupuesto dependen de ella.
 - **Todo gasto pertenece a un viaje.** Sin viaje, o con un viaje no aprobado o cerrado, el gasto se guarda igual y va a revisión con su motivo (`sin_viaje`, `viaje_no_aprobado`, `viaje_cerrado`).
-- **Dos cifras distintas:** el costo total esperado ordena las opciones y el presupuesto es lo que se espera pagar. No coinciden y es correcto ([`regla-de-negocio.md`](../regla-de-negocio.md), sección 8).
+- **Tres cifras distintas:** la comparación ordena las opciones, la ficha da el costo total esperado de lo elegido y el presupuesto es lo que se espera pagar. No coinciden y es correcto ([`regla-de-negocio.md`](../regla-de-negocio.md), sección 8).
 - **Más acoplamiento:** los dos retos comparten tablas, consultas y transacciones. El control del presupuesto es el corte más difícil para separar servicios ([`arquitectura_objetivo.md`](../arquitectura_objetivo.md)). Por eso la plataforma se declara como etapa de transición y se migra por anillos ([ADR 0001](0001-arquitectura-objetivo.md)).
 - **Concurrencia:** registrar, asignar viaje y aprobar un gasto se hacen con el viaje bloqueado (`db.transaccion`, `db.bloquear_viaje`), para que dos aprobaciones a la vez no gasten el mismo saldo.
 - **Los datos del reto 2 informan al reto 1:** un hotel reservado por agencia avisa que no acumuló puntos (`sin_puntos`), y lo gastado frente a lo previsto alimenta los indicadores de presupuesto.

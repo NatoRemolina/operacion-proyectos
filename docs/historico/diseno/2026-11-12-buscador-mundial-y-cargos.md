@@ -192,7 +192,7 @@ Decididas en el diseño (no por la responsable del proyecto), para que se puedan
 | Tema | Decisión |
 |---|---|
 | Traslado y carro de alquiler | Sin carro de alquiler, el traslado es taxi o transfer: 0,35 USD/km, ida y vuelta, en un grupo de presupuesto nuevo, `traslados`, que en la comparación con el gasto real corresponde a la categoría transporte. Con carro de alquiler (`carro_dia` > 0), el carro ya cubre el viaje y el traslado solo suma combustible y peajes: 0,12 USD/km, ida y vuelta, en el grupo `combustible`. Las dos tarifas son reglas editables. Así nada se cuenta dos veces |
-| Web Next.js | Primero se une la rama `worktree-web-next` a `dev` (ya era el primer paso del viernes); después, este cambio toca API y web juntas en `dev` |
+| Web Next.js | Primero se une la rama de la web nueva a `dev` (ya era el primer paso del viernes); después, este cambio toca API y web juntas en `dev` |
 | Elegir un país | Es un atajo para marcar sus aeropuertos principales, no una selección final. Si la persona solo marca aeropuertos, sin un lugar, no hay traslado y el hotel se busca en la ciudad del primer aeropuerto marcado |
 | Qué guarda la solicitud | `solicitudes.origen` y `solicitudes.destino` siguen guardando un código de aeropuerto (el más cercano de los marcados), para no romper la API v1, los KPIs ni el modelo de precios. Columnas nuevas: el lugar elegido (nombre, región, país, coordenadas) y la lista de aeropuertos marcados. Al guardar la decisión, origen y destino pasan a los aeropuertos reales del vuelo elegido. Las observaciones del modelo de precios se registran con los aeropuertos reales de cada vuelo |
 

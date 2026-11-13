@@ -83,7 +83,7 @@ make entorno-web
 
 ## 3. Modelo de datos
 
-El diagrama entidad-relación, los identificadores (`P-0007`, `V-2026-0012`), las reglas que hace cumplir la base y la migración están en [`datos.md`](datos.md). La aplicación declara **36 tablas** y siete vistas analíticas; la rama del asistente para colaborador y gestor suma `asistente_dictados`.
+El diagrama entidad-relación, los identificadores (`P-0007`, `V-2026-0012`), las reglas que hace cumplir la base y la migración están en [`datos.md`](datos.md). La aplicación declara **36 tablas** y siete vistas analíticas; el asistente para colaborador y gestor suma una más, `asistente_dictados` (el cupo de dictados por voz).
 
 Atributos de las tablas que el diagrama de `datos.md` no detalla:
 
@@ -125,8 +125,8 @@ Atributos de las tablas que el diagrama de `datos.md` no detalla:
 | Seguridad por filas | Todas las tablas de PostgreSQL tienen RLS activa y ningún permiso para los roles públicos de Supabase; la aplicación entra con su propia credencial. `python -m datos.comprobar_supabase` lo verifica en solo lectura |
 | Archivos | El tipo se decide por el contenido, no por lo que declara quien sube; máximo 4,5 MB y 6 archivos por carga. Un `.html` se reduce a texto sin scripts, estilos ni enlaces y solo se descarga. Los originales van a un bucket privado |
 | Secretos | Solo en Secrets Manager (producción) y en archivos `.env*` fuera de git. `infra/poblar_secreto.py` fusiona y nunca muestra valores. Los ganchos de git rechazan secretos en las líneas añadidas ([`convenciones.md`](convenciones.md)) |
-| Fallo cerrado | Fuera de local, la aplicación no arranca sin base, almacenamiento o control de acceso (`app/config.py`). La base publicada nunca se migra al arrancar |
-| Cabeceras | `nosniff`, `X-Frame-Options SAMEORIGIN`, `Referrer-Policy`, `Permissions-Policy`, HSTS fuera de local y `Cache-Control: no-store` en las respuestas JSON. CloudFront suma su política de cabeceras de seguridad y TLS 1.2 como mínimo |
+| Fallo cerrado | Fuera de local, la aplicación no arranca sin base ni almacenamiento (`app/config.py`). La base publicada nunca se migra al arrancar |
+| Cabeceras | `nosniff`, `X-Frame-Options SAMEORIGIN`, `Referrer-Policy`, `Permissions-Policy`, HSTS fuera de local y `Cache-Control: no-store` en las respuestas JSON. En la web nueva, CloudFront suma su política de cabeceras de seguridad; `/api/v1/*` y administración llevan las de la aplicación. TLS 1.2 como mínimo |
 | Contenido de terceros | Lo que escriben las personas (notas, justificaciones, recibos) es dato para el asistente, nunca instrucción; ninguna herramienta del asistente escribe ([`asistente.md`](asistente.md)) |
 
 **Límites y topes** (todos editables en *Reglas y supuestos* salvo los de archivos y sesión):
@@ -138,7 +138,7 @@ Atributos de las tablas que el diagrama de `datos.md` no detalla:
 | Autocompletado de lugares | 60 al mes y 15 por persona y día |
 | Estado del vuelo | 6 consultas por tramo, 12 por viaje y sentido, 30 en vivo por día; se suspende si al plan le quedan menos de 25 |
 | Preguntas y dictados al asistente | 40 y 40 por persona y día |
-| Gasto del asesor | 2 USD por día para toda la empresa (`asesor_usd_dia`) |
+| Gasto del asesor | 2 USD por día para toda la empresa (`asesor_usd_dia`), de los que colaboradores y gestores pueden usar 1 (`asesor_usd_dia_colaboradores`) |
 | Una consulta idéntica al buscador o un archivo idéntico ya leído | No se vuelve a pagar |
 
 **Qué datos salen a terceros**
@@ -201,7 +201,7 @@ Qué cubren las de Python: permisos por rol (con una prueba de humo de cada pág
 | Supabase | Plan gratuito | 0 USD. Sin respaldos automáticos: el Pro, con respaldo diario, cuesta 25 USD al mes | Respaldo manual y ensayo de restauración ([`respaldo.md`](respaldo.md)) |
 | SerpApi | 250 búsquedas al mes | Cotizar gasta 2 búsquedas (vuelos y hoteles); decidir, hasta 2; aprobar, 1; el estado del vuelo, 1 por consulta en vivo | Topes por persona, por viaje y por día; reutilización de lo guardado (KPI `tasa_reutilizacion`, `cupo_usado`) |
 | Modelo de lectura | Por tokens | Precio de referencia de 0,5 USD por millón de tokens de entrada y 3 de salida (supuestos editables `modelo_usd_por_millon_*`, en `datos/semilla.py`). Meta: 0,01 USD o menos por recibo | Una llamada por recibo; un archivo idéntico no se vuelve a leer; KPI `costo_por_recibo` |
-| Asesor del asistente | Por sesión, a precio de lista del servicio | Hasta 2 USD al día para toda la empresa | `asesor_usd_dia`; el costo real de cada sesión queda en `llamadas_modelo` y en Monitoreo |
+| Asesor del asistente | Por sesión, a precio de lista del servicio | Hasta 2 USD al día para toda la empresa (1 de ellos para colaboradores y gestores) | `asesor_usd_dia`; el costo real de cada sesión queda en `llamadas_modelo` y en Monitoreo |
 | Pinecone | Índice `asistente-fichas` | Sin cifra registrada en el repositorio; el índice solo recibe lo nuevo o cambiado | El índice local queda siempre como respaldo |
 | Telegram | Gratis | 0 USD (apagado en producción) | — |
 
@@ -252,7 +252,7 @@ Qué cubren las de Python: permisos por rol (con una prueba de humo de cada pág
 En orden de prioridad:
 
 1. **Operar con garantías** (antes de crecer el uso): desplegar con un usuario con MFA o desde la integración continua con aprobación; respaldo nocturno automático de la base; topes para el agente de la cotización y la lectura de recibos; correr la medición de exactitud con clave; Telegram con el bot de producción; regla de limpieza de imágenes en ECR; un ambiente previo a producción ([`produccion.md`](produccion.md)).
-2. **Cerrar huecos del MVP**: tarea programada para el monitoreo del vuelo; pantalla de membresías; más tasas de cambio con fecha; compras del proyecto validadas contra las fechas del proyecto sin exigir viaje; hora límite con su propia fecha; precio por noche de los hoteles guardados.
+2. **Cerrar huecos del MVP**: tarea programada para el monitoreo del vuelo; pantalla de membresías; más tasas de cambio con fecha; compras del proyecto validadas contra las fechas del proyecto sin exigir viaje; hora límite con su propia fecha; precio por noche de los hoteles guardados; recorridos de extremo a extremo de la web en un navegador (Playwright).
 3. **Automatizaciones con n8n** ([`n8n/automatizaciones.md`](n8n/automatizaciones.md)): clave de servicio y avisos firmados con soportes a Drive, resultado al interesado y contabilidad; decisión desde el correo; buzón de gastos real, pendientes y vuelos; solicitud de viaje por correo.
 4. **Mejoras de uso e ingeniería pendientes** ([`mejoras.md`](mejoras.md)): textos de las alertas para quien reporta, accesibilidad pendiente, consultas del monitoreo, cotización en paralelo, lógica de las rutas a los servicios, tope al cambio de contraseña, CSP sin scripts en línea.
 5. **Arquitectura objetivo por anillos** ([ADR 0001](adr/0001-arquitectura-objetivo.md)): terminar la web nueva (anillo 1) y retirar las pantallas de administración; decimales exactos; esquemas privados por dominio (anillo 2); Gastos como primer servicio con outbox y saga de presupuesto (anillo 3); una función por servicio (anillo 4).
