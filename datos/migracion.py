@@ -109,20 +109,42 @@ def _roles() -> dict:
 def _datos() -> dict:
     """Cambios en los datos: viajes de las decisiones que ya existían y gastos enlazados."""
     from app.servicios import viajes
-    hechos = {"viajes_creados": 0, "gastos_enlazados": 0}
+    hechos = {"viajes_creados": 0}
     db.ejecutar("update documentos set tipo='soporte' where tipo is null")
     vigentes = db.todos("""select max(d.id) id from decisiones d where d.vuelo_id is not null
                            and not exists (select 1 from viajes v where v.solicitud_id=d.solicitud_id) group by d.solicitud_id""")
     for d in vigentes:
         viajes.crear_desde_decision(d["id"])
         hechos["viajes_creados"] += 1
-    # Un gasto anterior se enlaza solo si su viajero y su proyecto apuntan a un único viaje
-    for g in db.todos("select id, viajero_id, proyecto_id from gastos where viaje_id is null and viajero_id is not null and proyecto_id is not null"):
-        candidatos = db.todos("select id from viajes where viajero_id=:v and proyecto_id=:p", v=g["viajero_id"], p=g["proyecto_id"])
-        if len(candidatos) == 1:
-            db.actualizar("gastos", g["id"], viaje_id=candidatos[0]["id"])
-            hechos["gastos_enlazados"] += 1
+    hechos["gastos_enlazados"] = _enlazar_gastos()
     return hechos
+
+
+MARCA_ENLACE = "gastos anteriores enlazados a su viaje"
+
+
+def _enlazar_gastos() -> int:
+    """Una sola vez por base, para los gastos de antes del viaje como eje: cada uno va al único viaje de su viajero y su
+    proyecto si su fecha cae dentro de ese viaje. Después, poner o quitar un gasto de su viaje lo decide la plataforma
+    o administración, y repetir la migración no lo deshace. Lo que ya revisó una persona tampoco se toca."""
+    from app.servicios import eventos, revision
+    if db.uno("select id from eventos where entidad='migracion' and paso=:p", p=MARCA_ENLACE):
+        return 0
+    enlazados = 0
+    for g in db.todos("""select id, viajero_id, proyecto_id, fecha from gastos where viaje_id is null and revisado_por is null
+                         and viajero_id is not null and proyecto_id is not null and fecha is not null"""):
+        candidatos = db.todos("select id, ida, regreso from viajes where viajero_id=:v and proyecto_id=:p", v=g["viajero_id"], p=g["proyecto_id"])
+        if len(candidatos) != 1:
+            continue
+        v = candidatos[0]
+        if not (v["ida"] and v["regreso"] and v["ida"][:10] <= g["fecha"][:10] <= v["regreso"][:10]):
+            continue
+        db.actualizar("gastos", g["id"], viaje_id=v["id"])
+        revision.subir_version(g["id"])
+        eventos.registrar("gasto", g["id"], "enlazado a su viaje", f"viaje {v['id']}: la fecha del gasto cae dentro del viaje", "migración")
+        enlazados += 1
+    eventos.registrar("migracion", None, MARCA_ENLACE, f"{enlazados} gastos", "migración")
+    return enlazados
 
 
 # ---------- columnas obligatorias ----------
