@@ -219,6 +219,7 @@ Hoy es **una aplicación FastAPI con una base PostgreSQL**, en transición hacia
 | `docs/mejoras.md` | Mejoras de experiencia de uso e ingeniería y su estado |
 | `docs/convenciones.md` | Cómo se escribe, se prueba y se integra el código |
 | `docs/respaldo.md` | Respaldo de la base publicada, ensayo de restauración y vuelta atrás |
+| `docs/produccion.md` | Qué está publicado y dónde, qué servicios están encendidos, cuentas, costos, avisos y cómo se actualiza |
 | `docs/despliegue.md` | Orden completo para publicar en AWS: respaldo, migración, secreto, revisión del cambio, despliegue, comprobaciones y vuelta atrás |
 | `EXPLORACION.md`, `ANALISIS.md` | Bitácora de análisis y decisiones |
 
@@ -267,6 +268,8 @@ Copiar `.env.example` a `.env`. Cada bloque activa una parte; sin ninguno la pla
 | `GEOGRAFIA_DIR` | Carpeta de datos geográficos a cargar en lugar de `datos/geografia/`; las pruebas la apuntan a un subconjunto pequeño |
 
 ## Despliegue
+
+Publicada en https://software.nataliaremolinarodriguez.com (web nueva) y https://admin.software.nataliaremolinarodriguez.com (pantallas de administración). Estado y operación: `docs/produccion.md`.
 
 `infra/` describe el despliegue en AWS en tres pilas: `OperacionBase` (secreto y avisos), `OperacionApp` (la API y las pantallas actuales en una función con imagen de contenedor, con sus alarmas) y `OperacionWeb` (la web nueva y administración detrás de CloudFront, con el certificado y los registros de su subdominio; ADR 0002). El orden completo está en `docs/despliegue.md`: respaldo, migración por el puerto 5432, secreto, `cdk diff` revisado antes de aplicarse, despliegue de una pila a la vez, comprobaciones y vuelta atrás. El contexto `-c correo=` es obligatorio en cada orden de CDK. Respaldo y ensayo de restauración: `make respaldar`, `make verificar-respaldo` y `docs/respaldo.md`.
 
