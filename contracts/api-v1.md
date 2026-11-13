@@ -424,3 +424,28 @@ Cuerpo JSON `{"valor": "0.25"}` (hasta 500 caracteres) y `X-CSRF-Token`. 200 `Re
 - Una regla numérica sigue siendo numérica: se acepta la coma decimal («0,25» se guarda «0.25»); un texto, un negativo, un vacío o un valor no finito responden 422 `VALIDATION_ERROR` con `fields.valor` y no se guarda nada.
 - Una regla de texto guarda el texto sin espacios al principio ni al final.
 - Deja el evento «regla editada» con el valor anterior y el nuevo. 404 si la regla no existe.
+
+## Buzón de correo (simulado)
+
+Solo administración (403 `FORBIDDEN` para colaborador y gestor). **Es una simulación**: lee los correos (`.eml`) y las confirmaciones en HTML de la carpeta de ejemplos de la plataforma (`datos/ejemplos`) como si llegaran a un buzón de gastos; no está conectado a ningún correo real. La lógica es la de `app/servicios/buzon.py`, la misma que la pantalla de carga de administración.
+
+### `GET /buzon`
+200 `BuzonSimulado`:
+
+```ts
+interface BuzonSimulado {
+  simulado: true;
+  aviso: string;                        // el texto que dice que es simulado
+  mensajes: { nombre: string; formato: "correo" | "html"; remitente: string | null; asunto: string | null }[];
+  viajes: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string; titular: string | null;
+            origen: string | null; destino: string | null; ida: string | null; regreso: string | null }[];   // aprobados o pendientes
+}
+```
+
+### `POST /buzon/lectura`
+Cuerpo JSON `{"nombres": ["reserva_hotel.eml"], "viaje_id": 12}` (de 1 a 20 nombres; `viaje_id` opcional) y `X-CSRF-Token`. 200 `{"leidos": GastoResumen[], "errores": {nombre, mensaje}[]}`.
+
+- Cada correo se lee como cualquier recibo, por el canal `correo`: lectura, validación y estado real (`aprobado_auto` o `revision`). Con `viaje_id`, el viaje define el proyecto y la persona; sin él, el gasto queda a nombre de quien lee y sin viaje.
+- Un nombre que no está en el buzón (otro formato, una ruta, uno que no existe) va a `errores` y no crea nada.
+- Leer dos veces el mismo correo crea otro gasto, que las reglas marcan como posible duplicado.
+- Un `viaje_id` que no existe: 422 con `fields.viaje_id`. Sin nombres: 422.

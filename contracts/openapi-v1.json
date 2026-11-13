@@ -307,6 +307,110 @@
         }
       }
     },
+    "/api/v1/buzon": {
+      "get": {
+        "tags": [
+          "buzón simulado"
+        ],
+        "summary": "Ver",
+        "description": "Los correos (.eml) y confirmaciones en HTML de ejemplo que se pueden leer, y los viajes a los que cargarlos.",
+        "operationId": "ver_api_v1_buzon_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuzonSimulado"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/buzon/lectura": {
+      "post": {
+        "tags": [
+          "buzón simulado"
+        ],
+        "summary": "Leer",
+        "description": "Lee los correos elegidos por el canal «correo», como cualquier recibo: lectura, validación y estado real.\nLo que no está en el buzón se devuelve en `errores` y no crea nada.",
+        "operationId": "leer_api_v1_buzon_lectura_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LecturaBuzon"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoBuzon"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/lugares": {
       "get": {
         "tags": [
@@ -2117,6 +2221,42 @@
         ],
         "title": "Body_enviar_api_v1_gastos_post"
       },
+      "BuzonSimulado": {
+        "properties": {
+          "simulado": {
+            "type": "boolean",
+            "title": "Simulado",
+            "description": "Siempre verdadero: no hay un buzón real detrás.",
+            "default": true
+          },
+          "aviso": {
+            "type": "string",
+            "title": "Aviso"
+          },
+          "mensajes": {
+            "items": {
+              "$ref": "#/components/schemas/MensajeBuzon"
+            },
+            "type": "array",
+            "title": "Mensajes"
+          },
+          "viajes": {
+            "items": {
+              "$ref": "#/components/schemas/ViajeAsignable"
+            },
+            "type": "array",
+            "title": "Viajes",
+            "description": "Viajes aprobados o pendientes a los que se pueden cargar los correos."
+          }
+        },
+        "type": "object",
+        "required": [
+          "aviso",
+          "mensajes",
+          "viajes"
+        ],
+        "title": "BuzonSimulado"
+      },
       "CambioEstadoViaje": {
         "properties": {
           "accion": {
@@ -2876,6 +3016,24 @@
         ],
         "title": "Equipo"
       },
+      "ErrorBuzon": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "mensaje": {
+            "type": "string",
+            "title": "Mensaje"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nombre",
+          "mensaje"
+        ],
+        "title": "ErrorBuzon"
+      },
       "FormularioCotizacion": {
         "properties": {
           "proyectos": {
@@ -3532,6 +3690,39 @@
         ],
         "title": "Lectura"
       },
+      "LecturaBuzon": {
+        "properties": {
+          "nombres": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Nombres",
+            "description": "Los `nombre` del buzón que se leen."
+          },
+          "viaje_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viaje Id",
+            "description": "Opcional: el viaje al que se cargan (define proyecto y persona). Sin él, quedan a nombre de quien lee y sin viaje."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nombres"
+        ],
+        "title": "LecturaBuzon"
+      },
       "LecturaOriginal": {
         "properties": {
           "comercio": {
@@ -4102,6 +4293,53 @@
           "ejemplo"
         ],
         "title": "Membresia"
+      },
+      "MensajeBuzon": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          },
+          "formato": {
+            "type": "string",
+            "enum": [
+              "correo",
+              "html"
+            ],
+            "title": "Formato",
+            "description": "`correo`: un .eml; `html`: una confirmación guardada como página."
+          },
+          "remitente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remitente"
+          },
+          "asunto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asunto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nombre",
+          "formato",
+          "remitente",
+          "asunto"
+        ],
+        "title": "MensajeBuzon"
       },
       "NuevaCotizacion": {
         "properties": {
@@ -5019,6 +5257,31 @@
           "request_id"
         ],
         "title": "RespuestaError"
+      },
+      "ResultadoBuzon": {
+        "properties": {
+          "leidos": {
+            "items": {
+              "$ref": "#/components/schemas/GastoResumen"
+            },
+            "type": "array",
+            "title": "Leidos",
+            "description": "Un gasto por correo leído, con su estado real (`aprobado_auto` o `revision`)."
+          },
+          "errores": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorBuzon"
+            },
+            "type": "array",
+            "title": "Errores"
+          }
+        },
+        "type": "object",
+        "required": [
+          "leidos",
+          "errores"
+        ],
+        "title": "ResultadoBuzon"
       },
       "ResultadoCambioEstado": {
         "properties": {
