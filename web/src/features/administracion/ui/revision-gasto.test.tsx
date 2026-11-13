@@ -469,11 +469,24 @@ describe("Revisar un gasto", () => {
     expect(await screen.findByTitle("Recibo original de Café del centro (PDF)")).toHaveAttribute("src", "/api/v1/documentos/55/contenido");
   });
 
-  it("un correo o una confirmación HTML se ofrece para descargar", async () => {
+  it("un correo sin adjunto legible abre su texto para leerlo, sin descargar un .eml", async () => {
     montar({ datos: datosDe({ soporte: { documento_id: 55, nombre: "reserva.eml", forma: "descarga" } }) });
-    expect(await screen.findByRole("link", { name: "Descargar el recibo original (reserva.eml)" })).toHaveAttribute(
-      "href",
-      "/api/v1/documentos/55/contenido",
-    );
+    const enlace = await screen.findByRole("link", { name: /Ver el texto del correo/ });
+    expect(enlace).toHaveAttribute("href", "/api/v1/documentos/55/contenido");
+    expect(enlace).not.toHaveAttribute("download");
+    expect(enlace).toHaveAttribute("target", "_blank");
+    expect(screen.queryByText(/reserva\.eml/)).not.toBeInTheDocument();
+  });
+
+  it("una confirmación HTML se descarga como texto", async () => {
+    montar({ datos: datosDe({ soporte: { documento_id: 55, nombre: "confirmacion.html", forma: "descarga" } }) });
+    const enlace = await screen.findByRole("link", { name: "Descargar la confirmación como texto" });
+    expect(enlace).toHaveAttribute("href", "/api/v1/documentos/55/contenido");
+    expect(enlace).toHaveAttribute("download");
+  });
+
+  it("un correo con su PDF adjunto lo muestra al lado", async () => {
+    montar({ datos: datosDe({ soporte: { documento_id: 55, nombre: "reserva.eml", forma: "pdf" } }) });
+    expect(await screen.findByTitle("Recibo original de Café del centro (PDF)")).toHaveAttribute("src", "/api/v1/documentos/55/contenido");
   });
 });

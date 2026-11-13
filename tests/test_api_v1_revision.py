@@ -109,13 +109,18 @@ def test_sin_lectura_guardada_la_lectura_original_es_nula(cliente, recibo):
 
 
 # ---------- soporte ----------
-@pytest.mark.parametrize("nombre, forma", [("recibo_lisboa.png", "imagen"), ("factura_hotel.pdf", "pdf"),
-                                           ("confirmacion_hotel.html", "descarga"), ("reserva_hotel.eml", "descarga")])
-def test_dice_como_mostrar_el_soporte(cliente, piloto, viaje_aprobado, ejemplos, nombre, forma):
+# Un correo se muestra como lo que entrega su original: el PDF o la foto adjunta, o su texto (De, Asunto y Fecha)
+@pytest.mark.parametrize("nombre, forma, tipo", [("recibo_lisboa.png", "imagen", "image/png"), ("factura_hotel.pdf", "pdf", "application/pdf"),
+                                                 ("confirmacion_hotel.html", "descarga", "text/plain"),
+                                                 ("reserva_hotel.eml", "pdf", "application/pdf"),
+                                                 ("correo_tiquete.eml", "descarga", "text/plain")])
+def test_dice_como_mostrar_el_soporte(cliente, piloto, viaje_aprobado, ejemplos, nombre, forma, tipo):
     g = _enviar(piloto, ejemplos, nombre, viaje_aprobado["id"])
     soporte = _revision(cliente, g["id"]).json()["soporte"]
     assert soporte["forma"] == forma and soporte["documento_id"] == g["documento_id"]
     assert soporte["nombre"]
+    original = cliente.get(f"{V1}/documentos/{g['documento_id']}/contenido")
+    assert original.status_code == 200 and original.headers["content-type"].startswith(tipo)
 
 
 # ---------- opciones para corregir ----------

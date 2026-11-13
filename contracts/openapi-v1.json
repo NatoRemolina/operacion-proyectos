@@ -7973,7 +7973,7 @@
               "descarga"
             ],
             "title": "Forma",
-            "description": "Cómo mostrarlo: `imagen` y `pdf` se ven al lado; `descarga` (correo .eml o confirmación HTML guardada como texto) se ofrece para descargar. El archivo sale de `/documentos/{id}/contenido`."
+            "description": "Cómo mostrarlo, según lo que entrega `/documentos/{id}/contenido`: `imagen` y `pdf` se ven al lado (un correo con su PDF o su foto adjunta también); `descarga` es texto (un correo sin adjunto legible, con De, Asunto y Fecha, o una confirmación HTML guardada como texto)."
           }
         },
         "type": "object",

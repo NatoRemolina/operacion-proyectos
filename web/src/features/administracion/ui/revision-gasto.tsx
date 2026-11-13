@@ -100,13 +100,26 @@ function SoporteOriginal({ soporte, url, comercio }: { soporte: SoporteRevision;
       </div>
     );
   }
+  // Un correo sin adjunto legible se entrega como su texto (De, Asunto y Fecha): se lee aparte, no se descarga un .eml
+  if (/\.eml$/i.test(soporte.nombre ?? "")) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-texto-secundario">
+          Llegó como correo sin un adjunto que se pueda mostrar aquí. Su texto, con remitente, asunto y fecha, se abre aparte.
+        </p>
+        <a href={url} target="_blank" rel="noopener noreferrer" className={clasesBoton("secundario", "self-start")}>
+          Ver el texto del correo (se abre en otra pestaña)
+        </a>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
       <p className="text-texto-secundario">
-        Llegó como correo o como confirmación en HTML. Se guardó sin código ni enlaces activos, y no se muestra aquí: descárgalo para leerlo.
+        Llegó como confirmación en HTML. Se guardó como texto, sin código ni enlaces activos, y no se muestra aquí.
       </p>
       <a href={url} download className={clasesBoton("secundario", "self-start")}>
-        Descargar el recibo original{soporte.nombre ? ` (${soporte.nombre})` : ""}
+        Descargar la confirmación como texto
       </a>
     </div>
   );

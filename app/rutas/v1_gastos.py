@@ -72,8 +72,9 @@ class SoporteRevision(BaseModel):
     documento_id: int
     nombre: str | None
     forma: Literal["imagen", "pdf", "descarga"] = Field(
-        description="Cómo mostrarlo: `imagen` y `pdf` se ven al lado; `descarga` (correo .eml o confirmación HTML "
-                    "guardada como texto) se ofrece para descargar. El archivo sale de `/documentos/{id}/contenido`.")
+        description="Cómo mostrarlo, según lo que entrega `/documentos/{id}/contenido`: `imagen` y `pdf` se ven al lado "
+                    "(un correo con su PDF o su foto adjunta también); `descarga` es texto (un correo sin adjunto legible, "
+                    "con De, Asunto y Fecha, o una confirmación HTML guardada como texto).")
 
 
 class Categoria(BaseModel):
@@ -147,7 +148,12 @@ def _campos(datos: RevisionGasto) -> dict:
     return campos
 
 
-def _forma_soporte(mime: str | None) -> str:
+def _forma_soporte(mime: str | None, ruta: str | None) -> str:
+    """Cómo se muestra el original: según lo que entrega `/documentos/{id}/contenido`. Un correo entrega su PDF o su
+    foto adjunta, o su texto con De, Asunto y Fecha (por eso se lee el archivo)."""
+    if mime == "message/rfc822":
+        contenido = almacen.leer(ruta) if ruta else None
+        mime = original_legible(contenido, mime)[1] if contenido else None
     if mime in ("image/jpeg", "image/png", "image/webp"):
         return "imagen"
     return "pdf" if mime == "application/pdf" else "descarga"
@@ -261,7 +267,7 @@ def datos_revision(id: int, yo: dict = Depends(persona)):
     puede reasignar. Las mismas opciones que la revisión de las pantallas de administración."""
     if not acceso.es_admin(yo):
         raise ErrorApi(403, "FORBIDDEN", "Esta operación es solo para administración.")
-    consulta = """select g.*, d.id doc, d.nombre archivo, d.mime from gastos g left join documentos d on d.id=g.documento_id
+    consulta = """select g.*, d.id doc, d.nombre archivo, d.mime, d.ruta from gastos g left join documentos d on d.id=g.documento_id
                   where g.id=:i"""
     g = db.uno(consulta, i=id)
     if not g:
@@ -276,7 +282,7 @@ def datos_revision(id: int, yo: dict = Depends(persona)):
                                           " Hace falta otra persona de administración para revisarlo: mientras tanto queda pendiente.")
     return {"gasto_id": id, "version": g["version"] or 0, "metodo_pago": g["metodo_pago"], "canal_reserva": g["canal_reserva"],
             "lectura_original": _lectura_original(g["extraido"]),
-            "soporte": {"documento_id": g["doc"], "nombre": g["archivo"], "forma": _forma_soporte(g["mime"])} if g["doc"] else None,
+            "soporte": {"documento_id": g["doc"], "nombre": g["archivo"], "forma": _forma_soporte(g["mime"], g["ruta"])} if g["doc"] else None,
             "categorias": [{"clave": c, "nombre": n} for c, n in config.CATEGORIAS.items()],
             "viajes": viajes.lista("v.estado<>'rechazado'"), "propio": propio, "aviso_propio": aviso}
 
