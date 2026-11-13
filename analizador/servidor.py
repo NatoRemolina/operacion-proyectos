@@ -2,6 +2,7 @@
 
     POST /analizar   {"url": "https://www.google.com/travel/flights?...", "regreso": {"sale", "aerolinea"}}  →  `navegador.analizar`
                      {"accion": "ir_a", "url", "vendedor", "tarifa", "regreso"}                         →  `navegador.ir_a`
+                     {"accion": "captura_vuelo" | "captura_aerolinea" | "captura_hotel", ...}  →  pieza 5
     GET  /salud
 
 No publica puerto hacia fuera: solo lo alcanza la API dentro de la red de Docker. En AWS lo mismo corre como función
@@ -13,14 +14,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import navegador
 
-TOPE_CUERPO = 4096
+TOPE_CUERPO = 16_384   # el envío de Google de `captura_aerolinea` es lo más largo
 
 
 def atender(pedido: dict) -> dict:
     """La misma entrada para el servidor local y para Lambda."""
     regreso = pedido.get("regreso") if isinstance(pedido.get("regreso"), dict) else None
-    if pedido.get("accion") == "ir_a":
+    accion = pedido.get("accion")
+    if accion == "ir_a":
         return navegador.ir_a(pedido.get("url"), pedido.get("vendedor"), pedido.get("tarifa"), regreso=regreso)
+    if accion == "captura_vuelo":
+        return navegador.captura_vuelo(pedido.get("url"), pedido.get("vendedor"), pedido.get("tarifa"), regreso=regreso)
+    if accion == "captura_aerolinea":
+        return navegador.captura_aerolinea(pedido.get("url"), pedido.get("cuerpo"))
+    if accion == "captura_hotel":
+        return navegador.captura_hotel(pedido.get("url"), pedido.get("hotel") or "")
     return navegador.analizar(pedido.get("url"), elegir_regreso=pedido.get("elegir_regreso") is not False, regreso=regreso)
 
 

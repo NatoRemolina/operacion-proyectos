@@ -84,12 +84,12 @@ def ir_a(url: str, vendedor: str, tarifa: str, *, servir=None, regreso: dict | N
     return _con_turno(url, lambda u, inicio: _leer(u, inicio, True, servir, ESPERA_MS, presupuesto_ms, regreso, pedido))
 
 
-def _con_turno(url: str, leer) -> dict:
+def _con_turno(url: str, leer, permitida=lector.url_permitida, que: str = "Google Flights") -> dict:
     inicio = time.monotonic()
     if os.environ.get("ANALIZADOR", "").strip().lower() == "apagado":
         return _resultado("fallido", inicio, "el analizador está apagado")
-    if not lector.url_permitida(url):
-        return _resultado("fallido", inicio, "el enlace no es de Google Flights")
+    if not permitida(url):
+        return _resultado("fallido", inicio, f"el enlace no es de {que}")
     url = _con_parametros_fijos(url)
     if not _turno.acquire(blocking=False):
         return _resultado("fallido", inicio, "el analizador está leyendo otra página; intenta en un minuto")
@@ -122,7 +122,7 @@ def _con_parametros_fijos(url: str) -> str:
 
 
 def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int, presupuesto_ms: int,
-          regreso_cotizacion: dict | None = None, pedido_ir: dict | None = None) -> dict:
+          regreso_cotizacion: dict | None = None, pedido_ir: dict | None = None, completa: bool = False) -> dict:
     from playwright.sync_api import Error, sync_playwright
 
     fuera, abiertas, envio = {}, [], {}
@@ -231,6 +231,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 if not RESERVA.search(texto):   # sin opciones de reserva no hay «Continue» que pulsar
                     return _resultado("fallido", inicio, SIN_REGRESO, url_final=pagina.url, regreso_elegido=regreso,
                                       **_evidencia(pagina))
+                if completa:
+                    return _completa(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
                 return _ir(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
             restante()
             etiquetas = _etiquetas(pagina)
@@ -324,6 +326,235 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
                       captura_previa_png_b64=base64.b64encode(previa).decode())
 
 
+# ---------- pieza 5: captura completa (vuelo con su envío, aerolínea y hotel) ----------
+ALTO_COMPLETA = 12_000       # px: la página entera de Google o de la aerolínea, dentro del mismo tope de bytes
+TOPE_TEXTO = 300_000         # bytes del texto visible que viajan en la respuesta
+DETALLES = ('[aria-label^="Flight details"][aria-expanded="false"]', '[aria-label^="Toggle details"][aria-expanded="false"]')
+
+
+def _texto(pagina) -> str:
+    return lector.normal(pagina.inner_text("body")).encode()[:TOPE_TEXTO].decode(errors="ignore")
+
+
+def _b64(png: bytes) -> str:
+    return base64.b64encode(png).decode()
+
+
+def captura_vuelo(url: str, vendedor: str, tarifa: str, *, servir=None, regreso: dict | None = None,
+                  presupuesto_ms: int = PRESUPUESTO_MS) -> dict:
+    """Todo lo visible del vuelo en Google Flights (con el detalle de cada tramo desplegado), su texto completo y una
+    captura de página completa; después pulsa el «Continue» de la tarifa y devuelve el envío interceptado (`envio`),
+    que el trabajador pasa a `captura_aerolinea` en memoria. Sin envío, la captura de Google vale igual (`motivo_envio`)."""
+    if not (isinstance(vendedor, str) and VENDEDOR_O_TARIFA.match(vendedor) and isinstance(tarifa, str)
+            and VENDEDOR_O_TARIFA.match(tarifa)):
+        return _resultado("fallido", time.monotonic(), SIN_TARIFA)
+    pedido = {"vendedor": vendedor, "tarifa": tarifa}
+    return _con_turno(url, lambda u, inicio: _leer(u, inicio, True, servir, ESPERA_MS, presupuesto_ms, regreso, pedido,
+                                                   completa=True))
+
+
+def _completa(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) -> dict:
+    from playwright.sync_api import Error
+
+    for selector in DETALLES:   # desplegar el detalle de cada tramo: solo muestra lo que ya está en la página
+        botones = pagina.locator(selector)
+        for _ in range(min(botones.count(), 6)):   # cada clic saca al botón de la lista («aria-expanded» pasa a true)
+            try:
+                botones.nth(0).click(timeout=min(2000, restante()))
+            except Error:
+                break
+    if salida():
+        return _resultado("fallido", inicio, salida())
+    texto = _texto(pagina)
+    datos = lector.leer(texto, _etiquetas(pagina))
+    datos["regreso_elegido"] = regreso
+    imagen = _captura(pagina, restante, ALTO_COMPLETA)
+    if salida():
+        return _resultado("fallido", inicio, salida())
+    r = _ir(pagina, pedido, envio, regreso, restante, salida, inicio)
+    con_envio = r["estado"] == "listo"
+    return _resultado("listo", inicio, datos=datos, texto=texto, url_final=pagina.url, capturas_png_b64=[_b64(imagen)],
+                      envio={"url": r["url"], "cuerpo": r["cuerpo"]} if con_envio else None,
+                      motivo_envio=None if con_envio else r["motivo"], regreso_elegido=regreso)
+
+
+ORIGEN_ENVIO = "https://analizador.invalid/envio"   # página propia (nunca sale a la red) que hace el POST a Google
+PRECIO_E_IMPUESTOS = re.compile(r"price and tax|taxes and (carrier-imposed )?fees|price details|fare details", re.I)
+SIN_AEROLINEA = "no se llegó a la página de la aerolínea"
+
+
+def captura_aerolinea(url: str, cuerpo: str, *, servir=None, presupuesto_ms: int = PRESUPUESTO_MS) -> dict:
+    """Hace el envío de Google (el de `captura_vuelo`) y lee la página de la aerolínea a la que lleva: total, impuestos
+    (un clic en «Price and tax information», fuera de todo formulario), cabinas, números de vuelo, texto completo y una
+    captura de página completa. Nunca escribe en campos, ni inicia sesión, ni compra. Una vez en la aerolínea, la
+    pestaña no navega a otro sitio."""
+    inicio = time.monotonic()
+    if os.environ.get("ANALIZADOR", "").strip().lower() == "apagado":
+        return _resultado("fallido", inicio, "el analizador está apagado")
+    if not lector.url_envio(url) or not isinstance(cuerpo, str) or len(cuerpo) > 12_000:
+        return _resultado("fallido", inicio, "el envío no es de Google")
+    if not _turno.acquire(blocking=False):
+        return _resultado("fallido", inicio, "el analizador está leyendo otra página; intenta en un minuto")
+    try:
+        return _aerolinea(url, cuerpo, servir, presupuesto_ms, inicio)
+    except Exception as e:  # noqa: BLE001
+        print(f"analizador: error del navegador: {type(e).__name__}: {_primera_linea(e)}", flush=True)
+        return _resultado("fallido", inicio, ERROR_NAVEGADOR)
+    finally:
+        _turno.release()
+
+
+def _aerolinea(url: str, cuerpo: str, servir, presupuesto_ms: int, inicio: float) -> dict:
+    import html as html_
+    from urllib.parse import parse_qsl as campos_de
+
+    from playwright.sync_api import Error, sync_playwright
+
+    campos = "".join(f'<input type="hidden" name="{html_.escape(k)}" value="{html_.escape(v)}">'
+                     for k, v in campos_de(cuerpo, keep_blank_values=True))
+    pagina_envio = (f'<!doctype html><meta charset="utf-8"><form id="e" method="post" action="{html_.escape(url)}">{campos}'
+                    "</form><script>document.getElementById('e').submit()</script>")
+    destino = {}
+
+    def una_sola_aerolinea(ruta):
+        pedido = ruta.request
+        if not pedido.is_navigation_request():
+            return ruta.fallback()
+        try:
+            principal = pedido.frame.parent_frame is None
+        except Error:
+            return ruta.abort()
+        if not principal:
+            return ruta.fallback()
+        host = urlsplit(pedido.url).hostname or ""
+        if pedido.url.startswith(ORIGEN_ENVIO) or (lector.url_envio(pedido.url) and pedido.method == "POST"):
+            return ruta.fallback()
+        if not pedido.url.startswith("https://") or (destino.get("host") and host != destino["host"]):
+            return ruta.abort()   # ya en la aerolínea: no se va a ningún otro sitio
+        return ruta.fallback()
+
+    with sync_playwright() as p:
+        navegador = p.chromium.launch(args=ARGUMENTOS)
+        try:
+            contexto = navegador.new_context(**OPCIONES_CONTEXTO)
+            contexto.route("**/*", una_sola_aerolinea)
+            pagina = contexto.new_page()
+            contexto.on("page", lambda nueva: nueva.close())   # ninguna pestaña más (después de abrir la propia)
+            pagina.route(ORIGEN_ENVIO, lambda r: r.fulfill(status=200, content_type="text/html; charset=utf-8", body=pagina_envio))
+
+            def restante() -> int:
+                quedan = max(int(presupuesto_ms - (time.monotonic() - inicio) * 1000), 1)
+                pagina.set_default_timeout(quedan)
+                return quedan
+            if servir:
+                servir(pagina)
+            try:
+                pagina.goto(ORIGEN_ENVIO, wait_until="commit", timeout=restante())
+            except Error:
+                return _resultado("fallido", inicio, SIN_AEROLINEA)
+            fin = time.monotonic() + min(25_000, restante() - 10_000) / 1000
+            while time.monotonic() < fin:
+                host = urlsplit(pagina.url).hostname or ""
+                if host and host not in lector.DOMINIOS and not pagina.url.startswith(ORIGEN_ENVIO):
+                    destino["host"] = host
+                    break
+                pagina.wait_for_timeout(250)
+            if not destino:
+                return _resultado("fallido", inicio, SIN_AEROLINEA, **_evidencia(pagina))
+            _esperar(pagina, re.compile(r"\$\d"), max(min(15_000, restante() - 8_000), 1))
+            # un clic que solo despliega el precio y los impuestos: un enlace o botón con ese nombre, fuera de formularios
+            try:
+                for el in pagina.get_by_role("button", name=PRECIO_E_IMPUESTOS).all() + \
+                        pagina.get_by_role("link", name=PRECIO_E_IMPUESTOS).all():
+                    if el.evaluate("e => !e.closest('form') && e.type !== 'submit'"):
+                        el.click(timeout=min(3000, restante()))
+                        pagina.wait_for_timeout(min(1000, restante()))
+                        break
+            except Error:
+                pass   # sin el desglose se guarda lo que haya
+            if (urlsplit(pagina.url).hostname or "") != destino["host"]:
+                return _resultado("fallido", inicio, OTRO_SITIO)
+            texto = _texto(pagina)
+            imagen = _captura(pagina, restante, ALTO_COMPLETA)
+            p_ = urlsplit(pagina.url)
+            datos = {**lector.aerolinea(texto), "pagina": f"{p_.scheme}://{p_.hostname}{p_.path}", "titulo": pagina.title()[:200]}
+            return _resultado("listo", inicio, datos=datos, texto=texto, capturas_png_b64=[_b64(imagen)],
+                              url_final=f"{p_.scheme}://{p_.hostname}{p_.path}")
+        finally:
+            navegador.close()
+
+
+def captura_hotel(url: str, hotel: str = "", *, servir=None, presupuesto_ms: int = PRESUPUESTO_MS) -> dict:
+    """La ficha del hotel elegido en Google Hotels con las fechas de la cotización: precio por vendedor y por tipo de
+    habitación, qué incluye cada tarifa, servicios, calificación, reseñas y ubicación; texto completo y una captura.
+    Si Google muestra una lista, un clic en el hotel por su nombre. Mismos límites que la lectura de vuelos."""
+    nombre = hotel if isinstance(hotel, str) and VENDEDOR_O_TARIFA.match(hotel or "-") else ""
+    return _con_turno(url, lambda u, inicio: _hotel(u, inicio, nombre, servir, presupuesto_ms),
+                      permitida=lector.url_permitida_hotel, que="Google Hotels")
+
+
+def _hotel(url: str, inicio: float, nombre: str, servir, presupuesto_ms: int) -> dict:
+    from playwright.sync_api import Error, sync_playwright
+
+    fuera = {}
+
+    def solo_google_travel(ruta):
+        pedido = ruta.request
+        if not pedido.is_navigation_request():
+            return ruta.fallback()
+        try:
+            principal = pedido.frame.parent_frame is None
+        except Error:
+            return ruta.abort()
+        if principal and not lector.url_navegable(pedido.url):
+            fuera.setdefault("url", pedido.url)
+            return ruta.abort()
+        return ruta.fallback()
+
+    with sync_playwright() as p:
+        navegador = p.chromium.launch(args=ARGUMENTOS)
+        try:
+            contexto = navegador.new_context(**OPCIONES_CONTEXTO)
+            contexto.route("**/*", solo_google_travel)
+            abiertas = []
+            pagina = contexto.new_page()
+            contexto.on("page", lambda nueva: abiertas.append(1) or nueva.close())
+
+            def restante() -> int:
+                quedan = max(int(presupuesto_ms - (time.monotonic() - inicio) * 1000), 1)
+                pagina.set_default_timeout(quedan)
+                return quedan
+            if servir:
+                servir(pagina)
+            try:
+                pagina.goto(url, wait_until="domcontentloaded", timeout=restante())
+            except Error:
+                return _resultado("fallido", inicio, OTRO_SITIO if fuera else NO_ABRIO)
+            texto = _esperar(pagina, re.compile(r"\$\d|unusual traffic|not a robot|Before you continue"),
+                             max(restante() - 10_000, 1))
+            if texto is None:
+                return _resultado("fallido", inicio, "la página tardó demasiado en mostrar los precios", **_evidencia(pagina))
+            motivo = lector.bloqueo(pagina.url, texto)
+            if motivo:
+                return _resultado("fallido", inicio, motivo)
+            datos = lector.hotel(texto)
+            if not datos["vendedores"] and nombre:
+                try:   # una lista de hoteles: abrir el elegido por su nombre (un clic)
+                    pagina.get_by_text(nombre, exact=False).first.click(timeout=min(3000, restante()))
+                    pagina.wait_for_timeout(min(2500, restante()))
+                except Error:
+                    pass
+            if fuera or abiertas:
+                return _resultado("fallido", inicio, OTRO_SITIO)
+            texto = _texto(pagina)
+            datos = lector.hotel(texto)
+            imagen = _captura(pagina, restante, ALTO_COMPLETA)
+            return _resultado("listo", inicio, datos=datos, texto=texto, capturas_png_b64=[_b64(imagen)],
+                              url_final=pagina.url)
+        finally:
+            navegador.close()
+
+
 def _etiquetas(pagina) -> list[str | None]:
     """Las etiquetas (`aria-label`) de la página, en orden."""
     return pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
@@ -343,11 +574,11 @@ def _es_continuar(etiqueta, vendedor: str, tarifa: str) -> bool:
             and (m["tarifa"] or "Tarifa").strip().lower() == tarifa.strip().lower())
 
 
-def _captura(pagina, restante) -> bytes:
+def _captura(pagina, restante, alto_max: int = ALTO_CAPTURA) -> bytes:
     """Captura PNG de la página, con el alto acotado: la respuesta síncrona de Lambda no puede pasar de 6 MB. Si aun
     así queda grande (una página muy cargada), se repite más corta."""
     alto_pagina = pagina.evaluate("() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)")
-    alto = min(int(alto_pagina or 0) or ALTO_CAPTURA, ALTO_CAPTURA)
+    alto = min(int(alto_pagina or 0) or alto_max, alto_max)
     while True:
         png = pagina.screenshot(full_page=True, type="png", timeout=restante(),
                                 clip={"x": 0, "y": 0, "width": 1280, "height": alto})
