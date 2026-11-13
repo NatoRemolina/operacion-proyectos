@@ -108,6 +108,22 @@ def traslado(aeropuerto: dict | None, lugar: dict | None, con_carro: bool, cat: 
                                    "combustible_usd_km" if con_carro else "traslado_usd_km"]}}
 
 
+# Programa de viajero frecuente de cada aerolínea, para ofrecer la inscripción cuando la persona no es socia.
+# Una regla («aerolinea», nombre, «programa») en el catálogo manda sobre esta lista.
+PROGRAMAS_AEROLINEA = {
+    "American": "AAdvantage", "United": "MileagePlus", "Delta": "SkyMiles", "Southwest": "Rapid Rewards",
+    "JetBlue": "TrueBlue", "Alaska": "Mileage Plan", "Frontier": "Frontier Miles", "Spirit": "Free Spirit",
+    "Iberia": "Iberia Club", "Vueling": "Vueling Club", "Air Europa": "SUMA", "Lufthansa": "Miles & More",
+    "TAP Air Portugal": "TAP Miles&Go", "British Airways": "British Airways Club", "Air France": "Flying Blue",
+    "KLM": "Flying Blue", "Avianca": "LifeMiles", "LATAM": "LATAM Pass", "Copa": "ConnectMiles",
+}
+
+
+def programa_aerolinea(aerolinea: str, cat: dict) -> str:
+    regla = _regla(cat, "aerolinea", aerolinea, "", "programa")
+    return (regla and regla["valor"]) or PROGRAMAS_AEROLINEA.get(aerolinea) or f"el programa de {aerolinea}"
+
+
 def _lugar(valor) -> dict | None:
     """El lugar de la solicitud llega como texto JSON desde la base o ya como diccionario."""
     lugar = db.de_json(valor, None) if isinstance(valor, str) else valor
@@ -159,15 +175,22 @@ def evaluar(vuelo: dict, tarifa: dict, sol: dict, membresias: list[dict], cat: d
                            "valor": round(prob * tarifa["precio"], 2), "origen": "supuesto"})
             avisos.append("No admite cambios: si la grabación se mueve, se pierde el tiquete.")
 
-    # Millas y cuenta de empresa
+    # Millas y cuenta de empresa: solo resta lo que de verdad se acumula (el viajero es socio o la empresa tiene cuenta)
     regla_acumula = _regla(cat, "aerolinea", aerolinea, "basica", "acumula") if basica else None
     acumula = not (regla_acumula and regla_acumula["valor"] == "no")
     if acumula:
-        valor_milla = supuesto(cat, "valor_milla_usd", 0.012)
-        por_usd = supuesto(cat, "millas_por_usd", 5) + (1 if empresa else 0)
-        etiqueta = "Millas del viajero y de la cuenta de empresa" if empresa else "Millas del viajero"
-        lineas.append({"concepto": f"{etiqueta} ({por_usd:g} por USD a {valor_milla} USD)",
-                       "valor": -round(tarifa["precio"] * por_usd * valor_milla, 2), "origen": "supuesto"})
+        valor_milla, del_viajero = supuesto(cat, "valor_milla_usd", 0.012), supuesto(cat, "millas_por_usd", 5)
+        socio = next((m for m in membresias if m["viajero_id"] and m["entidad"] == aerolinea), None)
+        por_usd = (del_viajero if socio else 0) + (1 if empresa else 0)
+        if por_usd:
+            etiqueta = {(True, True): "Millas del viajero y de la cuenta de empresa", (True, False): "Millas del viajero",
+                        (False, True): "Millas de la cuenta de empresa"}[(bool(socio), bool(empresa))]
+            lineas.append({"concepto": f"{etiqueta} ({por_usd:g} por USD a {valor_milla} USD)",
+                           "valor": -round(tarifa["precio"] * por_usd * valor_milla, 2), "origen": "supuesto"})
+        if not socio:   # una oportunidad, no un ahorro: no resta hasta que la persona se inscriba
+            n = round(tarifa["precio"] * del_viajero)
+            avisos.append(f"Inscribirse en {programa_aerolinea(aerolinea, cat)} es gratis y acumularía "
+                          f"~{f'{n:,}'.replace(',', '.')} millas (≈ {n * valor_milla:.0f} USD).")
     elif basica:
         avisos.append("La tarifa básica de esta aerolínea no acumula millas.")
 
