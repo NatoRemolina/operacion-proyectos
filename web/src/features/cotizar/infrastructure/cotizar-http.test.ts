@@ -97,3 +97,13 @@ describe("adaptador HTTP de cotizar", () => {
   });
 });
 
+
+describe("enlaces que no son de Google", () => {
+  it("no llegan a la pantalla: quedan en null", async () => {
+    const malo = "javascript:alert(1)";
+    const vuelos = COTIZACION_MOAB.vuelos.map((v) => ({ ...v, fuente_url: malo }));
+    const { cotizar } = preparar(respuestaJson({ ...COTIZACION_MOAB, fuente_url: malo, fuente_hoteles_url: "https://evil.example/", vuelos }));
+    const c = await cotizar.obtener(12);
+    expect([c.fuente_url, c.fuente_hoteles_url, c.vuelos[0]!.fuente_url]).toEqual([null, null, null]);
+  });
+});

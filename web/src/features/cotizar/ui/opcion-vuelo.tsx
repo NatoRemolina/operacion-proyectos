@@ -284,6 +284,7 @@ export function OpcionDeVuelo({
             <span aria-hidden="true">↗</span>
           </a>
         )}
+        {vuelo.fuente_url ? (
         <a
           href={vuelo.fuente_url}
           target="_blank"
@@ -298,6 +299,7 @@ export function OpcionDeVuelo({
           Ver en Google Flights
           <span aria-hidden="true">↗</span>
         </a>
+        ) : null}
         <div id={desglose} className={abierto ? "mt-2 flex flex-col gap-4" : ""}>
           {abierto ? (
             <>

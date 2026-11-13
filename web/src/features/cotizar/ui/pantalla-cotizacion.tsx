@@ -768,13 +768,15 @@ function EnlaceFuente({
   variante = "secundario",
   onAbrir,
 }: {
-  href: string;
+  /** null: el enlace no es de google.com/travel y no se pinta. */
+  href: string | null;
   texto: string;
   /** Para distinguir enlaces iguales al leerlos en voz alta (por ejemplo, el nombre del hotel). */
   contexto?: string;
   variante?: "secundario" | "texto";
   onAbrir: () => void;
 }) {
+  if (!href) return null;
   return (
     <a
       href={href}

@@ -140,8 +140,8 @@ export interface OpcionVuelo {
   readonly frente_esperado_pct: number | null;
   /** Costo del vuelo más el del hotel recomendado (una suma, no todas las combinaciones); null sin hotel. */
   readonly total_con_hotel_usd: Dinero;
-  /** Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida. */
-  readonly fuente_url: string;
+  /** Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida. null si no es de Google. */
+  readonly fuente_url: string | null;
   /** Dirección completa que abre la página oficial del vendedor del itinerario (en otra pestaña). */
   readonly vendedor_url: string;
 }
@@ -172,8 +172,8 @@ export interface OpcionHotel {
   readonly membresia_de_ejemplo: boolean;
   readonly descartado: string | null;
   readonly origen_dato: string | null;
-  /** Este hotel en Google Hotels con las fechas de la cotización, para verificar el precio. */
-  readonly fuente_url: string;
+  /** Este hotel en Google Hotels con las fechas de la cotización, para verificar el precio. null si no es de Google. */
+  readonly fuente_url: string | null;
   readonly recomendada: boolean;
   readonly mas_barata: boolean;
 }
@@ -238,10 +238,10 @@ export interface Cotizacion {
     readonly estado_texto: string;
     readonly motivo: string | null;
   } | null;
-  /** La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador. Siempre google.com/travel. */
-  readonly fuente_url: string;
-  /** La búsqueda de hoteles en Google Hotels con las fechas de la cotización. */
-  readonly fuente_hoteles_url: string;
+  /** La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador. null si no es de Google. */
+  readonly fuente_url: string | null;
+  /** La búsqueda de hoteles en Google Hotels con las fechas de la cotización. null si no es de Google. */
+  readonly fuente_hoteles_url: string | null;
   readonly puede_decidir: boolean;
   readonly bloqueo: string | null;
 }
@@ -809,4 +809,30 @@ export function tablasPorVendedor(tarifas: readonly TarifaLeida[], origen: Orige
     tablas.set(t.vendedor, [...(tablas.get(t.vendedor) ?? []), fila]);
   }
   return [...tablas].map(([vendedor, filas]) => ({ vendedor, filas }));
+}
+
+/**
+ * Solo `https://www.google.com/travel/…` (o `google.com`), sin credenciales, puerto, `..` ni caracteres de control: el
+ * mismo criterio que el servidor. Un enlace que no cumple no se pinta.
+ */
+export function esEnlaceGoogle(url: string): boolean {
+  if (!url || /[\s\u0000-\u001f\u007f]/.test(url)) return false;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  let ruta: string;
+  try {
+    ruta = decodeURIComponent(u.pathname);
+  } catch {
+    return false;
+  }
+  return (
+    u.protocol === "https:" &&
+    (u.hostname === "www.google.com" || u.hostname === "google.com") &&
+    !u.port && !u.username && !u.password &&
+    ruta.startsWith("/travel/") && !ruta.split("/").includes("..")
+  );
 }

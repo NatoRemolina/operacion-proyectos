@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { consulta, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
+import { esEnlaceGoogle } from "../domain/cotizar";
 import type {
   AnalisisVuelo,
   Cotizacion,
@@ -7,6 +8,9 @@ import type {
   FormularioCotizacion,
   ListaLugares,
 } from "../domain/cotizar";
+
+/** Un enlace a Google que no es `https://www.google.com/travel/…` no llega a la pantalla. */
+const enlaceGoogle = z.string().transform((u) => (esEnlaceGoogle(u) ? u : null));
 
 const lugarSchema = z.object({
   nombre: z.string(),
@@ -101,7 +105,7 @@ const vueloSchema = z.object({
   esperado_usd: dineroSchema,
   frente_esperado_pct: z.number().int().nullable(),
   total_con_hotel_usd: dineroSchema,
-  fuente_url: z.string(),
+  fuente_url: enlaceGoogle,
   vendedor_url: z.string(),
 });
 
@@ -129,7 +133,7 @@ const hotelSchema = z.object({
   origen_dato: z.string().nullable(),
   recomendada: z.boolean(),
   mas_barata: z.boolean(),
-  fuente_url: z.string(),
+  fuente_url: enlaceGoogle,
 });
 
 const ladoSchema = z.object({ codigo: z.string(), aeropuertos: z.array(z.string()), lugar: lugarSchema.nullable() });
@@ -196,8 +200,8 @@ export const cotizacionSchema = z.object({
     })
     .nullable()
     .default(null),
-  fuente_url: z.string(),
-  fuente_hoteles_url: z.string(),
+  fuente_url: enlaceGoogle,
+  fuente_hoteles_url: enlaceGoogle,
   puede_decidir: z.boolean(),
   bloqueo: z.string().nullable(),
 }) satisfies z.ZodType<Cotizacion>;
@@ -208,7 +212,7 @@ const analisisSchema = z.object({
   opcion_id: z.number().int(),
   estado: z.enum(["pendiente", "listo", "fallido", "no_disponible"]),
   motivo: z.string().nullable(),
-  url: z.string().nullable(),
+  url: enlaceGoogle.nullable(),
   leido: z.string().nullable(),
   duracion_ms: z.number().int().nullable(),
   reutilizado: z.boolean(),

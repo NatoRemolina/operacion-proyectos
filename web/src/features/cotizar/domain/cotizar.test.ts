@@ -188,3 +188,19 @@ describe("todas las opciones de compra", () => {
     expect(tablas[1]!.filas[0]!.mano).toBe("—");
   });
 });
+
+describe("enlaces a Google: solo google.com/travel", () => {
+  it("acepta la búsqueda y rechaza lo demás", async () => {
+    const { esEnlaceGoogle } = await import("./cotizar");
+    expect(esEnlaceGoogle("https://www.google.com/travel/flights?tfs=x")).toBe(true);
+    expect(esEnlaceGoogle("https://google.com/travel/search?q=Moab")).toBe(true);
+    for (const malo of [
+      "javascript:alert(1)", "http://www.google.com/travel/flights", "https://www.google.com.evil.example/travel/",
+      "https://evil.example/travel/flights", "https://www.google.com/url?q=https://evil.example",
+      "https://usuario@www.google.com/travel/flights", "https://www.google.com:444/travel/flights",
+      "https://www.google.com/travel/%2e%2e/url", "https://www.google.com/travel/flights?x=\u0007", "no es url", "",
+    ]) {
+      expect(esEnlaceGoogle(malo), malo).toBe(false);
+    }
+  });
+});
