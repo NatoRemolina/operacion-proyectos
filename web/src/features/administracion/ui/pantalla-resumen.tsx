@@ -114,12 +114,18 @@ function ActividadReciente({ resumen }: { resumen: ResumenAdmin }) {
           hrefFila={(a) => `/gastos/${a.gasto_id}`}
           columnas={[
             { clave: "comercio", encabezado: "Comercio", celda: (a) => a.comercio ?? "Sin comercio leído", principal: true },
-            { clave: "persona", encabezado: "Persona", celda: (a) => a.persona?.nombre ?? "Sin asignar", sinCorte: true },
+            { clave: "persona", encabezado: "Persona", celda: (a) => a.persona?.nombre ?? "Sin asignar" },
             { clave: "viaje", encabezado: "Viaje", celda: (a) => a.viaje?.codigo ?? "Sin viaje", sinCorte: true },
             {
               clave: "importe",
               encabezado: "Importe",
-              celda: (a) => formatearDinero(a.total, a.moneda),
+              // En la columna «Importe» basta «Por confirmar», más corto y en gris: la cifra que falta no compite.
+              celda: (a) =>
+                a.total === null ? (
+                  <span className="text-texto-secundario">Por confirmar</span>
+                ) : (
+                  formatearDinero(a.total, a.moneda)
+                ),
               alinear: "fin",
             },
             {
