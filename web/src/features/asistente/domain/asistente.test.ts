@@ -69,10 +69,14 @@ describe("codificarWav", () => {
 });
 
 describe("según el permiso", () => {
-  it("colaborador y gestor reciben preguntas sobre lo suyo; administración, las de la empresa", () => {
+  it("colaborador pregunta por lo suyo, gestor por su proyecto y administración por la empresa", () => {
     const propias = ["¿Cuánto me queda del presupuesto?", "¿Por qué mi gasto quedó en revisión?", "¿Qué me falta por justificar?"];
     expect(preguntasSugeridas("colaborador")).toEqual(propias);
-    expect(preguntasSugeridas("gestor")).toEqual(propias);
+    expect(preguntasSugeridas("gestor")).toEqual([
+      "¿Cómo va el presupuesto de mi proyecto?",
+      "¿Qué gastos de mi proyecto están en revisión?",
+      "¿Qué me falta por justificar?",
+    ]);
     expect(preguntasSugeridas("admin")).toContain("¿Cómo van los indicadores?");
     expect(preguntasSugeridas("admin").some((p) => propias.includes(p))).toBe(false);
   });

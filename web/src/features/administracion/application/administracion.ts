@@ -30,6 +30,20 @@ export function useResumen() {
 }
 
 /**
+ * Lo que la revisión completa necesita además de la ficha: lectura original, soporte, categorías y
+ * viajes a los que reasignar. Solo administración.
+ */
+export function useDatosRevision(id: number) {
+  const repositorio = useAdministracionRepository();
+  const personaId = usePersonaId();
+  const consulta = useQuery({
+    queryKey: claveDePersona(personaId, "administracion", "revision", id),
+    queryFn: ({ signal }) => repositorio.datosRevision(id, signal),
+  });
+  return { ...consulta, error: consulta.error as ErrorDeAplicacion | null };
+}
+
+/**
  * Caso de uso «decidir un viaje» (aprobar, rechazar, reabrir, cerrar). Al terminar, el detalle del
  * viaje queda con lo que respondió el servidor y las listas y el resumen se vuelven a pedir.
  */
@@ -61,8 +75,9 @@ export function useCambiarEstadoViaje() {
 }
 
 /**
- * Caso de uso «revisar un gasto». Además del gasto revisado devuelve el siguiente en revisión, para
- * seguir con la bandeja sin volver a la lista. Si otra persona lo cambió, se recarga lo último.
+ * Caso de uso «revisar un gasto»: guardar correcciones, aprobar, aprobar con excepción o rechazar.
+ * Además del gasto revisado devuelve el siguiente en revisión, para seguir con la bandeja sin volver
+ * a la lista. Si otra persona lo cambió, se recarga lo último.
  */
 export function useRevisarGasto(id: number) {
   const repositorio = useAdministracionRepository();
@@ -89,7 +104,10 @@ export function useRevisarGasto(id: number) {
       void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion") });
     },
     onError: (error) => {
-      if (error.tipo === "cambio_ajeno") void queryClient.invalidateQueries({ queryKey: claveDetalle });
+      if (error.tipo === "cambio_ajeno") {
+        void queryClient.invalidateQueries({ queryKey: claveDetalle });
+        void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion", "revision", id) });
+      }
     },
   });
 }

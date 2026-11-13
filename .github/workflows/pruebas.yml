@@ -77,7 +77,7 @@ jobs:
         run: npm test
       - name: Síntesis con dominio
         run: npx cdk synth --quiet -c correo=avisos@example.com -c dominio=nataliaremolinarodriguez.com -c zonaId=Z0731422246SUYEGG2Z5R
-      - name: La zona es de la dueña
+      - name: La zona es de la titular de la cuenta
         # La pila importa la zona de Route 53; nunca la crea
         run: "! grep -l '\"AWS::Route53::HostedZone\"' cdk.out/*.template.json"
       - name: Síntesis sin dominio

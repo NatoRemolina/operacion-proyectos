@@ -93,8 +93,9 @@ export function DetalleGasto({
         <dl>
           <Fila termino="Fecha">{formatearFecha(gasto.fecha)}</Fila>
           <Fila termino="Categoría">{etiquetaCategoria(gasto.categoria)}</Fila>
-          <Fila termino="Subtotal">{formatearDinero(gasto.subtotal, moneda)}</Fila>
-          <Fila termino="Impuesto">{formatearDinero(gasto.impuesto, moneda)}</Fila>
+          {/* Subtotal e impuesto son opcionales en un recibo: vacíos no son un importe pendiente */}
+          <Fila termino="Subtotal">{gasto.subtotal === null ? "—" : formatearDinero(gasto.subtotal, moneda)}</Fila>
+          <Fila termino="Impuesto">{gasto.impuesto === null ? "—" : formatearDinero(gasto.impuesto, moneda)}</Fila>
           <Fila termino="Propina">
             {gasto.propina === null ? "Sin propina" : formatearDinero(gasto.propina, moneda)}
           </Fila>

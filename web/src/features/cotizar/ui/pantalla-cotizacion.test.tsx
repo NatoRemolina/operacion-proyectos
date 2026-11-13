@@ -83,6 +83,13 @@ describe("Comparación de una cotización", () => {
     await usuario.click(within(barata).getByText("Ver desglose"));
     expect(within(barata).getByText(/Combustible y peajes desde SLC/)).toBeInTheDocument();
     expect(within(barata).getByText(dinero("-24.90"))).toBeInTheDocument();
+    // en el celular, la tabla no parte los importes ni las palabras («USD 415,0 / 0», «Supue / sto»)
+    const tabla = within(barata).getByRole("table", { name: /Desglose del costo total esperado/ });
+    expect(tabla).toHaveClass("[overflow-wrap:normal]");
+    for (const fila of within(tabla).getAllByRole("row").slice(1)) {
+      const celdas = within(fila).getAllByRole("cell");
+      for (const celda of celdas.slice(-2)) expect(celda).toHaveClass("whitespace-nowrap");
+    }
 
     const descartes = screen.getByText(`Vuelos descartados (${COTIZACION_MOAB.descartados.length})`);
     await usuario.click(descartes);

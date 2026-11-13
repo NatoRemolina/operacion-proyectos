@@ -69,6 +69,7 @@ Reglas:
 1. Toda cifra sale de una herramienta exacta: viajes_de (presupuesto_usd, gastado_aprobado_usd, en_revision_usd y
    queda_usd), gastos_de o detalle_gasto. Nunca sumes ni inventes cifras; usa las que devuelven las herramientas.
 2. La herramienta buscar solo sirve para encontrar textos por su significado; confirma los importes con detalle_gasto.
+   Si gestiona proyectos, viajes_de y gastos_de aceptan el proyecto (nombre o número): úsalos para «mi proyecto».
 3. Cita la fuente por su código: viajes como V-2026-0001, gastos como «gasto #7».
 4. Las herramientas solo devuelven lo que esta persona puede ver. Si pregunta por otra persona, por un gasto o un viaje
    que no aparece o por cifras de toda la empresa, dile con amabilidad que solo puedes ver lo suyo. Los indicadores de
@@ -129,7 +130,12 @@ FALTA_JUSTIFICACION = "La justificación: para qué fue el gasto (es opcional y 
 FALTA_FOTO = "Una foto más clara del recibo completo."
 
 SUGERIDAS = {"admin": ("¿Cómo van los indicadores?", "¿Quién mencionó el parqueadero?", "¿Cuál es el gasto real aprobado?"),
+             "gestor": ("¿Cómo va el presupuesto de mi proyecto?", "¿Qué gastos de mi proyecto están en revisión?",
+                        "¿Qué me falta por justificar?"),
              "persona": ("¿Cuánto me queda del presupuesto?", "¿Por qué mi gasto quedó en revisión?", "¿Qué me falta por justificar?")}
+# Palabras de los nombres de cuenta que no identifican a nadie: «Gestión de proyecto (demo)», «Administración (demo)»
+NO_SON_NOMBRES = {"proyecto", "proyectos", "gestion", "gestor", "gestora", "administracion", "colaborador", "colaboradora",
+                  "demo", "cuenta", "equipo"}
 
 
 # ---------- alcance: lo que puede ver quien pregunta ----------
@@ -316,14 +322,60 @@ def personas_en_texto(texto: str, alcance: Alcance) -> list[dict]:
         if nombre and f" {nombre} " in q:
             halladas.add(u["id"])
     if not halladas:
+        # Ni las palabras de cuenta («proyecto», «demo») ni las de un proyecto («Summerlin») son un nombre de pila
+        de_proyectos = {w for pr in _proyectos_visibles(alcance) for w in memoria.normalizar(pr["nombre"]).split()}
         pilas: dict[str, list[int]] = {}
         for u in usuarios:
             for parte in memoria.normalizar(u["nombre"]).split():
-                if len(parte) >= 4 and parte not in memoria.VACIAS:
+                if len(parte) >= 4 and parte not in memoria.VACIAS | NO_SON_NOMBRES | de_proyectos:
                     pilas.setdefault(parte, []).append(u["id"])
         halladas = {ids[0] for parte, ids in pilas.items() if len(ids) == 1 and f" {parte} " in q}
     filas = {u["id"]: u for u in usuarios}
     return [_persona_de_fila(filas[i]) for i in sorted(halladas) if i in filas]
+
+
+def _proyectos_visibles(alcance: Alcance) -> list[dict]:
+    """Administración ve todos los proyectos; el gestor, los que gestiona; el colaborador, ninguno como proyecto."""
+    if alcance.admin:
+        return db.todos("select id, nombre from proyectos order by id")
+    if alcance.rol != "gestor" or not alcance.proyectos:
+        return []
+    ids = ",".join(str(int(p)) for p in alcance.proyectos)
+    return db.todos(f"select id, nombre from proyectos where id in ({ids}) order by id")
+
+
+_MI_PROYECTO = re.compile(r"\bmis? proyectos?\b")
+
+
+def proyectos_en_texto(texto: str, alcance: Alcance) -> list[dict]:
+    """Proyectos visibles que la pregunta nombra: por su nombre completo o por una palabra que solo tiene un proyecto
+    («Summerlin»). Para el gestor, «mi proyecto» son los que gestiona."""
+    q = f" {memoria.normalizar(texto)} "
+    visibles = _proyectos_visibles(alcance)
+    if alcance.rol == "gestor" and _MI_PROYECTO.search(q):
+        return visibles
+    hallados = [pr for pr in visibles if f" {memoria.normalizar(pr['nombre'])} " in q]
+    if not hallados:   # la palabra es única entre todos los proyectos, no solo entre los visibles («aéreo» no basta)
+        palabras_: dict[str, list[int]] = {}
+        for pr in db.todos("select id, nombre from proyectos"):
+            for parte in set(memoria.normalizar(pr["nombre"]).split()):
+                if len(parte) >= 4 and parte not in memoria.VACIAS | NO_SON_NOMBRES:
+                    palabras_.setdefault(parte, []).append(pr["id"])
+        ids = {ids_[0] for parte, ids_ in palabras_.items() if len(ids_) == 1 and f" {parte} " in q}
+        hallados = [pr for pr in visibles if pr["id"] in ids]
+    return hallados
+
+
+def resolver_proyecto(texto, alcance: Alcance) -> dict | None:
+    """Un proyecto visible por su número, su nombre o una palabra de su nombre; ajeno o ambiguo, ninguno."""
+    texto = str(texto or "").strip()
+    visibles = _proyectos_visibles(alcance)
+    if texto.isdigit():
+        return next((pr for pr in visibles if pr["id"] == int(texto)), None)
+    buscado = memoria.normalizar(texto)
+    exactos = [pr for pr in visibles if memoria.normalizar(pr["nombre"]) == buscado]
+    parecidos = exactos or [pr for pr in visibles if buscado and set(buscado.split()) <= set(memoria.normalizar(pr["nombre"]).split())]
+    return parecidos[0] if len(parecidos) == 1 else None
 
 
 def _viaje_id(texto) -> int | None:
@@ -368,7 +420,7 @@ def preguntas_sugeridas(usuario: dict | None) -> list[str]:
     alcance = Alcance(usuario)
     if not alcance.valido:
         return []
-    return list(SUGERIDAS["admin" if alcance.admin else "persona"])
+    return list(SUGERIDAS["admin" if alcance.admin else "gestor" if alcance.rol == "gestor" else "persona"])
 
 
 def _o_yo(r: Rastro, persona) -> str:
@@ -390,14 +442,31 @@ def h_persona(r: Rastro, codigo_o_nombre: str = "", **_) -> dict:
     return {**{k: p[k] for k in ("codigo", "nombre", "rol", "activa")}, "viajes": n["viajes"], "gastos": n["gastos"]}
 
 
-def h_viajes_de(r: Rastro, persona: str = "", **_) -> dict:
+def h_viajes_de(r: Rastro, persona: str = "", proyecto: str = "", **_) -> dict:
+    cond, par = r.alcance.sql("v")
+    if str(proyecto or "").strip() and not str(persona or "").strip():
+        pr = resolver_proyecto(proyecto, r.alcance)
+        if not pr:
+            return {"error": "No encontré ese proyecto entre los que puedes ver; usa su nombre o su número."}
+        filas = viajes.lista(f"v.proyecto_id=:_pr and {cond}", _pr=pr["id"], **par)
+        salida = _viajes_salida(r, filas, con_titular=True)
+        con_presupuesto = [v for v in filas if v["estado"] in ("aprobado", "cerrado") and v["presupuesto_usd"]]
+        previsto = sum(v["presupuesto_usd"] for v in con_presupuesto)
+        gastado = sum(v["gastado"] or 0 for v in con_presupuesto)
+        return {"proyecto": pr["nombre"], "viajes": salida, "totales": {
+            "viajes": len(filas), "viajes_aprobados": len(con_presupuesto), "presupuesto_aprobado_usd": round(previsto, 2),
+            "gastado_aprobado_usd": round(gastado, 2), "en_revision_usd": round(sum(v["en_revision"] or 0 for v in filas), 2),
+            "queda_usd": round(previsto - gastado, 2)}}
     p, candidatos = resolver_persona(_o_yo(r, persona), r.alcance)
     if not p:
         return {"error": "Indica una persona válida (P-…).", "candidatos": [c["codigo"] for c in candidatos]}
     r.persona(p)
+    return {"persona": p["codigo"], "viajes": _viajes_salida(r, viajes.lista(f"v.usuario_id=:u and {cond}", u=p["id"], **par))}
+
+
+def _viajes_salida(r: Rastro, filas: list[dict], con_titular: bool = False) -> list[dict]:
     salida = []
-    cond, par = r.alcance.sql("v")
-    for v in viajes.lista(f"v.usuario_id=:u and {cond}", u=p["id"], **par):
+    for v in filas:
         r.viaje(v["id"], v["codigo"])
         presupuesto, gastado, en_revision = v["presupuesto_usd"], v["gastado"] or 0, v["en_revision"] or 0
         salida.append({"viaje": v["codigo"], "ruta": f"{v['origen'] or '?'} → {v['destino'] or '?'}", "ida": v["ida"], "regreso": v["regreso"],
@@ -406,14 +475,21 @@ def h_viajes_de(r: Rastro, persona: str = "", **_) -> dict:
                        "queda_usd": round(presupuesto - gastado, 2) if presupuesto is not None else None,
                        "queda_si_se_aprueba_lo_en_revision_usd": round(presupuesto - gastado - en_revision, 2) if presupuesto is not None else None,
                        "numero_de_gastos": v["n_gastos"], "motivo": v["motivo"],
-                       "cotizacion": f"#{v['solicitud_id']}" if v.get("solicitud_id") else None})
-    return {"persona": p["codigo"], "viajes": salida}
+                       "cotizacion": f"#{v['solicitud_id']}" if v.get("solicitud_id") else None,
+                       **({"titular": viajes.codigo_persona(v["usuario_id"]) if v["usuario_id"] else None} if con_titular else {})})
+    return salida
 
 
-def _filtro_gastos(r: Rastro, persona: str = "", viaje: str = "", estado: str = "") -> tuple[str, dict, dict] | dict:
+def _filtro_gastos(r: Rastro, persona: str = "", viaje: str = "", estado: str = "", proyecto: str = "") -> tuple[str, dict, dict] | dict:
     limite, par = r.alcance.sql("g")
     cond, alcance = [limite], {}
-    if not persona and not viaje:
+    if str(proyecto or "").strip():
+        pr = resolver_proyecto(proyecto, r.alcance)
+        if not pr:
+            return {"error": "No encontré ese proyecto entre los que puedes ver; usa su nombre o su número."}
+        cond.append("(g.proyecto_id=:_pr or g.viaje_id in (select id from viajes where proyecto_id=:_pr))"); par["_pr"] = pr["id"]
+        alcance["proyecto"] = pr
+    if not persona and not viaje and not alcance:
         persona = _o_yo(r, persona)
     if persona:
         p, _ = resolver_persona(persona, r.alcance)
@@ -434,8 +510,8 @@ def _filtro_gastos(r: Rastro, persona: str = "", viaje: str = "", estado: str = 
     return " and ".join(cond), par, alcance
 
 
-def h_gastos_de(r: Rastro, persona: str = "", viaje: str = "", estado: str = "", **_) -> dict:
-    filtro = _filtro_gastos(r, persona, viaje, estado)
+def h_gastos_de(r: Rastro, persona: str = "", viaje: str = "", estado: str = "", proyecto: str = "", **_) -> dict:
+    filtro = _filtro_gastos(r, persona, viaje, estado, proyecto)
     if isinstance(filtro, dict):
         return filtro
     donde, par, alcance = filtro
@@ -504,7 +580,7 @@ def h_kpi(r: Rastro, nombre: str = "", filtros: dict | None = None, **_) -> dict
     if str(nombre or "").strip().lower() in ("todos", "tablero"):   # todo el tablero en una consulta, como la pantalla de KPIs
         filas = kpis.evaluar(f)
         return {"filtros": f, "nota": "Al responder, nombra cada indicador por su «titulo»; «nombre» es la clave interna.",
-                "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos")},
+                "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos", "fuera de rango")},
                 "indicadores": [{"nombre": k["nombre"], "titulo": k["titulo"], "valor": k["valor"], "unidad": k["unidad"], "meta": k["meta"],
                                  "umbral_alerta": k["alerta"], "sentido": k["sentido"], "semaforo": k["estado"]} for k in filas]}
     res = metricas.valor(nombre, f)
@@ -583,10 +659,14 @@ def _fuente_de_ficha(r: Rastro, f: dict):
 HERRAMIENTAS = {
     "persona": (h_persona, "Identifica a una persona por su código (P-0002) o su nombre. Devuelve código, rol y cuántos viajes y gastos tiene.",
                 {"codigo_o_nombre": {"type": "STRING"}}, ["codigo_o_nombre"]),
-    "viajes_de": (h_viajes_de, "Viajes de una persona como titular: código, ruta, fechas, estado, presupuesto y gasto aprobado y en revisión (cifras exactas).",
-                  {"persona": {"type": "STRING", "description": "Código P-… o nombre"}}, ["persona"]),
-    "gastos_de": (h_gastos_de, "Gastos exactos de una persona o de un viaje, con totales por estado. Estado opcional: aprobado_auto, aprobado, revision, rechazado.",
-                  {"persona": {"type": "STRING"}, "viaje": {"type": "STRING", "description": "Código V-AAAA-NNNN"}, "estado": {"type": "STRING"}}, []),
+    "viajes_de": (h_viajes_de, "Viajes de una persona como titular, o de un proyecto con sus totales: código, ruta, fechas, estado, "
+                               "presupuesto y gasto aprobado y en revisión (cifras exactas).",
+                  {"persona": {"type": "STRING", "description": "Código P-… o nombre"},
+                   "proyecto": {"type": "STRING", "description": "Nombre o número del proyecto, en lugar de la persona"}}, []),
+    "gastos_de": (h_gastos_de, "Gastos exactos de una persona, de un viaje o de un proyecto, con totales por estado. Estado opcional: "
+                               "aprobado_auto, aprobado, revision, rechazado.",
+                  {"persona": {"type": "STRING"}, "viaje": {"type": "STRING", "description": "Código V-AAAA-NNNN"},
+                   "proyecto": {"type": "STRING", "description": "Nombre o número del proyecto"}, "estado": {"type": "STRING"}}, []),
     "detalle_gasto": (h_detalle_gasto, "Todos los campos de un gasto por su número, con alertas e historial.", {"id": {"type": "INTEGER"}}, ["id"]),
     "kpi": (h_kpi, "Valor de un indicador del catálogo de métricas (por ejemplo gasto_real, pendientes_revision, ejecucion_presupuesto).",
             {"nombre": {"type": "STRING"}, "filtros": {"type": "OBJECT", "properties": {
@@ -657,7 +737,8 @@ def _con_modelo(pregunta: str, r: Rastro) -> str:
 # ---------- sin modelo ----------
 GENERICAS = set(memoria.palabras("""reportado reporto reportes reporte viaje viajes gasto gastos persona personas tiene tienen hecho ultimo
 ultimos todo todos lista dame ver cuales sobre informacion registrado registro piloto pilotos gestor administrador cargado cargo
-menciono menciona mencionaron dijo dice escribio comento hablo nota notas mensaje mensajes""")) | {"que", "ha"}
+menciono menciona mencionaron dijo dice escribio comento hablo nota notas mensaje mensajes proyecto proyectos llevamos lleva
+llevan gastado gastados gastamos gastaron""")) | {"que", "ha"}
 
 
 def _linea_gasto(g: dict) -> str:
@@ -747,6 +828,44 @@ def _explicar(r: Rastro, p: dict, intenciones: set[str]) -> list[str]:
     return lineas
 
 
+def _explicar_proyecto(r: Rastro, pr: dict, intenciones: set[str]) -> list[str]:
+    """Un proyecto con las mismas herramientas: presupuesto de sus viajes aprobados, lo que está en revisión y lo que falta."""
+    res = ejecutar(r, "viajes_de", {"proyecto": str(pr["id"])})
+    if "error" in res:
+        return [res["error"]]
+    t, lineas = res["totales"], [f"Proyecto {pr['nombre']}."]
+    if not intenciones or "presupuesto" in intenciones:
+        queda = (f"quedan {t['queda_usd']:.2f} USD" if t["queda_usd"] >= 0
+                 else f"el presupuesto se superó en {-t['queda_usd']:.2f} USD")
+        lineas.append(f"{t['viajes']} viaje(s), {t['viajes_aprobados']} con presupuesto aprobado: presupuesto "
+                      f"{t['presupuesto_aprobado_usd']:.2f} USD · gastado aprobado {t['gastado_aprobado_usd']:.2f} USD · "
+                      f"en revisión {t['en_revision_usd']:.2f} USD; {queda}.")
+        for v in res["viajes"][:MAX_EXPLICADOS]:
+            lineas.append(f"- Viaje {v['viaje']} · {v['titular'] or 'sin titular'} · {v['ruta']} · {v['estado']} · presupuesto "
+                          f"{v['presupuesto_usd'] or 0:.2f} USD · gastado aprobado {v['gastado_aprobado_usd']:.2f} USD · "
+                          f"en revisión {v['en_revision_usd']:.2f} USD.")
+        if len(res["viajes"]) > MAX_EXPLICADOS:
+            lineas.append(f"(Se muestran los {MAX_EXPLICADOS} viajes más recientes de {len(res['viajes'])}.)")
+    if "revision" in intenciones:
+        gastos_ = ejecutar(r, "gastos_de", {"proyecto": str(pr["id"]), "estado": "revision"}).get("gastos", [])
+        if not gastos_:
+            lineas.append("Ningún gasto del proyecto está en revisión.")
+        else:
+            lineas.append("En revisión (administración los mira y decide):")
+            lineas += [_linea_gasto(g) + (f"\n  Motivos: {'; '.join(g['motivos'])}." if g["motivos"] else "")
+                       for g in sorted(gastos_, key=lambda g: -int(g["gasto"][1:]))[:2 * MAX_EXPLICADOS]]
+            if len(gastos_) > 2 * MAX_EXPLICADOS:
+                lineas.append(f"(Se muestran {2 * MAX_EXPLICADOS} de {len(gastos_)} en revisión.)")
+    if "justificar" in intenciones:
+        faltan = [g for g in ejecutar(r, "gastos_de", {"proyecto": str(pr["id"])}).get("gastos", []) if g["falta"]]
+        lineas.append("Gastos del proyecto a los que les falta algo:" if faltan else "A ningún gasto del proyecto le falta nada.")
+        lineas += [f"{_linea_gasto(g)}\n  Falta: {' '.join(g['falta'])}" for g in faltan[:2 * MAX_EXPLICADOS]]
+    if not intenciones:
+        lineas.append("Gastos:")
+        lineas += _bloque_gastos(r, proyecto=str(pr["id"]))
+    return lineas
+
+
 def _determinista(pregunta: str, r: Rastro) -> str:
     """Resuelve los códigos y nombres de la pregunta contra la base y lista sus hechos con cifras exactas.
 
@@ -779,11 +898,13 @@ def _determinista(pregunta: str, r: Rastro) -> str:
             f"Presupuesto {v['presupuesto_usd'] or 0:.2f} USD · gastado aprobado {v['gastado'] or 0:.2f} USD · en revisión {v['en_revision'] or 0:.2f} USD.",
             *_bloque_gastos(r, viaje=v["codigo"])]))
     personas = personas_en_texto(pregunta, r.alcance) if not viajes_ids or _P.search(pregunta) else []
+    proyectos = proyectos_en_texto(pregunta, r.alcance) if not (gastos_ids or viajes_ids) else []
     nombrados = {int(m.group(1)) for m in _P.finditer(pregunta)}
     for i in sorted(nombrados - {p["id"] for p in personas})[:3]:   # ajena o inexistente: la misma respuesta
         partes.append(f"No encontré a la persona {viajes.codigo_persona(i)}.")
-    if not r.alcance.admin and not (gastos_ids or viajes_ids or personas or nombrados):
+    if not r.alcance.admin and not (gastos_ids or viajes_ids or personas or nombrados or proyectos):
         personas = [p for p in [resolver_persona(r.alcance.mi_codigo(), r.alcance)[0]] if p]   # «lo mío»
+        proyectos = _proyectos_visibles(r.alcance)   # el gestor ve además lo de los proyectos que gestiona
     q = memoria.normalizar(pregunta)
     intenciones = {k for k, patron in _INTENCION.items() if patron.search(q)}
     for p in personas[:3]:
@@ -797,8 +918,11 @@ def _determinista(pregunta: str, r: Rastro) -> str:
         lineas.append("Gastos:")
         lineas += _bloque_gastos(r, persona=p["codigo"])
         partes.append("\n".join(lineas))
+    for pr in proyectos[:3]:
+        partes.append("\n".join(_explicar_proyecto(r, pr, intenciones)))
     # Una pregunta por el presupuesto, la revisión o lo que falta ya quedó respondida: no se busca en los textos libres
-    usadas = set(memoria.palabras(pregunta)) if intenciones and personas else set()
+    usadas = set(memoria.palabras(pregunta)) if intenciones and (personas or proyectos) else set()
+    usadas |= {t for pr in proyectos for t in memoria.palabras(pr["nombre"])}
     if not r.alcance.admin:   # los indicadores de la empresa son solo para administración
         if _TABLERO.search(q) or any(memoria.normalizar(t) in q for t, *_x in metricas.CATALOGO.values()):
             partes.append(SOLO_ADMIN_KPI)
@@ -806,8 +930,9 @@ def _determinista(pregunta: str, r: Rastro) -> str:
     elif _TABLERO.search(q):   # «¿cómo van los indicadores?»: el tablero completo, como la pantalla de KPIs
         t = ejecutar(r, "kpi", {"nombre": "todos"})
         res = t["resumen"]
-        lineas = [f"Tablero de indicadores: {res['rojo']} en rojo, {res['ambar']} en ámbar, {res['verde']} en verde y {res['sin datos']} sin datos."]
-        for estado, texto in (("rojo", "En rojo"), ("ambar", "En ámbar")):
+        lineas = [f"Tablero de indicadores: {res['rojo']} en rojo, {res['ambar']} en ámbar, {res['verde']} en verde y {res['sin datos']} sin datos."
+                  + (f" {res['fuera de rango']} con un valor imposible (fuera de rango): revisar sus datos." if res["fuera de rango"] else "")]
+        for estado, texto in (("rojo", "En rojo"), ("ambar", "En ámbar"), ("fuera de rango", "Fuera de rango")):
             lineas += [f"- {texto}: {k['titulo']}: {_cifra(k['valor'], k['unidad'])} (meta {_cifra(k['meta'], k['unidad'])})."
                        for k in t["indicadores"] if k["semaforo"] == estado]
         partes.append("\n".join(lineas))

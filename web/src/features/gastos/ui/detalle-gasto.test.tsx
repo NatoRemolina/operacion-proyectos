@@ -70,3 +70,20 @@ describe("Categoría en el detalle", () => {
     expect(screen.getByText("Transporte terrestre: taxi, bus, tren, aplicación")).toBeInTheDocument();
   });
 });
+
+describe("Datos opcionales del recibo", () => {
+  it("un impuesto o un subtotal vacío se muestra como «—»; solo el total sin leer está por confirmar", () => {
+    const { rerender } = render(
+      <DetalleGasto
+        gasto={gastoDePrueba({ estado: "aprobado_auto", subtotal: null, impuesto: null, propina: null, total: "32.50" })}
+        urlOriginal={null}
+      />,
+    );
+    const valor = (termino: string) => screen.getByText(termino, { selector: "dt" }).nextElementSibling;
+    expect(valor("Impuesto")).toHaveTextContent(/^—$/);
+    expect(valor("Subtotal")).toHaveTextContent(/^—$/);
+    expect(screen.queryByText("Importe por confirmar")).not.toBeInTheDocument();
+    rerender(<DetalleGasto gasto={gastoDePrueba({ estado: "revision", total: null })} urlOriginal={null} />);
+    expect(valor("Total")).toHaveTextContent("Importe por confirmar");
+  });
+});

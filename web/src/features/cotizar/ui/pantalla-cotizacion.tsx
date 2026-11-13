@@ -594,7 +594,7 @@ function DesgloseHotel({ h, className = "" }: { h: OpcionHotel; className?: stri
   return (
     <details className={`text-sm ${className}`}>
       <summary className="cursor-pointer text-texto-secundario">Ver desglose</summary>
-      <table className="mt-1 w-full">
+      <table className="mt-1 w-full [overflow-wrap:normal]">
         <caption className="sr-only">Desglose del costo total de {h.nombre}</caption>
         <tbody>
           {h.lineas.map((l) => (

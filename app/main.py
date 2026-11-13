@@ -18,7 +18,7 @@ from datos.semilla import sembrar
 
 from . import config, rutas, web
 from .api_v1 import CODIGO_HTTP, MENSAJE_HTTP, ErrorApi, respuesta_error
-from .servicios import acceso
+from .servicios import acceso, interfaz
 from .web import AQUI, SOLO_ADMIN, _asegurar, _error_registrado, _pagina_error
 
 app = FastAPI(title="Operación de proyectos", redoc_url=None)
@@ -41,6 +41,9 @@ if config.PREPARAR_BASE_LOCAL:
 async def control_de_acceso(request: Request, call_next):
     """Identifica a quien llama y aplica el nivel de la ruta antes de ejecutar nada."""
     ruta = request.url.path
+    if interfaz.activa() and (nueva := interfaz.destino(ruta)):
+        # Las pantallas anteriores se retiraron: cada una lleva a su equivalente en la web
+        return RedirectResponse(nueva, status_code=303 if request.method not in ("GET", "HEAD") else 302)
     necesario = acceso.nivel(ruta)
     request.state.peticion = secrets.token_hex(6)
     es_v1 = ruta.startswith(acceso.API_V1)

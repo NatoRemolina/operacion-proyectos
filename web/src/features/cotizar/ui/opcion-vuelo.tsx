@@ -80,7 +80,8 @@ export function Horario({ vuelo }: { vuelo: OpcionVuelo }) {
 function Desglose({ vuelo }: { vuelo: OpcionVuelo }) {
   return (
     <div className="flex flex-col gap-2">
-      <table className="w-full text-sm">
+      {/* El cuerpo parte en cualquier punto (overflow-wrap: anywhere): en la tabla los importes y el origen no se parten */}
+      <table className="w-full text-sm [overflow-wrap:normal]">
         <caption className="sr-only">Desglose del costo total esperado de {nombreVuelo(vuelo)}</caption>
         <thead>
           <tr className="text-left text-texto-secundario">
@@ -93,8 +94,8 @@ function Desglose({ vuelo }: { vuelo: OpcionVuelo }) {
           {vuelo.lineas.map((l) => (
             <tr key={l.concepto} className="border-t border-linea">
               <td className="py-1.5 pr-2">{l.concepto}</td>
-              <td className="py-1.5 pr-2 text-texto-secundario">{ORIGEN_LINEA[l.origen] ?? l.origen}</td>
-              <td className="py-1.5 text-right tabular-nums">{formatearDinero(l.valor_usd)}</td>
+              <td className="whitespace-nowrap py-1.5 pr-2 text-texto-secundario">{ORIGEN_LINEA[l.origen] ?? l.origen}</td>
+              <td className="whitespace-nowrap py-1.5 text-right tabular-nums">{formatearDinero(l.valor_usd)}</td>
             </tr>
           ))}
         </tbody>
@@ -103,7 +104,7 @@ function Desglose({ vuelo }: { vuelo: OpcionVuelo }) {
             <th scope="row" colSpan={2} className="py-1.5 text-left">
               Costo total esperado
             </th>
-            <td className="py-1.5 text-right font-bold tabular-nums">{formatearDinero(vuelo.costo_total_usd)}</td>
+            <td className="whitespace-nowrap py-1.5 text-right font-bold tabular-nums">{formatearDinero(vuelo.costo_total_usd)}</td>
           </tr>
         </tfoot>
       </table>

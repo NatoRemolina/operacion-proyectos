@@ -93,15 +93,16 @@ export interface PeriodoContable {
 }
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
-const dia = (fecha: Date) =>
-  `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${String(fecha.getDate()).padStart(2, "0")}`;
+/** La zona de la empresa, la misma con la que el servidor arma el periodo por omisión. */
+const ZONA_EMPRESA = "America/New_York";
 
-/** El mes en curso en la fecha local de quien mira (no en UTC: a las 23:00 en Miami ya es otro día en UTC). */
-export function mesEnCurso(hoy: Date = new Date()): PeriodoContable {
-  return {
-    desde: dia(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
-    hasta: dia(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)),
-  };
+/**
+ * El año en curso, del 1 de enero al 31 de diciembre, en la hora de la empresa (como el servidor). Con solo el mes,
+ * los recibos de un viaje del mes siguiente quedaban fuera del libro.
+ */
+export function anioEnCurso(hoy: Date = new Date()): PeriodoContable {
+  const anio = new Intl.DateTimeFormat("en-US", { timeZone: ZONA_EMPRESA, year: "numeric" }).format(hoy);
+  return { desde: `${anio}-01-01`, hasta: `${anio}-12-31` };
 }
 
 /** `null` si el periodo se puede descargar; si no, qué corregir. Las mismas reglas que el servidor. */

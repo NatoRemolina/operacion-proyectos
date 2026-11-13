@@ -1,4 +1,5 @@
-"""API v1: gastos visibles para la persona, envío de un recibo, su archivo original y la revisión de administración.
+"""API v1: gastos visibles para la persona, envío de un recibo, su archivo original, la nota de voz de una
+justificación y la revisión de administración (con lo que necesita para revisar: lectura original, soporte y opciones).
 
 Contrato en `contracts/api-v1.md`.
 """
@@ -10,9 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
-from ..api_v1.esquemas import Dinero, EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, errores
-from ..servicios import acceso, consultas, contable, dinero, envios, justificaciones, revision, viajes
+from ..api_v1.esquemas import Dinero, EstadoGasto, EstadoViaje, GastoDetalle, ListaGastos, NuevaJustificacion, errores
+from ..servicios import acceso, almacen, consultas, contable, dinero, envios, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
+from .gastos import original_legible
 
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
 
@@ -48,6 +50,63 @@ class RevisionGasto(BaseModel):
     metodo_pago: str | None = Field(None, max_length=200)
     canal_reserva: str | None = Field(None, max_length=200)
     viaje_id: int | None = Field(None, ge=0, description="Omitido conserva el viaje; 0 lo quita.")
+
+
+class LecturaOriginal(BaseModel):
+    """Lo que leyó el modelo del recibo, intacto: las correcciones de la revisión no lo cambian."""
+    comercio: str | None
+    fecha: str | None
+    categoria: str | None
+    subtotal: Dinero
+    impuesto: Dinero
+    propina: Dinero
+    total: Dinero
+    moneda: str | None
+    metodo_pago: str | None
+    canal_reserva: str | None
+    confianza: float | None
+    dudas: list[str] = Field(description="Campos de los que la lectura no estaba segura.")
+
+
+class SoporteRevision(BaseModel):
+    documento_id: int
+    nombre: str | None
+    forma: Literal["imagen", "pdf", "descarga"] = Field(
+        description="Cómo mostrarlo: `imagen` y `pdf` se ven al lado; `descarga` (correo .eml o confirmación HTML "
+                    "guardada como texto) se ofrece para descargar. El archivo sale de `/documentos/{id}/contenido`.")
+
+
+class Categoria(BaseModel):
+    clave: str
+    nombre: str
+
+
+class ViajeAsignable(BaseModel):
+    id: int
+    codigo: str
+    estado: EstadoViaje
+    estado_texto: str
+    titular: str | None
+    origen: str | None
+    destino: str | None
+    ida: str | None
+    regreso: str | None
+
+
+class DatosRevision(BaseModel):
+    """Lo que la revisión de administración necesita además de la ficha del gasto (`GET /gastos/{id}`)."""
+    gasto_id: int
+    version: int = Field(description="La misma `version` del gasto; la revisión la manda de vuelta.")
+    metodo_pago: str | None
+    canal_reserva: str | None
+    lectura_original: LecturaOriginal | None = Field(description="null si la lectura falló o el gasto no viene de un recibo leído.")
+    soporte: SoporteRevision | None = Field(description="null si el gasto no tiene archivo original guardado.")
+    categorias: list[Categoria]
+    viajes: list[ViajeAsignable] = Field(description="Viajes a los que se puede reasignar: todos salvo los rechazados, "
+                                                     "el más reciente primero.")
+    propio: bool = Field(description="Es de quien revisa: nadie revisa lo suyo.")
+    aviso_propio: str | None = Field(description="Si es propio, por qué no se revisa y si hay otra persona de "
+                                                 "administración que pueda hacerlo.")
 
 
 def marcar_propios(items: list[dict], yo: dict) -> list[dict]:
@@ -88,6 +147,22 @@ def _campos(datos: RevisionGasto) -> dict:
     return campos
 
 
+def _forma_soporte(mime: str | None) -> str:
+    if mime in ("image/jpeg", "image/png", "image/webp"):
+        return "imagen"
+    return "pdf" if mime == "application/pdf" else "descarga"
+
+
+def _lectura_original(extraido: str | None) -> dict | None:
+    x = db.de_json(extraido, None) if extraido else None
+    if not isinstance(x, dict):
+        return None
+    importes = {c: consultas.dinero(x.get(c)) if isinstance(x.get(c), int | float) else None
+                for c in ("subtotal", "impuesto", "propina", "total")}
+    return {**{c: x.get(c) for c in ("comercio", "fecha", "categoria", "moneda", "metodo_pago", "canal_reserva")},
+            **importes, "confianza": x.get("confianza"), "dudas": [str(d) for d in x.get("dudas") or []]}
+
+
 def _no_encontrado() -> ErrorApi:
     return ErrorApi(404, "NOT_FOUND", MENSAJE_HTTP[404])
 
@@ -106,16 +181,16 @@ def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, pagina
     **errores(401, 403, 404, 422),
     200: {"description": "El libro (.xlsx) con las hojas «Gastos» y «Resumen»", "content": {contable.TIPO_XLSX: {}}}})
 def libro_contable(request: Request,
-                   desde: str | None = Query(None, description="AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York)."),
-                   hasta: str | None = Query(None, description="AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York)."),
+                   desde: str | None = Query(None, description="AAAA-MM-DD, por la fecha del recibo. Por omisión, el 1 de enero del año en curso (hora de Nueva York)."),
+                   hasta: str | None = Query(None, description="AAAA-MM-DD, incluido. Por omisión, el 31 de diciembre del año en curso (hora de Nueva York)."),
                    proyecto_id: int | None = Query(None, ge=1, le=contable.MAXIMO_ID,
                                                    description="Opcional. Solo administración o quien gestiona el proyecto."),
                    yo: dict = Depends(persona)):
     """Excel contable de los gastos aprobados (`aprobado` y `aprobado_auto`) del periodo, con el alcance de la sesión:
     administración, todo; quien gestiona, sus proyectos y lo suyo; el resto, solo lo suyo. Un `proyecto_id` que la
     persona no gestiona responde 403, exista o no. Va antes de `/gastos/{id}` para que «contable» no se lea como id."""
-    mes = contable.mes_en_curso()
-    desde, hasta = desde or mes[0], hasta or mes[1]
+    anio = contable.anio_en_curso()
+    desde, hasta = desde or anio[0], hasta or anio[1]
     try:
         contenido = contable.libro(yo, desde, hasta, proyecto_id, enlace_base=contable.origen_publico(str(request.base_url)))
     except contable.SinPermiso as e:
@@ -180,6 +255,28 @@ def enviar(response: Response, archivo: UploadFile = File(..., description="Foto
     return _revisable(yo, gid)
 
 
+@router.get("/gastos/{id}/revision", response_model=DatosRevision, responses=errores(401, 403, 404, 422))
+def datos_revision(id: int, yo: dict = Depends(persona)):
+    """Solo administración: la lectura original, cómo mostrar el soporte, las categorías y los viajes a los que se
+    puede reasignar. Las mismas opciones que la revisión de las pantallas de administración."""
+    if not acceso.es_admin(yo):
+        raise ErrorApi(403, "FORBIDDEN", "Esta operación es solo para administración.")
+    g = db.uno("""select g.*, d.id doc, d.nombre archivo, d.mime from gastos g left join documentos d on d.id=g.documento_id
+                  where g.id=:i""", i=id)
+    if not g:
+        raise _no_encontrado()
+    propio = viajes.gasto_propio_de(g, yo)
+    aviso = None
+    if propio:
+        aviso = viajes.NO_AUTORREVISAR + ("" if viajes.hay_otro_admin(yo) else
+                                          " Hace falta otra persona de administración para revisarlo: mientras tanto queda pendiente.")
+    return {"gasto_id": id, "version": g["version"] or 0, "metodo_pago": g["metodo_pago"], "canal_reserva": g["canal_reserva"],
+            "lectura_original": _lectura_original(g["extraido"]),
+            "soporte": {"documento_id": g["doc"], "nombre": g["archivo"], "forma": _forma_soporte(g["mime"])} if g["doc"] else None,
+            "categorias": [{"clave": c, "nombre": n} for c, n in config.CATEGORIAS.items()],
+            "viajes": viajes.lista("v.estado<>'rechazado'"), "propio": propio, "aviso_propio": aviso}
+
+
 @router.post("/gastos/{id}/revision", response_model=GastoRevisable, responses=errores(401, 403, 404, 409, 422))
 def revisar(id: int, datos: RevisionGasto, yo: dict = Depends(escritura)):
     """Revisión de administración, con las mismas reglas que la web: versión esperada, nadie revisa lo suyo,
@@ -215,6 +312,21 @@ def justificar(id: int, cuerpo: NuevaJustificacion, yo: dict = Depends(escritura
     return _revisable(yo, id)
 
 
+@router.get("/gastos/{id}/justificaciones/{jid}/audio", response_class=Response, responses={
+    **errores(401, 404, 422), 200: {"description": "La nota de voz tal como llegó", "content": {"audio/*": {}}}})
+def audio_justificacion(id: int, jid: int, yo: dict = Depends(persona)):
+    """La nota de voz de una justificación. Se oye si se ve el gasto; si no, 404, como el resto de lo ajeno."""
+    if not consultas.gasto(yo, id):
+        raise _no_encontrado()
+    d = db.uno("""select d.ruta, d.mime from justificaciones j join documentos d on d.id=j.documento_id
+                  where j.id=:j and j.gasto_id=:g and j.tipo='audio'""", j=jid, g=id)
+    contenido = almacen.leer(d["ruta"]) if d and d["ruta"] else None
+    if contenido is None:
+        raise _no_encontrado()
+    return Response(contenido, media_type=d["mime"] if (d["mime"] or "").startswith("audio/") else "application/octet-stream",
+                    headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+
+
 @router.get("/documentos/{id}/contenido", response_class=Response, responses={
     **errores(401, 404, 422),
     200: {"description": "El archivo original", "content": {t: {} for t in (*consultas.TIPOS_EN_LINEA, "text/plain")}}})
@@ -223,8 +335,9 @@ def contenido(id: int, yo: dict = Depends(persona)):
     archivo = consultas.contenido_documento(yo, id)
     if not archivo:
         raise _no_encontrado()
-    datos, tipo = archivo
+    datos, _ = archivo
     d = db.uno("select mime, nombre from documentos where id=:i", i=id)
+    datos, tipo = original_legible(datos, d["mime"])   # un correo: su adjunto o su texto, nunca el MIME crudo
     return Response(datos, media_type=tipo, headers={
         "Content-Disposition": soportes.disposicion(d["mime"], d["nombre"]), "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",

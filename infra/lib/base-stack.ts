@@ -33,7 +33,7 @@ export class BaseStack extends Stack {
     }
     this.avisos.addSubscription(new subs.EmailSubscription(correo));
     // El presupuesto no va aquí: es el de la cuenta («cuenta-mensual», 5 USD al mes con avisos al 50, 80 y 100 % y al
-    // pronóstico), creado por la dueña fuera de CDK, como la zona del dominio. Uno solo evita avisos repetidos.
+    // pronóstico), creado por la titular de la cuenta fuera de CDK, como la zona del dominio. Uno solo evita avisos repetidos.
 
     new CfnOutput(this, "SecretoArn", { value: this.secreto.secretArn });
   }

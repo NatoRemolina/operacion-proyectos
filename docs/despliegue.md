@@ -1,6 +1,6 @@
 # Despliegue en AWS
 
-Orden completo para publicar o actualizar la plataforma: respaldo, migración, secreto, revisión del cambio, despliegue, Telegram, comprobaciones y vuelta atrás. **Cada paso que escribe en AWS o en la base publicada lo aprueba la dueña antes de correrlo**, y el `cdk diff` del paso 4 se le muestra completo.
+Orden completo para publicar o actualizar la plataforma: respaldo, migración, secreto, revisión del cambio, despliegue, Telegram, comprobaciones y vuelta atrás. **Cada paso que escribe en AWS o en la base publicada lo aprueba la responsable del proyecto antes de correrlo**, y el `cdk diff` del paso 4 se le muestra completo.
 
 Las tres pilas de `infra/`:
 
@@ -10,7 +10,7 @@ Las tres pilas de `infra/`:
 | `OperacionApp` | La API (FastAPI y pantallas Jinja) en una función con su dirección, y sus alarmas | `Url`, `Funcion` |
 | `OperacionWeb` | La web nueva y administración detrás de CloudFront, el bucket de estáticos, el certificado y los registros de los dos subdominios (ADR 0002) | `UrlWeb`, `UrlAdmin`, `FuncionWeb`, `BucketEstaticos` |
 
-**Lo que es de la dueña y CDK no crea ni borra:** la zona de Route 53 de `nataliaremolinarodriguez.com` (`Z0731422246SUYEGG2Z5R`), con el dominio raíz y `www` reservados para su página personal, y el presupuesto de la cuenta «cuenta-mensual» (5 USD al mes, avisos al 50, 80 y 100 % y al pronóstico, por correo). Las pilas no crean otro presupuesto, para no repetir avisos.
+**Lo que es de la cuenta y CDK no crea ni borra:** la zona de Route 53 de `nataliaremolinarodriguez.com` (`Z0731422246SUYEGG2Z5R`), con el dominio raíz y `www` reservados para otro sitio, y el presupuesto de la cuenta «cuenta-mensual» (5 USD al mes, avisos al 50, 80 y 100 % y al pronóstico, por correo). Las pilas no crean otro presupuesto, para no repetir avisos.
 
 ## Antes de empezar
 
@@ -30,7 +30,7 @@ Cada paso dice dónde corre, y todos van en la misma terminal (usan estas variab
 
 - **Por qué una carpeta limpia:** a la imagen de la API solo entran `requirements.txt`, `app/` y `datos/` (`.dockerignore`), y la web sale de `web/`. Si en `app/` o `datos/` hay algo sin versionar (por ejemplo, una respuesta del buscador pagada y sin revisar), o un cambio sin guardar en un commit en `app/`, `datos/`, `requirements.txt` o `Dockerfile`, la síntesis de `OperacionApp` se detiene y lo nombra.
 - **Docker en marcha:** CDK construye en este equipo las dos imágenes y los estáticos de la web.
-- **Credenciales de AWS de la dueña**, región `us-east-1`: `export AWS_PROFILE=operacion AWS_REGION=us-east-1` (sin la región, las órdenes de `aws` fallan si el perfil no la trae) y `aws sts get-caller-identity` para ver la cuenta. La cuenta ya tiene el *bootstrap* de CDK de despliegues anteriores; en una cuenta nueva se hace una vez, con `(cd infra && npx cdk bootstrap aws://<cuenta>/us-east-1)`.
+- **Credenciales de AWS de la cuenta**, región `us-east-1`: `export AWS_PROFILE=operacion AWS_REGION=us-east-1` (sin la región, las órdenes de `aws` fallan si el perfil no la trae) y `aws sts get-caller-identity` para ver la cuenta. La cuenta ya tiene el *bootstrap* de CDK de despliegues anteriores; en una cuenta nueva se hace una vez, con `(cd infra && npx cdk bootstrap aws://<cuenta>/us-east-1)`.
 - **Archivos locales, fuera de git, en `$PRINCIPAL`:**
   - `.env.supabase-publicada`: la base publicada por el agrupador de **sesión (puerto 5432)**, para el respaldo y la migración (`docs/respaldo.md`).
   - `.env.produccion`: lo que va al secreto. La misma base, el almacenamiento, el buscador, el modelo, el asesor, Pinecone y Telegram. `ORIGENES_WEB` solo hace falta si se publica sin dominio (paso 5).
@@ -90,7 +90,7 @@ En la salida, mirar la línea de las claves que se conservan del secreto: si tra
 
 El ensayo muestra las claves que subiría, sin valores y sin contactar AWS. **Exige `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRETO` en el archivo** (los del bot de producción) y se detiene si falta alguno: el paso 6 registra el webhook con ese mismo archivo, así el secreto de la función y el del webhook son iguales. Si Telegram no se publica ahora, se agrega `--sin-telegram` a las dos órdenes: no exige esas claves, no toca las que ya tenga el secreto, y el paso 6 se salta. La carga de verdad lee el secreto de `OperacionBase`, reemplaza las claves que el archivo trae con valor, conserva las demás y retira `APP_CLAVE`. Se niega a subir el proyecto de pruebas de Supabase, que reconoce por `$PRINCIPAL/.env.supabase-pruebas` (sin ese archivo no sigue). La base va al agrupador de transacción (6543). Si `OperacionBase` no existiera aún (cuenta nueva), se despliega primero (paso 5) y se vuelve aquí.
 
-## 4. Revisión del cambio, aprobada por la dueña
+## 4. Revisión del cambio, aprobada por la responsable del proyecto
 
 **En `$PUBLICAR`.** CDK corre dentro de `infra/`, en una subcapa para no cambiar de carpeta:
 
@@ -105,7 +105,7 @@ Qué debe mostrar:
 - **OperacionApp:** la imagen nueva, `ORIGENES_WEB` en la función (`https://software.nataliaremolinarodriguez.com`), el filtro de métrica de las líneas `ERROR peticion=` y las alarmas `ErroresDeLaAplicacion` y `Respuestas5xx`. Se añade también la exportación de la dirección de la API, que importa OperacionWeb, y pueden cambiar los permisos de invocación de la dirección. La función y su dirección se **actualizan**: si el diff dice que alguna se reemplaza, no se despliega.
 - **OperacionWeb:** todo nuevo. Un certificado, dos distribuciones, el bucket, la función de la web y cuatro registros: A y AAAA de `software.` y de `admin.software.`. **No debe aparecer** ningún `AWS::Route53::HostedZone` ni ningún registro de `nataliaremolinarodriguez.com` ni de `www`.
 
-Sin la aprobación de la dueña sobre este diff, no se sigue.
+Sin la aprobación de la responsable del proyecto sobre este diff, no se sigue.
 
 ## 5. Despliegue, una pila a la vez
 

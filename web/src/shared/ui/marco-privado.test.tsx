@@ -57,6 +57,10 @@ describe("Marco privado", () => {
       "Cotizar viaje",
       "Viajes",
       "Gastos",
+      "KPIs",
+      "Monitoreo",
+      "Vuelos",
+      "Reglas y supuestos",
       "Proyectos",
       "Usuarios",
     ]);

@@ -21,8 +21,8 @@ from .. import config, db
 from . import acceso, consultas, eventos, exportacion, viajes
 
 ESTADOS_LIBRO = ("aprobado", "aprobado_auto")
-# Supuesto: el mes en curso se cuenta en la hora del este de EE. UU. (la de Miami). En UTC, la hora de la nube, desde
-# las 19:00 o 20:00 de Miami del último día del mes ya sería el mes siguiente.
+# Supuesto: el mes y el año en curso se cuentan en la hora del este de EE. UU. (la de Miami). En UTC, la hora de la nube,
+# desde las 19:00 o 20:00 de Miami del último día del mes ya sería el mes siguiente.
 ZONA_EMPRESA = ZoneInfo("America/New_York")
 TIPO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -43,7 +43,7 @@ CUENTAS = {
 SIN_CUENTA = "Sin cuenta asignada"
 
 # Pasos de la bitácora que dejan un gasto aprobado, según quién lo aprobó
-APROBADO_EN_REVISION = ("corregido y aprobado", "aprobado con excepción")
+APROBADO_EN_REVISION = ("corregido y aprobado", "aprobado en revisión", "aprobado con excepción")
 APROBADO_POR_REGLAS = ("aprobado sin intervención", "asignado a viaje")
 APROBACION_AUTOMATICA = "Automática (reglas de validación)"
 
@@ -130,6 +130,13 @@ def mes_en_curso(hoy: date | None = None) -> tuple[str, str]:
     hoy = hoy or _ahora().astimezone(ZONA_EMPRESA).date()
     ultimo = calendar.monthrange(hoy.year, hoy.month)[1]
     return date(hoy.year, hoy.month, 1).isoformat(), date(hoy.year, hoy.month, ultimo).isoformat()
+
+
+def anio_en_curso(hoy: date | None = None) -> tuple[str, str]:
+    """Del 1 de enero al 31 de diciembre del año de `hoy`; sin él, el año en curso en la zona de la empresa. Es el
+    periodo por omisión del libro: con un mes, los recibos del mes siguiente (un viaje próximo) quedaban fuera."""
+    hoy = hoy or _ahora().astimezone(ZONA_EMPRESA).date()
+    return date(hoy.year, 1, 1).isoformat(), date(hoy.year, 12, 31).isoformat()
 
 
 def _fecha(valor, campo: str, cual: str) -> date:

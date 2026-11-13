@@ -5,7 +5,8 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import db
-from ..servicios import acceso, eventos, usuarios, viajes
+from ..servicios import acceso, usuarios, viajes
+from ..servicios import reglas as catalogo_reglas
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -95,33 +96,19 @@ def cargo_cambiar(cid: int, accion: str = Form(...), nombre: str = Form(""), act
 
 
 # ---------- catálogo de reglas ----------
+# La lógica vive en `servicios/reglas.py`, la misma que usa la API v1 (`/api/v1/reglas`).
 @router.get("/reglas", response_class=HTMLResponse)
 def reglas(request: Request, aviso: str = ""):
     return plantillas.TemplateResponse(request, "reglas.html", _ctx(aviso=aviso[:200],
-        reglas=db.todos("select * from reglas order by ambito, entidad, clave"),
-        membresias=db.todos("select m.*, v.nombre viajero from membresias m left join viajeros v on v.id=m.viajero_id order by m.id")))
+        reglas=catalogo_reglas.todas(), membresias=catalogo_reglas.membresias()))
 
 
 @router.post("/reglas/{rid}")
 def regla_guardar(rid: int, valor: str = Form(...)):
-    actual = db.uno("select * from reglas where id=:i", i=rid)
-    if not actual:
-        return NO_ENCONTRADO
-    valor = valor.strip()
-    if _es_numero(actual["valor"]):
-        # Una regla numérica sigue siendo numérica: «1,08» se guarda como 1.08 y «80 USD» se rechaza
-        normal = valor.replace(",", ".")
-        if not _es_numero(normal) or float(normal) < 0:
-            return RedirectResponse(f"/reglas?aviso={quote(f'«{valor[:30]}» no es un número válido para {actual['clave']}. No se guardó.')}#r{rid}", status_code=303)
-        valor = normal
-    db.actualizar("reglas", rid, valor=valor, verificado=db.ahora()[:10])
-    eventos.registrar("regla", rid, "regla editada", f"{actual['clave']}: {actual['valor']} → {valor[:80]}", _yo().get("nombre", "usuario"))
-    return RedirectResponse(f"/reglas?aviso={quote('Regla guardada: ' + actual['clave'] + '.')}#r{rid}", status_code=303)
-
-
-def _es_numero(texto) -> bool:
     try:
-        float(str(texto))
-        return True
-    except ValueError:
-        return False
+        regla = catalogo_reglas.editar(rid, valor, _yo().get("nombre", "usuario"))
+    except LookupError:
+        return NO_ENCONTRADO
+    except catalogo_reglas.ReglaInvalida as e:
+        return RedirectResponse(f"/reglas?aviso={quote(str(e))}#r{rid}", status_code=303)
+    return RedirectResponse(f"/reglas?aviso={quote('Regla guardada: ' + regla['clave'] + '.')}#r{rid}", status_code=303)
