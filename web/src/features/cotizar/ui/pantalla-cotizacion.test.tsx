@@ -279,6 +279,7 @@ describe("Comparación de una cotización", () => {
   });
 
   it("los hoteles se ordenan por costo total con la fidelización: recomendado, el más barato, descartes y total del viaje", async () => {
+    const usuario = userEvent.setup();
     const tru: OpcionHotel = {
       id: 90, nombre: "Tru by Hilton Moab", noche_usd: "81.00", total_usd: "243.00", costo_total_usd: "219.31",
       lineas: [
@@ -309,14 +310,19 @@ describe("Comparación de una cotización", () => {
     const hoteles = screen.getByRole("group", { name: "Hotel (opcional)" });
     const opciones = within(hoteles).getAllByRole("radio");
     expect(opciones).toHaveLength(3);   // sin hotel, Tru y el independiente; el descartado no se elige
-    const filaTru = within(hoteles).getByText("Tru by Hilton Moab").closest("label")!;
-    expect(within(filaTru).getByText("Recomendado")).toBeInTheDocument();
+    // el nombre accesible de la opción es solo el hotel y su costo total; distintivos y avisos quedan como descripción
+    const radioTru = within(hoteles).getByRole("radio", { name: `Tru by Hilton Moab, costo total ${dinero("219.31")}` });
+    expect(radioTru).toHaveAccessibleDescription(/Recomendado.*Hilton Honors · socio.*Dato de ejemplo/);   // membresía inventada
+    const radioIndependiente = within(hoteles).getByRole("radio", { name: `Independiente Moab, costo total ${dinero("225.00")}` });
+    expect(radioIndependiente).toHaveAccessibleDescription(/El más barato/);
+    const filaTru = radioTru.closest("li")!;
     expect(within(filaTru).getByText(dinero("219.31"))).toBeInTheDocument();
-    expect(within(filaTru).getByText("Hilton Honors · socio")).toBeInTheDocument();
-    expect(within(filaTru).getByText("Dato de ejemplo")).toBeInTheDocument();   // la membresía es inventada
-    expect(within(filaTru).getByText("Tarifa de miembro (−5 %)")).toBeInTheDocument();
-    const filaIndependiente = within(hoteles).getByText("Independiente Moab").closest("label")!;
-    expect(within(filaIndependiente).getByText("El más barato")).toBeInTheDocument();
+    // el desglose plegable no está dentro del label: abrirlo no elige el hotel
+    const resumen = within(filaTru).getByText("Ver desglose");
+    expect(resumen.closest("label")).toBeNull();
+    await usuario.click(resumen);
+    expect(within(filaTru).getByText("Tarifa de miembro (−5 %)")).toBeVisible();
+    expect(radioTru).not.toBeChecked();
     expect(screen.getByText("Motel Barato")).toBeInTheDocument();
     expect(screen.getByText("Calificación 3.2, por debajo del mínimo de 3.5.")).toBeInTheDocument();
   });

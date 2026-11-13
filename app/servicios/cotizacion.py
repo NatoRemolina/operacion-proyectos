@@ -316,7 +316,9 @@ def comparacion(sid: int) -> dict | None:
                            "origen_tarifas": t.get("origen"), "capturado": o["capturado"], "tarifas_lista": t.get("lista") or []})
         else:
             ev_h = costo.evaluar_hotel(datos, membresias, cat, costo.noches(sol["ida"], sol["regreso"]))
-            hoteles.append({"id": o["id"], "h": datos, "origen_dato": o["origen_dato"], "programa": ev_h["programa"], "ev": ev_h})
+            # la calificación queda como número (o sin dato) para la página, la API, el asistente y la foto de lo mostrado
+            hoteles.append({"id": o["id"], "h": {**datos, "calificacion": ev_h["calificacion"]}, "origen_dato": o["origen_dato"],
+                            "programa": ev_h["programa"], "ev": ev_h})
     # Precio esperado según el modelo (solo si hay un modelo utilizable)
     _, _, n_origen, n_destino = precios.ruta(codigos(sol, "origen"), codigos(sol, "destino"))
     ref = db.uno("select tipico_min, tipico_max from observaciones where busqueda=:b limit 1",
@@ -436,12 +438,17 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     # Las líneas del vuelo van al grupo «vuelo»; las de traslado conservan el suyo (traslados o combustible)
     lineas = [{**l, "grupo": l.get("grupo") or "vuelo"} for l in vuelo["ev"]["lineas"]]
     if hotel:
-        # Lo que se paga: la tarifa y, con membresía, la tarifa de miembro. Los puntos son valor esperado, como las millas:
-        # quedan en `hotel_evaluado` para la ficha y no entran al presupuesto
+        # Las líneas del hotel evaluado, para que el total sea el de la comparación. Los puntos son valor esperado, como
+        # las millas: llevan `valor_esperado` y `viajes.presupuesto_de` no los cuenta como dinero
         lineas.append({"concepto": f"Hotel: {hotel['h']['nombre']} ({c['noches']} noches)", "valor": hotel["ev"]["tarifa"],
                        "origen": "buscador", "grupo": "hotel"})
-        lineas += [{**l, "concepto": f"Hotel: tarifa de miembro {hotel['programa']} {l['concepto'].removeprefix('Tarifa de miembro ')}",
-                    "grupo": "hotel"} for l in hotel["ev"]["lineas"] if l["concepto"].startswith("Tarifa de miembro")]
+        for l in hotel["ev"]["lineas"]:
+            if l["concepto"].startswith("Tarifa de miembro"):
+                lineas.append({**l, "grupo": "hotel", "concepto":
+                               f"Hotel: tarifa de miembro {hotel['programa']} {l['concepto'].removeprefix('Tarifa de miembro ')}"})
+            elif l["concepto"].startswith("Puntos del programa"):
+                lineas.append({**l, "grupo": "hotel", "valor_esperado": True, "concepto":
+                               f"Hotel: puntos de {hotel['programa']} {l['concepto'].removeprefix('Puntos del programa ')}"})
     if c["carro"]:
         lineas.append({"concepto": f"Carro de alquiler ({c['noches']} días x {c['sol']['carro_dia']:.0f})",
                        "valor": c["carro"], "origen": "supuesto", "grupo": "alquiler_carro"})

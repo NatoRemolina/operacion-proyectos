@@ -156,18 +156,27 @@ HOY_HOTEL = "2026-11-13"
 PROGRAMAS_HOTEL = [
     # programa, fuente, marcas, puntos por USD, valor del punto (USD), descuento de miembro
     ("Marriott Bonvoy", "https://www.marriott.com/loyalty.mi",
-     "Marriott, Courtyard, Residence Inn, Fairfield, SpringHill, Sheraton, Westin, W, Moxy, AC Hotel, Aloft, Four Points, "
-     "Renaissance", "10", "0.008", "0.05"),
+     "Marriott, Courtyard, Residence Inn, Fairfield Inn (al inicio), Fairfield by Marriott, SpringHill, Sheraton, Westin, W, "
+     "Moxy, AC Hotel, Aloft, Four Points, Renaissance (al inicio)", "10", "0.008", "0.05"),
     ("Hilton Honors", "https://www.hilton.com/en/hilton-honors/",
      "Hilton, Hampton, DoubleTree, Embassy Suites, Homewood, Home2, Tru, Curio, Tapestry, Conrad, Waldorf", "10", "0.005", "0.05"),
     ("World of Hyatt", "https://world.hyatt.com/", "Hyatt", "5", "0.017", "0.05"),
     ("IHG One Rewards", "https://www.ihg.com/onerewards/",
      "Holiday Inn, Crowne Plaza, InterContinental, Staybridge, Candlewood, Kimpton, Indigo, avid", "10", "0.005", "0.05"),
     ("ALL Accor", "https://all.accor.com/",
-     "Novotel, Ibis, Mercure, Pullman, Sofitel, Fairmont, Swissôtel, MGallery", "2.3", "0.022", "0.05"),
+     "Novotel, Ibis, Mercure, Pullman (al inicio), Sofitel, Fairmont (al inicio), Swissôtel, MGallery", "2.3", "0.022", "0.05"),
 ]
+# Marcas de la primera versión del catálogo: si la base aún las tiene sin editar, la semilla pone las de arriba
+MARCAS_HOTEL_ANTERIORES = {
+    "Marriott Bonvoy": "Marriott, Courtyard, Residence Inn, Fairfield, SpringHill, Sheraton, Westin, W, Moxy, AC Hotel, Aloft, "
+                       "Four Points, Renaissance",
+    "ALL Accor": "Novotel, Ibis, Mercure, Pullman, Sofitel, Fairmont, Swissôtel, MGallery",
+}
+NOTA_MARCAS_ANTERIOR = "Marcas que se reconocen en el nombre del hotel, separadas por comas (sin distinguir mayúsculas ni tildes)."
 NOTAS_HOTEL = {
-    "marcas": "Marcas que se reconocen en el nombre del hotel, separadas por comas (sin distinguir mayúsculas ni tildes).",
+    "marcas": "Marcas que se reconocen en el nombre del hotel, separadas por comas (sin distinguir mayúsculas ni tildes). "
+              "Una marca con «(al inicio)» solo cuenta si el nombre empieza con ella: sirve para marcas que también son "
+              "ciudades, como Pullman.",
     "puntos_por_usd": "Puntos base que acumula un miembro por dólar pagado, solo con reserva directa.",
     "valor_punto_usd": "Valor de referencia de un punto en USD (supuesto editable).",
     "descuento_miembro": "Tarifa de miembro: descuento sobre la tarifa (0.05 = 5 %).",
@@ -190,9 +199,17 @@ def asegurar_fidelizacion_hotel():
     for programa, fuente, marcas, puntos, valor_punto, descuento in PROGRAMAS_HOTEL:
         valores = {"marcas": marcas, "puntos_por_usd": puntos, "valor_punto_usd": valor_punto, "descuento_miembro": descuento}
         for clave, valor in valores.items():
-            if not db.uno("select id from reglas where ambito='hotel' and entidad=:e and clave=:c", e=programa, c=clave):
+            fila = db.uno("select id, valor, nota from reglas where ambito='hotel' and entidad=:e and clave=:c",
+                          e=programa, c=clave)
+            if not fila:
                 db.insertar("reglas", ambito="hotel", entidad=programa, tarifa="", clave=clave, valor=valor,
                             nota=NOTAS_HOTEL[clave], fuente=fuente, confianza="supuesto", verificado=HOY_HOTEL)
+            elif clave == "marcas":
+                cambios = {"valor": valor} if fila["valor"] == MARCAS_HOTEL_ANTERIORES.get(programa) else {}
+                if fila["nota"] == NOTA_MARCAS_ANTERIOR:
+                    cambios["nota"] = NOTAS_HOTEL[clave]
+                if cambios:
+                    db.actualizar("reglas", fila["id"], **cambios)
     for clave, valor, nota in SUPUESTOS_HOTEL:
         if not db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
             db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor, nota=nota,

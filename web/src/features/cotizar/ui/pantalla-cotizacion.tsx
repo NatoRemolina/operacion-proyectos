@@ -547,7 +547,12 @@ function borrarDecision(clave: string) {
 
 const ORIGEN_LINEA_HOTEL: Record<string, string> = { buscador: "Buscador", supuesto: "Supuesto" };
 
-function FilaHotel({ h, noches }: { h: OpcionHotel; noches: number }) {
+function nombreHotel(h: OpcionHotel): string {
+  return `${h.nombre}, costo total ${formatearDinero(h.costo_total_usd)}`;
+}
+
+/** Encabezado de un hotel: nombre, costo total, distintivos y avisos. Va dentro del label del botón de opción. */
+function FilaHotel({ h, noches, idDescripcion }: { h: OpcionHotel; noches: number; idDescripcion?: string }) {
   return (
     <span className="flex min-w-0 flex-1 flex-col gap-1.5">
       <span className="flex flex-wrap items-baseline justify-between gap-x-4">
@@ -564,39 +569,80 @@ function FilaHotel({ h, noches }: { h: OpcionHotel; noches: number }) {
           </span>
         </span>
       </span>
-      {h.recomendada || h.mas_barata || h.programa ? (
-        <span className="flex flex-wrap gap-1.5">
-          {h.recomendada ? <Distintivo tono="exito">Recomendado</Distintivo> : null}
-          {h.mas_barata ? <Distintivo tono="marca">El más barato</Distintivo> : null}
-          {h.programa ? <Distintivo>{h.socio ? `${h.programa} · socio` : h.programa}</Distintivo> : null}
-          {h.socio && h.membresia_de_ejemplo ? <Distintivo tono="aviso">Dato de ejemplo</Distintivo> : null}
-        </span>
-      ) : null}
-      {h.avisos.map((a) => (
-        <span key={a} className="text-sm text-texto-secundario">
-          {a}
-        </span>
-      ))}
-      {h.lineas.length > 1 ? (
-        <details className="text-sm">
-          <summary className="cursor-pointer text-texto-secundario">Ver desglose</summary>
-          <table className="mt-1 w-full">
-            <caption className="sr-only">Desglose del costo total de {h.nombre}</caption>
-            <tbody>
-              {h.lineas.map((l) => (
-                <tr key={l.concepto} className="border-t border-linea">
-                  <td className="py-1 pr-2">
-                    {l.concepto}
-                    <span className="block text-xs text-texto-secundario">{ORIGEN_LINEA_HOTEL[l.origen] ?? l.origen}</span>
-                  </td>
-                  <td className="whitespace-nowrap py-1 text-right align-top tabular-nums">{formatearDinero(l.valor_usd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
-      ) : null}
+      <span id={idDescripcion} className="flex flex-col gap-1.5">
+        {h.recomendada || h.mas_barata || h.programa ? (
+          <span className="flex flex-wrap gap-1.5">
+            {h.recomendada ? <Distintivo tono="exito">Recomendado</Distintivo> : null}
+            {h.mas_barata ? <Distintivo tono="marca">El más barato</Distintivo> : null}
+            {h.programa ? <Distintivo>{h.socio ? `${h.programa} · socio` : h.programa}</Distintivo> : null}
+            {h.socio && h.membresia_de_ejemplo ? <Distintivo tono="aviso">Dato de ejemplo</Distintivo> : null}
+          </span>
+        ) : null}
+        {h.avisos.map((a) => (
+          <span key={a} className="text-sm text-texto-secundario">
+            {a}
+          </span>
+        ))}
+      </span>
     </span>
+  );
+}
+
+/** Desglose plegable del costo total. Va fuera del label: abrirlo no elige el hotel. */
+function DesgloseHotel({ h, className = "" }: { h: OpcionHotel; className?: string }) {
+  if (h.lineas.length <= 1) return null;
+  return (
+    <details className={`text-sm ${className}`}>
+      <summary className="cursor-pointer text-texto-secundario">Ver desglose</summary>
+      <table className="mt-1 w-full">
+        <caption className="sr-only">Desglose del costo total de {h.nombre}</caption>
+        <tbody>
+          {h.lineas.map((l) => (
+            <tr key={l.concepto} className="border-t border-linea">
+              <td className="py-1 pr-2">
+                {l.concepto}
+                <span className="block text-xs text-texto-secundario">{ORIGEN_LINEA_HOTEL[l.origen] ?? l.origen}</span>
+              </td>
+              <td className="whitespace-nowrap py-1 text-right align-top tabular-nums">{formatearDinero(l.valor_usd)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
+function OpcionDeHotel({
+  h,
+  noches,
+  nombreGrupo,
+  elegido,
+  onElegir,
+}: {
+  h: OpcionHotel;
+  noches: number;
+  nombreGrupo: string;
+  elegido: boolean;
+  onElegir: () => void;
+}) {
+  const descripcion = useId();
+  return (
+    <li className={`flex flex-col gap-1.5 rounded-tarjeta border bg-superficie p-3 ${elegido ? "border-2 border-marca" : "border-linea"}`}>
+      <label className="flex cursor-pointer items-start gap-3">
+        <input
+          type="radio"
+          name={nombreGrupo}
+          className="mt-0.5 size-5 shrink-0 accent-marca"
+          checked={elegido}
+          onChange={onElegir}
+          aria-label={nombreHotel(h)}
+          aria-describedby={descripcion}
+        />
+        <FilaHotel h={h} noches={noches} idDescripcion={descripcion} />
+      </label>
+      {/* alineado con el texto, no con el botón (size-5 + gap-3) */}
+      <DesgloseHotel h={h} className="pl-8" />
+    </li>
   );
 }
 
@@ -649,8 +695,9 @@ function Hoteles({
         <p className="text-sm text-texto-secundario">{EXPLICACION_HOTELES}</p>
         <ul className="flex flex-col gap-2">
           {c.hoteles.map((h) => (
-            <li key={h.id} className="flex rounded-tarjeta border border-linea bg-superficie p-3">
+            <li key={h.id} className="flex flex-col gap-1.5 rounded-tarjeta border border-linea bg-superficie p-3">
               <FilaHotel h={h} noches={c.noches} />
+              <DesgloseHotel h={h} />
             </li>
           ))}
         </ul>
@@ -667,15 +714,18 @@ function Hoteles({
           <input type="radio" name={nombre} className="size-5 accent-marca" checked={hotelId === null} onChange={() => onElegir(null)} />
           Sin hotel
         </label>
-        {c.hoteles.map((h) => (
-          <label
-            key={h.id}
-            className={`flex cursor-pointer items-start gap-3 rounded-tarjeta border bg-superficie p-3 ${hotelId === h.id ? "border-2 border-marca" : "border-linea"}`}
-          >
-            <input type="radio" name={nombre} className="mt-0.5 size-5 shrink-0 accent-marca" checked={hotelId === h.id} onChange={() => onElegir(h.id)} />
-            <FilaHotel h={h} noches={c.noches} />
-          </label>
-        ))}
+        <ul className="flex flex-col gap-2">
+          {c.hoteles.map((h) => (
+            <OpcionDeHotel
+              key={h.id}
+              h={h}
+              noches={c.noches}
+              nombreGrupo={nombre}
+              elegido={hotelId === h.id}
+              onElegir={() => onElegir(h.id)}
+            />
+          ))}
+        </ul>
       </fieldset>
       <HotelesDescartados hoteles={c.hoteles_descartados} />
     </div>

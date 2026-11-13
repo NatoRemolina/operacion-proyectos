@@ -116,6 +116,45 @@ def test_reconoce_la_marca_sin_mayusculas_ni_tildes(cat):
     assert costo.programa_hotel("Hotel York House Lisboa", cat) is None
 
 
+def test_marcas_que_tambien_son_ciudades_solo_cuentan_al_inicio(cat):
+    from app.servicios import costo
+    casos = {"Fairfield Inn & Suites Denver Downtown": "Marriott Bonvoy",
+             "Fairfield by Marriott Inn & Suites Lisboa": "Marriott Bonvoy",
+             "Renaissance Denver Downtown City Center Hotel": "Marriott Bonvoy",
+             "Pullman Paris Tour Eiffel": "ALL Accor", "Fairmont Royal York": "ALL Accor",
+             "The Fairmont San Francisco": "ALL Accor",
+             "Hampton Inn Pullman": "Hilton Honors"}   # en la ciudad de Pullman, el hotel es de su marca
+    assert {n: (costo.programa_hotel(n, cat) or {}).get("nombre") for n in casos} == casos
+    # la ciudad o un hotel independiente con ese nombre no son la marca
+    for nombre in ("Best Western Plus Fairfield Inn", "Quality Inn Paradise Creek Pullman", "Comfort Inn Fairmont",
+                   "Hotel Boutique Renaissance", "Comfort Suites Fairfield"):
+        assert costo.programa_hotel(nombre, cat) is None, nombre
+    # el catálogo muestra la marca limpia; la condición queda aparte
+    accor = next(p for p in costo.programas_hotel(cat) if p["nombre"] == "ALL Accor")
+    assert "Pullman" in accor["marcas"] and "Pullman" in accor["al_inicio"] and "Novotel" not in accor["al_inicio"]
+
+
+def test_la_semilla_actualiza_las_marcas_que_nadie_edito(cliente):
+    from app import db
+    from datos import semilla
+
+    def marcas(entidad):
+        return db.uno("select id, valor from reglas where ambito='hotel' and entidad=:e and clave='marcas'", e=entidad)
+    accor = marcas("ALL Accor")["valor"]
+    try:
+        db.actualizar("reglas", marcas("Marriott Bonvoy")["id"], valor=semilla.MARCAS_HOTEL_ANTERIORES["Marriott Bonvoy"])
+        db.actualizar("reglas", marcas("ALL Accor")["id"], valor="Novotel, Ibis")   # editada a mano: se respeta
+        db.ejecutar("update reglas set nota=:n where ambito='hotel' and clave='marcas'", n=semilla.NOTA_MARCAS_ANTERIOR)
+        semilla.asegurar_fidelizacion_hotel()
+        assert "Fairfield Inn (al inicio)" in marcas("Marriott Bonvoy")["valor"]
+        assert marcas("ALL Accor")["valor"] == "Novotel, Ibis"
+        # la nota que explica «(al inicio)» llega a todos los programas
+        assert {r["nota"] for r in db.todos("select nota from reglas where ambito='hotel' and clave='marcas'")} == {
+            semilla.NOTAS_HOTEL["marcas"]}
+    finally:
+        db.actualizar("reglas", marcas("ALL Accor")["id"], valor=accor)
+
+
 def test_hotel_con_membresia_tarifa_de_miembro_y_puntos(cat):
     from app.servicios import costo
     ev = costo.evaluar_hotel(_hotel("Tru by Hilton Denver", 243.0), [_miembro()], cat, 3)
@@ -146,6 +185,14 @@ def test_inscripcion_gratis_supuesta_aplica_la_tarifa_de_miembro(cat):
     assert not any(a.startswith("Inscribirse") for a in ev["avisos"])
 
 
+@pytest.mark.parametrize("calificacion, descartado", [
+    ("3.2", "Calificación 3.2, por debajo del mínimo de 3.5."), ("4.1", None), ("n/a", None), ("", None), (None, None)])
+def test_la_calificacion_que_llega_como_texto(cat, calificacion, descartado):
+    from app.servicios import costo
+    ev = costo.evaluar_hotel(_hotel("Independiente Centro", 225.0, calificacion=calificacion), [], cat, 3)
+    assert ev["descartado"] == descartado
+
+
 def test_hotel_sin_programa(cat):
     from app.servicios import costo
     ev = costo.evaluar_hotel(_hotel("The Artesian", 294.0), [_miembro()], cat, 3)
@@ -166,12 +213,12 @@ def test_la_semilla_trae_el_catalogo_de_hotel_y_la_membresia_de_ejemplo(cliente)
 
 
 # ---------- pieza 3: hotel recomendado y descartes ----------
-def _cotizacion_con_hoteles(cliente, hoteles, viajero_id=1):
+def _cotizacion_con_hoteles(cliente, hoteles, viajero_id=1, **cambios):
     """Cotización guardada de Miami a Las Vegas cuyos hoteles se cambian por los de la prueba."""
     from conftest import FORM_VIAJE
 
     from app import db
-    r = cliente.post("/viajes", data={**FORM_VIAJE, "viajero_id": viajero_id}, follow_redirects=False)
+    r = cliente.post("/viajes", data={**FORM_VIAJE, "viajero_id": viajero_id, **cambios}, follow_redirects=False)
     sid = int(r.headers["location"].rsplit("/", 1)[1])
     db.ejecutar("delete from opciones where solicitud_id=:i and tipo='hotel'", i=sid)
     for h in hoteles:
@@ -207,6 +254,18 @@ def test_calificacion_baja_descarta_con_su_razon(cliente):
     assert c["hotel_recomendado"]["h"]["nombre"] == "Sin calificación" and c["hotel_mas_barato"] is None
 
 
+def test_la_calificacion_en_texto_no_rompe_la_pagina_ni_la_api(cliente):
+    from app.servicios import cotizacion
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Independiente Centro", 225.0, calificacion="4.1"),
+                                            _hotel("Independiente Norte", 230.0, calificacion="n/a")])
+    c = cotizacion.comparacion(sid)
+    assert [h["h"]["calificacion"] for h in c["hoteles"]] == [4.1, None] and c["hoteles_descartados"] == []
+    pagina = cliente.get(f"/viajes/{sid}")
+    assert pagina.status_code == 200 and "<td>4.1</td>" in pagina.text
+    api = cliente.get(f"/api/v1/cotizaciones/{sid}")
+    assert api.status_code == 200 and [h["calificacion"] for h in api.json()["hoteles"]] == [4.1, None]
+
+
 def test_la_decision_lleva_el_hotel_evaluado(cliente):
     from app import db
     from app.servicios import cotizacion, viajes
@@ -216,9 +275,11 @@ def test_la_decision_lleva_el_hotel_evaluado(cliente):
     cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": c["vuelos"][0]["id"], "hotel_id": tru["id"], "razones": ["costo_total"]})
     d = db.uno("select * from decisiones where solicitud_id=:i order by id desc", i=sid)
     desglose = db.de_json(d["desglose"], {})
-    hotel = [(l["concepto"], l["valor"]) for l in desglose["lineas"] if l["grupo"] == "hotel"]
-    assert hotel == [("Hotel: Tru by Hilton Las Vegas (3 noches)", 243.0), ("Hotel: tarifa de miembro Hilton Honors (−5 %)", -12.15)]
-    # el desglose completo, con los puntos, queda en la ficha; los puntos no son dinero y no entran al presupuesto
+    hotel = [(l["concepto"], l["valor"], l["origen"]) for l in desglose["lineas"] if l["grupo"] == "hotel"]
+    assert hotel == [("Hotel: Tru by Hilton Las Vegas (3 noches)", 243.0, "buscador"),
+                     ("Hotel: tarifa de miembro Hilton Honors (−5 %)", -12.15, "supuesto"),
+                     ("Hotel: puntos de Hilton Honors (10 por USD a 0.005 USD)", -11.54, "supuesto")]
+    # los puntos son valor esperado, como las millas: están en el total de la decisión pero no en el presupuesto
     assert desglose["hotel_evaluado"]["total"] == 219.31
     assert any(l["concepto"].startswith("Puntos del programa") for l in desglose["hotel_evaluado"]["lineas"])
     detalle = viajes.de_solicitud(sid)["presupuesto_detalle"]
@@ -228,6 +289,25 @@ def test_la_decision_lleva_el_hotel_evaluado(cliente):
     fotos = db.todos("select * from elecciones where decision_id=:d and tipo='hotel' order by posicion", d=d["id"])
     assert [(f["opcion_id"], f["recomendada"], f["costo_esperado"]) for f in fotos] == [
         (tru["id"], 1, 219.31), (c["hoteles"][1]["id"], 0, 225.0)]
+
+
+@pytest.mark.parametrize("carro_dia", [0, 65])
+def test_el_total_de_la_decision_es_el_de_la_comparacion(cliente, carro_dia):
+    from app import db
+    from app.servicios import cotizacion, viajes
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Tru by Hilton Las Vegas", 243.0)], carro_dia=carro_dia)
+    c = cotizacion.comparacion(sid)
+    vuelo = c["vuelos"][0]
+    cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": vuelo["id"], "hotel_id": c["hotel_recomendado"]["id"],
+                                                 "razones": ["costo_total"]})
+    d = db.uno("select * from decisiones where solicitud_id=:i order by id desc", i=sid)
+    # el carro de alquiler no está en «Total con el hotel recomendado» (vuelo + hotel): se suma aparte
+    assert d["total"] == round(vuelo["total_con_hotel"] + c["carro"], 2)
+    # el presupuesto es lo que se paga: la tarifa con el descuento de miembro, sin los puntos
+    detalle = viajes.de_solicitud(sid)["presupuesto_detalle"]
+    detalle = db.de_json(detalle) if isinstance(detalle, str) else detalle
+    assert [(l["concepto"], l["valor"]) for l in detalle if l["grupo"] == "hotel"] == [
+        ("Hotel: Tru by Hilton Las Vegas (3 noches)", 243.0), ("Hotel: tarifa de miembro Hilton Honors (−5 %)", -12.15)]
 
 
 # ---------- pieza 4: total del viaje visible ----------

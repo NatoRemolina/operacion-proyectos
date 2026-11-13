@@ -83,13 +83,14 @@ def en_curso(v: dict, hoy: date | None = None) -> bool:
 def presupuesto_de(decision: dict, solicitud: dict) -> tuple[float, list[dict]]:
     """Dinero que se espera pagar en el viaje: lo que se compra (vuelo, equipaje, hotel, carro) más los viáticos.
 
-    Las líneas de valor esperado de la comparación (riesgo de cambio, millas) no son desembolsos y no entran. El
-    traslado por carretera sí es dinero que se pagará: entra con su grupo, `traslados` (taxi o transfer) o
-    `combustible` (con carro de alquiler), aunque su valor sea un supuesto.
+    Las líneas de valor esperado de la comparación (riesgo de cambio, millas, puntos del hotel) no son desembolsos y no
+    entran. La tarifa de miembro del hotel sí: es el descuento sobre lo que se paga. El traslado por carretera también
+    es dinero que se pagará: entra con su grupo, `traslados` (taxi o transfer) o `combustible` (con carro de alquiler),
+    aunque su valor sea un supuesto.
     """
     lineas = [{"concepto": l["concepto"], "valor": round(l["valor"], 2), "grupo": l.get("grupo", "otros")}
               for l in (db.de_json(decision.get("desglose"), {}) or {}).get("lineas", [])
-              if not (l.get("origen") == "supuesto" and l.get("grupo") == "vuelo")]
+              if not (l.get("valor_esperado") or (l.get("origen") == "supuesto" and l.get("grupo") == "vuelo"))]
     try:
         dias = (date.fromisoformat(solicitud["regreso"]) - date.fromisoformat(solicitud["ida"])).days + 1
     except (TypeError, ValueError):
