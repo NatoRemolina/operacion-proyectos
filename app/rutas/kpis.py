@@ -1,12 +1,10 @@
 """Indicadores con meta y semáforo, y la ficha de cada persona por su ID."""
-import csv
-import io
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from .. import db
-from ..servicios import acceso, eventos, kpis, metricas
+from ..servicios import acceso, eventos, exportacion, kpis, metricas
 from ..web import NO_ENCONTRADO, SOLO_ADMIN, _ctx, _yo, plantillas
 from .analisis import _filtros
 from .cotizaciones import _completar_ahorros
@@ -72,11 +70,6 @@ def exportar(que: str = "kpis", proyecto_id: int = 0, desde: str = "", hasta: st
     else:
         donde, par = metricas._filtro(f, "momento")
         filas = db.todos(f"select * from v_h_consulta where {donde} order by id", **par)
-    salida = io.StringIO()
-    if filas:
-        w = csv.DictWriter(salida, fieldnames=list(filas[0].keys()))
-        w.writeheader()
-        w.writerows(filas)
     eventos.registrar("kpis", None, "exportación", f"{EXPORTABLES[que]}: {len(filas)} filas")
-    return Response("﻿" + salida.getvalue(), media_type="text/csv",
+    return Response(exportacion.csv_de(filas), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="kpis_{que}.csv"'})

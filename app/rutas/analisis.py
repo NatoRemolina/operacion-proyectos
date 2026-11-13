@@ -1,6 +1,4 @@
 """Monitoreo, analítica de precios y flujo de la información."""
-import csv
-import io
 import re
 
 from fastapi import APIRouter, Request
@@ -9,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from datos.semilla import VISTAS
 
 from .. import config, db
-from ..servicios import analitica, eventos, metricas, precios
+from ..servicios import analitica, eventos, exportacion, metricas, precios
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -105,13 +103,8 @@ def monitoreo_exportar(vista: str, proyecto_id: int = 0, desde: str = "", hasta:
         f["proyecto_id"] = None
     donde, par = metricas._filtro(f, FECHA_DE_VISTA[vista])
     filas = db.todos(f"select * from {vista} where {donde} order by id", **par)
-    salida = io.StringIO()
-    if filas:
-        w = csv.DictWriter(salida, fieldnames=list(filas[0].keys()))
-        w.writeheader()
-        w.writerows(filas)
     eventos.registrar("monitoreo", None, "exportación", f"{vista}: {len(filas)} filas")
-    return Response("\ufeff" + salida.getvalue(), media_type="text/csv",
+    return Response(exportacion.csv_de(filas), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{vista}.csv"'})
 
 
