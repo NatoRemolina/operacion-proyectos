@@ -413,7 +413,7 @@
           "cotizaciones"
         ],
         "summary": "Pagina Ir",
-        "description": "La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el\nformulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights.",
+        "description": "La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el\nformulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. Con datos que no son\nválidos responde 422 con una página legible (no JSON): la pestaña la ve una persona.",
         "operationId": "pagina_ir_api_v1_cotizaciones__id__vuelos__opcion_id__ir_get",
         "parameters": [
           {
@@ -441,26 +441,38 @@
           {
             "name": "vendedor",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 60,
-              "pattern": "^[\\w .,&'()+/-]+$",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Vendedor (1 a 60 caracteres: letras, números y . , & ' ( ) + / -).",
               "title": "Vendedor"
-            }
+            },
+            "description": "Vendedor (1 a 60 caracteres: letras, números y . , & ' ( ) + / -)."
           },
           {
             "name": "tarifa",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 60,
-              "pattern": "^[\\w .,&'()+/-]+$",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Tarifa (mismas reglas que el vendedor).",
               "title": "Tarifa"
-            }
+            },
+            "description": "Tarifa (mismas reglas que el vendedor)."
           },
           {
             "name": "t",
@@ -469,8 +481,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "maxLength": 64
+                  "type": "string"
                 },
                 {
                   "type": "null"

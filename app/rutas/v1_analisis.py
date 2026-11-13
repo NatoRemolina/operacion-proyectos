@@ -5,6 +5,7 @@ quien ve la cotización (`acceso.puede_ver`); lo demás responde 404.
 """
 import html
 import json
+import re
 import secrets
 
 from fastapi import APIRouter, Depends, Path, Query, Request
@@ -139,17 +140,24 @@ def ir(datos: PedidoIrA, id: int = Id(), opcion_id: int = Id(), yo: dict = Depen
     return analizador.ir_a(yo, id, opcion_id, datos.vendedor, datos.tarifa)
 
 
+NOMBRE_ENLACE = re.compile(r"[\w .,&'()+/-]{1,60}")
+INCOMPLETO = ("El enlace no está completo", "Vuelve a abrir el desglose del vuelo y elige la tarifa otra vez.")
+
+
 @router.get("/cotizaciones/{id}/vuelos/{opcion_id}/ir", response_class=HTMLResponse, responses={
     **errores_cotizacion(401, 403, 404, 422),
     200: {"description": "Página que prepara el envío al vendedor y lo hace", "content": {"text/html": {}}}})
 def pagina_ir(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona),
-              vendedor: str = Query(min_length=1, max_length=60, pattern=r"^[\w .,&'()+/-]+$"),
-              tarifa: str = Query(min_length=1, max_length=60, pattern=r"^[\w .,&'()+/-]+$"),
-              t: str | None = Query(None, max_length=64, description="Token firmado del enlace (vence en 5 minutos).")):
+              vendedor: str | None = Query(None, description="Vendedor (1 a 60 caracteres: letras, números y . , & ' ( ) + / -)."),
+              tarifa: str | None = Query(None, description="Tarifa (mismas reglas que el vendedor)."),
+              t: str | None = Query(None, description="Token firmado del enlace (vence en 5 minutos).")):
     """La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el
-    formulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights."""
+    formulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. Con datos que no son
+    válidos responde 422 con una página legible (no JSON): la pestaña la ve una persona."""
     if request.headers.get("sec-fetch-site", "none") not in SITIOS_PERMITIDOS:
         return v1_cotizaciones.pagina_aviso(403, *v1_cotizaciones.OTRO_SITIO)
+    if not all(isinstance(x, str) and NOMBRE_ENLACE.fullmatch(x) for x in (vendedor, tarifa)) or len(t or "") > 64:
+        return v1_cotizaciones.pagina_aviso(422, *INCOMPLETO)
     fila = db.uno("select usuario_id, viajero_id, proyecto_id from solicitudes where id=:i", i=id)
     o = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=opcion_id, s=id)
     if not acceso.puede_ver(yo, fila) or not o:

@@ -329,3 +329,14 @@ def test_ir_a_sin_respuesta_retiene_el_turno(piloto, entorno, monkeypatch):
     assert _ir(piloto, c["id"], c["vuelos"][0]["id"]).json()["camino"] == "google"
     e = _ir(piloto, c["id"], c["vuelos"][1]["id"]).json()
     assert (e["camino"], e["motivo"]) == ("google", analizador.OCUPADO) and len(pedidos) == 1
+
+
+# ---------- ronda 2 · punto 8: datos inválidos en la página de «Ir a…»: página legible, no JSON ----------
+@pytest.mark.parametrize("consulta", ["", "?tarifa=Main+Cabin&t=1", "?vendedor=American&t=1", "?vendedor=%3Cscript%3E&tarifa=Main&t=1",
+                                      "?vendedor=" + "A" * 61 + "&tarifa=Main&t=1", "?vendedor=American&tarifa=Main&t=" + "9" * 65])
+def test_la_pagina_de_ir_a_con_datos_invalidos_es_legible(piloto, entorno, consulta):
+    c = _vegas(piloto)
+    r = piloto.get(f"{V1}/cotizaciones/{c['id']}/vuelos/{c['vuelos'][0]['id']}/ir{consulta}")
+    assert r.status_code == 422 and r.headers["content-type"].startswith("text/html"), r.text
+    assert "El enlace no está completo" in r.text and "<script" not in r.text
+    assert db.uno("select count(*) n from analisis_vuelo")["n"] == 0
