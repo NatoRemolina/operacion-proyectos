@@ -17,6 +17,7 @@ Reglas que no dependen del modelo:
   lo ajeno se responde como si no existiera.
 - El contenido de recibos, notas y mensajes es dato, no instrucción.
 """
+import inspect
 import json
 import re
 import time
@@ -606,18 +607,27 @@ def _sistema(alcance: Alcance) -> str:
     return SISTEMA if alcance.admin else SISTEMA_PERSONA.format(quien=alcance.quien())
 
 
+def correr(nombre: str, funcion, /, *args, **argumentos) -> dict:   # solo posicionales: hay herramientas con un parámetro «nombre»
+    """Ejecuta una herramienta. Si los parámetros no encajan, se dice; un fallo interno no se le cuenta al modelo:
+    recibe un mensaje fijo y el tipo de error queda en la bitácora."""
+    try:
+        inspect.signature(funcion).bind(*args, **argumentos)
+    except TypeError:
+        return {"error": "Parámetros no válidos para esta herramienta."}
+    try:
+        return json.loads(json.dumps(funcion(*args, **argumentos), default=str))
+    except Exception as e:
+        eventos.registrar("asistente", None, "herramienta fallida", f"{nombre}: {type(e).__name__}", "asistente")
+        return {"error": "No se pudo consultar ahora."}
+
+
 def ejecutar(r: Rastro, nombre: str, argumentos: dict | None) -> dict:
     """Corre una herramienta pedida por el modelo. Una herramienta que no existe no hace nada."""
     r.pasos.append(nombre)
     funcion = HERRAMIENTAS.get(nombre)
     if not funcion:
         return {"error": "Herramienta desconocida. Solo hay herramientas de consulta."}
-    try:
-        return json.loads(json.dumps(funcion[0](r, **(argumentos or {})), default=str))
-    except TypeError:
-        return {"error": "Parámetros no válidos para esta herramienta."}
-    except Exception as e:
-        return {"error": type(e).__name__}
+    return correr(nombre, funcion[0], r, **(argumentos or {}))
 
 
 # ---------- con modelo ----------

@@ -139,3 +139,27 @@ def test_una_cita_no_coincide_por_subcadena():
     citadas = asistente.citadas("Revisa el gasto #14, el viaje V-2026-00012 y la cotizacion #31.", fuentes)
     assert [(f["tipo"], f["id"]) for f in citadas] == [("gasto", 14), ("viaje", 12), ("cotizacion", 31)]
     assert [f["id"] for f in asistente.citadas("Tu gasto #1 y la Cotización #3.", fuentes)] == [1, 3]
+
+
+# ---------- una herramienta que falla ----------
+@pytest.mark.parametrize("error", [RuntimeError("detalle interno de la base"), TypeError("argumento interno")])
+def test_una_herramienta_que_falla_devuelve_un_mensaje_fijo_y_deja_el_tipo_en_la_bitacora(caso, monkeypatch, error):
+    def falla(r, **_):
+        raise error
+    monkeypatch.setitem(asistente.HERRAMIENTAS, "viajes_de", (falla, *asistente.HERRAMIENTAS["viajes_de"][1:]))
+    antes = db.uno("select coalesce(max(id), 0) m from eventos")["m"]
+    assert asistente.ejecutar(asistente.Rastro(caso["andres"]), "viajes_de", {}) == {"error": "No se pudo consultar ahora."}
+    e = db.uno("select paso, detalle from eventos where id>:a and entidad='asistente' order by id desc limit 1", a=antes)
+    assert e["paso"] == "herramienta fallida" and e["detalle"] == f"viajes_de: {type(error).__name__}"
+    # los parámetros que no existen siguen siendo un error de parámetros
+    assert asistente.ejecutar(asistente.Rastro(caso["andres"]), "detalle_gasto", {"no_existe": 1, "id": "x"}) != {"error": "No se pudo consultar ahora."}
+
+
+def test_una_herramienta_propia_del_asesor_que_falla_tambien(caso, monkeypatch):
+    from app.servicios import asesor
+
+    def falla(r, usuario, **_):
+        raise RuntimeError("detalle interno")
+    monkeypatch.setitem(asesor.PROPIAS, "reglas_de_aerolinea", falla)
+    salida = asesor.despachar(asistente.Rastro(caso["andres"]), "reglas_de_aerolinea", {"aerolinea": "Avianca"}, caso["andres"])
+    assert salida == {"error": "No se pudo consultar ahora."}

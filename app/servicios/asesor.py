@@ -474,12 +474,7 @@ def despachar(r: asistente.Rastro, nombre: str, entrada, usuario: dict) -> dict:
     if nombre in asistente.HERRAMIENTAS:
         return asistente.ejecutar(r, nombre, argumentos)
     r.pasos.append(nombre)
-    try:
-        return json.loads(json.dumps(PROPIAS[nombre](r, usuario, **argumentos), default=str))
-    except TypeError:
-        return {"error": "Parámetros no válidos para esta herramienta."}
-    except Exception as e:
-        return {"error": type(e).__name__}
+    return asistente.correr(nombre, PROPIAS[nombre], r, usuario, **argumentos)
 
 
 def recortar(datos, maximo: int = MAX_RESULTADO) -> str:
