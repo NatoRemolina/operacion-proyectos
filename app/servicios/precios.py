@@ -10,7 +10,7 @@ import json
 import re
 import time
 from datetime import UTC, date, datetime, timedelta
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 import httpx
 
@@ -40,8 +40,8 @@ def cupo() -> dict | None:
     return dato
 
 
-def _slug(texto: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", texto.lower()).strip("-")
+def _slug(texto: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (texto or "").lower()).strip("-")
 
 
 def _leer(nombre: str):
@@ -68,6 +68,7 @@ def _guardar(nombre: str, datos: dict, archivo: bool = True):
     versionada de respaldos. Antes de guardarla se quita lo que serviría para ejecutar una reserva."""
     cuerpo = json.dumps(_sin_reserva(datos), ensure_ascii=False)
     db.insertar("busquedas", clave=nombre, cuerpo=cuerpo, creado=db.ahora())
+    _enlaces.pop(nombre, None)
     if not archivo:
         return
     try:
@@ -101,8 +102,11 @@ def es_fuente_google(url) -> bool:
         puerto = p.port
     except ValueError:
         return False
+    if re.search(r"[\s\x00-\x1f\x7f]", url):
+        return False
+    ruta_real = unquote(p.path)
     return (p.scheme == "https" and p.hostname in DOMINIOS_FUENTE and puerto is None and not p.username
-            and not p.password and p.path.startswith("/travel/"))
+            and not p.password and ruta_real.startswith("/travel/") and ".." not in ruta_real.split("/"))
 
 
 def _protobuf(campo: int, datos: bytes) -> bytes:
@@ -130,7 +134,8 @@ def construir_enlace_vuelos(origen: str | list[str], destino: str | list[str], i
             + base64.urlsafe_b64encode(tfs).decode().rstrip("=") + "&tfu=EgIIAQ")
 
 
-_enlaces: dict[str, str] = {}   # lo leído de una respuesta guardada no cambia: no se vuelve a leer en cada comparación
+_enlaces: dict[str, str | None] = {}   # lo leído de una respuesta guardada (o que no la hay) no se vuelve a leer en cada
+#                                        comparación; guardar una respuesta nueva renueva su entrada (`_guardar`)
 
 
 def _enlace_guardado(nombre: str, campo: str) -> str | None:
@@ -139,9 +144,7 @@ def _enlace_guardado(nombre: str, campo: str) -> str | None:
             url = ((_leer(nombre) or {}).get("search_metadata") or {}).get(campo)
         except (ValueError, AttributeError):
             url = None
-        if not es_fuente_google(url):
-            return None
-        _enlaces[nombre] = url
+        _enlaces[nombre] = url if es_fuente_google(url) else None
     return _enlaces[nombre]
 
 
@@ -152,11 +155,12 @@ def enlace_vuelos(origen: str | list[str], destino: str | list[str], ida: str, r
             or construir_enlace_vuelos(origen, destino, ida, regreso))
 
 
-def enlace_hoteles(ciudad: str, entrada: str, salida: str, hotel: str | None = None) -> str:
+def enlace_hoteles(ciudad: str | None, entrada: str, salida: str, hotel: str | None = None) -> str:
     """La búsqueda en Google Hotels con sus fechas; con `hotel`, la del hotel en esa ciudad, para verlo primero.
 
     El buscador guarda un enlace sin fechas: se toma su texto de búsqueda y se le añaden las fechas, que Google lee del
     texto (comprobado el 13 de noviembre de 2026; los parámetros `checkin` y `checkout` los ignora)."""
+    ciudad = ciudad or ""
     guardado = _enlace_guardado(f"hoteles_{_slug(ciudad)}_{entrada}_{salida}.json", "google_hotels_url")
     base, parametros = "https://www.google.com/travel/search", {"q": f"{ciudad} hotels", "hl": "en", "gl": "us"}
     if guardado:

@@ -152,3 +152,40 @@ def test_abrir_la_fuente_respeta_sesion_csrf_y_alcance(piloto, piloto2, gestor, 
     vuelo = c["vuelos"][0]["id"]
     r = piloto.post(ruta, json={"destino": "hoteles", "hotel_id": vuelo}, headers=_csrf(piloto))
     assert r.status_code == 422 and r.json()["error"]["fields"] == {"hotel_id": "Ese hotel no es de esta cotización."}
+
+
+# ---------- revisión de la pieza 1 ----------
+@pytest.mark.parametrize("url", [
+    "https://www.google.com/travel/../url?q=https://evil.example",      # sale de /travel/ al resolverse
+    "https://www.google.com/travel/%2e%2e/url?q=https://evil.example",  # lo mismo, codificado
+    "https://www.google.com/travel/flights q",                          # espacio
+    "https://www.google.com/travel/flights\nq",                         # carácter de control
+])
+def test_la_lista_blanca_no_deja_salir_de_travel(url):
+    assert not precios.es_fuente_google(url)
+
+
+def test_una_cotizacion_sin_ciudad_tiene_enlace_de_hoteles_con_su_destino():
+    from app.servicios import cotizacion
+    assert cotizacion._ciudad_hotel({"ciudad": None, "destino": "Moab"}) == "Moab"
+    assert cotizacion._ciudad_hotel({"ciudad": "Lisbon", "destino": "LIS"}) == "Lisbon"
+    assert precios.es_fuente_google(precios.enlace_hoteles(None, "2026-12-09", "2026-12-12"))
+
+
+def test_un_hotel_sin_respuesta_guardada_no_vuelve_a_consultar_la_base(monkeypatch):
+    precios._enlaces.clear()
+    llamadas = []
+    monkeypatch.setattr(precios, "_leer", lambda nombre: llamadas.append(nombre))
+    for _ in range(5):
+        precios.enlace_hoteles("Ciudad Sin Guardar", "2026-12-09", "2026-12-12", hotel="X")
+    assert len(llamadas) == 1
+
+
+def test_guardar_una_respuesta_nueva_renueva_su_enlace(monkeypatch):
+    precios._enlaces.clear()
+    monkeypatch.setattr(precios, "_leer", lambda nombre: None)
+    precios.enlace_hoteles("Ciudad Nueva", "2026-12-09", "2026-12-12")
+    assert "hoteles_ciudad-nueva_2026-12-09_2026-12-12.json" in precios._enlaces
+    monkeypatch.setattr(precios.db, "insertar", lambda *a, **k: None)
+    precios._guardar("hoteles_ciudad-nueva_2026-12-09_2026-12-12.json", {}, archivo=False)
+    assert "hoteles_ciudad-nueva_2026-12-09_2026-12-12.json" not in precios._enlaces
