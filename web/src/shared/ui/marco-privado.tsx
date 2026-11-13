@@ -26,18 +26,6 @@ export function Marca({ tamano = "grande", fondo = "grafito" }: { tamano?: "gran
   );
 }
 
-/**
- * Sello junto al logotipo: la plataforma es una propuesta para la prueba técnica, no el sitio oficial de la
- * empresa. Visible en la portada; discreto en la barra lateral.
- */
-export function SelloPropuesta({ fondo = "grafito" }: { fondo?: FondoMarca }) {
-  const tono =
-    fondo === "grafito"
-      ? "border-sobre-grafito-suave/40 px-2 py-0.5 text-[0.7rem] text-sobre-grafito-suave"
-      : "border-marca/40 bg-superficie/70 px-3 py-1.5 text-xs text-marca-oscura";
-  return <p className={`inline-block rounded-full border font-semibold ${tono}`}>Propuesta · prueba técnica</p>;
-}
-
 function esActivo(enlace: EntradaMenu, ruta: string): boolean {
   if (enlace.externa) return false;
   return ruta === enlace.href || ruta.startsWith(`${enlace.href}/`);
@@ -182,9 +170,6 @@ export function MarcoPrivado({
 
         <aside inert={abierto} className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
           <Marca />
-          <div className="mt-3">
-            <SelloPropuesta />
-          </div>
           <nav aria-label="Principal" className="mt-8">
             <ListaMenu enlaces={enlaces} rutaActual={rutaActual} />
           </nav>
@@ -230,9 +215,6 @@ export function MarcoPrivado({
               <button type="button" className={BOTON_OSCURO} onClick={cerrar}>
                 Cerrar menú
               </button>
-            </div>
-            <div className="mt-3">
-              <SelloPropuesta />
             </div>
             <nav aria-label="Menú" className="mt-8" ref={panel}>
               <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />

@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useModoDemo } from "@/shared/application/modo";
-import { Marca, SelloPropuesta } from "@/shared/ui/marco-privado";
+import { Marca } from "@/shared/ui/marco-privado";
 import { useEntrar, useSesion } from "../application/sesion";
 import { destinoSeguro } from "../domain/auth";
 import { FormularioEntrar } from "./formulario-entrar";
@@ -90,7 +90,6 @@ export function PantallaEntrar() {
       >
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <Marca fondo="claro" />
-          <SelloPropuesta fondo="claro" />
         </div>
         <div className="lg:max-w-[38rem]">
         <p className="mt-8 text-balance text-[2.125rem] font-extrabold leading-[1.04] tracking-[-0.035em] sm:text-5xl lg:mt-8 xl:text-[3.25rem]">
