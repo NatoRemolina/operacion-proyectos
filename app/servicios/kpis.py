@@ -11,7 +11,7 @@ from statistics import median
 from sqlalchemy import Column, Float, Integer, Text
 
 from .. import db
-from . import acceso, costo, metricas, viajes
+from . import acceso, costo, metricas, ofertas, viajes
 
 consultas_buscador = db._tabla(
     "consultas_buscador",  # una fila por consulta al buscador de precios; la respuesta completa está en `busquedas` con la misma clave
@@ -184,6 +184,7 @@ def tendencia(f: dict, semanas: int = 8) -> dict:
 
 def tablero(f: dict) -> dict:
     """Todo lo del tablero con unos mismos filtros: indicadores, tendencia, desgloses y personas."""
+    ofertas.actualizar_si_toca()   # las tarifas vistas quedan al día sin otro proceso (como mucho cada 10 minutos)
     with metricas.una_lectura():
         indicadores = evaluar(f)
         b, c = metricas._seccion(metricas.busquedas, f), metricas._seccion(metricas.buscador, f)
