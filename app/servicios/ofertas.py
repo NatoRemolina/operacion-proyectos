@@ -331,10 +331,10 @@ def _mediana(valores: list[float]) -> float:
     return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
 
 
-def depurar(filas: list[dict], clave_repetida=("origen", "destino", "ida", "regreso", "vuelos", "vendedor", "tarifa"),
+def depurar(filas: list[dict], clave_repetida=("fuente", "origen", "destino", "ida", "regreso", "vuelos", "vendedor", "tarifa"),
             grupo_atipico=("origen", "destino", "tarifa_normalizada")) -> tuple[list[dict], dict]:
     """(filas útiles, informe). Descarta: sin precio, otra moneda, sin ruta o fecha, anticipación imposible, la misma
-    tarifa repetida el mismo día (queda la más reciente) y precios atípicos dentro de su ruta y tipo de tarifa."""
+    tarifa de la misma fuente repetida el mismo día (queda la más reciente) y precios atípicos dentro de su ruta y tipo de tarifa."""
     descartes: dict[str, int] = {}
 
     def fuera(motivo: str):
