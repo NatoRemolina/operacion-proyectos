@@ -24,7 +24,7 @@ def contrato() -> dict:
     for m in sorted(m.name for m in pkgutil.iter_modules(rutas.__path__) if m.name.startswith("v1_")):
         app.include_router(importlib.import_module(f"{rutas.__name__}.{m}").router)
     return get_openapi(title="API v1 · Operación de proyectos", version="1.0.0",
-                       description="Recorrido mínimo: ingreso, viajes, gastos y envío de recibos. Ver `contracts/api-v1.md`.",
+                       description="Ingreso, cotizar y decidir, viajes, gastos con recibos y justificación, y administración (aprobar viajes, revisar gastos). Ver `contracts/api-v1.md`.",
                        routes=[r for r in app.routes if getattr(r, "path", "").startswith(PREFIJO)])
 
 

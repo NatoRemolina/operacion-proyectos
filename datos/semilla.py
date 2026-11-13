@@ -127,8 +127,8 @@ SUPUESTOS_NUEVOS = [
     ("monitoreo_retraso_aviso_min", "15", "Retraso que se avisa al viajero (o que crece estos minutos más desde el último aviso)."),
     ("cupo_minimo_monitoreo", "25", "Si al plan del buscador le quedan menos búsquedas que esto, el monitoreo del vuelo se suspende."),
     ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
-    # Cotizar por la API v1: cada cotización nueva puede pagar dos búsquedas y cada decisión otras dos
-    ("tope_cotizaciones_persona_dia", "20", "Cotizaciones nuevas por persona y día por la API. Alcanzado, se retoma una que ya existe."),
+    # Cotizar (pantallas, web y API v1): cada cotización nueva puede pagar dos búsquedas y cada decisión otras dos
+    ("tope_cotizaciones_persona_dia", "20", "Cotizaciones nuevas por persona y día, por cualquier canal. Alcanzado, se retoma una que ya existe."),
     ("decisiones_en_vivo_dia", "10", "Decisiones por persona y día que consultan en vivo el regreso y las opciones de reserva del vuelo "
                                      "(dos búsquedas cada una). Alcanzado, se decide con lo guardado y se dice."),
     # Asistente de administración
