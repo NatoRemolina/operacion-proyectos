@@ -2,6 +2,22 @@
   "name": "Inflight · Soportes y lecturas de gastos a Google Drive",
   "nodes": [
     {
+      "id": "a452acbc-9ea4-525b-b319-0cc3683383cf",
+      "name": "Nota: lectura con Gemini",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -260
+      ],
+      "parameters": {
+        "content": "## La lectura con Gemini ocurre antes de este flujo\nCuando alguien sube una factura, **la plataforma** la lee con **Gemini** (comercio, fecha, base, impuesto, total, moneda, **número de factura, NIT y líneas de detalle**), la valida contra las reglas y el presupuesto del viaje y guarda la lectura en **Supabase**.\n\nEste flujo recibe esa lectura ya hecha en el aviso firmado (campo `lectura`) y solo la archiva:\n- el soporte original y `… · lectura.json` en Drive, por proyecto, viaje y mes;\n- una fila en la hoja «Inflight · Lecturas de facturas».\n\nAsí cada factura se lee y se paga una sola vez, con las mismas validaciones.",
+        "height": 300,
+        "width": 700,
+        "color": 5
+      }
+    },
+    {
       "id": "7cf604ec-a27f-5e70-a6c2-67e23eaffb93",
       "name": "Aviso gasto.registrado",
       "type": "n8n-nodes-base.webhook",
