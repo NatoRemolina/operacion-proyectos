@@ -120,6 +120,9 @@ def test_asiento(lineas, esperado):
     ("Tarifa", "no", None, "basica"),
     ("Delta One", None, None, "premium"), ("Mint", None, None, "premium"), ("Main Plus", "gratis", "no", "estandar"),
     ("Elite", None, None, None), ("Tarifa", None, None, None),     # sin reconocer: vacía, no «estandar»
+    # ronda 2, punto 3: «no reembolsable» en el nombre no es flexible
+    ("Economy Nonrefundable", None, None, "estandar"), ("Non-refundable", None, None, None),
+    ("Main Non-Refundable", None, "no", "estandar"), ("Refundable Economy", None, None, "flexible"),
 ])
 def test_tarifa_normalizada(nombre, cambios_, reembolso_, esperado):
     assert ofertas.tarifa_normalizada(nombre, cambios_, reembolso_) == esperado

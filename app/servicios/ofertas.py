@@ -162,7 +162,7 @@ def asiento(lineas) -> str | None:
 
 
 _PREMIUM = re.compile(r"business|first|premium|polaris|suite|upper class|delta one|\bmint\b|club world")
-_FLEXIBLE = re.compile(r"flex|refundable")
+_FLEXIBLE = re.compile(r"flex|(?<!non)(?<!non-)(?<!not )refundable")   # «nonrefundable» dice lo contrario
 _BASICA = re.compile(r"\bbasic\b|\blight\b|\blite\b|saver|hand baggage|no bag")
 _ESTANDAR = re.compile(r"\bmain\b|economy|standard|classic|coach|\bvalue\b|regular|\bsmart\b|\bplus\b|comfort")
 
