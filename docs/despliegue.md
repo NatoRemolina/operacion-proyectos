@@ -162,7 +162,7 @@ Desde `$PUBLICAR`, como el resto.
 - antes desplegarían su propia OperacionBase, que con `-c correo` crea otro presupuesto («Presupuesto»), y quedarían dos;
 - Lambda no conserva las versiones anteriores de la imagen, así que mover el alias `vivo` tampoco sirve.
 
-Se vuelve atrás el código de la API (`app/`, `datos/`, `requirements.txt` y `Dockerfile`) y se mantiene la infraestructura del commit nuevo. Desde `$PRINCIPAL`, con `NUEVO` el commit publicado que falla y `ANTERIOR` el que funcionaba:
+Se vuelve atrás el código de la API (`app/`, `datos/`, `requirements.txt` y `Dockerfile`) y se mantiene la infraestructura del commit nuevo. Con las variables de «Antes de empezar» (`PRINCIPAL`, `CDK_CTX`) y `URL_API` del paso 5 en la terminal, `NUEVO` el commit publicado que falla y `ANTERIOR` el que funcionaba:
 
 ```
 VUELTA=/Users/nato/Documents/GitHub/inflight-vuelta-atras
