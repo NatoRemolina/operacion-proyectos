@@ -172,6 +172,8 @@ NOTAS_HOTEL = {
     "descuento_miembro": "Tarifa de miembro: descuento sobre la tarifa (0.05 = 5 %).",
 }
 SUPUESTOS_HOTEL = [
+    ("hotel_calificacion_minima", "3.5", "Un hotel con calificación por debajo de este valor se descarta en la comparación "
+                                         "(sin calificación no se descarta)."),
     ("inscripcion_gratis_hotel", "no", "«sí»: se supone que el viajero se inscribe gratis en el programa del hotel al reservar y "
                                        "se aplican la tarifa de miembro y los puntos. «no»: solo con una membresía registrada."),
 ]

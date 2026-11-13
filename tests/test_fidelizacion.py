@@ -163,3 +163,68 @@ def test_la_semilla_trae_el_catalogo_de_hotel_y_la_membresia_de_ejemplo(cliente)
     antes = db.uno("select count(*) n from reglas")["n"], db.uno("select count(*) n from membresias")["n"]
     semilla.asegurar_fidelizacion_hotel()
     assert (db.uno("select count(*) n from reglas")["n"], db.uno("select count(*) n from membresias")["n"]) == antes
+
+
+# ---------- pieza 3: hotel recomendado y descartes ----------
+def _cotizacion_con_hoteles(cliente, hoteles, viajero_id=1):
+    """Cotización guardada de Miami a Las Vegas cuyos hoteles se cambian por los de la prueba."""
+    from conftest import FORM_VIAJE
+
+    from app import db
+    r = cliente.post("/viajes", data={**FORM_VIAJE, "viajero_id": viajero_id}, follow_redirects=False)
+    sid = int(r.headers["location"].rsplit("/", 1)[1])
+    db.ejecutar("delete from opciones where solicitud_id=:i and tipo='hotel'", i=sid)
+    for h in hoteles:
+        db.insertar("opciones", solicitud_id=sid, tipo="hotel", titulo=h["nombre"], precio=h["total"], moneda="USD",
+                    datos=h, tarifas=None, origen_dato="guardado", capturado=db.ahora())
+    return sid
+
+
+def test_el_mas_barato_por_tarifa_pierde_contra_el_del_programa(cliente):
+    from app.servicios import cotizacion
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Independiente Centro", 225.0), _hotel("Tru by Hilton Las Vegas", 243.0)])
+    c = cotizacion.comparacion(sid)
+    assert [h["h"]["nombre"] for h in c["hoteles"]] == ["Tru by Hilton Las Vegas", "Independiente Centro"]
+    assert [h["ev"]["total"] for h in c["hoteles"]] == [219.31, 225.0]
+    assert c["hotel_recomendado"]["h"]["nombre"] == "Tru by Hilton Las Vegas" and c["hoteles"][0]["recomendado"]
+    assert c["hotel_mas_barato"]["h"]["nombre"] == "Independiente Centro" and c["hoteles"][1]["mas_barato"]
+    # sin la membresía (Laura no es socia de Hilton Honors) gana la tarifa
+    sin = cotizacion.comparacion(_cotizacion_con_hoteles(cliente, [_hotel("Independiente Centro", 225.0),
+                                                                   _hotel("Tru by Hilton Las Vegas", 243.0)], viajero_id=2))
+    assert sin["hotel_recomendado"]["h"]["nombre"] == "Independiente Centro" and sin["hotel_mas_barato"] is None
+
+
+def test_calificacion_baja_descarta_con_su_razon(cliente):
+    from app.servicios import cotizacion
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Barato y mal calificado", 150.0, calificacion=3.3),
+                                            _hotel("Sin calificación", 260.0, calificacion=None),
+                                            _hotel("Bien calificado", 280.0, calificacion=4.4)])
+    c = cotizacion.comparacion(sid)
+    assert [h["h"]["nombre"] for h in c["hoteles"]] == ["Sin calificación", "Bien calificado"]
+    assert [(h["h"]["nombre"], h["ev"]["descartado"]) for h in c["hoteles_descartados"]] == [
+        ("Barato y mal calificado", "Calificación 3.3, por debajo del mínimo de 3.5.")]
+    # el más barato que se compara es el más barato de los que sirven
+    assert c["hotel_recomendado"]["h"]["nombre"] == "Sin calificación" and c["hotel_mas_barato"] is None
+
+
+def test_la_decision_lleva_el_hotel_evaluado(cliente):
+    from app import db
+    from app.servicios import cotizacion, viajes
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Independiente Centro", 225.0), _hotel("Tru by Hilton Las Vegas", 243.0)])
+    c = cotizacion.comparacion(sid)
+    tru = c["hotel_recomendado"]
+    cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": c["vuelos"][0]["id"], "hotel_id": tru["id"], "razones": ["costo_total"]})
+    d = db.uno("select * from decisiones where solicitud_id=:i order by id desc", i=sid)
+    desglose = db.de_json(d["desglose"], {})
+    hotel = [(l["concepto"], l["valor"]) for l in desglose["lineas"] if l["grupo"] == "hotel"]
+    assert hotel == [("Hotel: Tru by Hilton Las Vegas (3 noches)", 243.0), ("Hotel: tarifa de miembro Hilton Honors (−5 %)", -12.15)]
+    # el desglose completo, con los puntos, queda en la ficha; los puntos no son dinero y no entran al presupuesto
+    assert desglose["hotel_evaluado"]["total"] == 219.31
+    assert any(l["concepto"].startswith("Puntos del programa") for l in desglose["hotel_evaluado"]["lineas"])
+    detalle = viajes.de_solicitud(sid)["presupuesto_detalle"]
+    detalle = db.de_json(detalle) if isinstance(detalle, str) else detalle
+    assert sum(l["valor"] for l in detalle if l["grupo"] == "hotel") == 230.85
+    # la foto de lo mostrado guarda el costo evaluado y cuál era el recomendado
+    fotos = db.todos("select * from elecciones where decision_id=:d and tipo='hotel' order by posicion", d=d["id"])
+    assert [(f["opcion_id"], f["recomendada"], f["costo_esperado"]) for f in fotos] == [
+        (tru["id"], 1, 219.31), (c["hoteles"][1]["id"], 0, 225.0)]
