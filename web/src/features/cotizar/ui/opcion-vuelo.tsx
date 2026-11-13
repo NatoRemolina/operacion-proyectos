@@ -143,6 +143,8 @@ export function OpcionDeVuelo({
   const titulo = useId();
   const desglose = useId();
   const origen = textoOrigenDato(vuelo.origen_dato);
+  // Con el botón de elegir a la izquierda, lo que va debajo se alinea con el texto, no con el borde (size-5 + gap-3).
+  const sangria = elegible ? "pl-8" : "";
   const cuerpo = (
     <>
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
@@ -166,7 +168,7 @@ export function OpcionDeVuelo({
             <Distintivo>{origen.texto}</Distintivo>
           </p>
         </div>
-        <dl className="grid grid-cols-2 gap-x-6 text-right sm:min-w-64">
+        <dl className="grid w-full grid-cols-2 gap-x-6 text-right sm:w-auto sm:min-w-64">
           <dt className="text-sm text-texto-secundario">Precio del buscador</dt>
           <dt className="text-sm text-texto-secundario">Costo total esperado</dt>
           <dd className="tabular-nums">{formatearDinero(vuelo.precio_usd)}</dd>
@@ -180,8 +182,9 @@ export function OpcionDeVuelo({
     <div
       role="group"
       aria-labelledby={titulo}
-      className={`flex flex-col gap-3 rounded-tarjeta border bg-superficie p-4 ${
-        elegido ? "border-2 border-marca" : vuelo.recomendada ? "border-exito" : "border-linea"
+      // El elegido se marca con un anillo además del borde: el grosor no cambia y la tarjeta no salta al elegirla.
+      className={`flex flex-col gap-3 rounded-tarjeta border bg-superficie p-4 transition-[box-shadow] duration-150 ease-salida ${
+        elegido ? "border-marca ring-1 ring-marca" : vuelo.recomendada ? "border-exito" : "border-linea"
       }`}
     >
       {elegible ? (
@@ -200,36 +203,40 @@ export function OpcionDeVuelo({
         cuerpo
       )}
       {vuelo.descartada ? (
-        <p className="text-sm font-semibold text-error">
+        <p className={`text-sm font-semibold text-error ${sangria}`}>
           <span aria-hidden="true">✕ </span>
           <span>Descartado: </span>
           <span>{vuelo.descartada}</span>
         </p>
       ) : null}
       {vuelo.avisos.length ? (
-        <ul className="flex flex-col gap-1 text-sm text-aviso">
+        // Las advertencias se leen en el color del texto; el símbolo de aviso marca cada una sin teñir el párrafo
+        // entero, y la sangría francesa alinea las líneas que se parten.
+        <ul className={`flex flex-col gap-1 text-sm text-texto-secundario ${sangria}`}>
           {vuelo.avisos.map((a) => (
-            <li key={a}>
-              <span aria-hidden="true">! </span>
-              {a}
+            <li key={a} className="grid grid-cols-[1rem_minmax(0,1fr)]">
+              <span aria-hidden="true" className="font-bold text-aviso">
+                !
+              </span>
+              <span>{a}</span>
             </li>
           ))}
         </ul>
       ) : null}
-      <div>
+      <div className={sangria}>
         <button
           type="button"
           aria-expanded={abierto}
           aria-controls={desglose}
           onClick={() => setAbierto((a) => !a)}
-          className={`inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
+          className={`-ml-1 inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
         >
           <span aria-hidden="true" className={`${GIRO} ${abierto ? "rotate-90" : ""}`}>
             ›
           </span>
           {abierto ? "Ocultar desglose" : "Ver desglose"}
         </button>
-        <div id={desglose} className="mt-2">
+        <div id={desglose} className={abierto ? "mt-2" : ""}>
           {abierto ? <Desglose vuelo={vuelo} /> : null}
         </div>
       </div>
