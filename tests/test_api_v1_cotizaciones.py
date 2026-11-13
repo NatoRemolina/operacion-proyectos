@@ -29,19 +29,7 @@ def _datos(**cambios) -> dict:
 
 
 # ---------- pieza 1: el servicio que comparten las pantallas y la API ----------
-@pytest.fixture(autouse=True, scope="module")
-def _tope_amplio():
-    """La base es de toda la sesión de pruebas y otras suites también cotizan con estas cuentas: aquí el tope del día
-    no debe depender de cuántas llevan. La prueba del tope fija el suyo."""
-    from app import db
-    fila = db.uno("select id, valor from reglas where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
-    if fila:
-        db.ejecutar("update reglas set valor='100000' where id=:i", i=fila["id"])
-    yield
-    if fila:
-        db.ejecutar("update reglas set valor=:v where id=:i", v=fila["valor"], i=fila["id"])
-
-
+# El tope de cotizaciones del día lo amplía `tests/conftest.py` para toda la sesión; la prueba del tope fija el suyo.
 def test_el_servicio_crea_busca_compara_y_decide(cliente):
     admin = _cuenta("admin@demo.local")
     sid = cotizacion.crear(admin, **_datos())

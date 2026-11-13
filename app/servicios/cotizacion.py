@@ -61,6 +61,23 @@ class FueraDeAlcance(PermissionError):
     """Cotizar o decidir para otra persona fuera de los proyectos que se gestionan."""
 
 
+class TopeAlcanzado(ValueError):
+    """La persona ya hizo hoy las cotizaciones nuevas que permite la regla `tope_cotizaciones_persona_dia`."""
+
+
+TOPE_COTIZACIONES_DIA = 20   # si la regla no existe
+AVISO_TOPE_COTIZACIONES = ("Llegaste al tope de cotizaciones nuevas de hoy. Retoma una de las que ya tienes o pide a "
+                           "administración que amplíe el tope.")
+
+
+def tope_cotizaciones_dia() -> int:
+    return int(costo.supuesto(costo.catalogo(), "tope_cotizaciones_persona_dia", TOPE_COTIZACIONES_DIA))
+
+
+def cotizaciones_de_hoy(usuario: dict) -> int:
+    return db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=usuario["id"], h=db.ahora()[:10])["n"]
+
+
 # ---------- quién cotiza y decide para otra persona (la misma regla en las pantallas y en la API) ----------
 def proyectos_para_otros(usuario: dict) -> set[int] | None:
     """Dónde puede cotizar y decidir para otra persona: administración en todos (None); el gestor, en los que gestiona."""
@@ -144,6 +161,8 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
           origen_lugar=None, destino_lugar=None, canal: str = "formulario") -> int:
     """Guarda la solicitud, busca vuelos y hoteles (una consulta para todos los aeropuertos marcados) y deja las
     opciones listas para comparar. `prob_cambio` va en porcentaje (0 a 100). Devuelve el id de la solicitud."""
+    if cotizaciones_de_hoy(usuario) >= tope_cotizaciones_dia():   # cada cotización nueva puede gastar dos búsquedas pagas
+        raise TopeAlcanzado(AVISO_TOPE_COTIZACIONES)
     sale, llega = lado(origen, origen_aeropuertos, origen_lugar), lado(destino, destino_aeropuertos, destino_lugar)
     if "malo" in sale or "malo" in llega:
         campo, malo = ("origen", sale["malo"]) if "malo" in sale else ("destino", llega["malo"])

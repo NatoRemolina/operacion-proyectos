@@ -117,3 +117,24 @@ def test_el_gestor_no_cotiza_ni_decide_para_otra_persona_fuera_de_sus_proyectos(
     assert "aviso=" in r.headers["location"]
     assert not db.uno("select id from decisiones where solicitud_id=:s", s=sid)
     assert "Solo lectura" in gestor.get(f"/viajes/{sid}").text
+
+
+def test_el_formulario_respeta_el_tope_de_cotizaciones_del_dia():
+    """Cada cotización nueva puede gastar dos búsquedas pagas: el formulario corta en el mismo tope que la API."""
+    from starlette.testclient import TestClient
+
+    from app.main import app
+    from app.servicios import acceso
+    acceso.crear_usuario("tope-formulario@demo.local", "Tope del formulario", "colaborador", "clave-tope-formulario-2026")
+    c = TestClient(app)
+    c.post("/entrar", data={"correo": "tope-formulario@demo.local", "clave": "clave-tope-formulario-2026"})
+    regla = db.uno("select id, valor from reglas where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
+    db.ejecutar("update reglas set valor='1' where id=:i", i=regla["id"])
+    try:
+        assert isinstance(_crear(c), int)
+        antes = db.uno("select count(*) n from solicitudes")["n"]
+        destino = _crear(c, ida="2026-12-09", regreso="2026-12-12")
+        assert isinstance(destino, str) and "tope" in destino
+        assert db.uno("select count(*) n from solicitudes")["n"] == antes
+    finally:
+        db.ejecutar("update reglas set valor=:v where id=:i", v=regla["valor"], i=regla["id"])

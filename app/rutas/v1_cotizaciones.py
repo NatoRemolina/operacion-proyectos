@@ -20,12 +20,11 @@ from ..api_v1.esquemas_cotizacion import (
     NuevaDecision,
     errores_cotizacion,
 )
-from ..servicios import acceso, agente, consultas, costo, cotizacion, geografia, viajes
+from ..servicios import acceso, agente, consultas, cotizacion, geografia, viajes
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
 PUEDE_ELEGIR_VIAJERO = ("gestor", "admin")
-TOPE_DIA = 20   # cotizaciones nuevas por persona y día; la regla `tope_cotizaciones_persona_dia` lo cambia
 
 
 def _no_encontrado() -> ErrorApi:
@@ -118,11 +117,6 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
         if hecha:
             response.status_code = 200
             return _cotizacion(yo, hecha)
-    if _hechas_hoy(yo) >= _tope_dia():   # cada cotización nueva puede gastar dos búsquedas pagas
-        if envio:
-            cotizacion.soltar_envio(envio)
-        raise ErrorApi(429, "TOO_MANY_REQUESTS", "Llegaste al tope de cotizaciones nuevas de hoy. Retoma una de las que ya "
-                                                 "tienes o pide a administración que amplíe el tope.")
     try:
         sid = cotizacion.crear(yo, proyecto_id=datos.proyecto_id, viajero_id=viajero_id, para_otra_persona=para_otra,
                                ida=datos.ida.isoformat(), regreso=datos.regreso.isoformat(),
@@ -138,6 +132,10 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
         if envio:
             cotizacion.soltar_envio(envio)
         raise ErrorApi(403, "FORBIDDEN", str(e)) from e
+    except cotizacion.TopeAlcanzado as e:   # el tope lo aplica el servicio, igual que en el formulario
+        if envio:
+            cotizacion.soltar_envio(envio)
+        raise ErrorApi(429, "TOO_MANY_REQUESTS", str(e)) from e
     except Exception:
         if envio:
             cotizacion.soltar_envio(envio)
@@ -145,14 +143,6 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
     if envio:
         cotizacion.completar_envio(envio, sid)
     return _cotizacion(yo, sid)
-
-
-def _tope_dia() -> int:
-    return int(costo.supuesto(costo.catalogo(), "tope_cotizaciones_persona_dia", TOPE_DIA))
-
-
-def _hechas_hoy(yo: dict) -> int:
-    return db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=yo["id"], h=db.ahora()[:10])["n"]
 
 
 # ---------- ver ----------

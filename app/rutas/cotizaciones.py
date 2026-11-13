@@ -49,7 +49,7 @@ def viaje_crear(proyecto_id: int = Form(...), viajero_id: int = Form(0), origen:
                                viajero_nuevo=viajero_nuevo, para_otra_persona=para_otra_persona == "1",
                                origen_aeropuertos=origen_aeropuertos, destino_aeropuertos=destino_aeropuertos,
                                origen_lugar=origen_lugar, destino_lugar=destino_lugar)
-    except (cotizacion.CotizacionInvalida, cotizacion.FueraDeAlcance) as e:
+    except (cotizacion.CotizacionInvalida, cotizacion.FueraDeAlcance, cotizacion.TopeAlcanzado) as e:
         return _volver_al_formulario(str(e))
     return RedirectResponse(f"/viajes/{sid}", status_code=303)
 

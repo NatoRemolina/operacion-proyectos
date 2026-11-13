@@ -32,6 +32,14 @@ config.DIR_ARCHIVOS = _tmp / "archivos"
 from app.main import app  # noqa: E402
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _tope_de_cotizaciones_amplio():
+    """Las pruebas cotizan muchas veces al día con las mismas cuentas: el tope diario por persona
+    (`tope_cotizaciones_persona_dia`) no debe depender de cuántas llevan. Las pruebas del tope fijan el suyo."""
+    from app import db
+    db.ejecutar("update reglas set valor='100000' where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
+
+
 def _con_sesion(correo: str, clave: str) -> TestClient:
     c = TestClient(app)
     assert c.post("/entrar", data={"correo": correo, "clave": clave}, follow_redirects=False).headers["location"] == "/"
