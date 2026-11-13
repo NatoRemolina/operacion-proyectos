@@ -187,6 +187,15 @@ export const cotizacionSchema = z.object({
       presupuesto_usd: dineroSchema,
     })
     .nullable(),
+  compra: z
+    .object({
+      id: z.number().int(),
+      estado: z.enum(["solicitada", "en_analisis", "se_comprara", "no_se_comprara", "comprada", "cancelada"]),
+      estado_texto: z.string(),
+      motivo: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
   fuente_url: z.string(),
   fuente_hoteles_url: z.string(),
   puede_decidir: z.boolean(),

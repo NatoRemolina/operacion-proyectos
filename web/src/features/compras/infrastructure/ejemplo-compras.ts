@@ -1,0 +1,34 @@
+import type { CompraDetalle } from "../domain/compras";
+
+/** Una solicitud de compra de ejemplo (Miami → Las Vegas, AA 1851), con la forma de la API v1. Pruebas y demostración. */
+export const COMPRA_EJEMPLO: CompraDetalle = {
+  id: 7,
+  estado: "solicitada",
+  estado_texto: "Solicitud de compra enviada",
+  version: 1,
+  viaje: { id: 41, codigo: "V-2026-0041", estado: "pendiente_aprobacion", presupuesto_usd: "1153.00" },
+  solicitud_id: 12,
+  solicitada_por: "Andrés Molina",
+  motivo: null,
+  vendedor: null,
+  localizador: null,
+  precio_pagado_usd: null,
+  precio_cotizado_usd: "458.00",
+  anticipacion_dias: null,
+  creado: "2026-11-13T15:20:00Z",
+  decidido: null,
+  comprada: null,
+  frente_presupuesto: null,
+  vuelo: {
+    opcion_id: 6,
+    numeros: ["AA 1851"],
+    aerolinea: "American",
+    sale: "2026-12-08 09:48",
+    llega: "2026-12-08 12:24",
+    precio_usd: "458.00",
+    vendedor_url: "/api/v1/cotizaciones/12/vuelos/6/vendedor",
+    fuente_url: "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD",
+  },
+  clics: [{ destino: "vendedor", dominio: "www.google.com", momento: "2026-11-13T15:18:00Z", opcion_id: 6, usuario: "Andrés Molina" }],
+  analisis: null,
+};

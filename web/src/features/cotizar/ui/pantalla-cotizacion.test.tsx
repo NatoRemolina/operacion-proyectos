@@ -126,6 +126,8 @@ describe("Comparación de una cotización", () => {
     await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
 
     const confirmacion = await screen.findByRole("heading", { name: /^Viaje V-2026-\d{4} creado, pendiente de aprobación$/ });
+    // la solicitud de compra nace con la decisión y la persona ve su estado
+    expect(screen.getByText("Compra del tiquete:").nextElementSibling).toHaveTextContent("Solicitud de compra enviada");
     expect(confirmacion).toHaveFocus();
     // el presupuesto que aprueba administración: sin riesgo de cambio ni millas
     const presupuesto = (Number(OTRA.desglose.precio_usd) + Number(OTRA.desglose.equipaje_usd) +

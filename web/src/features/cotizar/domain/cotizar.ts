@@ -231,6 +231,13 @@ export interface Cotizacion {
     /** Lo que aprueba administración: sin riesgo de cambio ni millas, con viáticos. */
     readonly presupuesto_usd: Dinero;
   } | null;
+  /** La solicitud de compra del tiquete, que nace al decidir y lleva administración. */
+  readonly compra: {
+    readonly id: number;
+    readonly estado: "solicitada" | "en_analisis" | "se_comprara" | "no_se_comprara" | "comprada" | "cancelada";
+    readonly estado_texto: string;
+    readonly motivo: string | null;
+  } | null;
   /** La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador. Siempre google.com/travel. */
   readonly fuente_url: string;
   /** La búsqueda de hoteles en Google Hotels con las fechas de la cotización. */

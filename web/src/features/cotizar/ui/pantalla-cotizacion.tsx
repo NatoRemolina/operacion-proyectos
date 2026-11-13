@@ -277,6 +277,7 @@ function DecisionGuardada({
       <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
         <Dato nombre="Estado del viaje" valor={viaje.estado_texto} />
         <Dato nombre="Presupuesto para aprobar" valor={formatearDinero(viaje.presupuesto_usd)} />
+        {c.compra ? <Dato nombre="Compra del tiquete" valor={c.compra.estado_texto} /> : null}
         {vuelo ? <Dato nombre="Vuelo elegido" valor={`${nombreVuelo(vuelo)} (${hora(vuelo.sale)})`} /> : null}
         <Dato nombre="Hotel" valor={hotel?.nombre ?? "Sin hotel en esta decisión"} />
         {d.motivo ? <Dato nombre="Por qué" valor={d.motivo} /> : null}

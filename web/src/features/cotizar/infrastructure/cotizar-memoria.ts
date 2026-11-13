@@ -107,6 +107,7 @@ export function crearCotizarMemoria(opciones: {
       mas_barata_id: null,
       decision: null,
       viaje: null,
+      compra: null,
       fuente_url: "https://www.google.com/travel/flights",
       fuente_hoteles_url: "https://www.google.com/travel/search",
       puede_decidir: false,
@@ -200,6 +201,7 @@ export function crearCotizarMemoria(opciones: {
           aviso: null,
         },
         viaje,
+        compra: c.compra ?? { id: viaje.id, estado: "solicitada", estado_texto: "Solicitud de compra enviada", motivo: null },
       };
       cotizaciones.set(id, decidida);
       return decidida;
