@@ -152,3 +152,14 @@ describe("la más barata", () => {
     expect(barataDescartada(c)?.id).toBe(descartada!.id);
   });
 });
+
+describe("fecha de ida pasada", () => {
+  it("rechaza una ida anterior a hoy y acepta hoy", async () => {
+    const { validarBorrador, hoyLocal } = await import("./cotizar");
+    const hoy = hoyLocal(new Date(2026, 10, 12, 23, 30));   // 12 nov, casi medianoche en el equipo
+    expect(hoy).toBe("2026-11-12");
+    const base = { ...BORRADOR_VACIO, regreso: "2026-11-24" };
+    expect(validarBorrador({ ...base, ida: "2026-11-11" }, hoy).ida).toMatch(/ya pasó/);
+    expect(validarBorrador({ ...base, ida: "2026-11-12" }, hoy).ida).toBeUndefined();
+  });
+});

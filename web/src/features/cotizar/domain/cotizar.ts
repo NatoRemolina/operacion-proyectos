@@ -390,8 +390,14 @@ export function problemaDeAlcance(b: BorradorCotizacion, f: Pick<FormularioCotiz
   return proyecto && !proyecto.para_otra_persona ? PROYECTO_FUERA_DE_ALCANCE : null;
 }
 
+/** La fecha de hoy en el equipo de quien cotiza, como AAAA-MM-DD: la ida no puede ser anterior. */
+export function hoyLocal(ahora: Date = new Date()): string {
+  const dos = (n: number) => String(n).padStart(2, "0");
+  return `${ahora.getFullYear()}-${dos(ahora.getMonth() + 1)}-${dos(ahora.getDate())}`;
+}
+
 /** Revisión previa en el navegador; el servidor vuelve a validar siempre. */
-export function validarBorrador(b: BorradorCotizacion): ErroresBorrador {
+export function validarBorrador(b: BorradorCotizacion, hoy: string = hoyLocal()): ErroresBorrador {
   const errores: ErroresBorrador = {};
   if (!b.proyectoId) errores.proyectoId = "Elige el proyecto del viaje.";
   if (!b.viajeroId) errores.viajeroId = "Elige quién viaja.";
@@ -400,6 +406,7 @@ export function validarBorrador(b: BorradorCotizacion): ErroresBorrador {
   const destino = problemaDeLado(b.destino, "destino");
   if (destino) errores.destino = destino;
   if (!FECHA.test(b.ida)) errores.ida = "Elige la fecha de ida.";
+  else if (b.ida < hoy) errores.ida = "La fecha de ida ya pasó: elige hoy o una fecha futura.";
   if (!FECHA.test(b.regreso)) errores.regreso = "Elige la fecha de regreso.";
   else if (FECHA.test(b.ida) && b.regreso <= b.ida) errores.regreso = "El regreso debe ser después de la ida.";
   if (b.horaLimite && !/^([01]\d|2[0-3]):[0-5]\d$/.test(b.horaLimite)) {
