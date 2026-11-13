@@ -57,6 +57,14 @@ export interface ViajeAsignable {
   readonly destino: string | null;
   readonly ida: string | null;
   readonly regreso: string | null;
+  /** Es un viaje de quien revisa: cargar el gasto ahí lo haría suyo, y nadie revisa lo suyo. */
+  readonly propio?: boolean;
+}
+
+/** `null` si el viaje elegido sirve; si es de quien revisa, por qué no (antes de enviar nada). */
+export function problemaDeViaje(viajeId: number | undefined, viajes: readonly ViajeAsignable[]): string | null {
+  if (!viajeId || !viajes.find((v) => v.id === viajeId)?.propio) return null;
+  return "Es un viaje tuyo: el gasto pasaría a ser tuyo y nadie revisa lo suyo. Elige otro viaje o déjalo sin viaje.";
 }
 
 /** Lo que la revisión necesita además de la ficha del gasto. */

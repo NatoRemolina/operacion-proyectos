@@ -53,6 +53,7 @@ function datosDe(datos: Partial<DatosRevision> = {}): DatosRevision {
     viajes: [
       { id: 7, codigo: "V-2026-0007", estado: "aprobado", estado_texto: "Aprobado", titular: "Alex Rivera", origen: "MIA", destino: "SLC", ida: "2026-12-08", regreso: "2026-12-11" },
       { id: 9, codigo: "V-2026-0009", estado: "aprobado", estado_texto: "Aprobado", titular: "Sam Ortiz", origen: "MIA", destino: "LAS", ida: "2026-12-14", regreso: "2026-12-16" },
+      { id: 11, codigo: "V-2026-0011", estado: "aprobado", estado_texto: "Aprobado", titular: "Administración", origen: "MIA", destino: "SFO", ida: "2026-12-20", regreso: "2026-12-22", propio: true },
     ],
     propio: false,
     aviso_propio: null,
@@ -65,15 +66,19 @@ function montar({
   revisar,
   permiso = "admin",
   datos = datosDe(),
+  primeraFicha,
 }: {
   gastos?: GastoDetalle[];
   revisar?: AdministracionRepository["revisarGasto"];
   permiso?: "admin" | "colaborador";
   datos?: DatosRevision;
+  /** Lo que responde la primera lectura de la ficha (después, lo de `gastos`). */
+  primeraFicha?: GastoDetalle;
 } = {}) {
   navegacion.push.mockClear();
   const repoGastos: GastosRepository = { ...crearGastosMemoria({ gastos }), urlOriginal: (id) => `/api/v1/documentos/${id}/contenido` };
   const obtener = vi.spyOn(repoGastos, "obtener");
+  if (primeraFicha) obtener.mockResolvedValueOnce(primeraFicha);
   const memoria = crearAdministracionMemoria({ resumen: resumenDePrueba(), gastos, datosRevision: { 123: datos } });
   const administracion = {
     ...memoria,
@@ -293,6 +298,14 @@ describe("Revisar un gasto", () => {
     expect(await within(screen.getByRole("status", { name: "Avisos" })).findByText(/aprobado con excepción/)).toBeInTheDocument();
   });
 
+  it("en lo leído, un impuesto o un subtotal vacíos se ven como «—», como en la ficha (M-19)", async () => {
+    const base = datosDe();
+    montar({ datos: { ...base, lectura_original: { ...base.lectura_original!, impuesto: null, subtotal: null } } });
+    const leido = await screen.findByRole("region", { name: "Lo que leímos del recibo" });
+    expect(within(leido).getByText("Impuesto").nextElementSibling).toHaveTextContent(/^—$/);
+    expect(within(leido).getByText("Subtotal").nextElementSibling).toHaveTextContent(/^—$/);
+  });
+
   it("si llegó por correo, muestra el remitente y el asunto junto al recibo, como la ficha", async () => {
     montar({
       gastos: [
@@ -370,6 +383,18 @@ describe("Revisar un gasto", () => {
     expect(revisar).toHaveBeenCalledWith(123, { version: 3, accion: "aprobar", campos: { categoria: "otros" }, viajeId: 9 });
   });
 
+  it("un viaje propio viene marcado y elegirlo se explica sin enviar nada", async () => {
+    const usuario = userEvent.setup();
+    const { revisar } = montar();
+    const correccion = await screen.findByRole("region", { name: "Corregir los datos" });
+    expect(within(correccion).getByRole("option", { name: /V-2026-0011.*tuyo/ })).toBeInTheDocument();
+    await usuario.selectOptions(within(correccion).getByLabelText("Viaje"), "11");
+    await usuario.click(within(correccion).getByRole("button", { name: "Guardar correcciones" }));
+    expect(within(correccion).getByText(/Es un viaje tuyo/)).toBeInTheDocument();
+    expect(within(correccion).getByLabelText("Viaje")).toHaveAttribute("aria-invalid", "true");
+    expect(revisar).not.toHaveBeenCalled();
+  });
+
   it("quitar el viaje manda 0", async () => {
     const usuario = userEvent.setup();
     const { revisar } = montar();
@@ -408,13 +433,46 @@ describe("Revisar un gasto", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Ni con excepción se aprueba un gasto sin total.");
   });
 
+  it("si el servidor rechaza la categoría, el error queda junto a su selector", async () => {
+    const usuario = userEvent.setup();
+    montar({
+      revisar: async () => {
+        throw new ErrorDeAplicacion("validacion", { mensaje: "Hay datos que no son válidos.", campos: { categoria: "Esa categoría no existe." } });
+      },
+    });
+    const correccion = await screen.findByRole("region", { name: "Corregir los datos" });
+    await usuario.selectOptions(within(correccion).getByLabelText("Categoría"), "otros");
+    await usuario.click(within(correccion).getByRole("button", { name: "Guardar correcciones" }));
+    expect(await within(correccion).findByText("Esa categoría no existe.")).toBeInTheDocument();
+    expect(within(correccion).getByLabelText("Categoría")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("un gasto que se sigue leyendo también abre la revisión, avisa y no deja decidir todavía", async () => {
+    montar({ gastos: [{ ...EN_REVISION, estado: "procesando", estado_texto: "Procesando" }] });
+    expect(await screen.findByRole("heading", { level: 1, name: "Revisar: Café del centro" })).toBeInTheDocument();
+    expect(screen.getByText(/El recibo todavía se está leyendo/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aprobar gasto" })).toBeDisabled();
+  });
+
+  it("si al abrirlo el servidor recuperó un gasto atascado, vuelve a pedir la ficha y deja revisarlo", async () => {
+    const { obtener } = montar({
+      gastos: [{ ...EN_REVISION, version: 4 }],
+      datos: datosDe({ version: 4 }),
+      primeraFicha: { ...EN_REVISION, estado: "procesando", estado_texto: "Procesando", version: 3 },
+    });
+    await screen.findByRole("heading", { level: 1, name: "Revisar: Café del centro" });
+    await vi.waitFor(() => expect(obtener.mock.calls.length).toBeGreaterThan(1));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Aprobar gasto" })).toBeEnabled());
+    expect(screen.queryByText(/El recibo todavía se está leyendo/)).not.toBeInTheDocument();
+  });
+
   it("las justificaciones muestran el texto y la nota de voz se escucha aquí", async () => {
     montar({
       gastos: [
         {
           ...EN_REVISION,
           justificaciones: [
-            { id: 1, tipo: "texto", canal: "web", texto: "Cena con el equipo de grabación", transcripcion: "no_aplica", creado: "2026-11-12T04:00:00Z" },
+            { id: 1, tipo: "texto", canal: "api", texto: "Cena con el equipo de grabación", transcripcion: "no_aplica", creado: "2026-11-12T04:00:00Z" },
             { id: 2, tipo: "audio", canal: "telegram", texto: null, transcripcion: "pendiente", creado: "2026-11-12T05:00:00Z" },
           ],
         },
@@ -422,6 +480,7 @@ describe("Revisar un gasto", () => {
     });
     const contado = await screen.findByRole("region", { name: "Lo que contó la persona" });
     expect(within(contado).getByText("Cena con el equipo de grabación")).toBeInTheDocument();
+    expect(within(contado).getByText(/Por escrito · API ·/)).toBeInTheDocument();
     const audio = contado.querySelector("audio");
     expect(audio).toHaveAttribute("src", "/api/v1/gastos/123/justificaciones/2/audio");
     expect(within(contado).getByText(/Transcripción pendiente/)).toBeInTheDocument();
@@ -432,11 +491,24 @@ describe("Revisar un gasto", () => {
     expect(await screen.findByTitle("Recibo original de Café del centro (PDF)")).toHaveAttribute("src", "/api/v1/documentos/55/contenido");
   });
 
-  it("un correo o una confirmación HTML se ofrece para descargar", async () => {
+  it("un correo sin adjunto legible abre su texto para leerlo, sin descargar un .eml", async () => {
     montar({ datos: datosDe({ soporte: { documento_id: 55, nombre: "reserva.eml", forma: "descarga" } }) });
-    expect(await screen.findByRole("link", { name: "Descargar el recibo original (reserva.eml)" })).toHaveAttribute(
-      "href",
-      "/api/v1/documentos/55/contenido",
-    );
+    const enlace = await screen.findByRole("link", { name: /Ver el texto del correo/ });
+    expect(enlace).toHaveAttribute("href", "/api/v1/documentos/55/contenido");
+    expect(enlace).not.toHaveAttribute("download");
+    expect(enlace).toHaveAttribute("target", "_blank");
+    expect(screen.queryByText(/reserva\.eml/)).not.toBeInTheDocument();
+  });
+
+  it("una confirmación HTML se descarga como texto", async () => {
+    montar({ datos: datosDe({ soporte: { documento_id: 55, nombre: "confirmacion.html", forma: "descarga" } }) });
+    const enlace = await screen.findByRole("link", { name: "Descargar la confirmación como texto" });
+    expect(enlace).toHaveAttribute("href", "/api/v1/documentos/55/contenido");
+    expect(enlace).toHaveAttribute("download");
+  });
+
+  it("un correo con su PDF adjunto lo muestra al lado", async () => {
+    montar({ datos: datosDe({ soporte: { documento_id: 55, nombre: "reserva.eml", forma: "pdf" } }) });
+    expect(await screen.findByTitle("Recibo original de Café del centro (PDF)")).toHaveAttribute("src", "/api/v1/documentos/55/contenido");
   });
 });

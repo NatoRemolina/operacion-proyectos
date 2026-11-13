@@ -3,6 +3,7 @@ import { gastoDetalleSchema, gastoResumenSchema } from "@/features/gastos/infras
 import { viajeDetalleSchema, viajeResumenSchema } from "@/features/viajes/infrastructure/viajes-http";
 import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { ActividadGasto, AdministracionRepository, ResumenAdmin } from "../domain/administracion";
+import type { BuzonSimulado, ResultadoBuzon } from "../domain/buzon";
 import type { DatosRevision } from "../domain/revision";
 import { crearReglasHttp } from "@/features/reglas/infrastructure/reglas-http";
 
@@ -73,11 +74,26 @@ export const datosRevisionSchema = z.object({
       destino: z.string().nullable(),
       ida: z.string().nullable(),
       regreso: z.string().nullable(),
+      propio: z.boolean().default(false),
     }),
   ),
   propio: z.boolean(),
   aviso_propio: z.string().nullable(),
 }) satisfies z.ZodType<DatosRevision>;
+
+const buzonSchema = z.object({
+  simulado: z.literal(true),
+  aviso: z.string(),
+  mensajes: z.array(
+    z.object({ nombre: z.string(), formato: z.enum(["correo", "html"]), remitente: z.string().nullable(), asunto: z.string().nullable() }),
+  ),
+  viajes: datosRevisionSchema.shape.viajes,
+}) satisfies z.ZodType<BuzonSimulado>;
+
+const resultadoBuzonSchema = z.object({
+  leidos: z.array(gastoResumenSchema),
+  errores: z.array(z.object({ nombre: z.string(), mensaje: z.string() })),
+}) satisfies z.ZodType<ResultadoBuzon>;
 
 const resultadoCambioSchema = z.object({ viaje: viajeDetalleSchema, mensaje: z.string() });
 
@@ -103,6 +119,16 @@ export function crearAdministracionHttp(cliente: ClienteHttp): AdministracionRep
     },
     datosRevision(id, signal) {
       return cliente.get(`/gastos/${encodeURIComponent(id)}/revision`, datosRevisionSchema, { signal });
+    },
+    buzon(signal) {
+      return cliente.get("/buzon", buzonSchema, { signal });
+    },
+    leerBuzon({ nombres, viajeId }) {
+      return cliente.postJson(
+        "/buzon/lectura",
+        { nombres, ...(viajeId === null ? {} : { viaje_id: viajeId }) },
+        resultadoBuzonSchema,
+      );
     },
     urlAudioJustificacion(gastoId, justificacionId) {
       return cliente.url(`/gastos/${encodeURIComponent(gastoId)}/justificaciones/${encodeURIComponent(justificacionId)}/audio`);

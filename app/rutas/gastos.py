@@ -1,13 +1,12 @@
 """Reto 2: cargar soportes, ver gastos y revisarlos."""
 import re
-from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import acceso, almacen, contable, envios, extraccion, justificaciones, revision, viajes
+from ..servicios import acceso, almacen, buzon, contable, envios, extraccion, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
 from ..web import (
     NO_ENCONTRADO,
@@ -67,7 +66,7 @@ def gastos(request: Request, estado: str = "", aviso: str = ""):
 @router.get("/gastos/cargar", response_class=HTMLResponse)
 def gastos_cargar(request: Request):
     ejemplos = sorted(p.name for p in config.DIR_EJEMPLOS.iterdir() if p.suffix in (".png", ".pdf", ".jpg"))
-    correos = sorted(p.name for p in config.DIR_EJEMPLOS.iterdir() if p.suffix in (".eml", ".html"))
+    correos = buzon.nombres()   # el buzón de correo simulado: el mismo que lee la API v1
     elegido, _ = viajes.resolver_para_gasto(_yo())
     return plantillas.TemplateResponse(request, "cargar.html", _ctx(
         ejemplos=ejemplos, correos=correos, mis_viajes=_viajes_para_cargar(), elegido=elegido, tope_bytes=config.MAX_BYTES_SOPORTE))
@@ -124,10 +123,10 @@ def gastos_cargar_enviar(request: Request, archivos: list[UploadFile], proyecto_
 @router.post("/gastos/ejemplos")
 def gastos_ejemplos(nombres: list[str] = Form([]), proyecto_id: int = Form(0), viajero_id: int = Form(0), canal: str = Form("web"),
                     viaje_id: int = Form(0)):
-    """Procesa soportes de la carpeta de ejemplos; con canal 'correo' simula la lectura de un buzón."""
+    """Procesa soportes de la carpeta de ejemplos; con canal 'correo' simula la lectura de un buzón (`servicios/buzon.py`)."""
     for n in nombres:
-        archivo = config.DIR_EJEMPLOS / Path(n).name
-        if archivo.is_file():
+        archivo = buzon.archivo(n, buzon.FORMATOS if canal == "correo" else None)
+        if archivo:
             try:
                 _procesar(archivo.read_bytes(), archivo.name, "correo" if canal == "correo" else canal,
                           proyecto_id or None, viajero_id or None, viaje_id)

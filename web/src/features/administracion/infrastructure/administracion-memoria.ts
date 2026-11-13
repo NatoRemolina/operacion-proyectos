@@ -8,6 +8,7 @@ import {
   type AdministracionRepository,
   type ResumenAdmin,
 } from "../domain/administracion";
+import type { BuzonSimulado } from "../domain/buzon";
 import { problemaDeMotivoExcepcion, type DatosRevision } from "../domain/revision";
 import type { CatalogoReglas } from "@/features/reglas/domain/reglas";
 import { crearReglasMemoria } from "@/features/reglas/infrastructure/reglas-memoria";
@@ -31,6 +32,8 @@ export function crearAdministracionMemoria(opciones: {
   gastos?: GastoDetalle[];
   /** Lo que la revisión necesita además de la ficha; sin él se arma con la ficha y los viajes. */
   datosRevision?: Record<number, DatosRevision>;
+  /** Sin buzón, responde «prohibido», como la API a quien no es de administración. */
+  buzon?: BuzonSimulado | null;
   /** Sin catálogo, las reglas responden «prohibido», como la API a quien no es de administración. */
   reglas?: CatalogoReglas | null;
   sesion?: SesionMemoria;
@@ -155,6 +158,44 @@ export function crearAdministracionMemoria(opciones: {
 
     urlAudioJustificacion() {
       return null;
+    },
+
+    async buzon(signal) {
+      await esperar(latenciaMs, signal);
+      exigirSesion(sesion);
+      if (!opciones.buzon) throw new ErrorDeAplicacion("prohibido");
+      return opciones.buzon;
+    },
+
+    async leerBuzon({ nombres, viajeId }) {
+      await esperar(latenciaMs);
+      exigirSesion(sesion);
+      const buzon = opciones.buzon;
+      if (!buzon) throw new ErrorDeAplicacion("prohibido");
+      const viaje = viajeId === null ? null : buzon.viajes.find((v) => v.id === viajeId);
+      if (viajeId !== null && !viaje) {
+        throw new ErrorDeAplicacion("validacion", { campos: { viaje_id: "Ese viaje no existe." } });
+      }
+      const conocidos = new Set(buzon.mensajes.map((m) => m.nombre));
+      // Como el servidor: cada correo leído es un gasto nuevo que espera revisión (la demostración no lee recibos).
+      const leidos = nombres.filter((n) => conocidos.has(n)).map((n, i) => ({
+        id: 9000 + gastos.length + i,
+        viaje: viaje ? { id: viaje.id, codigo: viaje.codigo } : null,
+        comercio: n,
+        fecha: null,
+        categoria: null,
+        total: null,
+        moneda: null,
+        total_usd: null,
+        estado: "revision" as const,
+        estado_texto: "En revisión",
+        creado: new Date().toISOString(),
+        propio: false,
+      }));
+      return {
+        leidos,
+        errores: nombres.filter((n) => !conocidos.has(n)).map((nombre) => ({ nombre, mensaje: "No está en el buzón simulado." })),
+      };
     },
   };
 }

@@ -6,6 +6,7 @@ import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
 import { comoErrorDeAplicacion, type ErrorDeAplicacion } from "@/shared/domain/errores";
 import { useGastosRepository } from "@/features/gastos/application/gastos";
 import type { GastoDetalle, GastoResumen } from "@/features/gastos/domain/gastos";
+import type { LecturaBuzon, ResultadoBuzon } from "../domain/buzon";
 import type {
   AdministracionRepository,
   CambioEstadoViaje,
@@ -108,6 +109,38 @@ export function useRevisarGasto(id: number) {
         void queryClient.invalidateQueries({ queryKey: claveDetalle });
         void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion", "revision", id) });
       }
+    },
+  });
+}
+
+/** El buzón de correo simulado: los correos de ejemplo y los viajes a los que cargarlos. */
+export function useBuzon() {
+  const repositorio = useAdministracionRepository();
+  const personaId = usePersonaId();
+  const consulta = useQuery({
+    queryKey: claveDePersona(personaId, "administracion", "buzon"),
+    queryFn: ({ signal }) => repositorio.buzon(signal),
+  });
+  return { ...consulta, error: consulta.error as ErrorDeAplicacion | null };
+}
+
+/** Caso de uso «leer el buzón simulado». Los gastos nuevos aparecen en las listas y en el resumen. */
+export function useLeerBuzon() {
+  const repositorio = useAdministracionRepository();
+  const personaId = usePersonaId();
+  const queryClient = useQueryClient();
+  return useMutation<ResultadoBuzon, ErrorDeAplicacion, LecturaBuzon>({
+    mutationFn: async (lectura) => {
+      try {
+        return await repositorio.leerBuzon(lectura);
+      } catch (error) {
+        throw comoErrorDeAplicacion(error);
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "gastos") });
+      void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "viajes") });
+      void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion", "resumen") });
     },
   });
 }

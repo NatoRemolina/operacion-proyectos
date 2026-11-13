@@ -109,13 +109,18 @@ def test_sin_lectura_guardada_la_lectura_original_es_nula(cliente, recibo):
 
 
 # ---------- soporte ----------
-@pytest.mark.parametrize("nombre, forma", [("recibo_lisboa.png", "imagen"), ("factura_hotel.pdf", "pdf"),
-                                           ("confirmacion_hotel.html", "descarga"), ("reserva_hotel.eml", "descarga")])
-def test_dice_como_mostrar_el_soporte(cliente, piloto, viaje_aprobado, ejemplos, nombre, forma):
+# Un correo se muestra como lo que entrega su original: el PDF o la foto adjunta, o su texto (De, Asunto y Fecha)
+@pytest.mark.parametrize("nombre, forma, tipo", [("recibo_lisboa.png", "imagen", "image/png"), ("factura_hotel.pdf", "pdf", "application/pdf"),
+                                                 ("confirmacion_hotel.html", "descarga", "text/plain"),
+                                                 ("reserva_hotel.eml", "pdf", "application/pdf"),
+                                                 ("correo_tiquete.eml", "descarga", "text/plain")])
+def test_dice_como_mostrar_el_soporte(cliente, piloto, viaje_aprobado, ejemplos, nombre, forma, tipo):
     g = _enviar(piloto, ejemplos, nombre, viaje_aprobado["id"])
     soporte = _revision(cliente, g["id"]).json()["soporte"]
     assert soporte["forma"] == forma and soporte["documento_id"] == g["documento_id"]
     assert soporte["nombre"]
+    original = cliente.get(f"{V1}/documentos/{g['documento_id']}/contenido")
+    assert original.status_code == 200 and original.headers["content-type"].startswith(tipo)
 
 
 # ---------- opciones para corregir ----------
@@ -131,7 +136,7 @@ def test_ofrece_los_viajes_a_los_que_se_puede_reasignar(cliente, recibo, viaje_a
     assert rechazado["id"] not in opciones   # como en la revisión de administración: un viaje rechazado no recibe gastos
     v = opciones[viaje_aprobado["id"]]
     assert v["codigo"] == viaje_aprobado["codigo"] and v["estado"] == "aprobado" and v["estado_texto"]
-    assert set(v) == {"id", "codigo", "estado", "estado_texto", "titular", "origen", "destino", "ida", "regreso"}
+    assert set(v) == {"id", "codigo", "estado", "estado_texto", "titular", "origen", "destino", "ida", "regreso", "propio"}
 
 
 # ---------- nadie revisa lo suyo ----------
@@ -223,3 +228,73 @@ def test_lo_aprobado_sin_cambios_cuenta_como_aprobado_en_revision(cliente, nuevo
     assert fila["aprobado_en_revision"]   # el Excel dice quién lo aprobó, no «automática»
     assert {"aprobado en revisión", "revisado, sigue en revisión"} <= set(memoria.EVENTOS_RELEVANTES)
     assert "aprobado en revisión" in metricas.PASOS_APROBACION
+
+
+# ---------- ronda 1: la categoría tiene que ser del catálogo ----------
+def test_una_categoria_que_no_existe_responde_422_en_su_campo(cliente, nuevo_viaje):
+    gid = _gasto_de_viaje(nuevo_viaje(), "Sonda categoría inventada")
+    r = cliente.post(f"{V1}/gastos/{gid}/revision", headers=_csrf(cliente),
+                     json={"version": 0, "accion": "guardar", "categoria": "joyeria"})
+    cuerpo = _error(r, 422, "VALIDATION_ERROR")
+    assert "categoria" in cuerpo["error"]["fields"] and "Transporte terrestre" in cuerpo["error"]["fields"]["categoria"]
+    g = db.uno("select categoria, version from gastos where id=:i", i=gid)
+    assert g["categoria"] == "otros" and g["version"] == 0
+
+
+@pytest.mark.parametrize("vacia", ["", None])
+def test_una_categoria_vacia_o_nula_tampoco_se_acepta(cliente, nuevo_viaje, vacia):
+    gid = _gasto_de_viaje(nuevo_viaje(), "Sonda categoría vacía")
+    r = cliente.post(f"{V1}/gastos/{gid}/revision", headers=_csrf(cliente),
+                     json={"version": 0, "accion": "guardar", "categoria": vacia})
+    assert r.status_code == 422
+    g = db.uno("select categoria, version from gastos where id=:i", i=gid)
+    assert g["categoria"] == "otros" and g["version"] == 0
+
+
+def test_la_pantalla_de_administracion_tampoco_acepta_una_categoria_inventada(cliente, nuevo_viaje):
+    v = nuevo_viaje()
+    gid = _gasto_de_viaje(v, "Sonda categoría Jinja")
+    r = cliente.post(f"/gastos/{gid}", data={"accion": "guardar", "version": 0, "categoria": "joyeria", "comercio": "Sonda categoría Jinja",
+                                             "fecha": v["ida"], "total": "20", "moneda": "USD"}, follow_redirects=False)
+    assert r.status_code == 303 and "revision=" in r.headers["location"]
+    assert db.uno("select categoria, version from gastos where id=:i", i=gid) == {"categoria": "otros", "version": 0}
+
+
+# ---------- ronda 1: un gasto atascado en «procesando» se recupera al abrir su revisión ----------
+def _procesando(v: dict, comercio: str, hace_min: int) -> int:
+    from datetime import UTC, datetime, timedelta
+    creado = (datetime.now(UTC) - timedelta(minutes=hace_min)).strftime("%Y-%m-%d %H:%M:%S")
+    return db.insertar("gastos", viaje_id=v["id"], proyecto_id=v["proyecto_id"], viajero_id=v["viajero_id"], usuario_id=v["usuario_id"],
+                       comercio=comercio, estado="procesando", creado=creado, version=0)
+
+
+def test_un_gasto_atascado_pasa_a_revision_al_abrir_su_revision(cliente, nuevo_viaje):
+    gid = _procesando(nuevo_viaje(), "Sonda atascada", hace_min=30)
+    datos = _revision(cliente, gid).json()
+    g = db.uno("select estado, version from gastos where id=:i", i=gid)
+    assert g["estado"] == "revision" and datos["version"] == g["version"]
+    assert cliente.get(f"{V1}/gastos/{gid}").json()["estado"] == "revision"
+
+
+def test_un_gasto_que_se_sigue_leyendo_no_se_toca(cliente, nuevo_viaje):
+    gid = _procesando(nuevo_viaje(), "Sonda leyéndose", hace_min=0)
+    datos = _revision(cliente, gid).json()
+    assert db.uno("select estado from gastos where id=:i", i=gid)["estado"] == "procesando" and datos["version"] == 0
+
+
+# ---------- ronda 1: los viajes propios vienen marcados y reasignar a uno se impide ----------
+def test_los_viajes_propios_vienen_marcados_y_reasignar_a_uno_se_impide(cliente, recibo, nuevo_viaje):
+    v = nuevo_viaje()
+    admin = _persona("admin@demo.local")
+    titular = v["usuario_id"]
+    db.actualizar("viajes", v["id"], usuario_id=admin["id"])   # administración es la titular de este viaje
+    try:
+        datos = _revision(cliente, recibo["id"]).json()
+        opciones = {x["id"]: x for x in datos["viajes"]}
+        assert opciones[v["id"]]["propio"] is True and opciones[recibo["viaje"]["id"]]["propio"] is False
+        r = cliente.post(f"{V1}/gastos/{recibo['id']}/revision", headers=_csrf(cliente),
+                         json={"version": datos["version"], "accion": "guardar", "viaje_id": v["id"]})
+        _error(r, 403, "FORBIDDEN")
+        assert db.uno("select viaje_id from gastos where id=:i", i=recibo["id"])["viaje_id"] == recibo["viaje"]["id"]
+    finally:
+        db.actualizar("viajes", v["id"], usuario_id=titular)

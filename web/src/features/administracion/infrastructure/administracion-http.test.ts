@@ -104,3 +104,36 @@ describe("adaptador HTTP de la revisión completa", () => {
     expect(administracion.urlAudioJustificacion(123, 9)).toBe("/api/v1/gastos/123/justificaciones/9/audio");
   });
 });
+
+describe("adaptador HTTP del buzón simulado", () => {
+  it("lee el buzón con su aviso de simulado", async () => {
+    const { fetchFalso, administracion } = preparar(
+      respuestaJson({
+        simulado: true,
+        aviso: "Buzón simulado: no está conectado a ningún correo real.",
+        mensajes: [{ nombre: "reserva_hotel.eml", formato: "correo", remitente: "Hotel <r@h.test>", asunto: "Su reserva" }],
+        viajes: DATOS_REVISION.viajes,
+      }),
+    );
+    const buzon = await administracion.buzon();
+    expect(fetchFalso.mock.calls[0]![0]).toBe("/api/v1/buzon");
+    expect(buzon.simulado).toBe(true);
+    expect(buzon.mensajes[0]?.asunto).toBe("Su reserva");
+  });
+
+  it("lee los correos elegidos con el viaje", async () => {
+    const { fetchFalso, administracion } = preparar(respuestaJson({ leidos: [gastoDePrueba()], errores: [] }));
+    const resultado = await administracion.leerBuzon({ nombres: ["reserva_hotel.eml"], viajeId: 7 });
+    const [ruta, init] = fetchFalso.mock.calls[0]!;
+    expect(ruta).toBe("/api/v1/buzon/lectura");
+    expect(JSON.parse(String(init?.body))).toEqual({ nombres: ["reserva_hotel.eml"], viaje_id: 7 });
+    expect(resultado.leidos).toHaveLength(1);
+  });
+
+  it("sin viaje no lo manda", async () => {
+    const { fetchFalso, administracion } = preparar(respuestaJson({ leidos: [], errores: [{ nombre: "x.png", mensaje: "No está en el buzón simulado." }] }));
+    const resultado = await administracion.leerBuzon({ nombres: ["x.png"], viajeId: null });
+    expect(JSON.parse(String(fetchFalso.mock.calls[0]![1]?.body))).toEqual({ nombres: ["x.png"] });
+    expect(resultado.errores[0]?.mensaje).toMatch(/No está/);
+  });
+});

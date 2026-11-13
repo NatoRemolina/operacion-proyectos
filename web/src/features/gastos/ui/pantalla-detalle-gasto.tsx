@@ -37,7 +37,8 @@ export function PantallaDetalleGasto({ id }: { id: number }) {
   }
 
   // Administración revisa aquí mismo lo que está en revisión: recibo, lectura y decisión. Lo propio lo revisa otra persona.
-  if (permiso === "admin" && gasto.estado === "revision" && !gasto.propio) {
+  // También lo que sigue «procesando»: si la lectura se cortó, abrir la revisión lo recupera.
+  if (permiso === "admin" && (gasto.estado === "revision" || gasto.estado === "procesando") && !gasto.propio) {
     return <RevisionGasto gasto={gasto} urlOriginal={urlOriginal} migas={migas} />;
   }
 

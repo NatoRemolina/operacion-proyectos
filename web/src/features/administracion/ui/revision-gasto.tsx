@@ -1,8 +1,10 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { estadoVisibleGasto, etiquetaCategoria, type GastoDetalle, type Justificacion } from "@/features/gastos/domain/gastos";
+import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { useAvisos } from "@/shared/ui/aviso-emergente";
 import { Boton, clasesBoton } from "@/shared/ui/boton";
@@ -21,6 +23,7 @@ import {
   formularioInicial,
   importeNormalizado,
   problemaDeMotivoExcepcion,
+  problemaDeViaje,
   type DatosRevision,
   type FormularioRevision,
   type LecturaOriginal,
@@ -35,7 +38,7 @@ const TITULO_ERROR: Partial<Record<ErrorDeAplicacion["tipo"], string>> = {
   validacion: "No se guardó la revisión",
 };
 
-const CANAL: Record<string, string> = { web: "Web", celular: "Celular", correo: "Correo", telegram: "Telegram" };
+const CANAL: Record<string, string> = { web: "Web", celular: "Celular", correo: "Correo", telegram: "Telegram", api: "API" };
 
 const HECHO: Record<"aprobar" | "excepcion" | "rechazar", string> = {
   aprobar: "Gasto aprobado.",
@@ -98,13 +101,26 @@ function SoporteOriginal({ soporte, url, comercio }: { soporte: SoporteRevision;
       </div>
     );
   }
+  // Un correo sin adjunto legible se entrega como su texto (De, Asunto y Fecha): se lee aparte, no se descarga un .eml
+  if (/\.eml$/i.test(soporte.nombre ?? "")) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-texto-secundario">
+          Llegó como correo sin un adjunto que se pueda mostrar aquí. Su texto, con remitente, asunto y fecha, se abre aparte.
+        </p>
+        <a href={url} target="_blank" rel="noopener noreferrer" className={clasesBoton("secundario", "self-start")}>
+          Ver el texto del correo (se abre en otra pestaña)
+        </a>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
       <p className="text-texto-secundario">
-        Llegó como correo o como confirmación en HTML. Se guardó sin código ni enlaces activos, y no se muestra aquí: descárgalo para leerlo.
+        Llegó como confirmación en HTML. Se guardó como texto, sin código ni enlaces activos, y no se muestra aquí.
       </p>
       <a href={url} download className={clasesBoton("secundario", "self-start")}>
-        Descargar el recibo original{soporte.nombre ? ` (${soporte.nombre})` : ""}
+        Descargar la confirmación como texto
       </a>
     </div>
   );
@@ -156,8 +172,8 @@ function LecturaDelRecibo({ lectura }: { lectura: LecturaOriginal | null }) {
         <Fila termino="Comercio">{lectura.comercio ?? "Sin leer"}</Fila>
         <Fila termino="Fecha">{formatearFecha(lectura.fecha)}</Fila>
         <Fila termino="Categoría">{etiquetaCategoria(lectura.categoria)}</Fila>
-        <Fila termino="Subtotal">{formatearDinero(lectura.subtotal, lectura.moneda)}</Fila>
-        <Fila termino="Impuesto">{formatearDinero(lectura.impuesto, lectura.moneda)}</Fila>
+        <Fila termino="Subtotal">{lectura.subtotal === null ? "—" : formatearDinero(lectura.subtotal, lectura.moneda)}</Fila>
+        <Fila termino="Impuesto">{lectura.impuesto === null ? "—" : formatearDinero(lectura.impuesto, lectura.moneda)}</Fila>
         <Fila termino="Propina">{lectura.propina === null ? "Sin propina" : formatearDinero(lectura.propina, lectura.moneda)}</Fila>
         <Fila termino="Total">{formatearDinero(lectura.total, lectura.moneda)}</Fila>
         <Fila termino="Confianza de la lectura">
@@ -202,6 +218,23 @@ const CAMPOS: readonly { campo: CampoTextual; etiqueta: string; tipo?: string; d
  */
 export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetalle; urlOriginal: string | null; migas: readonly Miga[] }) {
   const consulta = useDatosRevision(gasto.id);
+  const queryClient = useQueryClient();
+  const personaId = usePersonaId();
+  const versionDatos = consulta.data?.version;
+  const versionFicha = gasto.version ?? 0;
+  const leyendo = gasto.estado === "procesando";
+  // Los datos de revisión son más nuevos que la ficha (por ejemplo, el servidor recuperó un gasto atascado al abrirlo):
+  // se vuelve a pedir la ficha. Mientras el recibo se sigue leyendo, se pregunta de nuevo cada pocos segundos.
+  useEffect(() => {
+    const ficha = claveDePersona(personaId, "gastos", "detalle", gasto.id);
+    if (versionDatos !== undefined && versionDatos > versionFicha) void queryClient.invalidateQueries({ queryKey: ficha });
+    if (!leyendo) return;
+    const intervalo = setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ficha });
+      void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion", "revision", gasto.id) });
+    }, 5000);
+    return () => clearInterval(intervalo);
+  }, [versionDatos, versionFicha, leyendo, gasto.id, personaId, queryClient]);
   // Lo que debe sobrevivir cuando el formulario se vuelve a cargar con la versión nueva del gasto.
   const [sigueEnRevision, setSigueEnRevision] = useState(false);
   const [error, setError] = useState<ErrorDeAplicacion | null>(null);
@@ -273,7 +306,8 @@ function RevisionCompleta({
   const { sigueEnRevision, setSigueEnRevision, error, setError, motivo, setMotivo, motivoExcepcion, setMotivoExcepcion } = persistente;
   const comercio = gasto.comercio ?? "gasto sin comercio leído";
   const version = gasto.version ?? 0;
-  const ocupado = revision.isPending || actualizando;
+  const leyendo = gasto.estado === "procesando";
+  const ocupado = revision.isPending || actualizando || leyendo;
 
   const viajes = datos.viajes.some((v) => String(v.id) === inicial.viaje) || !gasto.viaje
     ? datos.viajes
@@ -300,6 +334,12 @@ function RevisionCompleta({
     }
     const hayCampos = conCambios && Object.keys(cambios.campos).length > 0;
     const hayViaje = conCambios && cambios.viajeId !== undefined;
+    const viajePropio = hayViaje ? problemaDeViaje(cambios.viajeId, datos.viajes) : null;
+    if (viajePropio) {
+      setErroresCampos({ viaje: viajePropio });
+      setDialogo(null);
+      return;
+    }
     if (accion === "guardar" && !hayCampos && !hayViaje) {
       avisar({ tono: "info", texto: "No hay correcciones que guardar." });
       return;
@@ -396,6 +436,11 @@ function RevisionCompleta({
         </div>
       </header>
 
+      {leyendo ? (
+        <Alerta tono="info" rol="status" titulo="El recibo todavía se está leyendo">
+          <p>La revisión se actualiza sola cuando termine. Si la lectura se cortó, el gasto pasa a revisión al volver a abrirlo.</p>
+        </Alerta>
+      ) : null}
       {sigueEnRevision ? (
         <Alerta tono="aviso" rol="alert" titulo="No se aprobó: las reglas todavía no lo dejan pasar">
           <p>
@@ -519,11 +564,14 @@ function RevisionCompleta({
                   ayuda="El viaje define el proyecto y quién viaja; el saldo se vuelve a revisar al aprobar."
                   value={formulario.viaje}
                   onChange={(e) => cambiar("viaje", e.target.value)}
+                  error={erroresCampos.viaje}
                 >
                   <option value="">Sin viaje</option>
                   {viajes.map((v) => (
                     <option key={v.id} value={String(v.id)}>
-                      {[v.codigo, v.titular, v.ida, v.estado_texto].filter(Boolean).join(" · ")}
+                      {[v.codigo, v.titular, v.ida, v.estado_texto, "propio" in v && v.propio ? "tuyo: no lo revisarías tú" : null]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </option>
                   ))}
                 </CampoSelector>

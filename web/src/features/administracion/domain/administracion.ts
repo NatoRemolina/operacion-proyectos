@@ -2,6 +2,7 @@ import type { EstadoGasto, GastoDetalle, GastoResumen } from "@/features/gastos/
 import type { ViajeDetalle, ViajeResumen } from "@/features/viajes/domain/viajes";
 import type { Dinero } from "@/shared/domain/tipos";
 import type { ReglasRepository } from "@/features/reglas/domain/reglas";
+import type { BuzonSimulado, LecturaBuzon, ResultadoBuzon } from "./buzon";
 import type { AccionRevision, CamposRevision, DatosRevision } from "./revision";
 
 /** Un gasto reciente con la persona a la que pertenece. */
@@ -67,6 +68,10 @@ export interface AdministracionRepository extends ReglasRepository {
   datosRevision(id: number, signal?: AbortSignal): Promise<DatosRevision>;
   /** Dirección de la nota de voz de una justificación, o `null` si esta fuente no la conserva. */
   urlAudioJustificacion(gastoId: number, justificacionId: number): string | null;
+  /** Buzón de correo simulado: los correos de ejemplo y los viajes a los que cargarlos. Solo administración. */
+  buzon(signal?: AbortSignal): Promise<BuzonSimulado>;
+  /** Lee los correos elegidos por el canal «correo». Lo que no está en el buzón vuelve en `errores`. */
+  leerBuzon(lectura: LecturaBuzon): Promise<ResultadoBuzon>;
 }
 
 export interface RevisionGasto {

@@ -30,6 +30,14 @@ class ConflictoRevision(ValueError):
     """El gasto cambió desde que se vio, o todavía se está leyendo."""
 
 
+class CampoInvalido(ValueError):
+    """Un dato corregido que no se puede guardar. `campo` dice cuál, para mostrar el error junto a él."""
+
+    def __init__(self, campo: str, mensaje: str):
+        super().__init__(mensaje)
+        self.campo = campo
+
+
 class RevisionImpedida(PermissionError):
     """Quien revisa no puede hacerlo: no es administración, o el gasto es suyo."""
 
@@ -98,6 +106,8 @@ def _aplicar(g: dict, quien: dict, version: int | None, accion: str, campos: dic
         db.actualizar("gastos", gid, estado="rechazado", motivo_rechazo=motivo, revisado_por=quien["id"], version=nueva)
         eventos.registrar("gasto", gid, "rechazado en revisión", f"{motivo} · versión {nueva}", quien["nombre"])
         return {"estado": "rechazado", "paso": "rechazado en revisión"}
+    if "categoria" in campos and campos["categoria"] not in config.CATEGORIAS:   # también vacía o nula
+        raise CampoInvalido("categoria", "Esa categoría no existe. Elige una de: " + ", ".join(config.CATEGORIAS.values()) + ".")
     if accion == "excepcion" and len(motivo) < MINIMO_EXCEPCION:
         raise ValueError(f"Para aprobar con excepción hay que escribir el motivo (al menos {MINIMO_EXCEPCION} caracteres).")
     valores = {c: campos[c] if c in campos else g.get(c) for c in EDITABLES}

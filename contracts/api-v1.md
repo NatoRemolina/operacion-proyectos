@@ -204,6 +204,7 @@ Los campos de datos que no se mandan se conservan; los importes van como cadena.
 - `rechazar` exige `motivo` de 5 caracteres o más (si no, 422); se guarda en `motivo_rechazo`, queda en el evento y le llega a la persona por Telegram si tiene el chat vinculado.
 - `aprobar` vuelve a evaluar las reglas con el viaje bloqueado: si no pasan, guarda las correcciones y el gasto sigue en `revision` (200, con sus `motivos`). `excepcion` aprueba con `motivo` de 8 caracteres o más, salvo un importe o una fecha que no son válidos, o sin total, moneda o tasa (422).
 - Un importe que no es un número finito: 422 por campo. Uno negativo o cero se guarda y queda en revisión con `importe_invalido`.
+- Una `categoria` que no está en el catálogo de la plataforma: 422 con `fields.categoria` y no se aplica nada (también en la pantalla de administración).
 - 200 `GastoDetalle` con la `version` nueva. 404 si el gasto no existe.
 
 ### `POST /gastos/{id}/justificaciones`
@@ -377,17 +378,18 @@ interface DatosRevision {
     confianza: number | null; dudas: string[];
   } | null;
   soporte: { documento_id: number; nombre: string | null;
-             forma: "imagen" | "pdf" | "descarga" } | null;   // descarga: correo (.eml) o confirmación HTML
+             forma: "imagen" | "pdf" | "descarga" } | null;   // según lo que entrega /documentos/{id}/contenido
   categorias: { clave: string; nombre: string }[];            // las de la plataforma, en orden
   viajes: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string; titular: string | null;
-            origen: string | null; destino: string | null; ida: string | null; regreso: string | null }[];
+            origen: string | null; destino: string | null; ida: string | null; regreso: string | null;
+            propio: boolean }[];               // propio: viaje de quien revisa; cargar el gasto ahí lo haría suyo
   propio: boolean;                             // nadie revisa lo suyo
   aviso_propio: string | null;                 // por qué no se revisa y si hay otra persona que pueda
 }
 ```
 
-- `viajes`: a los que se puede reasignar el gasto con `viaje_id` en la revisión; todos salvo los rechazados, el más reciente primero (las mismas opciones que la revisión de las pantallas de administración).
-- El archivo del soporte se pide a `GET /documentos/{documento_id}/contenido`.
+- `viajes`: a los que se puede reasignar el gasto con `viaje_id` en la revisión; todos salvo los rechazados, el más reciente primero (las mismas opciones que la revisión de las pantallas de administración). Los marcados `propio` son de quien revisa: reasignar el gasto a uno de ellos responde 403 (nadie revisa lo suyo), y la web lo explica antes de enviar.
+- El archivo del soporte se pide a `GET /documentos/{documento_id}/contenido`, y `forma` dice cómo mostrar lo que entrega: `imagen` y `pdf` al lado (un correo `.eml` con su PDF o su foto adjunta también); `descarga` es texto: un correo sin adjunto legible (su texto con De, Asunto y Fecha, en línea) o una confirmación HTML guardada como texto (se descarga como `.txt`).
 
 ### `GET /gastos/{id}/justificaciones/{jid}/audio`
 La nota de voz de una justificación, tal como llegó (`audio/ogg`, `audio/mpeg` o `audio/mp4`), con `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. Se oye si se ve el gasto; si no, o si la justificación es de otro gasto o es escrita, 404.
@@ -421,9 +423,10 @@ interface CatalogoReglas {
 ### `POST /reglas/{id}`
 Cuerpo JSON `{"valor": "0.25"}` (hasta 500 caracteres) y `X-CSRF-Token`. 200 `Regla` con el valor nuevo y `verificado` de hoy.
 
-- Una regla numérica sigue siendo numérica: se acepta la coma decimal («0,25» se guarda «0.25»); un texto, un negativo, un vacío o un valor no finito responden 422 `VALIDATION_ERROR` con `fields.valor` y no se guarda nada.
+- Una regla numérica sigue siendo numérica: solo dígitos con, a lo sumo, un separador decimal (`^\d+(?:[.,]\d+)?$`; «0,25» se guarda «0.25»). Un texto, un negativo, un exponente («1e3»), guiones bajos («1_000») o un vacío responden 422 `VALIDATION_ERROR` con `fields.valor` y no se guarda nada. «1,000» (de uno a tres dígitos, coma y tres dígitos) es ambiguo: 422 con «¿Mil o uno? Escribe 1000 o 1.0».
 - Una regla de texto guarda el texto sin espacios al principio ni al final.
 - Deja el evento «regla editada» con el valor anterior y el nuevo. 404 si la regla no existe.
+
 ## KPIs
 
 Solo administración, como la pantalla `/admin/kpis`: otra cuenta recibe 403 `FORBIDDEN`. Las cifras salen de la misma definición que la pantalla y que `/api/metricas` (`app/servicios/kpis.py`). Filtros comunes: `proyecto_id` (0 o ausente: todos), `desde` y `hasta` (`AAAA-MM-DD`; una fecha que no es válida se ignora, como en la pantalla).
@@ -588,3 +591,28 @@ Con `X-CSRF-Token`, sin cuerpo. 200 `{"codigo", "enlace": string | null, "minuto
 
 ### `POST /cuenta/telegram/desvincular`
 Con `X-CSRF-Token`, sin cuerpo. 200 `MiCuenta` con `telegram.vinculado: false`. Deja el evento `Telegram desvinculado`.
+## Buzón de correo (simulado)
+
+Solo administración (403 `FORBIDDEN` para colaborador y gestor). **Es una simulación**: lee los correos (`.eml`) y las confirmaciones en HTML de la carpeta de ejemplos de la plataforma (`datos/ejemplos`) como si llegaran a un buzón de gastos; no está conectado a ningún correo real. La lógica es la de `app/servicios/buzon.py`, la misma que la pantalla de carga de administración.
+
+### `GET /buzon`
+200 `BuzonSimulado`:
+
+```ts
+interface BuzonSimulado {
+  simulado: true;
+  aviso: string;                        // el texto que dice que es simulado
+  mensajes: { nombre: string; formato: "correo" | "html"; remitente: string | null; asunto: string | null }[];
+  viajes: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string; titular: string | null;
+            origen: string | null; destino: string | null; ida: string | null; regreso: string | null;
+            propio: boolean }[];   // aprobados o pendientes; propio: viaje de quien lee
+}
+```
+
+### `POST /buzon/lectura`
+Cuerpo JSON `{"nombres": ["reserva_hotel.eml"], "viaje_id": 12}` (de 1 a 20 nombres; `viaje_id` opcional) y `X-CSRF-Token`. 200 `{"leidos": GastoResumen[], "errores": {nombre, mensaje}[]}`.
+
+- Cada correo se lee como cualquier recibo, por el canal `correo`: lectura, validación y estado real (`aprobado_auto` o `revision`). Con `viaje_id`, el viaje define el proyecto y la persona; sin él, el gasto queda a nombre de quien lee y sin viaje.
+- Un nombre que no está en el buzón (otro formato, una ruta, uno que no existe) va a `errores` y no crea nada.
+- Leer dos veces el mismo correo crea otro gasto, que las reglas marcan como posible duplicado.
+- Un `viaje_id` que no existe: 422 con `fields.viaje_id`. Sin nombres: 422.

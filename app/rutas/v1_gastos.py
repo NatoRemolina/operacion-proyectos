@@ -72,8 +72,9 @@ class SoporteRevision(BaseModel):
     documento_id: int
     nombre: str | None
     forma: Literal["imagen", "pdf", "descarga"] = Field(
-        description="Cómo mostrarlo: `imagen` y `pdf` se ven al lado; `descarga` (correo .eml o confirmación HTML "
-                    "guardada como texto) se ofrece para descargar. El archivo sale de `/documentos/{id}/contenido`.")
+        description="Cómo mostrarlo, según lo que entrega `/documentos/{id}/contenido`: `imagen` y `pdf` se ven al lado "
+                    "(un correo con su PDF o su foto adjunta también); `descarga` es texto (un correo sin adjunto legible, "
+                    "con De, Asunto y Fecha, o una confirmación HTML guardada como texto).")
 
 
 class Categoria(BaseModel):
@@ -91,6 +92,13 @@ class ViajeAsignable(BaseModel):
     destino: str | None
     ida: str | None
     regreso: str | None
+    propio: bool = Field(False, description="Es un viaje de quien revisa (titular o viajero): cargar el gasto ahí lo "
+                                            "haría suyo, y nadie revisa lo suyo.")
+
+
+def viajes_asignables(yo: dict, donde: str) -> list[dict]:
+    """Viajes a los que se puede cargar un gasto, marcando los propios de quien mira."""
+    return [{**v, "propio": viajes.es_propio_de(v, yo)} for v in viajes.lista(donde)]
 
 
 class DatosRevision(BaseModel):
@@ -147,7 +155,15 @@ def _campos(datos: RevisionGasto) -> dict:
     return campos
 
 
-def _forma_soporte(mime: str | None) -> str:
+def _forma_soporte(mime: str | None, ruta: str | None) -> str:
+    """Cómo se muestra el original: según lo que entrega `/documentos/{id}/contenido`. Un correo entrega su PDF o su
+    foto adjunta, o su texto con De, Asunto y Fecha (por eso se lee el archivo)."""
+    if mime == "message/rfc822":
+        try:   # si el almacenamiento falla, la revisión sigue y el original se ofrece como descarga
+            contenido = almacen.leer(ruta) if ruta else None
+            mime = original_legible(contenido, mime)[1] if contenido else None
+        except Exception:
+            mime = None
     if mime in ("image/jpeg", "image/png", "image/webp"):
         return "imagen"
     return "pdf" if mime == "application/pdf" else "descarga"
@@ -261,10 +277,14 @@ def datos_revision(id: int, yo: dict = Depends(persona)):
     puede reasignar. Las mismas opciones que la revisión de las pantallas de administración."""
     if not acceso.es_admin(yo):
         raise ErrorApi(403, "FORBIDDEN", "Esta operación es solo para administración.")
-    g = db.uno("""select g.*, d.id doc, d.nombre archivo, d.mime from gastos g left join documentos d on d.id=g.documento_id
-                  where g.id=:i""", i=id)
+    consulta = """select g.*, d.id doc, d.nombre archivo, d.mime, d.ruta from gastos g left join documentos d on d.id=g.documento_id
+                  where g.id=:i"""
+    g = db.uno(consulta, i=id)
     if not g:
         raise _no_encontrado()
+    # Un gasto que quedó «procesando» porque la lectura se cortó pasa a revisión al abrirlo, como en la revisión
+    if g["estado"] == "procesando" and envios.recuperar_si_atascado(g):
+        g = db.uno(consulta, i=id)
     propio = viajes.gasto_propio_de(g, yo)
     aviso = None
     if propio:
@@ -272,9 +292,9 @@ def datos_revision(id: int, yo: dict = Depends(persona)):
                                           " Hace falta otra persona de administración para revisarlo: mientras tanto queda pendiente.")
     return {"gasto_id": id, "version": g["version"] or 0, "metodo_pago": g["metodo_pago"], "canal_reserva": g["canal_reserva"],
             "lectura_original": _lectura_original(g["extraido"]),
-            "soporte": {"documento_id": g["doc"], "nombre": g["archivo"], "forma": _forma_soporte(g["mime"])} if g["doc"] else None,
+            "soporte": {"documento_id": g["doc"], "nombre": g["archivo"], "forma": _forma_soporte(g["mime"], g["ruta"])} if g["doc"] else None,
             "categorias": [{"clave": c, "nombre": n} for c, n in config.CATEGORIAS.items()],
-            "viajes": viajes.lista("v.estado<>'rechazado'"), "propio": propio, "aviso_propio": aviso}
+            "viajes": viajes_asignables(yo, "v.estado<>'rechazado'"), "propio": propio, "aviso_propio": aviso}
 
 
 @router.post("/gastos/{id}/revision", response_model=GastoRevisable, responses=errores(401, 403, 404, 409, 422))
@@ -291,6 +311,8 @@ def revisar(id: int, datos: RevisionGasto, yo: dict = Depends(escritura)):
         raise ErrorApi(403, "FORBIDDEN", str(e)) from e
     except revision.ConflictoRevision as e:
         raise ErrorApi(409, "EDIT_CONFLICT", str(e)) from e
+    except revision.CampoInvalido as e:
+        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {e.campo: str(e)}) from e
     except ValueError as e:
         raise ErrorApi(422, "VALIDATION_ERROR", str(e)) from e
     return _revisable(yo, id)
