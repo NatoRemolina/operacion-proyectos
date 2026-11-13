@@ -129,3 +129,13 @@ def test_preguntas_sugeridas_segun_el_permiso():
     admin = asistente.preguntas_sugeridas(_usuario("admin@demo.local"))
     assert "¿Cómo van los indicadores?" in admin and not set(admin) & set(colaborador)
     assert asistente.preguntas_sugeridas({}) == []
+
+
+# ---------- las fuentes que cita una respuesta del modelo ----------
+def test_una_cita_no_coincide_por_subcadena():
+    fuentes = [{"tipo": "gasto", "id": 1, "codigo": "gasto #1"}, {"tipo": "gasto", "id": 14, "codigo": "gasto #14"},
+               {"tipo": "viaje", "id": 1, "codigo": "V-2026-0001"}, {"tipo": "viaje", "id": 12, "codigo": "V-2026-00012"},
+               {"tipo": "cotizacion", "id": 3, "codigo": "Cotización #3"}, {"tipo": "cotizacion", "id": 31, "codigo": "Cotización #31"}]
+    citadas = asistente.citadas("Revisa el gasto #14, el viaje V-2026-00012 y la cotizacion #31.", fuentes)
+    assert [(f["tipo"], f["id"]) for f in citadas] == [("gasto", 14), ("viaje", 12), ("cotizacion", 31)]
+    assert [f["id"] for f in asistente.citadas("Tu gasto #1 y la Cotización #3.", fuentes)] == [1, 3]

@@ -904,6 +904,16 @@ def transcribir_pregunta(audio: bytes, mime: str, usuario: dict) -> str:
     return " ".join(llm.texto_de(r).strip().strip("\"'«»“”").split())[:500]
 
 
+def citadas(texto: str, fuentes: list[dict]) -> list[dict]:
+    """Las fuentes que nombra la respuesta, con límite de número: «gasto #14» no cita el gasto #1."""
+    bajo = texto.lower()
+
+    def nombra(patron: str) -> bool:
+        return re.search(patron + r"(?!\d)", bajo) is not None
+    return [f for f in fuentes if nombra(re.escape(f["codigo"].lower())) or (f["tipo"] == "gasto" and nombra(f"#{f['id']}"))
+            or (f["tipo"] == "cotizacion" and nombra(f"cotizaci[oó]n #{f['id']}"))]
+
+
 def responder(pregunta: str, usuario: dict) -> dict:
     """Devuelve {texto, fuentes, modo, herramientas, duracion_ms}. Para los tres permisos: el alcance lo decide la sesión."""
     if not Alcance(usuario).valido:
@@ -979,10 +989,7 @@ def _responder(pregunta: str, usuario: dict, cid: int) -> dict:
     # Segunda barrera: aunque una herramienta futura olvidara su filtro, no se cita nada fuera del alcance
     fuentes = [f for f in r.fuentes.values() if r.alcance.ve(f["tipo"], f["id"])]
     if modo in ("modelo", "asesor"):   # se muestran las que la respuesta cita; si no cita ninguna, todas las consultadas
-        bajo = texto.lower()
-        citadas = [f for f in fuentes if f["codigo"].lower() in bajo or (f["tipo"] == "gasto" and f"#{f['id']}" in texto)
-                   or (f["tipo"] == "cotizacion" and f"cotizacion #{f['id']}" in bajo)]
-        fuentes = citadas or fuentes
+        fuentes = citadas(texto, fuentes) or fuentes
     db.actualizar("asistente_consultas", cid, herramientas=r.pasos, fuentes=[{k: f[k] for k in ("tipo", "id", "codigo")} for f in fuentes],
                   modo=modo, duracion_ms=t())
     sesion = (f" · sesión {r.sesion['id']} · tokens {r.sesion.get('entrada', 0)}/{r.sesion.get('salida', 0)}"
