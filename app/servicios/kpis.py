@@ -58,6 +58,8 @@ KPIS = {
                                       formula="Mediana de horas entre la cotización y su primera decisión"),
     "horas_decision_aprobacion": dict(reto=1, sentido="menor", meta=24, alerta=72, responsable="Finanzas", principal=True,
                                       formula="Mediana de horas entre el nacimiento del viaje (la decisión) y la aprobación del presupuesto"),
+    "exactitud_modelo": dict(reto=1, sentido="menor", meta=15, alerta=30, responsable="Operaciones",
+                             formula="Promedio de |precio del buscador al decidir − precio esperado| ÷ precio del buscador, por vuelo mostrado"),
     # Reto 2: gastos, con la mirada de Finanzas
     "ejecucion_presupuesto": dict(reto=2, sentido="menor", meta=100, alerta=110, responsable="Finanzas", principal=True,
                                   formula="Gasto aprobado de los viajes aprobados o cerrados ÷ su presupuesto"),
@@ -89,11 +91,12 @@ ESTADOS = {"verde": "En meta", "ambar": "Atención", "rojo": "Fuera de meta", "s
 # con fecha futura da días negativos): sin esto «−28 días» se pintaría «en meta» por ser menor que la meta.
 # El ahorro puede ser negativo (se eligió algo más caro que lo más barato que sirve); las proporciones no pasan de 100 %.
 PROPORCIONES = ("tasa_reutilizacion", "tasa_consultas_fallidas", "cupo_usado", "acuerdo_recomendacion", "tasa_sin_intervencion",
-                "tasa_correccion")
+                "tasa_correccion")   # el MAPE no es proporción: puede pasar de 100 % si el modelo se equivoca mucho
 RANGOS = {n: (None, None) if n in ("ahorro_identificado", "ahorro_capturado", "captura_ahorro")
           else (0, 100) if n in PROPORCIONES else (0, None) for n in KPIS}
 # Los que dicen algo de una persona. El cupo es de la cuenta; el costo de lectura, las fallas y la espera del buscador no dependen de ella
-DE_PERSONA = [n for n in KPIS if n not in ("cupo_usado", "costo_por_recibo", "tasa_consultas_fallidas", "latencia_buscador")]
+DE_PERSONA = [n for n in KPIS if n not in ("cupo_usado", "costo_por_recibo", "tasa_consultas_fallidas", "latencia_buscador",
+                                            "exactitud_modelo")]
 
 
 def asegurar_metas():

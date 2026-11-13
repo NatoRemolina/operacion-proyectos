@@ -373,8 +373,16 @@ CATALOGO = {
     "viajes_sobre_presupuesto": ("Viajes con gasto aprobado mayor al presupuesto", "viajes", "Dónde ajustar presupuestos o pedir explicación", lambda f: _seccion(viajes, f)["sobre_presupuesto"]),
     "dias_recibo_a_carga": ("Mediana de días del recibo a la carga", "días", "Puntualidad al reportar gastos", lambda f: _seccion(gastos, f)["dias_recibo_a_carga"]),
     "horas_carga_a_aprobacion": ("Mediana de la carga a la aprobación del gasto", "h", "Cuello de botella de la revisión", lambda f: _seccion(gastos, f)["tiempo_mediana_h"]),
+    "exactitud_modelo": ("Error del precio esperado (MAPE)", "%", "Cuánto acierta el modelo de precio antes de usarlo para presupuestar",
+                         lambda f: _seccion(modelo_precio, f)["mape"]),
     "revision_mas_antigua": ("Días del gasto más antiguo en revisión", "días", "Que ningún gasto quede olvidado", lambda f: _seccion(gastos, f)["revision_mas_antigua_dias"]),
 }
+
+
+def modelo_precio(f: dict) -> dict:
+    """Exactitud del precio esperado: lo que esperaba el modelo al decidir frente al precio visto y al pagado."""
+    from . import modelo
+    return modelo.exactitud({k: f.get(k) for k in ("proyecto_id", "desde", "hasta")})
 
 
 def valor(nombre: str, f: dict) -> dict | None:
