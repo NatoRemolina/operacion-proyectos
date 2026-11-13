@@ -306,3 +306,24 @@ def test_una_redireccion_a_travel_clk_se_corta_en_el_navegador(accion):
     assert not r.get("cuerpo") and not r.get("captura_png_b64")
     assert any("BLOCKED_BY_CLIENT" in f for _, f in fallos), fallos            # se cortó en el navegador
     assert not any("/travel/clk" in u and "INTERNET_DISCONNECTED" in f for u, f in fallos)   # nunca intentó salir
+
+
+# ---------- ronda 2 · punto 5: el clic va a la tarifa pedida aunque la página cambie entre leer y pulsar ----------
+def test_ir_a_pulsa_la_tarifa_por_su_etiqueta_aunque_la_pagina_cambie(monkeypatch):
+    real = navegador._etiquetas
+
+    def y_cambia(pagina):
+        leidas = real(pagina)
+        # justo después de leer, la página añade un elemento con etiqueta al comienzo: los índices se corren uno
+        pagina.evaluate("""() => { const b = document.createElement('button'); b.setAttribute('aria-label', 'Nuevo aviso');
+                                   document.body.prepend(b); }""")
+        return leidas
+    monkeypatch.setattr(navegador, "_etiquetas", y_cambia)
+    r = navegador.ir_a(URL, "American", "Main Cabin", servir=_servir(dict(COMPLETA), []))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["cuerpo"].startswith("u=AA-MAIN-UNSOLOUSO")      # el de Main Cabin, no el botón de al lado
+
+
+def test_la_etiqueta_con_comillas_se_busca_tal_cual():
+    assert navegador._selector_etiqueta('Continue to book with "A", B') == '[aria-label="Continue to book with \\"A\\", B"]'
+    assert navegador._selector_etiqueta("a\\b") == '[aria-label="a\\\\b"]'

@@ -233,7 +233,7 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                                       **_evidencia(pagina))
                 return _ir(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
             restante()
-            etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
+            etiquetas = _etiquetas(pagina)
             datos = lector.leer(texto, etiquetas)
             datos["regreso_elegido"] = regreso
             if not datos["tarifas"] and not datos["itinerarios"]:
@@ -292,13 +292,24 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     """Pulsa el «Continue» de la tarifa pedida y espera el envío interceptado. Captura la página antes del clic."""
     from playwright.sync_api import Error
 
-    etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
-    indice = next((i for i, e in enumerate(etiquetas) if _es_continuar(e, pedido["vendedor"], pedido["tarifa"])), None)
-    if indice is None:
+    def sin_tarifa():
         return _resultado("fallido", inicio, SIN_TARIFA, url_final=pagina.url, regreso_elegido=regreso, **_evidencia(pagina))
+
+    etiqueta = next((e for e in _etiquetas(pagina) if _es_continuar(e, pedido["vendedor"], pedido["tarifa"])), None)
+    if etiqueta is None:
+        return sin_tarifa()
     previa = _captura(pagina, restante)
+    # el botón se busca por su etiqueta exacta (no por su posición, que cambia si la página añade algo) y se relee justo
+    # antes de pulsar: el clic solo va al «Continue» de esa tarifa
+    boton = pagina.locator(_selector_etiqueta(etiqueta)).first
     try:
-        pagina.locator("[aria-label]").nth(indice).click(timeout=min(5000, restante()))
+        if not _es_continuar(boton.get_attribute("aria-label", timeout=min(3000, restante())), pedido["vendedor"],
+                             pedido["tarifa"]):
+            return sin_tarifa()
+    except Error:
+        return sin_tarifa()
+    try:
+        boton.click(timeout=min(5000, restante()))
     except Error:
         return _resultado("fallido", inicio, SIN_ENVIO, url_final=pagina.url, regreso_elegido=regreso, **_evidencia(pagina))
     fin = time.monotonic() + min(10_000, restante()) / 1000
@@ -311,6 +322,16 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     return _resultado("listo", inicio, url=envio["url"], cuerpo=envio["cuerpo"], vendedor=pedido["vendedor"],
                       tarifa=pedido["tarifa"], regreso_elegido=regreso, url_final=pagina.url,
                       captura_previa_png_b64=base64.b64encode(previa).decode())
+
+
+def _etiquetas(pagina) -> list[str | None]:
+    """Las etiquetas (`aria-label`) de la página, en orden."""
+    return pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
+
+
+def _selector_etiqueta(etiqueta: str) -> str:
+    """El selector CSS del elemento con esa etiqueta exacta (barras, comillas y saltos de línea escapados)."""
+    return '[aria-label="' + etiqueta.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\a ") + '"]'
 
 
 def _es_continuar(etiqueta, vendedor: str, tarifa: str) -> bool:
@@ -359,7 +380,7 @@ def _esperar(pagina, patron: re.Pattern, plazo_ms: int = ESPERA_MS) -> str | Non
 def _elegir_regreso(pagina, plazo_ms: int = 5000, de_la_cotizacion: dict | None = None) -> dict | None:
     """En la lista de regresos de una ida ya elegida, abre el de la cotización (misma hora de salida y aerolínea) si la
     página lo muestra; si no, el más barato, como la plataforma al decidir. Un clic. `elegido_por` dice cuál fue."""
-    etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
+    etiquetas = _etiquetas(pagina)
     opciones = lector.itinerarios(etiquetas)
     if not opciones:
         return None
@@ -368,14 +389,15 @@ def _elegir_regreso(pagina, plazo_ms: int = 5000, de_la_cotizacion: dict | None 
                and (not buscado.get("aerolinea") or (o.get("aerolinea") or "").lower() == buscado["aerolinea"].lower())]
     barato = min(iguales or opciones, key=lambda o: o["precio"])
     elegido_por = "cotizacion" if iguales else "precio"
-    indice = etiquetas.index(barato["etiqueta"]) if barato["etiqueta"] in etiquetas else \
-        next(i for i, e in enumerate(etiquetas) if (e or "")[:600] == barato["etiqueta"])
+    etiqueta = barato["etiqueta"] if barato["etiqueta"] in etiquetas else \
+        next(e for e in etiquetas if (e or "")[:600] == barato["etiqueta"])
     from playwright.sync_api import Error
 
     # En Google la fila clicable queda por encima del elemento con la etiqueta: se hace clic en su centro sin esperar a
-    # que «nada lo tape» (lo que recibe el clic es la propia fila del vuelo). Un clic, con tiempo corto.
+    # que «nada lo tape» (lo que recibe el clic es la propia fila del vuelo). Un clic, con tiempo corto, en el elemento
+    # de esa etiqueta exacta (no en una posición, que cambia si la página añade algo).
     try:
-        pagina.locator("[aria-label]").nth(indice).click(force=True, timeout=plazo_ms)
+        pagina.locator(_selector_etiqueta(etiqueta)).first.click(force=True, timeout=plazo_ms)
     except Error:
         return None
     return {**{k: v for k, v in barato.items() if k != "etiqueta"}, "elegido_por": elegido_por}
