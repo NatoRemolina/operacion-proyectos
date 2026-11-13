@@ -43,7 +43,7 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 409 | `INVALID_STATE` | El estado del viaje no admite esa acción (por ejemplo, cerrar uno pendiente) |
 | 409 | `PRICE_CONFIRMATION_REQUIRED` | Al aprobar, el precio del vuelo subió más que la tolerancia: se repite con `confirmar_precio: true`; el cambio va en `fields.precio` |
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
-| 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html) |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html); en la voz, no es WAV |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
 | 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso |
 | 429 | `TOO_MANY_REQUESTS` | Tope de cotizaciones nuevas del día por persona (regla `tope_cotizaciones_persona_dia`, 20 en la semilla) |

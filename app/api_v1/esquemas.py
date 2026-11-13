@@ -236,7 +236,7 @@ DESCRIPCION_ERROR = {
     403: "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
     404: "No existe o no es visible para la persona",
     409: "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
-    413: "Archivo de más de 4,5 MB", 415: "El contenido no es JPG, PNG, WebP, PDF ni correo",
+    413: "Archivo de más de 4,5 MB", 415: "El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html); en la voz, no es WAV",
     422: "Campos inválidos; detalle por campo en `fields`", 429: "Demasiados intentos de ingreso, o se alcanzó un tope del día",
     503: "El servicio que transcribe la voz no está configurado o no respondió",
 }

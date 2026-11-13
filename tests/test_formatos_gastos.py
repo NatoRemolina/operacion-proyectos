@@ -297,6 +297,15 @@ def test_la_web_conoce_las_mismas_categorias_que_el_servidor():
         assert f'{clave}: "{nombre}"' in dominio, clave
 
 
+def test_el_415_del_contrato_nombra_la_confirmacion_html():
+    from datos import exportar_contrato
+    vivo = exportar_contrato.contrato()["paths"]["/api/v1/gastos"]["post"]["responses"]["415"]["description"]
+    versionado = json.loads(exportar_contrato.DESTINO.read_text(encoding="utf-8"))
+    publicado = versionado["paths"]["/api/v1/gastos"]["post"]["responses"]["415"]["description"]
+    for descripcion in (vivo, publicado):
+        assert "confirmación HTML" in descripcion and "correo (.eml)" in descripcion, descripcion
+
+
 def test_el_contrato_nombra_todas_las_categorias():
     from pathlib import Path
     contrato = (Path(config.RAIZ) / "contracts" / "api-v1.md").read_text()

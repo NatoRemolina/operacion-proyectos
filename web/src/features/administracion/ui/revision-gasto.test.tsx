@@ -211,5 +211,34 @@ describe("Revisar un gasto", () => {
     const leido = screen.getByRole("region", { name: "Lo que leímos del recibo" });
     expect(contado.compareDocumentPosition(leido) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it("la categoría se lee por su nombre, no por su clave", async () => {
+    montar({ gastos: [{ ...EN_REVISION, categoria: "transporte_terrestre" }] });
+    const leido = await screen.findByRole("region", { name: "Lo que leímos del recibo" });
+    expect(leido).toHaveTextContent("Transporte terrestre");
+    expect(leido).not.toHaveTextContent("transporte_terrestre");
+  });
+
+  it("si llegó por correo, muestra el remitente y el asunto junto al recibo, como la ficha", async () => {
+    montar({
+      gastos: [
+        {
+          ...EN_REVISION,
+          canal: "correo",
+          correo: { remitente: "Casa do Tejo <reservas@casadotejo.test>", asunto: "FICTICIO · Factura de su estadía" },
+        },
+      ],
+    });
+    const recibo = await screen.findByRole("region", { name: "Recibo original" });
+    expect(within(recibo).getByText("Remitente").nextElementSibling).toHaveTextContent("Casa do Tejo <reservas@casadotejo.test>");
+    expect(within(recibo).getByText("Asunto").nextElementSibling).toHaveTextContent("FICTICIO · Factura de su estadía");
+  });
+
+  it("sin correo no muestra remitente ni asunto", async () => {
+    montar();
+    const recibo = await screen.findByRole("region", { name: "Recibo original" });
+    expect(within(recibo).queryByText("Remitente")).not.toBeInTheDocument();
+    expect(within(recibo).queryByText("Asunto")).not.toBeInTheDocument();
+  });
 });
 

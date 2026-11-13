@@ -128,7 +128,7 @@
             }
           },
           "415": {
-            "description": "El contenido no es JPG, PNG, WebP, PDF ni correo",
+            "description": "El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html); en la voz, no es WAV",
             "content": {
               "application/json": {
                 "schema": {
@@ -886,7 +886,7 @@
             }
           },
           "415": {
-            "description": "El contenido no es JPG, PNG, WebP, PDF ni correo",
+            "description": "El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html); en la voz, no es WAV",
             "content": {
               "application/json": {
                 "schema": {
