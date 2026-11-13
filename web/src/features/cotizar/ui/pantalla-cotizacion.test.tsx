@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { formatearDinero } from "@/shared/ui/formato";
 import { renderizarConFuente } from "@/test/renderizar";
-import type { Cotizacion, CotizarRepository } from "../domain/cotizar";
+import type { Cotizacion, CotizarRepository, OpcionHotel } from "../domain/cotizar";
 import { crearCotizarMemoria } from "../infrastructure/cotizar-memoria";
 import { COTIZACION_MOAB, FORMULARIO_EJEMPLO } from "../infrastructure/ejemplo-moab";
 import { PantallaCotizacion } from "./pantalla-cotizacion";
@@ -277,5 +277,46 @@ describe("Comparación de una cotización", () => {
     const avisos = screen.getByRole("status", { name: "Avisos" });
     expect(await within(avisos).findByText(/^Viaje V-2026-\d{4} creado, pendiente de aprobación\.$/)).toBeInTheDocument();
   });
-});
 
+  it("los hoteles se ordenan por costo total con la fidelización: recomendado, el más barato, descartes y total del viaje", async () => {
+    const tru: OpcionHotel = {
+      id: 90, nombre: "Tru by Hilton Moab", noche_usd: "81.00", total_usd: "243.00", costo_total_usd: "219.31",
+      lineas: [
+        { concepto: "Tarifa total (3 noches)", valor_usd: "243.00", origen: "buscador", tipo: "tarifa" },
+        { concepto: "Tarifa de miembro (−5 %)", valor_usd: "-12.15", origen: "supuesto", tipo: "tarifa_miembro" },
+        { concepto: "Puntos del programa (10 por USD a 0.005 USD)", valor_usd: "-11.54", origen: "supuesto", tipo: "puntos" },
+      ],
+      avisos: ["Acumula solo con reserva directa."], calificacion: 4.1, clase: 3, programa: "Hilton Honors", socio: true,
+      descartado: null, origen_dato: "guardado", recomendada: true, mas_barata: false,
+    };
+    const independiente: OpcionHotel = {
+      ...tru, id: 91, nombre: "Independiente Moab", noche_usd: "75.00", total_usd: "225.00", costo_total_usd: "225.00",
+      lineas: [{ concepto: "Tarifa total (3 noches)", valor_usd: "225.00", origen: "buscador", tipo: "tarifa" }],
+      avisos: [], programa: null, socio: false, recomendada: false, mas_barata: true,
+    };
+    const malo: OpcionHotel = {
+      ...independiente, id: 92, nombre: "Motel Barato", total_usd: "150.00", costo_total_usd: "150.00", calificacion: 3.2,
+      mas_barata: false, descartado: "Calificación 3.2, por debajo del mínimo de 3.5.",
+    };
+    const conHoteles: Cotizacion = {
+      ...COTIZACION_MOAB, hoteles: [tru, independiente], hoteles_descartados: [malo], hotel_recomendado_id: 90,
+      vuelos: COTIZACION_MOAB.vuelos.map((v, i) => (i === 0 ? { ...v, total_con_hotel_usd: "999.31" } : v)),
+    };
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(conHoteles) });
+    const recomendada = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    expect(within(recomendada).getByText(/Total con el hotel recomendado/)).toHaveTextContent(dinero("999.31"));
+
+    const hoteles = screen.getByRole("group", { name: "Hotel (opcional)" });
+    const opciones = within(hoteles).getAllByRole("radio");
+    expect(opciones).toHaveLength(3);   // sin hotel, Tru y el independiente; el descartado no se elige
+    const filaTru = within(hoteles).getByText("Tru by Hilton Moab").closest("label")!;
+    expect(within(filaTru).getByText("Recomendado")).toBeInTheDocument();
+    expect(within(filaTru).getByText(dinero("219.31"))).toBeInTheDocument();
+    expect(within(filaTru).getByText("Hilton Honors · socio")).toBeInTheDocument();
+    expect(within(filaTru).getByText("Tarifa de miembro (−5 %)")).toBeInTheDocument();
+    const filaIndependiente = within(hoteles).getByText("Independiente Moab").closest("label")!;
+    expect(within(filaIndependiente).getByText("El más barato")).toBeInTheDocument();
+    expect(screen.getByText("Motel Barato")).toBeInTheDocument();
+    expect(screen.getByText("Calificación 3.2, por debajo del mínimo de 3.5.")).toBeInTheDocument();
+  });
+});

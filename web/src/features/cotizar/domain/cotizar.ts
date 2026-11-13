@@ -138,18 +138,36 @@ export interface OpcionVuelo {
   readonly origen_dato: string | null;
   readonly esperado_usd: Dinero;
   readonly frente_esperado_pct: number | null;
+  /** Costo del vuelo más el del hotel recomendado (una suma, no todas las combinaciones); null sin hotel. */
+  readonly total_con_hotel_usd: Dinero;
+}
+
+export interface LineaHotel {
+  readonly concepto: string;
+  readonly valor_usd: Dinero;
+  readonly origen: string;
+  readonly tipo: "tarifa" | "tarifa_miembro" | "puntos";
 }
 
 export interface OpcionHotel {
   readonly id: number;
   readonly nombre: string;
   readonly noche_usd: Dinero;
+  /** Tarifa del buscador para todas las noches. */
   readonly total_usd: Dinero;
+  /** Tarifa − tarifa de miembro − puntos del programa (estos dos, solo con membresía). */
+  readonly costo_total_usd: Dinero;
+  readonly lineas: readonly LineaHotel[];
+  readonly avisos: readonly string[];
   readonly calificacion: number | null;
   readonly clase: number | null;
   readonly programa: string | null;
+  /** El viajero o la empresa tiene membresía del programa. */
+  readonly socio: boolean;
+  readonly descartado: string | null;
   readonly origen_dato: string | null;
   readonly recomendada: boolean;
+  readonly mas_barata: boolean;
 }
 
 export type EstadoViajeCotizado = "pendiente_aprobacion" | "aprobado" | "rechazado" | "cerrado";
@@ -181,6 +199,8 @@ export interface Cotizacion {
   readonly vuelos: readonly OpcionVuelo[];
   readonly descartados: readonly OpcionVuelo[];
   readonly hoteles: readonly OpcionHotel[];
+  readonly hoteles_descartados: readonly OpcionHotel[];
+  readonly hotel_recomendado_id: number | null;
   readonly recomendada_id: number | null;
   readonly mas_barata_id: number | null;
   readonly decision: {

@@ -25,6 +25,7 @@ import {
   textoOrigenDato,
   tituloRuta,
   type Cotizacion,
+  type OpcionHotel,
   type OpcionVuelo,
 } from "../domain/cotizar";
 import { Horario, Leyenda, OpcionDeVuelo, nombreVuelo, pesoTotal } from "./opcion-vuelo";
@@ -257,7 +258,7 @@ function DecisionGuardada({
   const viaje = c.viaje!;
   const d = c.decision!;
   const vuelo = [...c.vuelos, ...c.descartados].find((v) => v.id === d.vuelo_id);
-  const hotel = c.hoteles.find((h) => h.id === d.hotel_id);
+  const hotel = [...c.hoteles, ...c.hoteles_descartados].find((h) => h.id === d.hotel_id);
   const pendiente = viaje.estado === "pendiente_aprobacion";
   return (
     <section
@@ -544,6 +545,76 @@ function borrarDecision(clave: string) {
   }
 }
 
+const ORIGEN_LINEA_HOTEL: Record<string, string> = { buscador: "Buscador", supuesto: "Supuesto" };
+
+function FilaHotel({ h, noches }: { h: OpcionHotel; noches: number }) {
+  return (
+    <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <span className="flex flex-wrap items-baseline justify-between gap-x-4">
+        <span>
+          <span className="font-semibold">{h.nombre}</span>
+          {h.clase ? <span className="text-texto-secundario"> · {h.clase} estrellas</span> : null}
+          {h.calificacion ? <span className="text-texto-secundario"> · calificación {h.calificacion.toFixed(1)}</span> : null}
+        </span>
+        <span className="text-right tabular-nums">
+          <span className="font-bold">{formatearDinero(h.costo_total_usd)}</span>
+          <span className="block text-sm text-texto-secundario">
+            {h.costo_total_usd !== h.total_usd ? `tarifa ${formatearDinero(h.total_usd)} · ` : ""}
+            {noches} noches
+          </span>
+        </span>
+      </span>
+      {h.recomendada || h.mas_barata || h.programa ? (
+        <span className="flex flex-wrap gap-1.5">
+          {h.recomendada ? <Distintivo tono="exito">Recomendado</Distintivo> : null}
+          {h.mas_barata ? <Distintivo tono="marca">El más barato</Distintivo> : null}
+          {h.programa ? <Distintivo>{h.socio ? `${h.programa} · socio` : h.programa}</Distintivo> : null}
+        </span>
+      ) : null}
+      {h.avisos.map((a) => (
+        <span key={a} className="text-sm text-texto-secundario">
+          {a}
+        </span>
+      ))}
+      {h.lineas.length > 1 ? (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-texto-secundario">Ver desglose</summary>
+          <table className="mt-1 w-full">
+            <caption className="sr-only">Desglose del costo total de {h.nombre}</caption>
+            <tbody>
+              {h.lineas.map((l) => (
+                <tr key={l.concepto} className="border-t border-linea">
+                  <td className="py-1 pr-2">{l.concepto}</td>
+                  <td className="py-1 pr-2 text-texto-secundario">{ORIGEN_LINEA_HOTEL[l.origen] ?? l.origen}</td>
+                  <td className="py-1 text-right tabular-nums">{formatearDinero(l.valor_usd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      ) : null}
+    </span>
+  );
+}
+
+function HotelesDescartados({ hoteles }: { hoteles: readonly OpcionHotel[] }) {
+  if (!hoteles.length) return null;
+  return (
+    <ul className="flex flex-col gap-2" aria-label="Hoteles descartados">
+      {hoteles.map((h) => (
+        <li key={h.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-tarjeta border border-linea bg-superficie p-3">
+          <span className="text-texto-secundario line-through">{h.nombre}</span>
+          <Distintivo tono="aviso">Descartado</Distintivo>
+          <span className="text-sm text-texto-secundario">{h.descartado}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const EXPLICACION_HOTELES =
+  "Ordenados por costo total: con membresía del programa (del viajero o de la empresa) restan la tarifa de miembro y los puntos; sin ella, inscribirse queda como oportunidad.";
+
 function Hoteles({
   c,
   elegible,
@@ -561,60 +632,50 @@ function Hoteles({
       <section className="flex flex-col gap-2">
         <h2 className="text-xl font-bold tracking-tight">Hotel</h2>
         <p className="text-texto-secundario">
-          No hay hoteles para este lugar y fechas{c.ciudad_hotel ? ` (${c.ciudad_hotel})` : ""}. Puedes guardar la decisión
-          solo con el vuelo.
+          No hay hoteles {c.hoteles_descartados.length ? "que cumplan " : ""}para este lugar y fechas
+          {c.ciudad_hotel ? ` (${c.ciudad_hotel})` : ""}. Puedes guardar la decisión solo con el vuelo.
         </p>
+        <HotelesDescartados hoteles={c.hoteles_descartados} />
       </section>
     );
   }
-  const filas = c.hoteles.map((h) => ({
-    h,
-    texto: (
-      <span className="flex flex-1 flex-wrap items-baseline justify-between gap-x-4">
-        <span>
-          <span className="font-semibold">{h.nombre}</span>
-          {h.clase ? <span className="text-texto-secundario"> · {h.clase} estrellas</span> : null}
-          {h.calificacion ? <span className="text-texto-secundario"> · calificación {h.calificacion.toFixed(1)}</span> : null}
-          {h.programa ? <span className="block text-sm text-texto-secundario">{h.programa}, solo con reserva directa</span> : null}
-        </span>
-        <span className="tabular-nums">
-          <span className="font-bold">{formatearDinero(h.total_usd)}</span>{" "}
-          <span className="text-sm text-texto-secundario">{c.noches} noches</span>
-        </span>
-      </span>
-    ),
-  }));
   if (!elegible) {
     return (
       <section className="flex flex-col gap-2">
         <h2 className="text-xl font-bold tracking-tight">Hoteles</h2>
+        <p className="text-sm text-texto-secundario">{EXPLICACION_HOTELES}</p>
         <ul className="flex flex-col gap-2">
-          {filas.map(({ h, texto }) => (
+          {c.hoteles.map((h) => (
             <li key={h.id} className="flex rounded-tarjeta border border-linea bg-superficie p-3">
-              {texto}
+              <FilaHotel h={h} noches={c.noches} />
             </li>
           ))}
         </ul>
+        <HotelesDescartados hoteles={c.hoteles_descartados} />
       </section>
     );
   }
   return (
-    <fieldset className="flex min-w-0 flex-col gap-2">
-      <legend className="mb-1 text-xl font-bold tracking-tight">Hotel (opcional)</legend>
-      <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-tarjeta border border-linea bg-superficie p-3">
-        <input type="radio" name={nombre} className="size-5 accent-marca" checked={hotelId === null} onChange={() => onElegir(null)} />
-        Sin hotel
-      </label>
-      {filas.map(({ h, texto }) => (
-        <label
-          key={h.id}
-          className={`flex cursor-pointer items-center gap-3 rounded-tarjeta border bg-superficie p-3 ${hotelId === h.id ? "border-2 border-marca" : "border-linea"}`}
-        >
-          <input type="radio" name={nombre} className="size-5 shrink-0 accent-marca" checked={hotelId === h.id} onChange={() => onElegir(h.id)} />
-          {texto}
+    <div className="flex flex-col gap-2">
+      <fieldset className="flex min-w-0 flex-col gap-2">
+        <legend className="mb-1 text-xl font-bold tracking-tight">Hotel (opcional)</legend>
+        <p className="text-sm text-texto-secundario">{EXPLICACION_HOTELES}</p>
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-tarjeta border border-linea bg-superficie p-3">
+          <input type="radio" name={nombre} className="size-5 accent-marca" checked={hotelId === null} onChange={() => onElegir(null)} />
+          Sin hotel
         </label>
-      ))}
-    </fieldset>
+        {c.hoteles.map((h) => (
+          <label
+            key={h.id}
+            className={`flex cursor-pointer items-start gap-3 rounded-tarjeta border bg-superficie p-3 ${hotelId === h.id ? "border-2 border-marca" : "border-linea"}`}
+          >
+            <input type="radio" name={nombre} className="mt-0.5 size-5 shrink-0 accent-marca" checked={hotelId === h.id} onChange={() => onElegir(h.id)} />
+            <FilaHotel h={h} noches={c.noches} />
+          </label>
+        ))}
+      </fieldset>
+      <HotelesDescartados hoteles={c.hoteles_descartados} />
+    </div>
   );
 }
 

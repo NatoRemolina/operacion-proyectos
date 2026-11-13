@@ -123,7 +123,8 @@ export const COTIZACION_MOAB: Cotizacion = {
       "mas_barata": false,
       "origen_dato": "guardado",
       "esperado_usd": "386.05",
-      "frente_esperado_pct": 32
+      "frente_esperado_pct": 32,
+      "total_con_hotel_usd": null
     },
     {
       "id": 1,
@@ -200,7 +201,8 @@ export const COTIZACION_MOAB: Cotizacion = {
       "mas_barata": true,
       "origen_dato": "guardado",
       "esperado_usd": "287.61",
-      "frente_esperado_pct": 44
+      "frente_esperado_pct": 44,
+      "total_con_hotel_usd": null
     },
     {
       "id": 2,
@@ -271,7 +273,8 @@ export const COTIZACION_MOAB: Cotizacion = {
       "mas_barata": false,
       "origen_dato": "guardado",
       "esperado_usd": "397.82",
-      "frente_esperado_pct": 31
+      "frente_esperado_pct": 31,
+      "total_con_hotel_usd": null
     },
     {
       "id": 3,
@@ -334,7 +337,8 @@ export const COTIZACION_MOAB: Cotizacion = {
       "mas_barata": false,
       "origen_dato": "guardado",
       "esperado_usd": "442.68",
-      "frente_esperado_pct": 39
+      "frente_esperado_pct": 39,
+      "total_con_hotel_usd": null
     },
     {
       "id": 8,
@@ -399,7 +403,8 @@ export const COTIZACION_MOAB: Cotizacion = {
       "mas_barata": false,
       "origen_dato": "guardado",
       "esperado_usd": "382.78",
-      "frente_esperado_pct": 111
+      "frente_esperado_pct": 111,
+      "total_con_hotel_usd": null
     }
   ],
   "descartados": [
@@ -477,7 +482,8 @@ export const COTIZACION_MOAB: Cotizacion = {
       "mas_barata": false,
       "origen_dato": "guardado",
       "esperado_usd": "314.69",
-      "frente_esperado_pct": 49
+      "frente_esperado_pct": 49,
+      "total_con_hotel_usd": null
     },
     {
       "id": 5,
@@ -546,7 +552,8 @@ export const COTIZACION_MOAB: Cotizacion = {
       "mas_barata": false,
       "origen_dato": "guardado",
       "esperado_usd": "386.94",
-      "frente_esperado_pct": 30
+      "frente_esperado_pct": 30,
+      "total_con_hotel_usd": null
     },
     {
       "id": 7,
@@ -617,10 +624,13 @@ export const COTIZACION_MOAB: Cotizacion = {
       "mas_barata": false,
       "origen_dato": "guardado",
       "esperado_usd": "405.64",
-      "frente_esperado_pct": 29
+      "frente_esperado_pct": 29,
+      "total_con_hotel_usd": null
     }
   ],
   "hoteles": [],
+  "hoteles_descartados": [],
+  "hotel_recomendado_id": null,
   "recomendada_id": 6,
   "mas_barata_id": 1,
   "decision": null,
