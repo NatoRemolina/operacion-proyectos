@@ -116,6 +116,45 @@ def test_reconoce_la_marca_sin_mayusculas_ni_tildes(cat):
     assert costo.programa_hotel("Hotel York House Lisboa", cat) is None
 
 
+def test_marcas_que_tambien_son_ciudades_solo_cuentan_al_inicio(cat):
+    from app.servicios import costo
+    casos = {"Fairfield Inn & Suites Denver Downtown": "Marriott Bonvoy",
+             "Fairfield by Marriott Inn & Suites Lisboa": "Marriott Bonvoy",
+             "Renaissance Denver Downtown City Center Hotel": "Marriott Bonvoy",
+             "Pullman Paris Tour Eiffel": "ALL Accor", "Fairmont Royal York": "ALL Accor",
+             "The Fairmont San Francisco": "ALL Accor",
+             "Hampton Inn Pullman": "Hilton Honors"}   # en la ciudad de Pullman, el hotel es de su marca
+    assert {n: (costo.programa_hotel(n, cat) or {}).get("nombre") for n in casos} == casos
+    # la ciudad o un hotel independiente con ese nombre no son la marca
+    for nombre in ("Best Western Plus Fairfield Inn", "Quality Inn Paradise Creek Pullman", "Comfort Inn Fairmont",
+                   "Hotel Boutique Renaissance", "Comfort Suites Fairfield"):
+        assert costo.programa_hotel(nombre, cat) is None, nombre
+    # el catálogo muestra la marca limpia; la condición queda aparte
+    accor = next(p for p in costo.programas_hotel(cat) if p["nombre"] == "ALL Accor")
+    assert "Pullman" in accor["marcas"] and "Pullman" in accor["al_inicio"] and "Novotel" not in accor["al_inicio"]
+
+
+def test_la_semilla_actualiza_las_marcas_que_nadie_edito(cliente):
+    from app import db
+    from datos import semilla
+
+    def marcas(entidad):
+        return db.uno("select id, valor from reglas where ambito='hotel' and entidad=:e and clave='marcas'", e=entidad)
+    accor = marcas("ALL Accor")["valor"]
+    try:
+        db.actualizar("reglas", marcas("Marriott Bonvoy")["id"], valor=semilla.MARCAS_HOTEL_ANTERIORES["Marriott Bonvoy"])
+        db.actualizar("reglas", marcas("ALL Accor")["id"], valor="Novotel, Ibis")   # editada a mano: se respeta
+        db.ejecutar("update reglas set nota=:n where ambito='hotel' and clave='marcas'", n=semilla.NOTA_MARCAS_ANTERIOR)
+        semilla.asegurar_fidelizacion_hotel()
+        assert "Fairfield Inn (al inicio)" in marcas("Marriott Bonvoy")["valor"]
+        assert marcas("ALL Accor")["valor"] == "Novotel, Ibis"
+        # la nota que explica «(al inicio)» llega a todos los programas
+        assert {r["nota"] for r in db.todos("select nota from reglas where ambito='hotel' and clave='marcas'")} == {
+            semilla.NOTAS_HOTEL["marcas"]}
+    finally:
+        db.actualizar("reglas", marcas("ALL Accor")["id"], valor=accor)
+
+
 def test_hotel_con_membresia_tarifa_de_miembro_y_puntos(cat):
     from app.servicios import costo
     ev = costo.evaluar_hotel(_hotel("Tru by Hilton Denver", 243.0), [_miembro()], cat, 3)

@@ -250,6 +250,14 @@ def _sin_tildes(texto: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", texto.lower()) if not unicodedata.combining(c))
 
 
+AL_INICIO = "(al inicio)"
+
+
+def _marca_limpia(marca: str) -> str:
+    """«Pullman (al inicio)» → «Pullman». La marca con «(al inicio)» solo cuenta si el nombre del hotel empieza con ella."""
+    return marca.removesuffix(AL_INICIO).strip() if marca.lower().endswith(AL_INICIO) else marca
+
+
 def programas_hotel(cat: dict) -> list[dict]:
     """Programas de fidelización de hoteles del catálogo: ámbito «hotel», una entidad por programa y sus marcas."""
     por_programa: dict[str, dict] = {}
@@ -261,8 +269,10 @@ def programas_hotel(cat: dict) -> list[dict]:
         marcas = reglas.get("marcas")
         if not marcas:
             continue
+        lista = [m.strip() for m in (marcas["valor"] or "").split(",") if m.strip()]
         programas.append({
-            "nombre": nombre, "marcas": [m.strip() for m in (marcas["valor"] or "").split(",") if m.strip()],
+            "nombre": nombre, "marcas": [_marca_limpia(m) for m in lista],
+            "al_inicio": [_marca_limpia(m) for m in lista if m != _marca_limpia(m)],
             "puntos_por_usd": _numero(reglas.get("puntos_por_usd"), 0), "valor_punto_usd": _numero(reglas.get("valor_punto_usd"), 0),
             "descuento_miembro": _numero(reglas.get("descuento_miembro"), 0),
             "fuente": marcas.get("fuente"), "confianza": marcas.get("confianza"), "verificado": marcas.get("verificado")})
@@ -271,13 +281,19 @@ def programas_hotel(cat: dict) -> list[dict]:
 
 def programa_hotel(nombre: str, cat: dict) -> dict | None:
     """Programa del hotel según la marca que aparece en su nombre, sin distinguir mayúsculas ni tildes.
-    Con dos marcas en el nombre («Holiday Inn Fairfield») manda la que aparece primero."""
+    Con dos marcas en el nombre («Holiday Inn Fairfield») manda la que aparece primero. Una marca que también es
+    ciudad o nombre de hoteles independientes (Pullman, Fairmont) se marca «(al inicio)» en el catálogo y solo cuenta
+    si el nombre empieza con ella, con o sin «The»: «Pullman Paris» es Accor, «Quality Inn Pullman» no."""
     texto, mejor = _sin_tildes(nombre), None
     for p in programas_hotel(cat):
         for marca in p["marcas"]:
             m = _sin_tildes(marca)
             # una marca de una letra (W) solo cuenta al inicio: «Apartment w/ Patio» no es un hotel W
-            hallado = re.search(rf"^{re.escape(m)}\b" if len(m) == 1 else rf"\b{re.escape(m)}s?\b", texto)
+            if marca in p["al_inicio"]:
+                patron = rf"^(the )?{re.escape(m)}s?\b"
+            else:
+                patron = rf"^{re.escape(m)}\b" if len(m) == 1 else rf"\b{re.escape(m)}s?\b"
+            hallado = re.search(patron, texto)
             if hallado and (mejor is None or (hallado.start(), -len(m)) < mejor[0]):
                 mejor = ((hallado.start(), -len(m)), p)
     return mejor[1] if mejor else None
