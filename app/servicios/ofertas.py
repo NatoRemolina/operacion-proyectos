@@ -86,7 +86,13 @@ def _importe(linea: str) -> float | None:
     return float(m.group(1).replace(",", "")) if m else None
 
 
-_ORDINAL = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b")
+_ORDINAL = re.compile(r"\b(?:(\d+)(?:st|nd|rd|th)|(first|second|third|fourth|fifth))\b")
+
+
+def _otra_maleta(t: str) -> bool:
+    """La línea habla de una maleta que no es la primera («2nd», «second», «3rd»…)."""
+    m = _ORDINAL.search(t)
+    return bool(m) and (m.group(1) or m.group(2)) not in ("1", "first")
 
 
 def _sin_incluir(t: str) -> bool:
@@ -106,8 +112,7 @@ def equipaje(lineas) -> tuple[int | None, float | None]:
             elif _importe(t) is not None:
                 mano = 0
         elif "checked bag" in t and not primera_vista:
-            ordinal = _ORDINAL.search(t)
-            if ordinal and ordinal.group(1) != "1":
+            if _otra_maleta(t):
                 continue           # la segunda maleta no dice nada de la primera
             primera_vista = True
             if _sin_incluir(t):
@@ -186,8 +191,7 @@ def no_reconocidas(lineas_equipaje, lineas_condiciones) -> list[str]:
         if "carry-on" in t:
             entendida = equipaje([linea])[0] is not None
         elif "checked bag" in t:
-            ordinal = _ORDINAL.search(t)
-            entendida = bool(ordinal and ordinal.group(1) != "1") or _sin_incluir(t) or equipaje([linea])[1] is not None
+            entendida = _otra_maleta(t) or _sin_incluir(t) or equipaje([linea])[1] is not None
         else:
             entendida = False
         if not entendida:

@@ -73,6 +73,9 @@ def test_solo_valores_conocidos():
     (["2nd checked bag: $45", "1st checked bag: $35"], (None, 35.0)),
     (["1st checked bag: $35", "2nd checked bag: $45"], (None, 35.0)),
     (["Checked bag: $30"], (None, 30.0)),
+    # ronda 2, punto 2: también con el ordinal en palabras
+    (["Second checked bag: $45"], (None, None)),
+    (["Third checked bag: $150", "First checked bag: $35"], (None, 35.0)),
 ])
 def test_equipaje(lineas, esperado):
     assert ofertas.equipaje(lineas) == esperado
