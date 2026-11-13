@@ -26,6 +26,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -208,6 +209,15 @@ def verificar(carpeta: str, archivo_env: str, base: str) -> bool:
     return True
 
 
+def variables_pg(archivo_env: str) -> str:
+    """Las variables de conexión para la vuelta atrás, listas para `eval "$(…)"`: así la contraseña llega al entorno de la
+    terminal sin aparecer en pantalla ni en el historial. Base `postgres`, que es donde restaura pg_restore."""
+    p = _partes(_entorno(archivo_env)["url"])
+    valores = {"PGHOST": p["host"], "PGPORT": p["puerto"], "PGUSER": p["usuario"], "PGPASSWORD": p["clave"],
+               "PGDATABASE": "postgres", "PGSSLMODE": "require"}
+    return "export " + " ".join(f"{k}={shlex.quote(v)}" for k, v in valores.items())
+
+
 def main(argv: list[str] | None = None) -> int:
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = a.add_subparsers(dest="orden", required=True)
@@ -220,7 +230,12 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--base", required=True)
     b = sub.add_parser("vuelta-atras")
     b.add_argument("--respaldo", required=True)
+    g = sub.add_parser("variables-pg", help="órdenes export de PGHOST, PGPORT, PGUSER, PGPASSWORD y PGDATABASE para eval")
+    g.add_argument("--env", required=True)
     x = a.parse_args(argv)
+    if x.orden == "variables-pg":
+        print(variables_pg(x.env))
+        return 0
     if x.orden == "respaldar":
         respaldar(x.env, x.destino)
         return 0

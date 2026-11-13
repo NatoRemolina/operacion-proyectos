@@ -60,3 +60,16 @@ def test_la_contrasena_aparte_se_inserta_codificada(tmp_path):
     archivo.write_text("DATABASE_URL=postgresql://u:[YOUR-PASSWORD]@h:5432/postgres\nDATABASE_PASSWORD=a@b/c\n")
     assert respaldar._entorno(str(archivo))["url"] == "postgresql://u:" + "a%40b%2Fc" + "@h:5432/postgres"
     assert respaldar._partes(respaldar._entorno(str(archivo))["url"])["clave"] == "a@b/c"
+
+
+
+def test_variables_pg_para_eval_sin_mostrar_la_clave_partida(tmp_path):
+    import subprocess
+    archivo = tmp_path / "base.env"
+    clave = "cl@ve/ra'ra" + "!x"   # con caracteres que la terminal y la dirección interpretan
+    archivo.write_text("DATABASE_URL=postgresql://postgres.proyecto:[YOUR-PASSWORD]" + "@servidor.example:5432/postgres\n"
+                       + f"DATABASE_PASSWORD={clave}\n")
+    orden = respaldar.variables_pg(str(archivo))
+    guion = f"{orden}; printf '%s|%s|%s|%s' \"$PGHOST\" \"$PGPORT\" \"$PGUSER\" \"$PGPASSWORD\""
+    salida = subprocess.run(["/bin/sh", "-c", guion], capture_output=True, text=True, check=True).stdout  # noqa: S603  orden fija de esta prueba
+    assert salida == f"servidor.example|5432|postgres.proyecto|{clave}"

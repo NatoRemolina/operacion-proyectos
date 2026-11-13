@@ -21,7 +21,8 @@ PRINCIPAL=/Users/nato/Documents/GitHub/inflight-prueba-tecnica      # .venv y ar
 PUBLICAR=/Users/nato/Documents/GitHub/inflight-publicar             # carpeta limpia del commit que se publica
 PY="$PRINCIPAL/.venv/bin/python"
 DOTENV="$PRINCIPAL/.venv/bin/dotenv"
-git -C "$PRINCIPAL" worktree add "$PUBLICAR" <commit que se publica>
+COMMIT=$(git -C "$PRINCIPAL" rev-parse dev)                         # el commit que se publica (dev ya avanzado)
+git -C "$PRINCIPAL" worktree add --detach "$PUBLICAR" "$COMMIT"
 cd "$PUBLICAR"
 ```
 
@@ -29,7 +30,7 @@ Cada paso dice dónde corre, y todos van en la misma terminal (usan estas variab
 
 - **Por qué una carpeta limpia:** a la imagen de la API solo entran `requirements.txt`, `app/` y `datos/` (`.dockerignore`), y la web sale de `web/`. Si en `app/` o `datos/` hay algo sin versionar (por ejemplo, una respuesta del buscador pagada y sin revisar), o un cambio sin guardar en un commit en `app/`, `datos/`, `requirements.txt` o `Dockerfile`, la síntesis de `OperacionApp` se detiene y lo nombra.
 - **Docker en marcha:** CDK construye en este equipo las dos imágenes y los estáticos de la web.
-- **Credenciales de AWS de la dueña**, región `us-east-1`: `export AWS_PROFILE=operacion` y `aws sts get-caller-identity` para ver la cuenta. La cuenta ya tiene el *bootstrap* de CDK de despliegues anteriores; en una cuenta nueva se hace una vez, con `(cd infra && npx cdk bootstrap aws://<cuenta>/us-east-1)`.
+- **Credenciales de AWS de la dueña**, región `us-east-1`: `export AWS_PROFILE=operacion AWS_REGION=us-east-1` (sin la región, las órdenes de `aws` fallan si el perfil no la trae) y `aws sts get-caller-identity` para ver la cuenta. La cuenta ya tiene el *bootstrap* de CDK de despliegues anteriores; en una cuenta nueva se hace una vez, con `(cd infra && npx cdk bootstrap aws://<cuenta>/us-east-1)`.
 - **Archivos locales, fuera de git, en `$PRINCIPAL`:**
   - `.env.supabase-publicada`: la base publicada por el agrupador de **sesión (puerto 5432)**, para el respaldo y la migración (`docs/respaldo.md`).
   - `.env.produccion`: lo que va al secreto. La misma base, el almacenamiento, el buscador, el modelo, el asesor, Pinecone y Telegram. `ORIGENES_WEB` solo hace falta si se publica sin dominio (paso 5).
@@ -78,6 +79,15 @@ La migración del paso 2 exige un respaldo **de esa misma base y de las últimas
 "$PY" infra/poblar_secreto.py --env "$PRINCIPAL/.env.produccion"
 ```
 
+Sin Telegram, las dos órdenes llevan `--sin-telegram`:
+
+```
+"$PY" infra/poblar_secreto.py --env "$PRINCIPAL/.env.produccion" --sin-telegram --ensayo
+"$PY" infra/poblar_secreto.py --env "$PRINCIPAL/.env.produccion" --sin-telegram
+```
+
+En la salida, mirar la línea de las claves que se conservan del secreto: si trae `TELEGRAM_*` de antes, Telegram seguiría activo con esas claves.
+
 El ensayo muestra las claves que subiría, sin valores y sin contactar AWS. **Exige `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRETO` en el archivo** (los del bot de producción) y se detiene si falta alguno: el paso 6 registra el webhook con ese mismo archivo, así el secreto de la función y el del webhook son iguales. Si Telegram no se publica ahora, se agrega `--sin-telegram` a las dos órdenes: no exige esas claves, no toca las que ya tenga el secreto, y el paso 6 se salta. La carga de verdad lee el secreto de `OperacionBase`, reemplaza las claves que el archivo trae con valor, conserva las demás y retira `APP_CLAVE`. Se niega a subir el proyecto de pruebas de Supabase, que reconoce por `$PRINCIPAL/.env.supabase-pruebas` (sin ese archivo no sigue). La base va al agrupador de transacción (6543). Si `OperacionBase` no existiera aún (cuenta nueva), se despliega primero (paso 5) y se vuelve aquí.
 
 ## 4. Revisión del cambio, aprobada por la dueña
@@ -92,7 +102,7 @@ El ensayo muestra las claves que subiría, sin valores y sin contactar AWS. **Ex
 Qué debe mostrar:
 
 - **OperacionBase:** solo se añade la suscripción por correo al tema de avisos. Hoy la pila no tiene suscripción ni presupuesto (se desplegó sin `-c correo`), así que esta noche no debe aparecer nada más. El secreto no se reemplaza. Si alguna vez se hubiera desplegado OperacionBase con correo desde un commit anterior a `75236e3`, el diff mostraría además que se **borra** `Presupuesto`: sería lo esperado, porque el único presupuesto es «cuenta-mensual».
-- **OperacionApp:** la imagen nueva, `ORIGENES_WEB` en la función (`https://software.nataliaremolinarodriguez.com`), el filtro de métrica de las líneas `ERROR peticion=` y las alarmas `ErroresDeLaAplicacion` y `Respuestas5xx`. La función y su dirección se **actualizan**: si el diff dice que alguna se reemplaza, no se despliega.
+- **OperacionApp:** la imagen nueva, `ORIGENES_WEB` en la función (`https://software.nataliaremolinarodriguez.com`), el filtro de métrica de las líneas `ERROR peticion=` y las alarmas `ErroresDeLaAplicacion` y `Respuestas5xx`. Se añade también la exportación de la dirección de la API, que importa OperacionWeb, y pueden cambiar los permisos de invocación de la dirección. La función y su dirección se **actualizan**: si el diff dice que alguna se reemplaza, no se despliega.
 - **OperacionWeb:** todo nuevo. Un certificado, dos distribuciones, el bucket, la función de la web y cuatro registros: A y AAAA de `software.` y de `admin.software.`. **No debe aparecer** ningún `AWS::Route53::HostedZone` ni ningún registro de `nataliaremolinarodriguez.com` ni de `www`.
 
 Sin la aprobación de la dueña sobre este diff, no se sigue.
@@ -101,14 +111,20 @@ Sin la aprobación de la dueña sobre este diff, no se sigue.
 
 **En `$PUBLICAR`** (las órdenes de `aws` sirven desde cualquier carpeta):
 
+**Una orden a la vez**, sin pegar el bloque entero: `cdk deploy` pide confirmar los cambios de permisos, y la línea siguiente se tomaría como la respuesta y cancelaría el despliegue. La reactivación de la función va encadenada al éxito del despliegue con `&&`: si el despliegue se cancela o CloudFormation vuelve a la versión anterior, la función vieja sigue pausada y no corre contra la base ya migrada.
+
 ```
 (cd infra && npx cdk deploy OperacionBase "${CDK_CTX[@]}")
-(cd infra && npx cdk deploy OperacionApp "${CDK_CTX[@]}")
-FUNCION=$(aws cloudformation describe-stacks --stack-name OperacionApp --query "Stacks[0].Outputs[?OutputKey=='Funcion'].OutputValue" --output text)
-URL_API=$(aws cloudformation describe-stacks --stack-name OperacionApp --query "Stacks[0].Outputs[?OutputKey=='Url'].OutputValue" --output text)
-aws lambda delete-function-concurrency --function-name "$FUNCION"
+```
+```
+(cd infra && npx cdk deploy OperacionApp "${CDK_CTX[@]}") && \
+FUNCION=$(aws cloudformation describe-stacks --stack-name OperacionApp --query "Stacks[0].Outputs[?OutputKey=='Funcion'].OutputValue" --output text) && \
+URL_API=$(aws cloudformation describe-stacks --stack-name OperacionApp --query "Stacks[0].Outputs[?OutputKey=='Url'].OutputValue" --output text) && \
+aws lambda delete-function-concurrency --function-name "$FUNCION" && \
 curl -s -o /dev/null -w "%{http_code}\n" "${URL_API}salud"        # 200
-(cd infra && npx cdk deploy OperacionWeb "${CDK_CTX[@]}")
+```
+```
+(cd infra && npx cdk deploy OperacionWeb "${CDK_CTX[@]}")      # solo si /salud respondió 200
 ```
 
 - **La suscripción por correo** llega como un mensaje de AWS con un enlace: hay que confirmarla, o las alarmas no avisan.
@@ -151,7 +167,7 @@ Desde `$PUBLICAR`, como el resto.
 |---|---|
 | La API | Volver atrás **solo el código** de la API, con la infraestructura del commit nuevo (abajo). La migración no se deshace con esto |
 | La web | Las pantallas de administración siguen en `admin.software.`. Si hace falta retirar la web: `(cd infra && npx cdk destroy OperacionWeb "${CDK_CTX[@]}")`, que borra solo lo que creó la pila (distribuciones, certificado, los registros de `software.` y `admin.software.`, el bucket y la función). La zona, el raíz y `www` no se tocan |
-| La base | `docs/respaldo.md`, «Vuelta atrás»: guardar el estado fallido, borrar lo que la copia no trae (`"$PY" -m datos.respaldar vuelta-atras`) y restaurar en una sola transacción, con la aplicación detenida |
+| La base | `docs/respaldo.md`, «Vuelta atrás»: guardar el estado fallido, borrar lo que la copia no trae (`"$PY" -m datos.respaldar vuelta-atras`) y restaurar en una sola transacción, con la aplicación detenida (concurrencia 0). Las variables `PG*` se cargan sin imprimirlas con `eval "$("$PY" -m datos.respaldar variables-pg --env <archivo de la publicada>)"` |
 | El secreto | Secrets Manager guarda la versión anterior (`AWSPREVIOUS`). Lo más simple es volver a cargar el archivo anterior con el paso 3 |
 
 ### Vuelta atrás de la API: solo el código
