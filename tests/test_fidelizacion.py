@@ -166,12 +166,12 @@ def test_la_semilla_trae_el_catalogo_de_hotel_y_la_membresia_de_ejemplo(cliente)
 
 
 # ---------- pieza 3: hotel recomendado y descartes ----------
-def _cotizacion_con_hoteles(cliente, hoteles, viajero_id=1):
+def _cotizacion_con_hoteles(cliente, hoteles, viajero_id=1, **cambios):
     """Cotización guardada de Miami a Las Vegas cuyos hoteles se cambian por los de la prueba."""
     from conftest import FORM_VIAJE
 
     from app import db
-    r = cliente.post("/viajes", data={**FORM_VIAJE, "viajero_id": viajero_id}, follow_redirects=False)
+    r = cliente.post("/viajes", data={**FORM_VIAJE, "viajero_id": viajero_id, **cambios}, follow_redirects=False)
     sid = int(r.headers["location"].rsplit("/", 1)[1])
     db.ejecutar("delete from opciones where solicitud_id=:i and tipo='hotel'", i=sid)
     for h in hoteles:
@@ -216,9 +216,11 @@ def test_la_decision_lleva_el_hotel_evaluado(cliente):
     cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": c["vuelos"][0]["id"], "hotel_id": tru["id"], "razones": ["costo_total"]})
     d = db.uno("select * from decisiones where solicitud_id=:i order by id desc", i=sid)
     desglose = db.de_json(d["desglose"], {})
-    hotel = [(l["concepto"], l["valor"]) for l in desglose["lineas"] if l["grupo"] == "hotel"]
-    assert hotel == [("Hotel: Tru by Hilton Las Vegas (3 noches)", 243.0), ("Hotel: tarifa de miembro Hilton Honors (−5 %)", -12.15)]
-    # el desglose completo, con los puntos, queda en la ficha; los puntos no son dinero y no entran al presupuesto
+    hotel = [(l["concepto"], l["valor"], l["origen"]) for l in desglose["lineas"] if l["grupo"] == "hotel"]
+    assert hotel == [("Hotel: Tru by Hilton Las Vegas (3 noches)", 243.0, "buscador"),
+                     ("Hotel: tarifa de miembro Hilton Honors (−5 %)", -12.15, "supuesto"),
+                     ("Hotel: puntos de Hilton Honors (10 por USD a 0.005 USD)", -11.54, "supuesto")]
+    # los puntos son valor esperado, como las millas: están en el total de la decisión pero no en el presupuesto
     assert desglose["hotel_evaluado"]["total"] == 219.31
     assert any(l["concepto"].startswith("Puntos del programa") for l in desglose["hotel_evaluado"]["lineas"])
     detalle = viajes.de_solicitud(sid)["presupuesto_detalle"]
@@ -228,6 +230,25 @@ def test_la_decision_lleva_el_hotel_evaluado(cliente):
     fotos = db.todos("select * from elecciones where decision_id=:d and tipo='hotel' order by posicion", d=d["id"])
     assert [(f["opcion_id"], f["recomendada"], f["costo_esperado"]) for f in fotos] == [
         (tru["id"], 1, 219.31), (c["hoteles"][1]["id"], 0, 225.0)]
+
+
+@pytest.mark.parametrize("carro_dia", [0, 65])
+def test_el_total_de_la_decision_es_el_de_la_comparacion(cliente, carro_dia):
+    from app import db
+    from app.servicios import cotizacion, viajes
+    sid = _cotizacion_con_hoteles(cliente, [_hotel("Tru by Hilton Las Vegas", 243.0)], carro_dia=carro_dia)
+    c = cotizacion.comparacion(sid)
+    vuelo = c["vuelos"][0]
+    cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": vuelo["id"], "hotel_id": c["hotel_recomendado"]["id"],
+                                                 "razones": ["costo_total"]})
+    d = db.uno("select * from decisiones where solicitud_id=:i order by id desc", i=sid)
+    # el carro de alquiler no está en «Total con el hotel recomendado» (vuelo + hotel): se suma aparte
+    assert d["total"] == round(vuelo["total_con_hotel"] + c["carro"], 2)
+    # el presupuesto es lo que se paga: la tarifa con el descuento de miembro, sin los puntos
+    detalle = viajes.de_solicitud(sid)["presupuesto_detalle"]
+    detalle = db.de_json(detalle) if isinstance(detalle, str) else detalle
+    assert [(l["concepto"], l["valor"]) for l in detalle if l["grupo"] == "hotel"] == [
+        ("Hotel: Tru by Hilton Las Vegas (3 noches)", 243.0), ("Hotel: tarifa de miembro Hilton Honors (−5 %)", -12.15)]
 
 
 # ---------- pieza 4: total del viaje visible ----------
