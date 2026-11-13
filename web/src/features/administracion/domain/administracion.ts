@@ -1,6 +1,7 @@
 import type { EstadoGasto, GastoDetalle, GastoResumen } from "@/features/gastos/domain/gastos";
 import type { ViajeDetalle, ViajeResumen } from "@/features/viajes/domain/viajes";
 import type { Dinero } from "@/shared/domain/tipos";
+import type { AccionRevision, CamposRevision, DatosRevision } from "./revision";
 
 /** Un gasto reciente con la persona a la que pertenece. */
 export interface ActividadGasto {
@@ -55,17 +56,26 @@ export interface AdministracionRepository {
   /** Solo administración y nunca sobre lo propio («autoaprobacion»). */
   cambiarEstadoViaje(id: number, cambio: CambioEstadoViaje): Promise<ResultadoCambioEstado>;
   /**
-   * Aprueba o rechaza un gasto en revisión. Con la `version` que se vio: si otra persona lo cambió
-   * entretanto falla con «cambio_ajeno» y no se aplica nada. Nadie revisa lo suyo («prohibido»).
+   * Corrige, aprueba (también con excepción) o rechaza un gasto. Con la `version` que se vio: si otra
+   * persona lo cambió entretanto falla con «cambio_ajeno» y no se aplica nada. Nadie revisa lo suyo
+   * («prohibido»). Un motivo corto o un dato que las reglas no admiten: «validacion» con el porqué.
    */
   revisarGasto(id: number, revision: RevisionGasto): Promise<GastoDetalle>;
+  /** Solo administración: lectura original, soporte, categorías y viajes a los que reasignar. */
+  datosRevision(id: number, signal?: AbortSignal): Promise<DatosRevision>;
+  /** Dirección de la nota de voz de una justificación, o `null` si esta fuente no la conserva. */
+  urlAudioJustificacion(gastoId: number, justificacionId: number): string | null;
 }
 
 export interface RevisionGasto {
   readonly version: number;
-  readonly accion: "aprobar" | "rechazar";
-  /** Obligatorio para rechazar; la persona lo verá. */
+  readonly accion: AccionRevision;
+  /** Obligatorio para rechazar (la persona lo verá) y para aprobar con excepción (queda en la auditoría). */
   readonly motivo?: string;
+  /** Solo lo que se corrigió; el resto se conserva. */
+  readonly campos?: CamposRevision;
+  /** Reasigna el viaje; 0 lo deja sin viaje. Sin el dato, se conserva. */
+  readonly viajeId?: number;
 }
 
 export const MOTIVO_MINIMO = 5;
