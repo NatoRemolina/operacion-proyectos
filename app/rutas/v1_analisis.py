@@ -34,6 +34,7 @@ def _forma(sid: int, opcion_id: int, a: dict) -> dict:
             "reutilizado": bool(a.get("reutilizado")), "precio_buscador_usd": consultas.dinero(precio),
             "aviso_precio": analizador.aviso_precio(a, precio) if a["estado"] == "listo" else None,
             "datos": a["datos"] if a["estado"] == "listo" else None,
+            "extracto": (a["datos"] or {}).get("extracto") if a["estado"] == "fallido" else None,
             "captura_url": f"{PREFIJO}/cotizaciones/{sid}/analisis/{a['id']}/captura" if a.get("captura") else None}
 
 

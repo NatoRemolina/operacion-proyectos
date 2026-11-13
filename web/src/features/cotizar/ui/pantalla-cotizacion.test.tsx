@@ -411,13 +411,15 @@ describe("Comparación de una cotización", () => {
   it("si la lectura falla o no está disponible, el desglose lo dice y muestra solo lo del buscador", async () => {
     const usuario = userEvent.setup();
     const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>()
-      .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, estado: "fallido", motivo: "la página pidió verificación", datos: null })
+      .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, estado: "fallido", motivo: "la página tardó demasiado en mostrar los precios",
+        datos: null, extracto: "Something went wrong", captura_url: "/api/v1/captura.png" })
       .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, estado: "no_disponible", datos: null,
         motivo: "Llegaste al tope de lecturas de Google Flights de hoy: el desglose muestra solo lo del buscador." });
     renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo }) });
     const [primera, segunda] = (await screen.findAllByRole("link", { name: /^Ver desglose/ })).map((a) => a.closest("[role=group]") as HTMLElement);
     await usuario.click(within(primera!).getByRole("link", { name: /^Ver desglose/ }));
-    expect(await within(primera!).findByText("No se pudo leer: la página pidió verificación.")).toBeInTheDocument();
+    expect(await within(primera!).findByText("No se pudo leer: la página tardó demasiado en mostrar los precios.")).toBeInTheDocument();
+    expect(within(primera!).getByRole("link", { name: "Ver lo que mostró la página" })).toHaveAttribute("href", "/api/v1/captura.png");
     await usuario.click(within(segunda!).getByRole("link", { name: /^Ver desglose/ }));
     expect(await within(segunda!).findByText(/Llegaste al tope de lecturas de Google Flights de hoy/)).toBeInTheDocument();
     expect(within(segunda!).queryByText("Tarifas y qué incluye cada una")).toBeNull();

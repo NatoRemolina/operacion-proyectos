@@ -4558,6 +4558,18 @@
               }
             ]
           },
+          "extracto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracto",
+            "description": "Con `fallido`: el comienzo del texto que mostró la página, para saber por qué."
+          },
           "captura_url": {
             "anyOf": [
               {
@@ -4568,7 +4580,7 @@
               }
             ],
             "title": "Captura Url",
-            "description": "La captura de la página (PNG), como evidencia."
+            "description": "La captura de la página (PNG), como evidencia; también de una lectura fallida, salvo si pidió verificación."
           }
         },
         "type": "object",

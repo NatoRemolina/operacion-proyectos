@@ -49,6 +49,21 @@ def test_en_la_lista_de_regresos_elige_el_mas_barato_y_llega_a_la_reserva():
     assert r["url_final"] == "https://www.google.com/travel/flights/reserva"
 
 
+def test_tolera_que_la_pagina_cambie_de_direccion_mientras_carga():
+    paginas = {"https://www.google.com/travel/flights/reserva": "reserva.html",
+               "https://www.google.com/travel/flights?": "recarga.html"}
+    r = navegador.analizar(URL, servir=_servir(paginas, []))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["datos"]["precio_total"] == 619
+
+
+def test_si_no_aparecen_los_precios_falla_con_evidencia():
+    r = navegador.analizar(URL, servir=_servir({"https://www.google.com/": "sin_precios.html"}, []), espera_ms=1500)
+    assert (r["estado"], r["motivo"]) == ("fallido", "la página tardó demasiado en mostrar los precios")
+    assert base64.b64decode(r["captura_png_b64"]).startswith(b"\x89PNG")
+    assert r["extracto"].startswith("Something went wrong")
+
+
 def test_una_verificacion_no_se_resuelve():
     r = navegador.analizar(URL, servir=_servir({"https://www.google.com/": "verificacion.html"}, []))
     assert (r["estado"], r["motivo"]) == ("fallido", lector.VERIFICACION) and r["captura_png_b64"] is None

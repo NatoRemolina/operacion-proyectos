@@ -1,0 +1,6 @@
+<!doctype html>
+<!-- Ejemplo de una página que cambia de dirección mientras carga, como Google Flights tras el primer contenido:
+     la espera del analizador debe tolerarlo. Sin red. -->
+<html lang="en"><head><meta charset="utf-8"><title>Google Flights</title>
+<script>setTimeout(function () { location.replace("/travel/flights/reserva"); }, 150);</script></head>
+<body><div>Loading results</div></body></html>

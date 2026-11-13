@@ -151,5 +151,6 @@ export const ANALISIS_EJEMPLO: AnalisisVuelo = {
     "avisos": [],
     "regreso_elegido": null
   },
+  "extracto": null,
   "captura_url": null
 };

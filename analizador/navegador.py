@@ -10,6 +10,7 @@ Límites, a propósito:
 """
 import base64
 import os
+import re
 import threading
 import time
 
@@ -21,7 +22,8 @@ ESPERA_MS = 20_000          # para que aparezcan los precios; la lectura complet
 EN_LAMBDA = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 # En Lambda no hay /dev/shm grande ni varios procesos: Chromium corre en uno solo
 ARGUMENTOS = ["--disable-gpu", "--disable-dev-shm-usage", "--single-process", "--no-zygote"] if EN_LAMBDA else []
-LISTO = r"/Booking options[\s\S]*\$\d|Returning flights|Departing flights|unusual traffic|not a robot|Before you continue/"
+LISTO = re.compile(r"Booking options[\s\S]*\$\d|Returning flights|Departing flights|unusual traffic|not a robot|Before you continue")
+RESERVA = re.compile(r"Booking options[\s\S]*\$\d")
 
 _turno = threading.Lock()
 
@@ -31,7 +33,7 @@ def _resultado(estado: str, inicio: float, motivo: str | None = None, **extra) -
             "agente": AGENTE, "duracion_ms": int((time.monotonic() - inicio) * 1000), **extra}
 
 
-def analizar(url: str, *, elegir_regreso: bool = True, servir=None) -> dict:
+def analizar(url: str, *, elegir_regreso: bool = True, servir=None, espera_ms: int = ESPERA_MS) -> dict:
     """{"estado": "listo" | "fallido", "motivo", "datos" (lo leído), "captura_png_b64", "url_final", "duracion_ms"}.
 
     `servir(pagina)` registra respuestas propias para las pruebas: la página de ejemplo en lugar de internet."""
@@ -43,13 +45,26 @@ def analizar(url: str, *, elegir_regreso: bool = True, servir=None) -> dict:
     if not _turno.acquire(blocking=False):
         return _resultado("fallido", inicio, "el analizador está leyendo otra página; intenta en un minuto")
     try:
-        return _leer(url, inicio, elegir_regreso, servir)
+        return _leer(url, inicio, elegir_regreso, servir, espera_ms)
     finally:
         _turno.release()
 
 
-def _leer(url: str, inicio: float, elegir_regreso: bool, servir) -> dict:
-    from playwright.sync_api import Error, TimeoutError, sync_playwright
+def _evidencia(pagina) -> dict:
+    """Lo que se vio cuando la lectura no llegó a los precios: captura de la pantalla y el comienzo del texto."""
+    try:
+        texto = pagina.inner_text("body", timeout=2000)
+    except Exception:  # noqa: BLE001 (la página puede estar cambiando: la evidencia es opcional)
+        texto = ""
+    try:
+        captura = base64.b64encode(pagina.screenshot(type="png")).decode()
+    except Exception:  # noqa: BLE001
+        captura = None
+    return {"captura_png_b64": captura, "extracto": " ".join(texto.split())[:500] or None}
+
+
+def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int) -> dict:
+    from playwright.sync_api import Error, sync_playwright
 
     fuera = {}
 
@@ -73,26 +88,24 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir) -> dict:
                 servir(pagina)   # registrado después: atiende primero
             try:
                 pagina.goto(url, wait_until="domcontentloaded")
-                pagina.wait_for_function(f"() => {LISTO}.test(document.body.innerText)")
-            except TimeoutError:
-                return _resultado("fallido", inicio, "la página tardó demasiado en mostrar los precios",
-                                  url_final=pagina.url)
-            except Error:
-                motivo = lector.CONSENTIMIENTO if "consent." in fuera.get("url", "") else "no se pudo abrir la página"
+            except Error as e:
+                motivo = lector.CONSENTIMIENTO if "consent." in fuera.get("url", "") else \
+                    f"no se pudo abrir la página ({_primera_linea(e)})"
                 return _resultado("fallido", inicio, motivo, url_final=fuera.get("url") or pagina.url)
-            texto = pagina.inner_text("body")
+            texto = _esperar(pagina, LISTO, espera_ms)
+            if texto is None:
+                motivo = lector.CONSENTIMIENTO if "consent." in fuera.get("url", "") else \
+                    "la página tardó demasiado en mostrar los precios"
+                return _resultado("fallido", inicio, motivo, url_final=pagina.url, **_evidencia(pagina))
             motivo = lector.bloqueo(pagina.url, texto)
-            if motivo:
+            if motivo:   # una verificación no se fotografía: no se guarda nada de ella
                 return _resultado("fallido", inicio, motivo, url_final=pagina.url)
             regreso = None
-            if "Booking options" not in texto and elegir_regreso:
+            if not RESERVA.search(texto) and elegir_regreso:
                 regreso = _elegir_regreso(pagina)
                 if regreso:
-                    try:
-                        pagina.wait_for_function(r"() => /Booking options[\s\S]*\$\d/.test(document.body.innerText)")
-                    except TimeoutError:
-                        pass   # se lee lo que haya; `avisos` dirá que no hubo opciones de reserva
-                    texto = pagina.inner_text("body")
+                    # sin opciones de reserva a tiempo se lee lo que haya: `avisos` dirá que no las hubo
+                    texto = _esperar(pagina, RESERVA, espera_ms) or pagina.inner_text("body")
             etiquetas = pagina.eval_on_selector_all("[aria-label]", "els => els.map(e => e.getAttribute('aria-label'))")
             datos = lector.leer(texto, etiquetas)
             datos["regreso_elegido"] = regreso
@@ -101,6 +114,27 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir) -> dict:
                               captura_png_b64=base64.b64encode(captura).decode())
         finally:
             navegador.close()
+
+
+def _primera_linea(error: Exception) -> str:
+    return (str(error).strip().splitlines() or ["error del navegador"])[0][:160]
+
+
+def _esperar(pagina, patron: re.Pattern, plazo_ms: int = ESPERA_MS) -> str | None:
+    """El texto visible en cuanto cumple `patron`; None si no llega a tiempo. Tolera que la página se recargue o cambie
+    de dirección mientras carga (Google lo hace): se vuelve a leer en vez de fallar."""
+    from playwright.sync_api import Error
+
+    fin = time.monotonic() + plazo_ms / 1000
+    while time.monotonic() < fin:
+        try:
+            texto = pagina.inner_text("body", timeout=2000)
+            if patron.search(texto):
+                return texto
+        except Error:
+            pass   # contexto destruido por una navegación: se reintenta
+        pagina.wait_for_timeout(400)
+    return None
 
 
 def _elegir_regreso(pagina) -> dict | None:

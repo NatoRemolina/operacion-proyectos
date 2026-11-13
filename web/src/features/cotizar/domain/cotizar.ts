@@ -303,7 +303,9 @@ export interface AnalisisVuelo {
   /** Si la página muestra otro precio que el buscador. La comparación sigue con el del buscador. */
   readonly aviso_precio: string | null;
   readonly datos: DetalleLeido | null;
-  /** Dirección completa de la captura PNG, lista para `<img>`. */
+  /** Con `fallido`: el comienzo del texto que mostró la página. */
+  readonly extracto: string | null;
+  /** Dirección completa de la captura PNG, lista para `<img>`. También de una lectura fallida. */
   readonly captura_url: string | null;
 }
 

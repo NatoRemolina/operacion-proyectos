@@ -370,7 +370,9 @@ class AnalisisVuelo(BaseModel):
     precio_buscador_usd: Dinero
     aviso_precio: str | None = Field(description="Si la página muestra otro precio que el buscador, lo dice.")
     datos: DetalleLeido | None
-    captura_url: str | None = Field(description="La captura de la página (PNG), como evidencia.")
+    extracto: str | None = Field(None, description="Con `fallido`: el comienzo del texto que mostró la página, para saber por qué.")
+    captura_url: str | None = Field(description="La captura de la página (PNG), como evidencia; también de una lectura "
+                                                "fallida, salvo si pidió verificación.")
 
 
 # ---------- errores ----------

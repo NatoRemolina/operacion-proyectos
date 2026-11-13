@@ -90,6 +90,16 @@ def test_una_verificacion_queda_como_lectura_fallida(piloto, doble, monkeypatch)
     assert _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()["reutilizado"] is False   # lo fallido no se reutiliza
 
 
+def test_una_lectura_sin_precios_guarda_lo_que_se_vio(piloto, doble, monkeypatch):
+    monkeypatch.setattr(analizador, "_llamar", lambda url: {"estado": "fallido", "motivo": "la página tardó demasiado en mostrar los precios",
+                                                           "captura_png_b64": base64.b64encode(PNG).decode(),
+                                                           "extracto": "Something went wrong"})
+    c = _cotizar(piloto)
+    a = _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()
+    assert (a["estado"], a["datos"], a["extracto"]) == ("fallido", None, "Something went wrong")
+    assert piloto.get(a["captura_url"]).content == PNG
+
+
 def test_sin_analizador_apagado_u_ocupado_no_lee_nada(piloto, doble, monkeypatch):
     llamadas, _ = doble
     c = _cotizar(piloto)

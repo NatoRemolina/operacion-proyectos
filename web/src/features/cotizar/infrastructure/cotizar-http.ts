@@ -248,6 +248,7 @@ const analisisSchema = z.object({
       avisos: lista,
     })
     .nullable(),
+  extracto: z.string().nullable().default(null),
   captura_url: z.string().nullable(),
 });
 

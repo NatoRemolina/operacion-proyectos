@@ -199,9 +199,10 @@ def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") ->
     r = _llamar(url)
     listo = r.get("estado") == "listo" and isinstance(r.get("datos"), dict)
     cambios = {"estado": "listo" if listo else "fallido", "terminado": db.ahora(), "duracion_ms": r.get("duracion_ms"),
-               "motivo": None if listo else str(r.get("motivo") or "la lectura no devolvió datos")[:300]}
-    if listo:
-        cambios.update(datos=r["datos"], captura=_guardar_captura(r.get("captura_png_b64")))
+               "motivo": None if listo else str(r.get("motivo") or "la lectura no devolvió datos")[:300],
+               # una lectura fallida guarda lo que se vio (si el analizador lo trae): sirve para saber por qué falló
+               "captura": _guardar_captura(r.get("captura_png_b64")),
+               "datos": r["datos"] if listo else ({"extracto": str(r["extracto"])[:500]} if r.get("extracto") else None)}
     db.actualizar("analisis_vuelo", aid, **cambios)
     eventos.registrar("solicitud", sid, "página del vuelo leída" if listo else "lectura de Google Flights fallida",
                       f"{nombre}: {'listo' if listo else cambios['motivo']}", "analizador", r.get("duracion_ms") or 0)

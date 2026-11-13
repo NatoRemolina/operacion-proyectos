@@ -361,6 +361,11 @@ function DetalleGoogle({
                   : analisis.motivo}
       </p>
       {!lectura && analisis?.estado === "listo" && analisis.datos ? <Leido a={analisis} /> : null}
+      {!lectura && analisis?.estado === "fallido" && analisis.captura_url ? (
+        <a href={analisis.captura_url} target="_blank" rel="noopener noreferrer" className="self-start text-sm underline underline-offset-3">
+          Ver lo que mostró la página
+        </a>
+      ) : null}
     </section>
   );
 }

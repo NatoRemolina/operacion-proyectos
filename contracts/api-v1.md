@@ -390,7 +390,8 @@ interface AnalisisVuelo {
     regreso_elegido: { precio: number; aerolinea; escalas; sale; llega; desde; hasta; duracion } | null;
     notas: string[]; avisos: string[];
   } | null;                       // solo con estado «listo»; el texto es el de la página (en inglés)
-  captura_url: string | null;     // GET de la captura PNG, como evidencia
+  extracto: string | null;        // con «fallido»: el comienzo del texto que mostró la página
+  captura_url: string | null;     // GET de la captura PNG, como evidencia (también de una lectura fallida, salvo verificación)
 }
 ```
 
