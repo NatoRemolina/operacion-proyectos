@@ -11,6 +11,8 @@ persona (P-0007) ─► cotización ─► decisión ─► VIAJE (V-2026-0012, 
                                        aprobación de administración
 ```
 
+**Por qué integrados y no por separado.** Los dos retos describen el mismo objeto en dos momentos: el reto 1 decide cuánto debería costar un viaje y el reto 2 registra cuánto costó. Resueltos por separado, quedarían dos listas que alguien concilia a mano: a qué proyecto va cada recibo, si un gasto cabe en lo previsto, qué viaje no tiene soportes. Con el viaje como eje, la decisión de la cotización crea el viaje con su presupuesto, que administración aprueba; cada gasto se asigna solo al viaje de la persona (por quién lo envía y las fechas) y se valida contra ese presupuesto; y previsto frente a real se ve en cada viaje y en el tablero de cada proyecto. El análisis inicial (`ANALISIS.md`, sección 4) proponía una integración ligera, con el proyecto como punto de unión y la opción de recortarla si faltaba tiempo. Se amplió a una sola plataforma con el viaje como eje porque la asignación automática del gasto y el control del presupuesto solo funcionan si cada gasto sabe a qué viaje pertenece. El costo es una aplicación y una base compartidas por los dos retos, más acopladas que dos herramientas sueltas, y se declara como etapa de transición (ver «Arquitectura» y «Limitaciones conocidas»).
+
 ## Qué hay
 
 | Pieza | Para qué |

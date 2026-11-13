@@ -165,7 +165,7 @@ Estado: aceptada el 11 de noviembre. No se ha ejecutado ningún extractor todav�
 
 ## 5. Preguntas abiertas (por decidir hoy)
 
-1. **Nivel de integración**: ¿una aplicación con los puentes P.1 a P.3, o dos demos separadas? Con el plazo actual, la opción prudente es construir el Reto 2 completo y añadir el Reto 1 dentro de la misma aplicación, dejando P.2 y P.3 como lo primero que se recorta.
+1. ~~**Nivel de integración**: ¿una aplicación con los puentes P.1 a P.3, o dos demos separadas?~~ Resuelto: una sola plataforma con el viaje como eje (ver `ANALISIS.md`, sección 4, «Lo que se decidió después», y el README, «Por qué integrados y no por separado»).
 2. **Fuente de opciones del Reto 1**: ¿escenarios simulados fijos, pegar y capturar (idea 1.1), o ambos?
 3. **Canales del Reto 2**: ¿carga web + buzón simulado + página para celular?
 4. ~~A qué se dedica la empresa y dónde opera~~: resuelto el 11 de noviembre, ver 2.1. La verificación de programas de fidelización y reglas de baterías está en 7.1.
