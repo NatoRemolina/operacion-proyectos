@@ -3,8 +3,8 @@ import { useId } from "react";
 /*
  * Ilustración de la portada: las rutas que salen de Medellín hacia Miami, Nueva York, San Francisco y Los Ángeles,
  * sobre una carta con Colombia y los 48 estados contiguos de Estados Unidos. Los contornos están simplificados a mano
- * a partir de coordenadas reales y se proyectan aquí, sin imágenes ni datos externos. Encima, el viaje que nace de la
- * ruta principal y un recibo que se lee, queda aprobado y hace avanzar la ejecución.
+ * a partir de coordenadas reales y se proyectan aquí, sin imágenes ni datos externos. Encima, el viaje a Los Ángeles
+ * que nace de la ruta principal y el recibo del hotel, que se lee, queda aprobado y hace avanzar la ejecución.
  * Es decorativa: el texto de la portada dice lo mismo y los lectores de pantalla la omiten.
  */
 
@@ -227,23 +227,23 @@ function TarjetaViaje() {
   return (
     <div className="portada-aparece rounded-2xl bg-grafito p-3.5 text-sobre-grafito shadow-flotante [animation-delay:1.35s] @xl:p-4">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold tabular-nums text-sobre-grafito-suave">V-2026-0012</span>
+        <span className="text-xs font-semibold tabular-nums text-sobre-grafito-suave">V-2026-0031</span>
         <span className="rounded-md bg-sobre-grafito/10 px-2 py-0.5 text-xs font-semibold text-cian-claro">Aprobado</span>
       </div>
-      <p className="mt-1.5 font-bold leading-snug @lg:text-lg">Miami → Moab</p>
-      <p className="hidden text-xs text-sobre-grafito-suave @xl:block">Producción inmobiliaria · 8 – 11 dic 2026</p>
+      <p className="mt-1.5 font-bold leading-snug @lg:text-lg">Medellín → Los&nbsp;Ángeles</p>
+      <p className="hidden text-xs text-sobre-grafito-suave @xl:block">Residencial Malibú · 8 – 11 dic 2026</p>
       <div className="mt-3 flex items-baseline gap-3 text-xs @xl:justify-between">
         <span className="hidden text-sobre-grafito-suave @xl:inline">Gastado</span>
         <span className="tabular-nums text-sobre-grafito-suave">
           <span className="inline-grid font-bold text-sobre-grafito @xl:justify-items-end">
-            <span className="portada-cifra-antes col-start-1 row-start-1">USD&nbsp;69,95</span>
-            <span className="portada-cifra-despues col-start-1 row-start-1">USD&nbsp;352,27</span>
+            <span className="portada-cifra-antes col-start-1 row-start-1">USD&nbsp;891,40</span>
+            <span className="portada-cifra-despues col-start-1 row-start-1">USD&nbsp;1.582,13</span>
           </span>{" "}
-          de USD&nbsp;1.153,00
+          de USD&nbsp;2.150,00
         </span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sobre-grafito/20">
-        <div className="portada-ejecucion h-full w-[31%] rounded-full bg-cian-claro" />
+        <div className="portada-ejecucion h-full w-[74%] rounded-full bg-cian-claro" />
       </div>
     </div>
   );
@@ -255,20 +255,21 @@ function Recibo() {
     <div className="portada-aparece relative [animation-delay:1.8s]">
       <div className="portada-sombra-recibo">
         <div className="portada-recibo relative overflow-hidden bg-superficie px-3.5 pb-5 pt-3.5 font-mono text-[0.6875rem] leading-[1.6] text-texto">
-          <p className="portada-campo relative font-bold [animation-delay:2.35s]">DESERT SKY HOTEL</p>
+          <p className="portada-campo relative font-bold [animation-delay:2.35s]">MARINA PALMS HOTEL</p>
+          <p>LOS ANGELES, CA</p>
           <p className="portada-campo relative [animation-delay:2.55s]">DEC 11 2026 · 11:02</p>
           <hr className="my-2 border-dashed border-borde-campo" />
           <p className={fila}>
             <span>ROOM 3N</span>
-            <span className="tabular-nums">249.00</span>
+            <span className="tabular-nums">597.00</span>
           </p>
           <p className={fila}>
             <span>TAX</span>
-            <span className="tabular-nums">33.32</span>
+            <span className="tabular-nums">93.73</span>
           </p>
           <p className={`portada-campo relative mt-1 font-bold [animation-delay:2.75s] ${fila}`}>
             <span>TOTAL USD</span>
-            <span className="tabular-nums">282.32</span>
+            <span className="tabular-nums">690.73</span>
           </p>
           <span className="portada-lectura pointer-events-none absolute inset-0" />
         </div>

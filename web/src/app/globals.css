@@ -433,8 +433,9 @@
   }
 }
 
+/* De USD 891,40 a USD 1.582,13 de USD 2.150,00: del 41 % al 74 % del presupuesto. */
 @keyframes portada-ejecucion {
   from {
-    scale: 0.2 1;
+    scale: 0.56 1;
   }
 }
