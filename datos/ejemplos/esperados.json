@@ -61,6 +61,21 @@
       "total"
     ]
   },
+  "recibo_taxi.png": {
+    "comercio": "Desert Cab Co.",
+    "fecha": "2026-12-11",
+    "categoria": "transporte_terrestre",
+    "subtotal": 23.4,
+    "impuesto": null,
+    "propina": 4.0,
+    "total": 27.4,
+    "moneda": "USD",
+    "metodo_pago": "Visa 4417",
+    "canal_reserva": null,
+    "ciudad": "Las Vegas",
+    "confianza": 0.95,
+    "dudas": []
+  },
   "factura_hotel.pdf": {
     "comercio": "Desert Sky Hotel & Suites",
     "fecha": "2026-12-11",
@@ -91,6 +106,51 @@
     "confianza": 0.98,
     "dudas": []
   },
+  "confirmacion_vuelo.pdf": {
+    "comercio": "Atlantic Gull Airways",
+    "fecha": "2026-11-25",
+    "categoria": "vuelo",
+    "subtotal": 962.0,
+    "impuesto": 186.3,
+    "propina": null,
+    "total": 1148.3,
+    "moneda": "USD",
+    "metodo_pago": "Visa 4417",
+    "canal_reserva": "directo",
+    "ciudad": null,
+    "confianza": 0.97,
+    "dudas": []
+  },
+  "compra_proyecto.pdf": {
+    "comercio": "AeroParts Supply",
+    "fecha": "2026-12-09",
+    "categoria": "compras_proyecto",
+    "subtotal": 208.98,
+    "impuesto": 17.5,
+    "propina": null,
+    "total": 226.48,
+    "moneda": "USD",
+    "metodo_pago": "Visa 4417",
+    "canal_reserva": null,
+    "ciudad": "Las Vegas",
+    "confianza": 0.97,
+    "dudas": []
+  },
+  "factura_dos_paginas.pdf": {
+    "comercio": "Tejo Car Hire",
+    "fecha": "2026-12-18",
+    "categoria": "alquiler_carro",
+    "subtotal": 210.0,
+    "impuesto": 48.3,
+    "propina": null,
+    "total": 258.3,
+    "moneda": "EUR",
+    "metodo_pago": "Visa 4417",
+    "canal_reserva": "directo",
+    "ciudad": "Lisboa",
+    "confianza": 0.96,
+    "dudas": []
+  },
   "correo_tiquete.eml": {
     "comercio": "Aerolínea (AA 1851)",
     "fecha": "2026-11-20",
@@ -103,6 +163,36 @@
     "metodo_pago": "Visa 4417",
     "canal_reserva": "directo",
     "ciudad": null,
+    "confianza": 0.96,
+    "dudas": []
+  },
+  "reserva_hotel.eml": {
+    "comercio": "Casa do Tejo",
+    "fecha": "2026-12-17",
+    "categoria": "hotel",
+    "subtotal": 354.0,
+    "impuesto": 21.24,
+    "propina": null,
+    "total": 375.24,
+    "moneda": "EUR",
+    "metodo_pago": "Visa 4417",
+    "canal_reserva": "directo",
+    "ciudad": "Lisboa",
+    "confianza": 0.97,
+    "dudas": []
+  },
+  "confirmacion_hotel.html": {
+    "comercio": "Moab Red Rock Lodge",
+    "fecha": "2026-11-28",
+    "categoria": "hotel",
+    "subtotal": 358.0,
+    "impuesto": 54.86,
+    "propina": null,
+    "total": 412.86,
+    "moneda": "USD",
+    "metodo_pago": "Mastercard 9021",
+    "canal_reserva": "TravelNow",
+    "ciudad": "Moab",
     "confianza": 0.96,
     "dudas": []
   }

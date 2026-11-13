@@ -15,21 +15,42 @@ class SoporteRechazado(ValueError):
     """El archivo no se acepta; el mensaje se le muestra a quien lo envió."""
 
 
+EXTENSIONES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf"}
+# Un correo guardado que alguien sube llegó por correo, aunque lo suba desde la web, el celular o la API
+FORMATOS_DE_CORREO = ("message/rfc822", "text/html")
+TIPOS_ADMITIDOS = "Se aceptan fotos (JPG, PNG, WebP), PDF, correos (.eml) y confirmaciones en HTML (.html)."
+CANALES_DE_SUBIDA = ("web", "celular")
+
+
 def tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
     """Tipo según el contenido, no según lo que declara quien sube. Devuelve (tipo, extensión) o None."""
-    if contenido[:3] == b"\xff\xd8\xff":
-        return "image/jpeg", "jpg"
-    if contenido[:8] == b"\x89PNG\r\n\x1a\n":
-        return "image/png", "png"
-    if contenido[:4] == b"RIFF" and contenido[8:12] == b"WEBP":
-        return "image/webp", "webp"
-    if contenido[:5] == b"%PDF-":
-        return "application/pdf", "pdf"
+    binario = extraccion.tipo_binario(contenido)
+    if binario:
+        return binario, EXTENSIONES[binario]
+    if nombre.lower().endswith((".html", ".htm")) and extraccion.parece_html(contenido):
+        return "text/html", "html"
     if nombre.lower().endswith(".eml"):
         cabecera = contenido[:4000].decode("utf-8", "ignore").lower()
         if not cabecera.lstrip().startswith("<") and sum(c in cabecera for c in ("from:", "subject:", "date:", "to:")) >= 2:
             return "message/rfc822", "eml"
     return None
+
+
+def preparar(contenido: bytes, nombre: str) -> tuple[bytes, str, str]:
+    """Lo que se guarda y se lee de un soporte: (contenido, tipo, extensión). Lanza SoporteRechazado si no se admite.
+
+    Una confirmación en HTML se reduce a texto plano, sin scripts, estilos ni enlaces activos, antes de guardarla y de
+    enviarla al modelo. La medición de exactitud usa esta misma preparación."""
+    tipo = tipo_real(contenido, nombre)
+    if not tipo:
+        raise SoporteRechazado("Tipo de archivo no admitido. " + TIPOS_ADMITIDOS)
+    mime, extension = tipo
+    if mime == "text/html":
+        texto = extraccion.html_a_texto(contenido)
+        if not texto:
+            raise SoporteRechazado("La confirmación en HTML no tiene texto legible.")
+        return texto.encode(), "text/plain", "txt"
+    return contenido, mime, extension
 
 
 def tipo_audio(contenido: bytes) -> tuple[str, str] | None:
@@ -54,6 +75,22 @@ def _guardar(contenido: bytes, mime: str, extension: str) -> tuple[str, str]:
         return almacen.guardar(almacen.clave(huella, extension), contenido, mime), huella
     except Exception as e:
         raise SoporteRechazado(f"No se pudo guardar el archivo ({type(e).__name__}). Intenta de nuevo.") from e
+
+
+def disposicion(mime: str | None, nombre: str | None) -> str:
+    """Cómo se entrega el original: en línea, salvo la confirmación HTML reducida a texto, que solo se descarga."""
+    if mime != "text/plain":
+        return "inline"
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", Path(nombre or "soporte").stem)[:80] or "soporte"
+    return f'attachment; filename="{base}.txt"'
+
+
+def correo_de(texto: str | None) -> dict | None:
+    """El remitente y el asunto guardados con el soporte, si llegó como correo; None si no los hay."""
+    datos = db.de_json(texto, None) if texto else None
+    if not isinstance(datos, dict) or not (datos.get("remitente") or datos.get("asunto")):
+        return None
+    return {"remitente": datos.get("remitente"), "asunto": datos.get("asunto")}
 
 
 def _campos_de(gasto: dict) -> dict:
@@ -94,9 +131,9 @@ def registrar_envio(contenido: bytes, nombre: str, canal: str, usuario: dict | N
     if len(contenido) > config.MAX_BYTES_SOPORTE:
         raise SoporteRechazado(f"El archivo pesa {len(contenido) / 1e6:.1f} MB; el máximo es {config.MAX_BYTES_SOPORTE / 1e6:.1f} MB.")
     tipo = tipo_real(contenido, nombre)
-    if not tipo:
-        raise SoporteRechazado("Tipo de archivo no admitido. Se aceptan fotos (JPG, PNG, WebP), PDF y correos (.eml).")
-    mime, extension = tipo
+    if tipo and tipo[0] in FORMATOS_DE_CORREO and canal in CANALES_DE_SUBIDA:
+        canal = "correo"
+    contenido, mime, extension = preparar(contenido, nombre)
     op = None
     clave = (clave_idempotencia or "").strip()
     if clave and usuario:
@@ -125,7 +162,8 @@ def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, 
     vid = viaje["id"] if viaje else None
     with db.transaccion():
         doc = db.insertar("documentos", nombre=nombre, mime=mime, canal=canal, ruta=ruta, huella=huella, creado=db.ahora(),
-                          usuario_id=yo, viaje_id=vid, tipo="soporte")
+                          usuario_id=yo, viaje_id=vid, tipo="soporte",
+                          texto=extraccion.remitente_y_asunto(contenido) if mime == "message/rfc822" else None)
         gid = db.insertar("gastos", documento_id=doc, proyecto_id=proyecto_id, viajero_id=viajero_id, viaje_id=vid,
                           estado="procesando", creado=db.ahora(), usuario_id=yo)
         eventos.registrar("gasto", gid, "documento recibido", f"{nombre} ({mime})" + (f" · {viaje['codigo']}" if viaje else ""),

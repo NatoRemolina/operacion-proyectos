@@ -49,6 +49,13 @@ export interface GastoDetalle extends GastoResumen {
   readonly motivo_rechazo?: string | null;
   /** Hizo el gasto o es quien viaja: puede contar para qué fue. Sin el dato (memoria), se asume que sí. */
   readonly puede_justificar?: boolean;
+  /** Si el soporte es un correo (.eml): de quién llegó y con qué asunto. */
+  readonly correo?: CorreoDelSoporte | null;
+}
+
+export interface CorreoDelSoporte {
+  readonly remitente: string | null;
+  readonly asunto: string | null;
 }
 
 export interface FiltroGastos extends OpcionesListado {
@@ -118,21 +125,55 @@ export function problemaDeJustificacion(texto: string): string | null {
     : null;
 }
 
+/** Las categorías del servidor (`app/config.py`, CATEGORIAS) con su nombre. Una prueba del servidor comprueba que coinciden. */
+export const CATEGORIAS: Readonly<Record<string, string>> = {
+  vuelo: "Vuelo",
+  hotel: "Hotel",
+  alquiler_carro: "Alquiler de carro",
+  transporte_terrestre: "Transporte terrestre: taxi, bus, tren, aplicación",
+  combustible: "Combustible",
+  comida: "Comida",
+  parqueo_peajes: "Parqueo y peajes",
+  compras_proyecto: "Compras del proyecto",
+  otros: "Otros",
+};
+
+/** Cómo se muestra la categoría: su nombre; si ya llega con nombre (datos de demostración), tal cual. */
+export function etiquetaCategoria(categoria: string | null): string {
+  if (!categoria) return "Por confirmar";
+  return CATEGORIAS[categoria] ?? categoria;
+}
+
 /** El mismo tope que el servidor: 4,5 MB decimales (4.500.000 bytes), no 4,5 MiB. */
 export const TAMANO_MAXIMO_BYTES = 4_500_000;
 
-const TIPOS_ADMITIDOS = ["image/jpeg", "image/png", "image/webp", "application/pdf", "message/rfc822"];
+const TIPOS_ADMITIDOS = ["image/jpeg", "image/png", "image/webp", "application/pdf", "message/rfc822", "text/html"];
+
+/** Lo que se ofrece al elegir un archivo: fotos, PDF, correos guardados y confirmaciones en HTML. */
+export const ACEPTA_SOPORTE = "image/*,application/pdf,message/rfc822,.eml,text/html,.html,.htm";
 
 /** Un correo guardado (.eml), como la confirmación de una reserva. El navegador no siempre le pone tipo. */
 export function esCorreo(archivo: Pick<File, "type" | "name">): boolean {
   return archivo.type === "message/rfc822" || archivo.name.toLowerCase().endsWith(".eml");
 }
 
+/** La confirmación de una reserva guardada como página (.html o .htm). El servidor la reduce a texto plano. */
+export function esConfirmacionHtml(archivo: Pick<File, "name">): boolean {
+  return /\.html?$/i.test(archivo.name);
+}
+
 /** Comprobación previa en el navegador; el servidor vuelve a validar siempre, mirando el contenido. */
 export function validarArchivo(archivo: Pick<File, "size" | "type" | "name">): TipoError | null {
   if (archivo.size > TAMANO_MAXIMO_BYTES) return "demasiado_grande";
   // Algunos celulares entregan fotos HEIC o sin tipo, y un .eml puede llegar con un tipo genérico: decide el servidor.
-  if (archivo.type && !archivo.type.startsWith("image/") && !TIPOS_ADMITIDOS.includes(archivo.type) && !esCorreo(archivo)) {
+  if (archivo.type === "text/html" && !esConfirmacionHtml(archivo)) return "tipo_no_admitido";
+  if (
+    archivo.type &&
+    !archivo.type.startsWith("image/") &&
+    !TIPOS_ADMITIDOS.includes(archivo.type) &&
+    !esCorreo(archivo) &&
+    !esConfirmacionHtml(archivo)
+  ) {
     return "tipo_no_admitido";
   }
   return null;

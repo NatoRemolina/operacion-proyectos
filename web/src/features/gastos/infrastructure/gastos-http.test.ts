@@ -207,3 +207,18 @@ describe("adaptador HTTP de sesión", () => {
   });
 });
 
+
+describe("Esquema del detalle de un gasto", () => {
+  it("acepta el remitente y el asunto de un soporte que llegó por correo, y su ausencia", async () => {
+    const { gastoDetalleSchema } = await import("./gastos-http");
+    const base = {
+      id: 1, viaje: null, comercio: null, fecha: null, categoria: null, total: null, moneda: null, total_usd: null,
+      estado: "revision", estado_texto: "En revisión", creado: "2026-11-12T04:13:13Z", subtotal: null, impuesto: null,
+      propina: null, motivos: [], alertas: [], canal: "correo", documento_id: 3, lectura: { origen: "en vivo", confianza: 0.9 },
+      justificaciones: [],
+    };
+    const conCorreo = gastoDetalleSchema.parse({ ...base, correo: { remitente: "a@b.test", asunto: "Factura" } });
+    expect(conCorreo.correo).toEqual({ remitente: "a@b.test", asunto: "Factura" });
+    expect(gastoDetalleSchema.parse(base).correo).toBeNull();
+  });
+});

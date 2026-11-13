@@ -14,7 +14,7 @@ def _cabeceras() -> dict:
     return {"Authorization": f"Bearer {config.SUPABASE_SERVICE_KEY}", "apikey": config.SUPABASE_SERVICE_KEY}
 
 
-CLAVE_VALIDA = re.compile(r"^[a-f0-9]{2}/[a-f0-9]{64}\.(jpg|png|webp|pdf|eml|ogg|mp3|m4a)$")
+CLAVE_VALIDA = re.compile(r"^[a-f0-9]{2}/[a-f0-9]{64}\.(jpg|png|webp|pdf|eml|txt|ogg|mp3|m4a)$")
 
 
 def clave(huella: str, extension: str) -> str:

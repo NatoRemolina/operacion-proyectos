@@ -1,10 +1,13 @@
 From: Reservas <reservas@aerolinea-ejemplo.test>
 To: andres.molina@empresa-ejemplo.test
-Subject: Your trip confirmation and receipt - MIA to LAS
+Subject: [FICTICIO =?utf-8?q?=C2=B7_prueba_t=C3=A9cnica=5D?= Your trip
+ confirmation and receipt - MIA to LAS
 Date: Fri, 20 Nov 2026 10:12:00 -0500
 Content-Type: text/plain; charset="utf-8"
-Content-Transfer-Encoding: 7bit
+Content-Transfer-Encoding: 8bit
 MIME-Version: 1.0
+
+FICTICIO · prueba técnica: correo inventado para la prueba técnica.
 
 Thank you for your purchase.
 

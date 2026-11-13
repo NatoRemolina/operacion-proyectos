@@ -41,3 +41,32 @@ describe("Detalle de un gasto rechazado", () => {
   });
 });
 
+
+describe("Detalle de un gasto que llegó por correo", () => {
+  it("muestra de quién llegó y con qué asunto", () => {
+    render(
+      <DetalleGasto
+        gasto={gastoDePrueba({
+          canal: "correo",
+          correo: { remitente: "Casa do Tejo <reservas@casadotejo.test>", asunto: "Fatura da sua estadia" },
+        })}
+        urlOriginal={null}
+      />,
+    );
+    expect(screen.getByText("Correo")).toBeInTheDocument();
+    expect(screen.getByText("Casa do Tejo <reservas@casadotejo.test>")).toBeInTheDocument();
+    expect(screen.getByText("Fatura da sua estadia")).toBeInTheDocument();
+  });
+
+  it("sin correo no muestra esas filas", () => {
+    render(<DetalleGasto gasto={gastoDePrueba({ correo: null })} urlOriginal={null} />);
+    expect(screen.queryByText("Remitente")).not.toBeInTheDocument();
+  });
+});
+
+describe("Categoría en el detalle", () => {
+  it("muestra el nombre de la categoría y no su clave", () => {
+    render(<DetalleGasto gasto={gastoDePrueba({ categoria: "transporte_terrestre" })} urlOriginal={null} />);
+    expect(screen.getByText("Transporte terrestre: taxi, bus, tren, aplicación")).toBeInTheDocument();
+  });
+});

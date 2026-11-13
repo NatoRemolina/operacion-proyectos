@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Boton, clasesBoton } from "@/shared/ui/boton";
-import { JUSTIFICACION_MAXIMO } from "../domain/gastos";
+import { ACEPTA_SOPORTE, JUSTIFICACION_MAXIMO } from "../domain/gastos";
 import { CampoAreaTexto, CampoSelector } from "@/shared/ui/campo";
 import { Alerta, InsigniaEstado } from "@/shared/ui/estado";
 import { formatearTamano } from "@/shared/ui/formato";
@@ -201,7 +201,7 @@ export function FormularioRecibo({
           Agrega tu soporte
         </h2>
         <p id="ayuda-soporte" className="mt-1 text-sm text-texto-secundario">
-          Foto, PDF o correo (.eml) · Hasta 4,5 MB
+          Foto, PDF, correo (.eml) o confirmación (.html) · Hasta 4,5 MB
         </p>
         <div className="mt-3 flex flex-col gap-3">
           <BotonArchivo
@@ -218,7 +218,7 @@ export function FormularioRecibo({
             id="archivo-recibo"
             texto={archivo ? "Elegir otro archivo" : "Elegir archivo"}
             variante="secundario"
-            accept="image/*,application/pdf,message/rfc822,.eml"
+            accept={ACEPTA_SOPORTE}
             disabled={enviando}
             onElegir={onElegirArchivo}
           />

@@ -43,7 +43,7 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 409 | `INVALID_STATE` | El estado del viaje no admite esa acción (por ejemplo, cerrar uno pendiente) |
 | 409 | `PRICE_CONFIRMATION_REQUIRED` | Al aprobar, el precio del vuelo subió más que la tolerancia: se repite con `confirmar_precio: true`; el cambio va en `fields.precio` |
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
-| 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF ni correo |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html) |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
 | 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso |
 | 429 | `TOO_MANY_REQUESTS` | Tope de cotizaciones nuevas del día por persona (regla `tope_cotizaciones_persona_dia`, 20 en la semilla) |
@@ -86,7 +86,8 @@ interface ViajeDetalle extends ViajeResumen {
 interface GastoResumen {
   id: number;
   viaje: { id: number; codigo: string } | null;
-  comercio: string | null; fecha: string | null; categoria: string | null;
+  comercio: string | null; fecha: string | null;
+  categoria: string | null;   // vuelo | hotel | alquiler_carro | transporte_terrestre | combustible | comida | parqueo_peajes | compras_proyecto | otros
   total: Dinero; moneda: string | null; total_usd: Dinero;
   estado: EstadoGasto; estado_texto: string;  // "En revisión"
   creado: string;
@@ -97,8 +98,9 @@ interface GastoDetalle extends GastoResumen {
   subtotal: Dinero; impuesto: Dinero; propina: Dinero;
   motivos: string[];                          // códigos estables, por ejemplo "sin_viaje"
   alertas: string[];                          // textos para mostrar
-  canal: string;                              // "web" | "celular" | "correo" | "telegram"
+  canal: string;                              // "web" | "celular" | "correo" | "telegram"; un .eml o un .html que se sube queda "correo"
   documento_id: number | null;
+  correo: { remitente: string | null; asunto: string | null } | null;  // si el soporte es un correo (.eml)
   lectura: { origen: string; confianza: number | null };
   justificaciones: Justificacion[];           // en orden de llegada
   version: number;                            // sube con cada cambio; la revisión la manda de vuelta
@@ -208,7 +210,7 @@ Los campos de datos que no se mandan se conservan; los importes van como cadena.
 Cuerpo JSON `{"texto": string}` (3 a 2.000 caracteres) y `X-CSRF-Token`. Añade para qué fue el gasto, con las palabras de la persona. 201 `GastoDetalle` con la justificación nueva al final. Solo justifica quien hizo el gasto o quien viaja: un gasto que la persona ve pero no es suyo (el gestor, administración) responde 403 `FORBIDDEN`; uno que no ve, 404. Texto vacío o muy corto: 422. Las notas de voz entran por la web o por Telegram; ver `docs/justificaciones.md`.
 
 ### `GET /documentos/{id}/contenido`
-El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `application/pdf`; un correo se entrega como `text/plain`), `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto al que pertenece no es visible.
+El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `application/pdf`; un correo se entrega como `text/plain`), `Content-Disposition: inline` (una confirmación HTML se guarda reducida a texto plano, sin código ni enlaces, y se entrega como `text/plain` con `Content-Disposition: attachment`), `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto al que pertenece no es visible.
 
 ### `POST /asistente`
 Solo administración (403 `FORBIDDEN` para colaborador y gestor). Cuerpo `{"pregunta": "..."}` (1 a 500 caracteres; solo espacios es 422) y `X-CSRF-Token`. Sigue la misma vía que la pantalla `/admin/asistente`: asesor (agente con herramientas), modelo con herramientas o consultas directas, con el mismo tope diario y el mismo rastro en `asistente_consultas`. Con el asesor puede tardar hasta un minuto.

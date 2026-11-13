@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { clasesBoton } from "@/shared/ui/boton";
 import { Alerta } from "@/shared/ui/estado";
 import { formatearDinero, formatearFecha, formatearInstante } from "@/shared/ui/formato";
-import type { GastoDetalle } from "../domain/gastos";
+import { etiquetaCategoria, type GastoDetalle } from "../domain/gastos";
 import { InsigniaGasto } from "./estado-gasto";
 
 const CANAL: Record<string, string> = {
@@ -92,7 +92,7 @@ export function DetalleGasto({
         </h2>
         <dl>
           <Fila termino="Fecha">{formatearFecha(gasto.fecha)}</Fila>
-          <Fila termino="Categoría">{gasto.categoria ?? "Por confirmar"}</Fila>
+          <Fila termino="Categoría">{etiquetaCategoria(gasto.categoria)}</Fila>
           <Fila termino="Subtotal">{formatearDinero(gasto.subtotal, moneda)}</Fila>
           <Fila termino="Impuesto">{formatearDinero(gasto.impuesto, moneda)}</Fila>
           <Fila termino="Propina">
@@ -104,6 +104,12 @@ export function DetalleGasto({
           ) : null}
           <Fila termino="Viaje">{gasto.viaje?.codigo ?? "Sin viaje asignado"}</Fila>
           <Fila termino="Enviado por">{CANAL[gasto.canal] ?? gasto.canal}</Fila>
+          {gasto.correo ? (
+            <>
+              <Fila termino="Remitente">{gasto.correo.remitente ?? "Sin remitente leído"}</Fila>
+              <Fila termino="Asunto">{gasto.correo.asunto ?? "Sin asunto"}</Fila>
+            </>
+          ) : null}
           <Fila termino="Recibido">{formatearInstante(gasto.creado)}</Fila>
         </dl>
       </section>

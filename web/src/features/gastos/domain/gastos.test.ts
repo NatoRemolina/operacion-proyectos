@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mesEnCurso, problemaDePeriodo, validarArchivo } from "./gastos";
+import { etiquetaCategoria, mesEnCurso, problemaDePeriodo, validarArchivo } from "./gastos";
 
 describe("archivo del recibo", () => {
   it("el tope es el mismo que el del servidor (4,5 MB, no 4,5 MiB)", () => {
@@ -11,8 +11,19 @@ describe("archivo del recibo", () => {
     for (const type of ["message/rfc822", "", "application/octet-stream"]) {
       expect(validarArchivo({ size: 2_000, type, name: "correo_tiquete.eml" }), type).toBeNull();
     }
-    expect(validarArchivo({ size: 2_000, type: "text/html", name: "pagina.html" })).toBe("tipo_no_admitido");
     expect(validarArchivo({ size: 2_000, type: "application/octet-stream", name: "programa.exe" })).toBe("tipo_no_admitido");
+  });
+
+  it("acepta la confirmación de una reserva en HTML (.html o .htm), con o sin tipo", () => {
+    const casos: [string, string][] = [
+      ["text/html", "confirmacion_hotel.html"],
+      ["", "reserva.htm"],
+      ["application/octet-stream", "reserva.html"],
+    ];
+    for (const [type, name] of casos) {
+      expect(validarArchivo({ size: 2_000, type, name }), name).toBeNull();
+    }
+    expect(validarArchivo({ size: 2_000, type: "text/html", name: "pagina.php" })).toBe("tipo_no_admitido");
   });
 });
 
@@ -29,5 +40,18 @@ describe("periodo del Excel contable", () => {
     expect(problemaDePeriodo({ desde: "2026-11-30", hasta: "2026-11-01" })).toMatch(/final no puede ser anterior/);
     expect(problemaDePeriodo({ desde: "", hasta: "2026-11-30" })).toMatch(/Elige/);
     expect(problemaDePeriodo({ desde: "2026-11-01", hasta: "30/11/2026" })).toMatch(/Elige/);
+  });
+});
+
+describe("categoría del gasto", () => {
+  it("muestra el nombre de la categoría, incluidas transporte terrestre y compras del proyecto", () => {
+    expect(etiquetaCategoria("transporte_terrestre")).toBe("Transporte terrestre: taxi, bus, tren, aplicación");
+    expect(etiquetaCategoria("compras_proyecto")).toBe("Compras del proyecto");
+    expect(etiquetaCategoria("comida")).toBe("Comida");
+  });
+
+  it("sin categoría dice que falta confirmarla, y un nombre ya legible se muestra tal cual", () => {
+    expect(etiquetaCategoria(null)).toBe("Por confirmar");
+    expect(etiquetaCategoria("Alimentación")).toBe("Alimentación");
   });
 });

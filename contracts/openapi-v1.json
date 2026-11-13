@@ -1819,7 +1819,7 @@
             "type": "string",
             "format": "binary",
             "title": "Archivo",
-            "description": "Foto (JPG, PNG, WebP), PDF o correo (.eml) de hasta 4,5 MB."
+            "description": "Foto (JPG, PNG, WebP), PDF, correo (.eml) o confirmación en HTML (.html) de hasta 4,5 MB."
           },
           "viaje_id": {
             "anyOf": [
@@ -1887,6 +1887,40 @@
         ],
         "title": "CambioEstadoViaje",
         "description": "Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."
+      },
+      "CorreoDelSoporte": {
+        "properties": {
+          "remitente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remitente",
+            "description": "Quién envió el correo, tal como viene en su cabecera."
+          },
+          "asunto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asunto",
+            "description": "El asunto del correo."
+          }
+        },
+        "type": "object",
+        "required": [
+          "remitente",
+          "asunto"
+        ],
+        "title": "CorreoDelSoporte"
       },
       "Cotizacion": {
         "properties": {
@@ -2788,6 +2822,17 @@
             },
             "type": "array",
             "title": "Justificaciones"
+          },
+          "correo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CorreoDelSoporte"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Si el soporte es un correo (.eml): de quién llegó y con qué asunto."
           },
           "version": {
             "type": "integer",

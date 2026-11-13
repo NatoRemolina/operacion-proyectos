@@ -7,8 +7,8 @@
 <div class="{{ 'dos' if es_admin else '' }}">
 <form method="post" action="/gastos/cargar" enctype="multipart/form-data" class="tarjeta" id="carga">
   <h3>{{ 'Subir archivos o tomar foto' if es_admin else 'Toma la foto del recibo o elige el archivo' }}</h3>
-  <p><label for="archivos" class="eti" style="font-weight:400">Fotos, PDF o correos (.eml). Máximo 4,5 MB por archivo y 6 por envío; las fotos más pesadas se reducen antes de enviarse.</label>
-  <input id="archivos" type="file" name="archivos" multiple accept="image/*,application/pdf,.eml" required></p>
+  <p><label for="archivos" class="eti" style="font-weight:400">Fotos, PDF, correos (.eml) o confirmaciones en HTML (.html). Máximo 4,5 MB por archivo y 6 por envío; las fotos más pesadas se reducen antes de enviarse.</label>
+  <input id="archivos" type="file" name="archivos" multiple accept="image/*,application/pdf,.eml,.html,.htm" required></p>
   <div class="campos"><div><label for="viaje_1">Viaje</label><select id="viaje_1" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div>
   {% if es_admin %}<div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
   <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div>
@@ -22,14 +22,14 @@
 </form>
 {% if es_admin %}<div>
 <form method="post" action="/gastos/ejemplos" class="tarjeta">
-  <h3>Soportes de ejemplo</h3><p class="eti">Recibos y facturas ficticios en USD y EUR, uno de ellos ilegible a propósito.</p>
+  <h3>Soportes de ejemplo</h3><p class="eti">Recibos, facturas y confirmaciones ficticios (sellados «FICTICIO · prueba técnica») en USD y EUR, uno de ellos ilegible a propósito.</p>
   {% for e in ejemplos %}<label><input type="checkbox" name="nombres" value="{{ e }}" checked> {{ e }}</label>{% endfor %}
   <div class="campos" style="margin-top:10px"><div><label for="viaje_2">Viaje</label><select id="viaje_2" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div><div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
   <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
   <input type="hidden" name="canal" value="web"><p><button>Procesar seleccionados</button></p>
 </form>
 <form method="post" action="/gastos/ejemplos" class="tarjeta">
-  <h3>Buzón de correo (simulado)</h3><p class="eti">Lee los correos de la carpeta de ejemplos como si llegaran a un buzón de gastos.</p>
+  <h3>Buzón de correo (simulado)</h3><p class="eti">Lee los correos (.eml) y las confirmaciones en HTML de la carpeta de ejemplos como si llegaran a un buzón de gastos.</p>
   {% for e in correos %}<label><input type="checkbox" name="nombres" value="{{ e }}" checked> {{ e }}</label>{% endfor %}
   <div class="campos" style="margin-top:10px"><div><label for="viaje_3">Viaje</label><select id="viaje_3" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div><div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
   <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>

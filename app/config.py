@@ -107,9 +107,11 @@ CATEGORIAS = {
     "vuelo": "Vuelo",
     "hotel": "Hotel",
     "alquiler_carro": "Alquiler de carro",
+    "transporte_terrestre": "Transporte terrestre: taxi, bus, tren, aplicación",
     "combustible": "Combustible",
     "comida": "Comida",
     "parqueo_peajes": "Parqueo y peajes",
+    "compras_proyecto": "Compras del proyecto",
     "otros": "Otros",
 }
 
