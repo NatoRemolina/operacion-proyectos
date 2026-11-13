@@ -1216,7 +1216,8 @@ def _responder(pregunta: str, usuario: dict, cid: int, contexto: dict | None = N
                                                plazo_s=limite - time.monotonic()), "asesor"
             except Exception as e:   # ningún fallo del asesor llega a la página: responde la vía siguiente
                 fallo = e
-                eventos.registrar("asistente", None, "asesor sin respuesta",
+                # Sin tiempo para la sesión no es una caída del asesor: otro paso gastó el presupuesto
+                eventos.registrar("asistente", None, "asesor omitido" if getattr(e, "sin_tiempo", False) else "asesor sin respuesta",
                                   f"{asesor.motivo(e)} · sesión {r.sesion.get('id', '—')} · {len(r.pasos)} herramientas", "asesor")
                 asesor.avisar_caida(e)
                 r = Rastro(usuario)   # las fuentes que se muestran son las de la vía que respondió
@@ -1227,8 +1228,8 @@ def _responder(pregunta: str, usuario: dict, cid: int, contexto: dict | None = N
         # Si el asesor agotó el plazo, tardó en fallar o ya no queda tiempo, no se suma la espera del modelo de lenguaje
         salto = ((fallo is not None and (getattr(fallo, "agotado", False) or getattr(fallo, "segundos", 0) > asesor.SEGUNDA_VIA_S))
                  or limite - time.monotonic() < MIN_MODELO_S)
-        # El asesor no se llamó (tope de gasto del día o configuración): la respuesta lo dice, la dé quien la dé
-        tope = getattr(fallo, "tope", False) or getattr(fallo, "configuracion", False)
+        # El asesor no se llamó (tope de gasto del día, configuración o tiempo): la respuesta lo dice, la dé quien la dé
+        tope = any(getattr(fallo, x, False) for x in ("tope", "configuracion", "sin_tiempo"))
         # El porqué de un fallo (costos del día, códigos del servicio) es para administración; los demás reciben un aviso
         admin = r.alcance.admin
         if not texto and llm.activo() and not salto:

@@ -273,12 +273,13 @@ class ErrorAsesor(RuntimeError):
     """Fallo del asesor con un motivo apto para mostrar: nunca lleva la clave ni la dirección del servicio."""
 
     def __init__(self, motivo: str, *, agotado: bool = False, vencio: bool = False, tope: bool = False,
-                 configuracion: bool = False):
+                 configuracion: bool = False, sin_tiempo: bool = False):
         super().__init__(motivo)
         self.agotado = agotado   # se acabó el plazo de la pregunta
         self.vencio = vencio     # la petición salió y no llegó respuesta: la sesión pudo crearse igual
         self.tope = tope         # no se llamó al servicio por el tope de gasto del día
         self.configuracion = configuracion   # no se llamó al servicio: la configuración está a medias o mal escrita
+        self.sin_tiempo = sin_tiempo         # no se llamó al servicio: la pregunta ya había gastado su presupuesto
         self.segundos = 0.0
 
 
@@ -346,8 +347,9 @@ def motivo(e: BaseException) -> str:
 
 def avisar_caida(e: BaseException):
     """Una línea en el registro por cada pregunta que el asesor no respondió. La cuenta la alarma «CaidasDelAsesor»
-    (infra/lib/app-stack.ts). No lleva la pregunta ni datos de la persona. Llegar al tope de gasto del día no es caída."""
-    if getattr(e, "tope", False):
+    (infra/lib/app-stack.ts). No lleva la pregunta ni datos de la persona. Llegar al tope de gasto del día no es caída,
+    ni que la pregunta no dejara tiempo para abrir la sesión (lo gastó otra cosa, por ejemplo el índice)."""
+    if getattr(e, "tope", False) or getattr(e, "sin_tiempo", False):
         return
     tipo = ("configuracion" if getattr(e, "configuracion", False) else "plazo" if getattr(e, "agotado", False)
             else "sin_respuesta" if getattr(e, "vencio", False) else "error")
@@ -804,7 +806,7 @@ def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: b
         if situacion != "listo":
             raise ErrorAsesor(f"no está configurado ({detalle})", configuracion=True)
         if disponible < MIN_SESION_S:
-            raise ErrorAsesor("no quedaba tiempo para consultarlo", agotado=True)
+            raise ErrorAsesor("no quedaba tiempo para consultarlo", sin_tiempo=True)
         reserva = _reservar_gasto(usuario)
         cuerpo = {
             "agent": _agente(), "environment_id": config.ASESOR_ENTORNO_ID,

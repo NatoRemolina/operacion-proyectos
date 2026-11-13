@@ -342,7 +342,7 @@ def test_sin_tiempo_para_la_sesion_no_se_abre(con_asesor):
     with pytest.raises(asesor.ErrorAsesor) as e:
         asesor.preguntar("¿Hay gastos?", asistente.Rastro(_admin()), _admin(),
                          plazo_s=asesor.CIERRE_MAX_S + asesor.MIN_SESION_S - 1)
-    assert e.value.agotado and s.peticiones == []
+    assert e.value.sin_tiempo and not e.value.agotado and s.peticiones == []
 
 
 def test_llegar_al_tope_de_gasto_no_es_una_caida(con_asesor, monkeypatch, capsys):

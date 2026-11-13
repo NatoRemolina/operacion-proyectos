@@ -57,6 +57,21 @@ def test_el_asesor_recibe_lo_que_queda_tras_poner_al_dia_el_indice(monkeypatch):
     assert recibido["plazo_s"] == pytest.approx(asistente.PRESUPUESTO_S - 20)
 
 
+def test_si_el_indice_gasta_el_tiempo_del_asesor_responde_el_modelo_y_no_es_caida(monkeypatch, capsys):
+    """Con 15 s restantes no cabe una sesión del asesor (5 s más su cierre), pero sí el modelo (8 s)."""
+    reloj, recibido = Reloj(), {}
+    monkeypatch.setattr(asistente, "time", reloj)
+    monkeypatch.setattr(asistente, "_indexar_si_toca", lambda: setattr(reloj, "ahora", reloj.ahora + asistente.PRESUPUESTO_S - 15))
+    monkeypatch.setattr(asesor, "estado", lambda: ("listo", ""))
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r, **k: recibido.update(k) or "Respuesta del modelo.")
+    r = asistente.responder("¿Cuántos gastos hay en revisión?", _admin())
+    assert r["modo"] == "modelo" and "no quedaba tiempo" in r["texto"]   # administración ve por qué
+    assert "asesor_caida" not in capsys.readouterr().out
+    paso = db.uno("select paso from eventos where paso like 'asesor %' order by id desc limit 1")["paso"]
+    assert paso == "asesor omitido"
+
+
 def test_el_modelo_recibe_el_limite_de_la_pregunta(monkeypatch):
     recibido = {}
     monkeypatch.setattr(llm, "activo", lambda: True)
