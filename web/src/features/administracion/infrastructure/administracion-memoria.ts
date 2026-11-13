@@ -1,4 +1,4 @@
-import type { GastoDetalle } from "@/features/gastos/domain/gastos";
+import { CATEGORIAS, type GastoDetalle } from "@/features/gastos/domain/gastos";
 import type { ViajeResumen } from "@/features/viajes/domain/viajes";
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { esperar, exigirSesion, type SesionMemoria } from "@/shared/infrastructure/memoria";
@@ -8,6 +8,9 @@ import {
   type AdministracionRepository,
   type ResumenAdmin,
 } from "../domain/administracion";
+import { problemaDeMotivoExcepcion, type DatosRevision } from "../domain/revision";
+import type { CatalogoReglas } from "@/features/reglas/domain/reglas";
+import { crearReglasMemoria } from "@/features/reglas/infrastructure/reglas-memoria";
 
 /** Las mismas transiciones que `viajes.TRANSICIONES` del servidor. */
 const TRANSICIONES: Record<AccionViaje, { desde: ViajeResumen["estado"][]; hacia: ViajeResumen["estado"]; texto: string; paso: string }> = {
@@ -26,6 +29,10 @@ export function crearAdministracionMemoria(opciones: {
   resumen?: ResumenAdmin | null;
   viajes?: ViajeResumen[];
   gastos?: GastoDetalle[];
+  /** Lo que la revisión necesita además de la ficha; sin él se arma con la ficha y los viajes. */
+  datosRevision?: Record<number, DatosRevision>;
+  /** Sin catálogo, las reglas responden «prohibido», como la API a quien no es de administración. */
+  reglas?: CatalogoReglas | null;
   sesion?: SesionMemoria;
   latenciaMs?: number;
 }): AdministracionRepository {
@@ -33,6 +40,7 @@ export function crearAdministracionMemoria(opciones: {
   const viajes = opciones.viajes ?? [];
   const gastos = opciones.gastos ?? [];
   return {
+    ...crearReglasMemoria({ catalogo: opciones.reglas ?? null, sesion, latenciaMs }),
     async resumen(signal) {
       await esperar(latenciaMs, signal);
       exigirSesion(sesion);
@@ -68,26 +76,85 @@ export function crearAdministracionMemoria(opciones: {
       };
     },
 
-    async revisarGasto(id, { version, accion, motivo = "" }) {
+    async revisarGasto(id, { version, accion, motivo = "", campos = {}, viajeId }) {
       await esperar(latenciaMs);
       exigirSesion(sesion);
       if (!opciones.resumen) throw new ErrorDeAplicacion("prohibido");
       const indice = gastos.findIndex((g) => g.id === id);
       if (indice < 0) throw new ErrorDeAplicacion("no_encontrado");
       const gasto = gastos[indice]!;
+      if (gasto.propio) throw new ErrorDeAplicacion("prohibido");
       if ((gasto.version ?? 0) !== version) throw new ErrorDeAplicacion("cambio_ajeno");
-      const problema = accion === "rechazar" ? problemaDeMotivo(motivo) : null;
-      if (problema) throw new ErrorDeAplicacion("validacion", { campos: { motivo: problema } });
+      const problema =
+        accion === "rechazar" ? problemaDeMotivo(motivo) : accion === "excepcion" ? problemaDeMotivoExcepcion(motivo) : null;
+      if (problema) throw new ErrorDeAplicacion("validacion", { mensaje: problema, campos: { motivo: problema } });
+      const viaje = viajeId === undefined ? gasto.viaje : viajes.find((v) => v.id === viajeId) ?? null;
+      if (viajeId && !viaje) throw new ErrorDeAplicacion("validacion", { mensaje: "Ese viaje no existe." });
+      // El método de pago y el canal no salen en la ficha: se guardan en los datos de revisión.
+      const visibles = Object.fromEntries(
+        Object.entries(campos).filter(([campo]) => campo !== "metodo_pago" && campo !== "canal_reserva"),
+      );
+      const corregido: GastoDetalle =
+        accion === "rechazar" ? gasto : { ...gasto, ...visibles, viaje: viaje ? { id: viaje.id, codigo: viaje.codigo } : null };
       // Como el servidor: aprobar vuelve a pasar las reglas y, si hay motivos, el gasto sigue en revisión.
-      const sigue = accion === "aprobar" && gasto.motivos.length > 0;
+      const aprobado = accion === "excepcion" || (accion === "aprobar" && gasto.motivos.length === 0);
+      const estado = accion === "rechazar" ? "rechazado" : aprobado ? "aprobado" : "revision";
       const nuevo: GastoDetalle = {
-        ...gasto,
-        estado: sigue ? "revision" : accion === "aprobar" ? "aprobado" : "rechazado",
-        estado_texto: sigue ? "En revisión" : accion === "aprobar" ? "Aprobado" : "Rechazado",
+        ...corregido,
+        estado,
+        estado_texto: { rechazado: "Rechazado", aprobado: "Aprobado", revision: "En revisión" }[estado],
+        motivo_rechazo: accion === "rechazar" ? motivo.trim() : (gasto.motivo_rechazo ?? null),
         version: version + 1,
       };
       gastos[indice] = nuevo;
+      if (opciones.datosRevision?.[id]) {
+        const previos = opciones.datosRevision[id];
+        opciones.datosRevision[id] = {
+          ...previos,
+          version: version + 1,
+          metodo_pago: campos.metodo_pago === undefined ? previos.metodo_pago : campos.metodo_pago,
+          canal_reserva: campos.canal_reserva === undefined ? previos.canal_reserva : campos.canal_reserva,
+        };
+      }
       return nuevo;
+    },
+
+    async datosRevision(id, signal) {
+      await esperar(latenciaMs, signal);
+      exigirSesion(sesion);
+      if (!opciones.resumen) throw new ErrorDeAplicacion("prohibido");
+      const gasto = gastos.find((g) => g.id === id);
+      if (!gasto) throw new ErrorDeAplicacion("no_encontrado");
+      return (
+        opciones.datosRevision?.[id] ?? {
+          gasto_id: id,
+          version: gasto.version ?? 0,
+          metodo_pago: null,
+          canal_reserva: null,
+          lectura_original: null,
+          soporte: gasto.documento_id === null ? null : { documento_id: gasto.documento_id, nombre: null, forma: "imagen" },
+          categorias: Object.entries(CATEGORIAS).map(([clave, nombre]) => ({ clave, nombre })),
+          viajes: viajes
+            .filter((v) => v.estado !== "rechazado")
+            .map((v) => ({
+              id: v.id,
+              codigo: v.codigo,
+              estado: v.estado,
+              estado_texto: v.estado_texto,
+              titular: v.titular?.nombre ?? null,
+              origen: v.origen,
+              destino: v.destino,
+              ida: v.ida,
+              regreso: v.regreso,
+            })),
+          propio: gasto.propio ?? false,
+          aviso_propio: gasto.propio ? "Nadie revisa sus propios gastos: debe hacerlo otra persona de administración." : null,
+        }
+      );
+    },
+
+    urlAudioJustificacion() {
+      return null;
     },
   };
 }

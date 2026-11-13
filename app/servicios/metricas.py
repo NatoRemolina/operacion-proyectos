@@ -13,6 +13,8 @@ from .. import db
 from . import costo, inteligencia, precios, validacion
 
 APROBADOS = ("aprobado", "aprobado_auto")
+# Pasos de la bitácora que aprueban un gasto: para medir el tiempo de recibido a aprobado
+PASOS_APROBACION = ("aprobado sin intervención", "corregido y aprobado", "aprobado en revisión", "aprobado con excepción")
 
 
 def titular_solicitud(s: str) -> str:
@@ -114,8 +116,8 @@ def gastos(f: dict) -> dict:
     # Tiempo de recibido a aprobado, a partir de la bitácora
     tiempos = []
     if filas:
-        hechos = db.todos("""select entidad_id, paso, momento from eventos where entidad='gasto' and paso in
-                             ('documento recibido','aprobado sin intervención','corregido y aprobado','aprobado con excepción')""")
+        hechos = db.todos(f"""select entidad_id, paso, momento from eventos where entidad='gasto' and paso in
+                              ('documento recibido',{','.join(f"'{x}'" for x in PASOS_APROBACION)})""")
         inicio = {e["entidad_id"]: e["momento"] for e in hechos if e["paso"] == "documento recibido"}
         ids = {g["id"] for g in filas}
         for e in hechos:

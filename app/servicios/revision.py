@@ -21,6 +21,9 @@ MINIMO_EXCEPCION = 8
 EDITABLES = ("comercio", "fecha", "categoria", "subtotal", "impuesto", "propina", "total", "moneda", "metodo_pago", "canal_reserva")
 CAMBIO = "Otra persona cambió este gasto mientras lo revisabas. Recarga la página para ver los datos actuales."
 SIN_EXCEPCION = {"importe_invalido", "fecha_invalida"}   # ni con excepción se aprueba un importe o una fecha que no lo son
+# Pasos de la bitácora cuando quien revisa no cambió nada (con cambios: «corregido y aprobado», «corregido, sigue en revisión»)
+APROBADO_SIN_CAMBIOS = "aprobado en revisión"
+SIGUE_SIN_CAMBIOS = "revisado, sigue en revisión"
 
 
 class ConflictoRevision(ValueError):
@@ -102,10 +105,14 @@ def _aplicar(g: dict, quien: dict, version: int | None, accion: str, campos: dic
     # Una persona confirmó los datos: la confianza de lectura deja de ser el criterio
     r = validacion.revisar({**valores, "confianza": 1.0, "dudas": []}, proyecto, gid, el_viaje)
     estado = "aprobado" if accion == "aprobar" and r["estado"] == "aprobado_auto" else "revision"
-    paso = "corregido y aprobado" if estado == "aprobado" else "corregido, sigue en revisión"
+    # El recorrido dice «corregido» solo si cambió algo: un dato, el viaje, el proyecto o quién viaja
+    corrigio = any(valores[c] != g.get(c) for c in EDITABLES) or (el_viaje["id"] if el_viaje else None) != g["viaje_id"] \
+        or proyecto_id != g["proyecto_id"] or viajero_id != g["viajero_id"]
+    aprobado, sigue = ("corregido y aprobado", "corregido, sigue en revisión") if corrigio else (APROBADO_SIN_CAMBIOS, SIGUE_SIN_CAMBIOS)
+    paso = aprobado if estado == "aprobado" else sigue
     if accion == "excepcion":
         if r["estado"] == "aprobado_auto":
-            estado, paso = "aprobado", "corregido y aprobado"
+            estado, paso = "aprobado", aprobado
         elif valores["total"] is not None and valores["moneda"] and r["total_usd"] is not None \
                 and not SIN_EXCEPCION & set(r["motivos"]):
             estado, paso = "aprobado", "aprobado con excepción"
