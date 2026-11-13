@@ -293,10 +293,11 @@ def _tablas_modelo() -> dict:
         db.ejecutar(f"create {'unique ' if unico else ''}index if not exists {nombre} on ofertas_tarifa ({columnas})")
     if not config.ES_SQLITE:
         publicos = [r["rolname"] for r in db.todos("select rolname from pg_roles where rolname in ('anon','authenticated')")]
-        db.ejecutar("alter table ofertas_tarifa enable row level security")
-        for rol in publicos:
-            db.ejecutar(f"revoke all on ofertas_tarifa from {rol}")
-    return {"tablas_modelo": ["ofertas_tarifa"]}
+        for tabla in ofertas.TABLAS:
+            db.ejecutar(f"alter table {tabla} enable row level security")
+            for rol in publicos:
+                db.ejecutar(f"revoke all on {tabla} from {rol}")
+    return {"tablas_modelo": list(ofertas.TABLAS)}
 
 
 def migrar() -> dict:

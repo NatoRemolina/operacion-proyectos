@@ -39,7 +39,7 @@ def test_la_misma_tarifa_de_la_misma_fuente_no_se_repite():
 def test_la_migracion_de_la_tabla_se_puede_repetir():
     hechos = migracion._tablas_modelo()
     assert hechos == migracion._tablas_modelo()
-    assert "ofertas_tarifa" in hechos["tablas_modelo"]
+    assert {"ofertas_tarifa", "ofertas_origenes"} <= set(hechos["tablas_modelo"])
 
 
 @pytest.mark.skipif(config.ES_SQLITE, reason="RLS solo existe en PostgreSQL")
@@ -318,6 +318,31 @@ def test_r1_8_dos_corridas_a_la_vez_no_se_pisan():
     with db.motor.connect() as otra:   # otra corrida en curso tiene el cerrojo
         otra.execute(text("select pg_advisory_lock(:k)"), {"k": ofertas.CERROJO})
         try:
-            assert ofertas.actualizar() == {"filas": 0, "respuestas": 0, "lecturas": 0, "ocupado": True}
+            assert ofertas.actualizar() == {"filas": 0, "respuestas": 0, "lecturas": 0, "pendientes": 0, "ocupado": True}
         finally:
             otra.execute(text("select pg_advisory_unlock(:k)"), {"k": ofertas.CERROJO})
+
+
+def test_r1_9_un_origen_sin_tarifas_queda_registrado_y_no_se_relee(monkeypatch):
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7009.json"
+    bid = _guardar_respuesta(clave, {"search_parameters": {}, "booking_options": []}, "2026-11-07 10:00:00")
+    ofertas.actualizar()
+    registro = db.uno("select * from ofertas_origenes where origen_fila=:o", o=f"busqueda:{bid}")
+    assert registro["tarifas"] == 0 and registro["momento"]
+    leidas = []
+    original = ofertas._de_respuesta
+    monkeypatch.setattr(ofertas, "_de_respuesta", lambda o, *a: leidas.append(o) or original(o, *a))
+    ofertas.actualizar()
+    assert f"busqueda:{bid}" not in leidas
+
+
+def test_r1_9_tope_de_origenes_por_corrida(monkeypatch):
+    ofertas.actualizar()   # lo pendiente de otras pruebas queda hecho
+    monkeypatch.setattr(ofertas, "TOPE_ORIGENES", 1)
+    ids = [_guardar_respuesta(f"reserva_MIA_LAS_2026-12-08_2026-12-11_AA701{i}.json", _respuesta(400 + i), "2026-11-07 11:00:00")
+           for i in range(2)]
+    primera = ofertas.actualizar()
+    assert primera["respuestas"] == 1 and primera["pendientes"] == 1
+    segunda = ofertas.actualizar()
+    assert segunda["respuestas"] == 1 and segunda["pendientes"] == 0
+    assert db.uno("select count(*) n from ofertas_origenes where origen_fila in (:a, :b)", a=f"busqueda:{ids[0]}", b=f"busqueda:{ids[1]}")["n"] == 2

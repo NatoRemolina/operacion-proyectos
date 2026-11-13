@@ -55,6 +55,14 @@ ofertas_tarifa = db._tabla(
     _valores("normalizacion", ("completa", "parcial")),
 )
 
+ofertas_origenes = db._tabla(
+    "ofertas_origenes",  # cada respuesta o lectura ya extraída, también las que no dieron tarifas: no se vuelven a leer
+    Column("origen_fila", Text, nullable=False, unique=True), Column("momento", Text, nullable=False),
+    Column("tarifas", Integer),          # filas que produjo
+    Column("nuevas", Integer),           # de ellas, cuántas entraron (las demás ya estaban)
+)
+
+TABLAS = ("ofertas_tarifa", "ofertas_origenes")
 INDICES = [  # nombre, columnas, único
     ("ix_ofertas_tarifa_ruta_ida", "origen, destino, ida", False),
     ("ix_ofertas_tarifa_ida", "ida", False),
@@ -327,33 +335,52 @@ def _insertar(filas: list[dict]) -> int:
 
 
 def _hechos() -> set[str]:
-    return {r["origen_fila"] for r in db.todos("select distinct origen_fila from ofertas_tarifa")}
+    """Los orígenes ya extraídos: los registrados y, por si el registro es posterior, los que ya tienen filas."""
+    return ({r["origen_fila"] for r in db.todos("select origen_fila from ofertas_origenes")}
+            | {r["origen_fila"] for r in db.todos("select distinct origen_fila from ofertas_tarifa")})
 
 
-def _respuestas_nuevas(hechos: set[str]) -> list[tuple[str, str, dict, str | None]]:
-    """(origen de la fila, clave, respuesta, creado) de las respuestas con opciones de reserva aún no extraídas. Cada fila de
+def _pendientes(hechos: set[str], con_lecturas: bool) -> list[tuple[str, str, object]]:
+    """(origen de la fila, tipo, referencia) de lo que falta extraer, sin leer todavía los cuerpos. Cada fila de
     `busquedas` cuenta por separado (la misma clave guardada otro día es otro momento). Un archivo de la carpeta de
     respaldo solo entra si la tabla no tiene ninguna respuesta con esa clave: si la tiene, es la misma respuesta."""
     condicion = " or ".join(f"clave like '{p}%'" for p in PREFIJOS)
-    salida = []
-    for r in db.todos(f"select id, clave from busquedas where {condicion} order by id"):
-        if f"busqueda:{r['id']}" in hechos:
-            continue
-        fila = db.uno("select cuerpo, creado from busquedas where id=:i", i=r["id"])
-        datos = db.de_json(fila["cuerpo"], None)
-        if isinstance(datos, dict):
-            salida.append((f"busqueda:{r['id']}", r["clave"], datos, fila["creado"]))
-    en_tabla = {r["clave"] for r in db.todos(f"select distinct clave from busquedas where {condicion}")}
+    respuestas = db.todos(f"select id, clave from busquedas where {condicion} order by id")
+    salida = [(f"busqueda:{r['id']}", "busqueda", r["id"]) for r in respuestas if f"busqueda:{r['id']}" not in hechos]
+    if con_lecturas:
+        salida += [(f"analisis:{r['id']}", "analisis", r["id"]) for r in db.todos("select id from analisis_vuelo where estado='listo' order by id")
+                   if f"analisis:{r['id']}" not in hechos]
+    en_tabla = {r["clave"] for r in respuestas}
     for archivo in sorted(config.DIR_RESPALDO.glob("*.json")) if config.DIR_RESPALDO.is_dir() else []:
         if archivo.name.startswith(PREFIJOS) and archivo.name not in en_tabla and f"archivo:{archivo.name}" not in hechos:
-            try:
-                salida.append((f"archivo:{archivo.name}", archivo.name, json.loads(archivo.read_text()), None))
-            except (OSError, ValueError):
-                continue
+            salida.append((f"archivo:{archivo.name}", "archivo", archivo))
     return salida
 
 
-CERROJO = 7340001   # cerrojo consultivo de PostgreSQL: una sola extracción a la vez en toda la base
+def _filas_de(origen_fila: str, tipo: str, ref) -> list[dict]:
+    if tipo == "analisis":
+        a = db.uno("select * from analisis_vuelo where id=:i", i=ref)
+        return _de_lectura(a) if a else []
+    if tipo == "busqueda":
+        fila = db.uno("select clave, cuerpo, creado from busquedas where id=:i", i=ref)
+        datos = db.de_json(fila["cuerpo"], None) if fila else None
+        return _de_respuesta(origen_fila, fila["clave"], datos, fila["creado"]) if isinstance(datos, dict) else []
+    try:
+        datos = json.loads(ref.read_text())
+    except (OSError, ValueError):
+        return []
+    return _de_respuesta(origen_fila, ref.name, datos, None) if isinstance(datos, dict) else []
+
+
+def _registrar_origen(origen_fila: str, tarifas: int, nuevas: int):
+    from sqlalchemy.dialects import postgresql, sqlite
+    sentencia = (sqlite if config.ES_SQLITE else postgresql).insert(ofertas_origenes).on_conflict_do_nothing()
+    with db.transaccion() as c:
+        c.execute(sentencia, [{"origen_fila": origen_fila, "momento": db.ahora(), "tarifas": tarifas, "nuevas": nuevas}])
+
+
+TOPE_ORIGENES = 200   # respuestas o lecturas por corrida: el resto queda para la siguiente
+CERROJO = 7340001     # cerrojo consultivo de PostgreSQL: una sola extracción a la vez en toda la base
 
 
 def actualizar() -> dict:
@@ -363,25 +390,22 @@ def actualizar() -> dict:
     Todo va en una transacción. En PostgreSQL toma un cerrojo consultivo y, si otra corrida lo tiene, sale sin hacer nada
     (`ocupado`); en SQLite la transacción de escritura ya pone las corridas en fila. Así el conteo es el de las filas que
     de verdad entraron."""
-    hechos = {"filas": 0, "respuestas": 0, "lecturas": 0, "ocupado": False}
+    hechos = {"filas": 0, "respuestas": 0, "lecturas": 0, "pendientes": 0, "ocupado": False}
     if not _existe("ofertas_tarifa"):
         return hechos
     con_lecturas = _existe("analisis_vuelo")
     with db.transaccion() as c:
         if not config.ES_SQLITE and not c.execute(text("select pg_try_advisory_xact_lock(:k)"), {"k": CERROJO}).scalar():
             return {**hechos, "ocupado": True}
-        for origen_fila, clave, datos, creado in _respuestas_nuevas(_hechos()):
-            filas = _de_respuesta(origen_fila, clave, datos, creado)
+        pendientes = _pendientes(_hechos(), con_lecturas)
+        hechos["pendientes"] = max(len(pendientes) - TOPE_ORIGENES, 0)
+        for origen_fila, tipo, ref in pendientes[:TOPE_ORIGENES]:
+            filas = _filas_de(origen_fila, tipo, ref)
+            nuevas = _insertar(filas)
+            _registrar_origen(origen_fila, len(filas), nuevas)
             if filas:
-                hechos["respuestas"] += 1
-                hechos["filas"] += _insertar(filas)
-        if con_lecturas:
-            for a in db.todos("""select * from analisis_vuelo a where estado='listo' and not exists
-                                 (select 1 from ofertas_tarifa o where o.analisis_id=a.id) order by id"""):
-                filas = _de_lectura(a)
-                if filas:
-                    hechos["lecturas"] += 1
-                    hechos["filas"] += _insertar(filas)
+                hechos["lecturas" if tipo == "analisis" else "respuestas"] += 1
+                hechos["filas"] += nuevas
         if hechos["filas"]:
             eventos.registrar("ofertas_tarifa", None, "tarifas extraídas",
                               f"{hechos['filas']} tarifas de {hechos['respuestas']} respuestas del buscador y {hechos['lecturas']} lecturas de la página",
