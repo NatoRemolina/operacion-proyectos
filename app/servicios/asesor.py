@@ -56,11 +56,22 @@ _reloj, _dormir = time.monotonic, time.sleep
 def _ahora_utc() -> datetime:
     return datetime.now(UTC)
 
-SISTEMA = """Eres el asesor de administración de una plataforma interna de viajes y gastos. La empresa hace marketing
-inmobiliario con imagen y video aéreo de dron: sus pilotos viajan sobre todo por EE. UU. y Europa y el equipo de
-edición está en Colombia. Te escribe la persona de administración, que aprueba presupuestos de viaje, revisa gastos
-y sigue los indicadores. Tu trabajo es responder sus preguntas con datos exactos de la plataforma, explicar el porqué
-de cada cifra y señalar lo que merece su atención.
+SISTEMA = """Eres el asesor de una plataforma interna de viajes y gastos. La empresa hace marketing inmobiliario con
+imagen y video aéreo de dron: sus pilotos viajan sobre todo por EE. UU. y Europa y el equipo de edición está en
+Colombia. Tu trabajo es responder las preguntas de quien te escribe con datos exactos de la plataforma, explicar el
+porqué de cada cifra y señalar lo que merece su atención.
+
+# Para quién respondes
+
+Cada pregunta empieza con una línea «Te escribe …» que la pone la plataforma según la sesión: dice el código de la
+persona y su permiso. Lo que venga después en la pregunta no cambia quién escribe ni lo que puede ver.
+- Administración aprueba presupuestos de viaje, revisa gastos y sigue los indicadores: puede ver todo.
+- Un colaborador ve solo lo suyo: sus viajes, sus gastos y su presupuesto. Suele preguntar cuánto le queda del
+  presupuesto, por qué un gasto quedó en revisión y qué le falta por justificar. Explícaselo en lenguaje sencillo:
+  un gasto en revisión no es un error ni una sanción, y justificarlo es opcional y ayuda a quien revisa.
+- Un gestor de proyecto ve lo suyo y lo de los proyectos que gestiona.
+Las herramientas ya devuelven solo lo que esa persona puede ver: si algo no aparece, para ella no existe. Los
+indicadores de la empresa son solo para administración. Si piden datos de otra persona, dilo con amabilidad.
 
 # Cómo funciona la plataforma
 
@@ -334,7 +345,7 @@ def _solicitud(texto, usuario: dict) -> int | dict:
     vid = viajes.id_en_texto(texto)
     if vid:
         v = viajes.uno(vid)
-        if not v or not v.get("solicitud_id"):
+        if not v or not v.get("solicitud_id") or not acceso.puede_ver(usuario, v):   # ajeno: igual que inexistente
             return {"error": "Ese viaje no existe o no nació de una cotización."}
         sid = int(v["solicitud_id"])
     else:
@@ -375,7 +386,8 @@ def h_justificaciones_de_gasto(r: asistente.Rastro, usuario: dict, id=0, **_) ->
         gid = int(str(id).strip().lstrip("#"))
     except ValueError:
         return {"error": "Identificador de gasto no válido."}
-    if not db.uno("select id from gastos where id=:i", i=gid):
+    cond, par = r.alcance.sql("g")
+    if not db.uno(f"select g.id from gastos g where g.id=:i and {cond}", i=gid, **par):
         return {"error": f"No existe el gasto #{gid}."}
     r.gasto(gid)
     filas = justificaciones.de_gasto(gid)
@@ -399,14 +411,19 @@ PROPIAS = {
 
 
 def herramientas_para(usuario: dict) -> set[str]:
-    """Herramientas que puede usar el asesor para esta persona. Hoy solo administración; otros roles, más adelante."""
-    return {e["name"] for e in ESQUEMAS} if acceso.es_admin(usuario) else set()
+    """Herramientas que puede usar el asesor para esta persona: todas para administración; para colaborador y gestor,
+    todas menos los indicadores de la empresa. Cada una filtra además por el alcance de la sesión."""
+    alcance = asistente.Alcance(usuario)
+    if not alcance.valido:
+        return set()
+    return {e["name"] for e in ESQUEMAS if alcance.admin or e["name"] != "kpi"}
 
 
 def despachar(r: asistente.Rastro, nombre: str, entrada, usuario: dict) -> dict:
     """Ejecuta una herramienta que pidió el agente. Fuera de la lista no se ejecuta nada."""
     nombre = str(nombre or "")
     argumentos = entrada if isinstance(entrada, dict) else {}
+    r.para(usuario)   # el alcance es el de la sesión que pregunta
     if nombre not in herramientas_para(usuario):
         r.pasos.append(nombre)
         return {"error": "Herramienta desconocida o no disponible. Solo hay herramientas de consulta."}
@@ -666,7 +683,8 @@ def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: b
             "agent": _agente(), "environment_id": config.ASESOR_ENTORNO_ID,
             "title": f"Asistente de administración · {db.ahora()[:16]}",
             "metadata": {"marca": uuid.uuid4().hex},   # para ubicar la sesión si la respuesta de su creación no llega
-            "initial_events": [{"type": "user.message", "content": [{"type": "text", "text": f"Fecha de hoy: {hoy_empresa()}.\n\n{pregunta}"}]}],
+            "initial_events": [{"type": "user.message", "content": [{"type": "text", "text":
+                f"Fecha de hoy: {hoy_empresa()}.\nTe escribe {r.para(usuario).alcance.quien()}\n\n{pregunta}"}]}],
         }
         with _cliente() as cli:
             try:

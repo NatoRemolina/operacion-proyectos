@@ -46,6 +46,50 @@ EVENTOS_RELEVANTES = ("presupuesto aprobado", "presupuesto rechazado", "presupue
                       "aprobado con excepción", "asignado a viaje")
 
 
+# Alcance de una búsqueda: lo fija la sesión de quien pregunta, nunca el texto buscado.
+TODO = {"todo": True}   # administración: sin límite por persona ni proyecto
+
+
+def alcance_de(persona_id: int | None, proyectos=()) -> dict:
+    """Fichas de esa persona o de esos proyectos (los que gestiona). Sin persona ni proyectos, ninguna."""
+    return {"persona_id": int(persona_id) if persona_id else None, "proyectos": sorted({int(p) for p in proyectos or ()})}
+
+
+def _sin_limite(alcance: dict) -> bool:
+    return alcance.get("todo") is True
+
+
+def _como_entero(valor) -> int | None:
+    try:   # Pinecone devuelve los números de los metadatos como decimales (7.0)
+        return int(float(valor)) if valor not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def dentro(ficha: dict, alcance: dict) -> bool:
+    """La ficha es de la persona o de uno de sus proyectos."""
+    if _sin_limite(alcance):
+        return True
+    persona = alcance.get("persona_id")
+    return bool((persona and _como_entero(ficha.get("persona_id")) == persona)
+                or _como_entero(ficha.get("proyecto_id")) in set(alcance.get("proyectos") or ()))
+
+
+def _condicion_alcance(alcance: dict) -> tuple[str, dict]:
+    """El alcance como condición SQL sobre `fichas_rag`, con parámetros: el filtro va en la consulta."""
+    if _sin_limite(alcance):
+        return "1=1", {}
+    partes, par = [], {}
+    if alcance.get("persona_id"):
+        partes.append("persona_id=:_alcance_persona")
+        par["_alcance_persona"] = alcance["persona_id"]
+    proyectos = list(alcance.get("proyectos") or ())
+    if proyectos:
+        partes.append("proyecto_id in (" + ",".join(f":_alcance_p{i}" for i in range(len(proyectos))) + ")")
+        par.update({f"_alcance_p{i}": p for i, p in enumerate(proyectos)})
+    return ("(" + " or ".join(partes) + ")" if partes else "1=0"), par
+
+
 class ErrorIndice(RuntimeError):
     """Fallo al hablar con el índice externo. El mensaje nunca lleva la clave."""
 
@@ -242,8 +286,9 @@ class Local:
             for lote in _lotes(list(ids), 500):
                 c.execute(delete(fichas_rag).where(fichas_rag.c.ficha_id.in_(lote)))
 
-    def buscar(self, texto: str, filtros: dict | None = None, k: int = 8) -> list[dict]:
-        cond, par = ["1=1"], {}
+    def buscar(self, texto: str, filtros: dict | None = None, k: int = 8, *, alcance: dict) -> list[dict]:
+        limite, par = _condicion_alcance(alcance)
+        cond = [limite]
         for campo, valor in (filtros or {}).items():
             if campo in FILTRABLES and valor not in (None, ""):
                 cond.append(f"{campo}=:{campo}"); par[campo] = valor
@@ -312,12 +357,25 @@ class Pinecone:
     def filtro(filtros: dict | None) -> dict:
         return {campo: {"$eq": valor} for campo, valor in (filtros or {}).items() if campo in FILTRABLES and valor not in (None, "")}
 
-    def buscar(self, texto: str, filtros: dict | None = None, k: int = 8) -> list[dict]:
+    @staticmethod
+    def filtro_de_alcance(alcance: dict) -> dict | None:
+        """El alcance en el lenguaje de filtros de Pinecone. None: sin límite; {}: no se puede ver nada."""
+        if _sin_limite(alcance):
+            return None
+        o = ([{"persona_id": {"$eq": alcance["persona_id"]}}] if alcance.get("persona_id") else []) + \
+            ([{"proyecto_id": {"$in": list(alcance["proyectos"])}}] if alcance.get("proyectos") else [])
+        return (o[0] if len(o) == 1 else {"$or": o}) if o else {}
+
+    def buscar(self, texto: str, filtros: dict | None = None, k: int = 8, *, alcance: dict) -> list[dict]:
         if not texto.strip():   # sin texto no hay nada que incrustar: lo reciente sale del índice local
-            return Local().buscar("", filtros, k)
+            return Local().buscar("", filtros, k, alcance=alcance)
+        limite = self.filtro_de_alcance(alcance)
+        if limite == {}:
+            return []
         cuerpo = {"top_k": k, "score_by": [{"type": "embed", "fields": [self.CAMPO], "query": texto[:500]}], "include_fields": ["*"]}
-        if self.filtro(filtros):
-            cuerpo["filter"] = self.filtro(filtros)
+        partes = [f for f in (self.filtro(filtros), limite) if f]
+        if partes:
+            cuerpo["filter"] = partes[0] if len(partes) == 1 else {"$and": partes}
         respuesta = self._datos("search", cuerpo)
         return [_salida({**m, "puntaje": m.get("_score")}, m.get("_id")) for m in respuesta.get("matches") or []]
 
@@ -388,13 +446,18 @@ def actualizar(max_envios: int | None = None, todo: bool = False) -> dict:
     return resumen
 
 
-def buscar(texto: str, filtros: dict | None = None, k: int = 8) -> tuple[list[dict], str]:
-    """Devuelve (fichas, adaptador usado). Si el índice externo falla, responde la copia local y lo dice."""
+def buscar(texto: str, filtros: dict | None = None, k: int = 8, *, alcance: dict) -> tuple[list[dict], str]:
+    """Devuelve (fichas, adaptador usado). Si el índice externo falla, responde la copia local y lo dice.
+
+    `alcance` es obligatorio (`TODO` o `alcance_de(...)`): cada adaptador lo aplica en su consulta, y además aquí se
+    descarta lo que no lo cumpla, por si un servicio externo ignorara el filtro.
+    """
     a = activo()
     try:
-        return a.buscar(texto, filtros, k), a.nombre
+        fichas, nombre = a.buscar(texto, filtros, k, alcance=alcance), a.nombre
     except ErrorIndice:
-        return Local().buscar(texto, filtros, k), "local (respaldo: falló el índice externo)"
+        fichas, nombre = Local().buscar(texto, filtros, k, alcance=alcance), "local (respaldo: falló el índice externo)"
+    return [f for f in fichas if dentro(f, alcance)], nombre
 
 
 def estado() -> dict:

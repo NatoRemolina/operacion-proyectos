@@ -71,7 +71,7 @@ def test_una_pregunta_por_una_persona_no_trae_hechos_de_otra(dos_pilotos):
     r = asistente.responder("¿Qué ha reportado Laura Pérez?", _admin())
     assert "Hotel Exclusivo de Laura" in r["texto"] and "Diner Asistente Uno" not in r["texto"]
     # Y la herramienta de búsqueda respeta el filtro por persona
-    res = asistente.h_buscar(asistente.Rastro(), "Hotel Exclusivo", persona=viajes.codigo_persona(a["id"]))
+    res = asistente.h_buscar(asistente.Rastro(_admin()), "Hotel Exclusivo", persona=viajes.codigo_persona(a["id"]))
     assert all(c["persona"] == viajes.codigo_persona(a["id"]) for c in res["coincidencias"])
 
 
@@ -80,7 +80,7 @@ def test_una_nota_se_encuentra_por_una_palabra_de_su_contenido(dos_pilotos):
     piloto = db.uno("select * from usuarios where id=:i", i=a["id"])
     doc = gastos.guardar_evidencia(piloto, a["viaje"], "web", "nota", texto="El parqueadero del aeropuerto cobró en efectivo y no entregó recibo")
     memoria.actualizar()
-    fichas, adaptador = memoria.buscar("PARQUEADERO cobro")         # sin tildes ni mayúsculas
+    fichas, adaptador = memoria.buscar("PARQUEADERO cobro", alcance=memoria.TODO)         # sin tildes ni mayúsculas
     assert adaptador == "local" and fichas[0]["entidad"] == "documentos" and fichas[0]["entidad_id"] == doc
     assert fichas[0]["persona"] == viajes.codigo_persona(a["id"]) and fichas[0]["viaje"] == a["viaje"]["codigo"]
     r = asistente.responder("¿Quién mencionó el parqueadero?", _admin())
@@ -117,8 +117,8 @@ def test_solo_administracion(piloto, gestor, cliente):
         assert c.get("/admin/asistente").status_code == 403
         assert c.post("/admin/asistente", data={"pregunta": "¿Qué ha reportado P-0001?"}).status_code == 403
         assert c.post("/admin/asistente/indice").status_code == 403
-    with pytest.raises(PermissionError):
-        asistente.responder("¿Qué ha reportado P-0001?", db.uno("select * from usuarios where correo='piloto@demo.local'"))
+    with pytest.raises(PermissionError):   # sin sesión válida no hay asistente; el alcance de cada permiso, en test_asistente_alcance
+        asistente.responder("¿Qué ha reportado P-0001?", {})
     pagina = cliente.get("/admin/asistente")
     assert pagina.status_code == 200 and "Estado del índice" in pagina.text and "Actualizar índice" in pagina.text
     assert 'href="/admin/asistente"' in pagina.text and 'href="/admin/asistente"' not in piloto.get("/").text
@@ -234,7 +234,7 @@ def test_pinecone_arma_bien_las_peticiones_y_filtra_por_persona_y_viaje():
                                            "entidad_id": 0, "persona_id": 2, "persona": "P-0002", "viaje_id": 5, "viaje": "V-2026-0005"}
     assert all(v is not None for d in lote for v in d.values())            # los campos vacíos no viajan
 
-    halladas = p.buscar("parqueadero", {"persona_id": 2, "viaje_id": 5, "otro": "x"}, k=4)
+    halladas = p.buscar("parqueadero", {"persona_id": 2, "viaje_id": 5, "otro": "x"}, k=4, alcance=memoria.TODO)
     cuerpo = json.loads(vistas[-1].content)
     assert vistas[-1].url.path == "/namespaces/fichas-local/documents/search"
     assert cuerpo == {"top_k": 4, "score_by": [{"type": "embed", "fields": ["texto"], "query": "parqueadero"}], "include_fields": ["*"],
@@ -259,7 +259,7 @@ def test_un_fallo_de_pinecone_no_expone_la_clave_y_responde_el_local(monkeypatch
     def red_caida(req):
         raise httpx.ConnectError(f"no se pudo conectar a https://{req.url.host}/?Api-Key={CLAVE}")
     with pytest.raises(memoria.ErrorIndice) as e:
-        _pinecone(red_caida).buscar("parqueadero", {"persona_id": 2})
+        _pinecone(red_caida).buscar("parqueadero", {"persona_id": 2}, alcance=memoria.TODO)
     assert CLAVE not in str(e.value) and e.value.__cause__ is None
     with pytest.raises(memoria.ErrorIndice) as e:
         _pinecone(lambda r: httpx.Response(401, text=f"Invalid API key {CLAVE}")).borrar(["x"])
@@ -267,7 +267,7 @@ def test_un_fallo_de_pinecone_no_expone_la_clave_y_responde_el_local(monkeypatch
     # Con el externo caído, la búsqueda sale del índice local y la indexación local sigue
     monkeypatch.setattr(memoria, "pinecone_activo", lambda: True)
     monkeypatch.setattr(memoria, "externo", lambda: _pinecone(red_caida))
-    fichas, adaptador = memoria.buscar("parqueadero")
+    fichas, adaptador = memoria.buscar("parqueadero", alcance=memoria.TODO)
     assert "respaldo" in adaptador and fichas
     resumen = memoria.actualizar(todo=True)
     assert "error" in resumen["pinecone"] and CLAVE not in resumen["pinecone"]["error"] and resumen["local"]["enviadas"] > 0
