@@ -315,8 +315,8 @@ def comparacion(sid: int) -> dict | None:
             vuelos.append({"id": o["id"], "v": datos, "ev": ev, "origen_dato": o["origen_dato"],
                            "origen_tarifas": t.get("origen"), "capturado": o["capturado"], "tarifas_lista": t.get("lista") or []})
         else:
-            hoteles.append({"id": o["id"], "h": datos, "origen_dato": o["origen_dato"],
-                            "programa": costo.programa_hotel(datos["nombre"], cat)})
+            ev_h = costo.evaluar_hotel(datos, membresias, cat, costo.noches(sol["ida"], sol["regreso"]))
+            hoteles.append({"id": o["id"], "h": datos, "origen_dato": o["origen_dato"], "programa": ev_h["programa"], "ev": ev_h})
     # Precio esperado según el modelo (solo si hay un modelo utilizable)
     _, _, n_origen, n_destino = precios.ruta(codigos(sol, "origen"), codigos(sol, "destino"))
     ref = db.uno("select tipico_min, tipico_max from observaciones where busqueda=:b limit 1",
@@ -333,7 +333,18 @@ def comparacion(sid: int) -> dict | None:
         v["frente_esperado"] = round((v["v"]["precio"] - esperado) / esperado * 100) if esperado else None
     validos = sorted([v for v in vuelos if not v["ev"]["descartada"]], key=lambda v: v["ev"]["total"])
     descartados = [v for v in vuelos if v["ev"]["descartada"]]
-    hoteles.sort(key=lambda h: h["h"]["total"])
+    # Hoteles por costo total (tarifa de miembro y puntos incluidos), no por tarifa; la calificación baja los descarta
+    hoteles_descartados = [h for h in hoteles if h["ev"]["descartado"]]
+    hoteles = sorted([h for h in hoteles if not h["ev"]["descartado"]], key=lambda h: (h["ev"]["total"], h["h"]["total"]))
+    hotel_recomendado = hoteles[0] if hoteles else None
+    hotel_barato = min(hoteles, key=lambda h: h["h"]["total"]) if hoteles else None
+    hotel_mas_barato = hotel_barato if hotel_barato and hotel_barato["id"] != hotel_recomendado["id"] else None
+    for h in hoteles:
+        h["recomendado"], h["mas_barato"] = h is hotel_recomendado, h is hotel_mas_barato
+    # El viaje completo de cada vuelo con el hotel recomendado: una suma, no todas las combinaciones
+    for v in vuelos:
+        v["total_con_hotel"] = (round(v["ev"]["total"] + hotel_recomendado["ev"]["total"], 2)
+                                if hotel_recomendado and not v["ev"]["descartada"] else None)
     # El más barato de la comparación es el más barato entre los que sirven: frente a uno descartado (llega tarde, el
     # equipo no cabe) no hay ahorro que contar. Si el más barato de todos está descartado, se dice aparte.
     mas_barato = min(validos, key=lambda v: v["v"]["precio"]) if validos else None
@@ -353,6 +364,7 @@ def comparacion(sid: int) -> dict | None:
     aviso = " ".join(partes) or None
     n = costo.noches(sol["ida"], sol["regreso"])
     return {"sol": sol, "vuelos": validos, "descartados": descartados, "hoteles": hoteles, "aviso": aviso,
+            "hoteles_descartados": hoteles_descartados, "hotel_recomendado": hotel_recomendado, "hotel_mas_barato": hotel_mas_barato,
             "mas_barato": mas_barato, "mas_barato_descartado": descartado, "hay_modelo": modelo.utilizable(),
             "baterias": costo.baterias(sol["baterias_n"], sol["baterias_wh"]), "noches": n,
             "carro": round((sol["carro_dia"] or 0) * n, 2), "membresias": membresias,
@@ -389,7 +401,7 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
         raise DecisionBloqueada(bloqueo)
     aprobado_por = usuario["nombre"]
     vuelo = next((v for v in c["vuelos"] + c["descartados"] if v["id"] == vuelo_id), None)
-    hotel = next((h for h in c["hoteles"] if h["id"] == hotel_id), None)  # puede no haber hoteles para la ciudad
+    hotel = next((h for h in c["hoteles"] + c["hoteles_descartados"] if h["id"] == hotel_id), None)  # puede no haber hoteles
     if not vuelo:
         raise DecisionInvalida("vuelo_id", "Elige un vuelo para guardar la decisión.")
     orden = c["vuelos"] + c["descartados"]
@@ -424,8 +436,12 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     # Las líneas del vuelo van al grupo «vuelo»; las de traslado conservan el suyo (traslados o combustible)
     lineas = [{**l, "grupo": l.get("grupo") or "vuelo"} for l in vuelo["ev"]["lineas"]]
     if hotel:
-        lineas.append({"concepto": f"Hotel: {hotel['h']['nombre']} ({c['noches']} noches)", "valor": hotel["h"]["total"],
+        # Lo que se paga: la tarifa y, con membresía, la tarifa de miembro. Los puntos son valor esperado, como las millas:
+        # quedan en `hotel_evaluado` para la ficha y no entran al presupuesto
+        lineas.append({"concepto": f"Hotel: {hotel['h']['nombre']} ({c['noches']} noches)", "valor": hotel["ev"]["tarifa"],
                        "origen": "buscador", "grupo": "hotel"})
+        lineas += [{**l, "concepto": f"Hotel: tarifa de miembro {hotel['programa']} {l['concepto'].removeprefix('Tarifa de miembro ')}",
+                    "grupo": "hotel"} for l in hotel["ev"]["lineas"] if l["concepto"].startswith("Tarifa de miembro")]
     if c["carro"]:
         lineas.append({"concepto": f"Carro de alquiler ({c['noches']} días x {c['sol']['carro_dia']:.0f})",
                        "valor": c["carro"], "origen": "supuesto", "grupo": "alquiler_carro"})
@@ -434,7 +450,7 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
                       hotel_id=hotel["id"] if hotel else None, tarifa=vuelo["ev"]["tarifa"]["nombre"],
                       desglose={"lineas": lineas, "avisos": vuelo["ev"]["avisos"], "vuelo": vuelo["v"], "regreso": regreso,
                                 "precio_tarifa": vuelo["ev"]["tarifa"]["precio"], "origen_tarifas": vuelo.get("origen_tarifas"),
-                                "hotel": hotel["h"] if hotel else None,
+                                "hotel": hotel["h"] if hotel else None, "hotel_evaluado": hotel["ev"] if hotel else None,
                                 "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
                                 "aviso": c["aviso"], "baterias": c["baterias"], "aviso_tope": aviso_tope,
                                 # lo que se evita frente a la opción más barata que sirve, por costo esperado
@@ -454,10 +470,11 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
                     "baterias": c["sol"]["baterias_n"], "maleta": c["sol"]["maleta"]},
          "creado": db.ahora()} for i, o in enumerate(orden)] + [
         {"decision_id": did, "solicitud_id": sid, "opcion_id": h["id"], "tipo": "hotel", "posicion": i + 1,
-         "elegida": int(bool(hotel) and h["id"] == hotel["id"]), "recomendada": int(i == 0), "descartada": 0,
-         "precio": h["h"]["total"], "costo_esperado": h["h"]["total"],
-         "rasgos": {"calificacion": h["h"]["calificacion"], "clase": h["h"]["clase"], "programa": h["programa"]},
-         "creado": db.ahora()} for i, h in enumerate(c["hoteles"])])
+         "elegida": int(bool(hotel) and h["id"] == hotel["id"]), "recomendada": int(h is c["hotel_recomendado"]),
+         "descartada": int(bool(h["ev"]["descartado"])), "precio": h["h"]["total"], "costo_esperado": h["ev"]["total"],
+         "rasgos": {"calificacion": h["h"]["calificacion"], "clase": h["h"]["clase"], "programa": h["programa"],
+                    "socio": h["ev"]["socio"]},
+         "creado": db.ahora()} for i, h in enumerate(c["hoteles"] + c["hoteles_descartados"])])
     # Origen y destino pasan a los aeropuertos reales del vuelo elegido
     reales = {k: vuelo["v"][campo] for k, campo in (("origen", "desde"), ("destino", "hasta")) if vuelo["v"].get(campo)}
     db.actualizar("solicitudes", sid, estado="decidido", **reales)

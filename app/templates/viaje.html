@@ -35,24 +35,28 @@
     </details></td>
   <td class="d">{{ '%.0f'|format(o.v.precio) }}</td>
   {% if hay_modelo %}<td class="d">{% if o.frente_esperado is not none %}<span class="chip {{ 'ok' if o.frente_esperado <= -5 else 'mal' if o.frente_esperado >= 10 else '' }}">{{ '%+d'|format(o.frente_esperado) }} %</span><br><span class="eti">esperado {{ '%.0f'|format(o.esperado) }}</span>{% endif %}</td>{% endif %}
-  <td class="d"><b>{{ '%.2f'|format(o.ev.total) }}</b></td>
+  <td class="d"><b>{{ '%.2f'|format(o.ev.total) }}</b>{% if o.total_con_hotel is not none %}<br><span class="eti">Total con el hotel recomendado: <b>{{ '%.2f'|format(o.total_con_hotel) }}</b> ({{ '%.2f'|format(o.ev.total) }} + {{ '%.2f'|format(hotel_recomendado.ev.total) }})</span>{% endif %}</td>
   <td>{{ m.origen(o.origen_dato) }}<br>{% if o.ev.tarifas_reales %}<span class="chip ok">tarifas reales</span>{% else %}<span class="chip aviso">tarifa supuesta</span>
     {% if modo().precios == 'en vivo' %}<br><button class="sec peq" formaction="/viajes/{{ sol.id }}/tarifas/{{ o.id }}" formnovalidate>Traer tarifas (2 consultas)</button>{% endif %}{% endif %}</td>
 </tr>{% endfor %}
 {% for o in descartados %}<tr><td></td><td class="tachado">{{ o.v.aerolinea }} {{ o.v.numeros|join(' + ') }}</td><td>{{ o.v.sale[11:] }} → {% if sol.destino_aeropuertos %}<b>{{ o.v.hasta }}</b> {% endif %}{{ o.v.llega[11:] }}</td><td colspan="5"><span class="chip mal">Descartado</span> {{ o.ev.descartada }}</td></tr>{% endfor %}
 </table></div>
 
-<h2>Hoteles</h2>
-{% if not hoteles %}<p class="nota">No hay hoteles para esta ciudad y fechas. Puedes guardar la decisión solo con el vuelo.</p>{% endif %}
+<h2>Hoteles, ordenados por costo total</h2>
+{% if not hoteles and not hoteles_descartados %}<p class="nota">No hay hoteles para esta ciudad y fechas. Puedes guardar la decisión solo con el vuelo.</p>
+{% else %}<p class="eti">Con membresía del programa (del viajero o de la empresa), la tarifa de miembro y los puntos restan; sin ella, inscribirse queda como oportunidad. Se descarta el hotel con calificación bajo el mínimo (regla editable).</p>{% endif %}
 <div class="tarjeta tabla"><table>
-<tr><th></th><th>Hotel</th><th class="d">Por noche</th><th class="d">Total {{ noches }} noches</th><th>Calificación</th><th>Fidelización</th><th>Origen</th></tr>
+<tr><th></th><th>Hotel</th><th class="d">Tarifa {{ noches }} noches</th><th class="d">Costo total</th><th>Calificación</th><th>Fidelización</th><th>Origen</th></tr>
 {% for o in hoteles %}<tr>
   <td><input type="radio" name="hotel_id" value="{{ o.id }}"></td>
-  <td><b>{{ o.h.nombre }}</b>{% if o.h.clase %} <span class="eti">{{ o.h.clase }}★</span>{% endif %}</td>
-  <td class="d">{{ '%.0f'|format(o.h.noche or 0) }}</td><td class="d"><b>{{ '%.0f'|format(o.h.total) }}</b></td>
+  <td><b>{{ o.h.nombre }}</b>{% if o.h.clase %} <span class="eti">{{ o.h.clase }}★</span>{% endif %}{% if o.recomendado %} <span class="chip ok">Recomendado</span>{% endif %}{% if o.mas_barato %} <span class="chip azul">El más barato</span>{% endif %}</td>
+  <td class="d">{{ '%.0f'|format(o.h.total) }}<br><span class="eti">{{ '%.0f'|format(o.h.noche or 0) }} por noche</span></td>
+  <td class="d"><b>{{ '%.2f'|format(o.ev.total) }}</b>
+    <details><summary>Ver desglose</summary>{{ m.desglose(o.ev.lineas, o.ev.total) }}</details></td>
   <td>{{ '%.1f'|format(o.h.calificacion) if o.h.calificacion else '—' }}</td>
-  <td>{% if o.programa %}<span class="chip azul">{{ o.programa }}</span> <span class="eti">solo con reserva directa</span>{% else %}<span class="eti">sin programa en el catálogo</span>{% endif %}</td>
+  <td>{% if o.programa %}<span class="chip azul">{{ o.programa }}</span>{% if o.ev.socio %} <span class="chip {{ 'aviso' if o.ev.membresia_de_ejemplo else 'ok' }}">socio{% if o.ev.membresia_de_ejemplo %} · dato de ejemplo{% endif %}</span>{% endif %}{% for a in o.ev.avisos %}<br><span class="eti">{{ a }}</span>{% endfor %}{% else %}<span class="eti">sin programa en el catálogo</span>{% endif %}</td>
   <td>{{ m.origen(o.origen_dato) }}</td></tr>{% endfor %}
+{% for o in hoteles_descartados %}<tr><td></td><td class="tachado">{{ o.h.nombre }}</td><td class="d">{{ '%.0f'|format(o.h.total) }}</td><td colspan="4"><span class="chip mal">Descartado</span> {{ o.ev.descartado }}</td></tr>{% endfor %}
 </table></div>
 
 {% if not editable %}<p class="nota">Solo lectura: esta cotización la decide quien viaja, quien la creó o administración.</p>

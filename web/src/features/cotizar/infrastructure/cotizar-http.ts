@@ -99,6 +99,33 @@ const vueloSchema = z.object({
   origen_dato: z.string().nullable(),
   esperado_usd: dineroSchema,
   frente_esperado_pct: z.number().int().nullable(),
+  total_con_hotel_usd: dineroSchema,
+});
+
+const hotelSchema = z.object({
+  id: z.number().int(),
+  nombre: z.string(),
+  noche_usd: dineroSchema,
+  total_usd: dineroSchema,
+  costo_total_usd: dineroSchema,
+  lineas: z.array(
+    z.object({
+      concepto: z.string(),
+      valor_usd: dineroSchema,
+      origen: z.string(),
+      tipo: z.enum(["tarifa", "tarifa_miembro", "puntos"]),
+    }),
+  ),
+  avisos: z.array(z.string()),
+  calificacion: z.number().nullable(),
+  clase: z.number().int().nullable(),
+  programa: z.string().nullable(),
+  socio: z.boolean(),
+  membresia_de_ejemplo: z.boolean(),
+  descartado: z.string().nullable(),
+  origen_dato: z.string().nullable(),
+  recomendada: z.boolean(),
+  mas_barata: z.boolean(),
 });
 
 const ladoSchema = z.object({ codigo: z.string(), aeropuertos: z.array(z.string()), lugar: lugarSchema.nullable() });
@@ -129,19 +156,9 @@ export const cotizacionSchema = z.object({
   recomendacion: z.string(),
   vuelos: z.array(vueloSchema),
   descartados: z.array(vueloSchema),
-  hoteles: z.array(
-    z.object({
-      id: z.number().int(),
-      nombre: z.string(),
-      noche_usd: dineroSchema,
-      total_usd: dineroSchema,
-      calificacion: z.number().nullable(),
-      clase: z.number().int().nullable(),
-      programa: z.string().nullable(),
-      origen_dato: z.string().nullable(),
-      recomendada: z.boolean(),
-    }),
-  ),
+  hoteles: z.array(hotelSchema),
+  hoteles_descartados: z.array(hotelSchema),
+  hotel_recomendado_id: z.number().int().nullable(),
   recomendada_id: z.number().int().nullable(),
   mas_barata_id: z.number().int().nullable(),
   decision: z

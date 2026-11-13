@@ -32,7 +32,8 @@ def test_lo_mas_barato_se_compara_entre_los_vuelos_que_sirven(cliente):
     assert c["mas_barato"]["v"]["numeros"] == ["F9 1279", "F9 2349"] and not c["mas_barato"]["ev"]["descartada"]
     assert "F9 2135" in c["aviso"] and "descartada" in c["aviso"] and "19:07" in c["aviso"]
     s = db.uno("select precio_min_buscador, costo_mas_barato, ahorro_potencial from solicitudes where id=:i", i=sid)
-    assert (s["precio_min_buscador"], s["costo_mas_barato"], s["ahorro_potencial"]) == (282, 565.58, 4.92)
+    # Andrés no es socio de Frontier: sus millas no restan (565,58 + 16,92), y el ahorro crece lo mismo
+    assert (s["precio_min_buscador"], s["costo_mas_barato"], s["ahorro_potencial"]) == (282, 582.5, 21.84)
     assert "F9 2135" in cliente.get(f"/viajes/{sid}").text
     api = cliente.get(f"/api/v1/cotizaciones/{sid}").json()
     assert api["mas_barata_id"] == c["mas_barato"]["id"] and api["aviso"] == c["aviso"]
@@ -40,7 +41,7 @@ def test_lo_mas_barato_se_compara_entre_los_vuelos_que_sirven(cliente):
     # la decisión guarda el mismo ahorro
     cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": c["vuelos"][0]["id"], "razones": ["costo_total"]})
     d = db.uno("select desglose from decisiones where solicitud_id=:s order by id desc", s=sid)
-    assert db.de_json(d["desglose"], {})["ahorro"] == 4.92
+    assert db.de_json(d["desglose"], {})["ahorro"] == 21.84
 
 
 def test_hora_limite_sigue_a_la_fecha_de_ida(cliente):

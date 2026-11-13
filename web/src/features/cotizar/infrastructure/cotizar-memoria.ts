@@ -96,6 +96,8 @@ export function crearCotizarMemoria(opciones: {
       vuelos: [],
       descartados: [],
       hoteles: [],
+      hoteles_descartados: [],
+      hotel_recomendado_id: null,
       recomendada_id: null,
       mas_barata_id: null,
       decision: null,
