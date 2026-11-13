@@ -25,10 +25,11 @@ probar-postgres:  ## Las mismas pruebas contra una base nueva en el PostgreSQL d
 revisar:          ## Revisión estática del código
 	$(PY) -m ruff check .
 
-comprobar: revisar probar  ## Lo mismo que corre la integración continua
+comprobar: revisar probar  ## Linter y pruebas de Python (la integración continua además prueba la web, infra/ y las imágenes)
 
-migrar:           ## Crea o actualiza las tablas de la base configurada en .env
-	$(PY) -m datos.semilla
+migrar:           ## Migra la base del archivo ENV (obligatorio): make migrar ENV=.env.supabase-pruebas (producción: docs/despliegue.md)
+	@test -n "$(ENV)" || { echo "Indica el archivo de la base: make migrar ENV=<archivo> (ver docs/despliegue.md)"; exit 2; }
+	.venv/bin/dotenv -f $(ENV) run -- $(PY) -m datos.semilla
 
 geografia:        ## Descarga OurAirports y GeoNames y rehace datos/geografia/ (la semilla los carga al arrancar)
 	$(PY) -m datos.geografia

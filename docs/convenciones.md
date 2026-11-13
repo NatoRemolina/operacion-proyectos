@@ -23,7 +23,7 @@ Cómo se escribe, se prueba y se integra el código de este repositorio. Vale pa
 
 - Las migraciones son **idempotentes** (`datos/migracion.py`): ejecutarlas dos veces no cambia nada salvo el registro de auditoría. No hay archivos SQL sueltos ni un historial paralelo.
 - Toda tabla nueva queda con seguridad por filas y sin permisos para los roles públicos en PostgreSQL.
-- Arrancar en local solo prepara la base si es SQLite o si `PREPARAR_BASE_LOCAL=1` (la base desechable de `docker-compose.yml`). Nunca se migra ni se siembra la base publicada desde un equipo.
+- Arrancar en local solo prepara la base si es SQLite o si `PREPARAR_BASE_LOCAL=1` (la base desechable de `docker-compose.yml`). La base publicada nunca se prepara al arrancar: se migra solo con el procedimiento de `docs/despliegue.md` (respaldo reciente de esa misma base, puerto 5432 y confirmación escrita del destino).
 - Todo dato que entra deja rastro: quién, cuándo, de dónde y qué (`eventos`, `consultas_buscador`, `cargas_datos`).
 - Antes de migrar la base publicada: respaldo y ensayo de restauración (`docs/respaldo.md`).
 
