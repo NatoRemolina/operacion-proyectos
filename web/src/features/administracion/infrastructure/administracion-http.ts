@@ -4,6 +4,7 @@ import { viajeDetalleSchema, viajeResumenSchema } from "@/features/viajes/infras
 import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { ActividadGasto, AdministracionRepository, ResumenAdmin } from "../domain/administracion";
 import type { DatosRevision } from "../domain/revision";
+import { crearReglasHttp } from "@/features/reglas/infrastructure/reglas-http";
 
 const referencia = z.object({ id: z.number().int(), codigo: z.string() });
 
@@ -82,6 +83,7 @@ const resultadoCambioSchema = z.object({ viaje: viajeDetalleSchema, mensaje: z.s
 
 export function crearAdministracionHttp(cliente: ClienteHttp): AdministracionRepository {
   return {
+    ...crearReglasHttp(cliente),
     resumen(signal) {
       return cliente.get("/resumen", resumenSchema, { signal });
     },

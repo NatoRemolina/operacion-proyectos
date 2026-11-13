@@ -9,6 +9,8 @@ import {
   type ResumenAdmin,
 } from "../domain/administracion";
 import { problemaDeMotivoExcepcion, type DatosRevision } from "../domain/revision";
+import type { CatalogoReglas } from "@/features/reglas/domain/reglas";
+import { crearReglasMemoria } from "@/features/reglas/infrastructure/reglas-memoria";
 
 /** Las mismas transiciones que `viajes.TRANSICIONES` del servidor. */
 const TRANSICIONES: Record<AccionViaje, { desde: ViajeResumen["estado"][]; hacia: ViajeResumen["estado"]; texto: string; paso: string }> = {
@@ -29,6 +31,8 @@ export function crearAdministracionMemoria(opciones: {
   gastos?: GastoDetalle[];
   /** Lo que la revisión necesita además de la ficha; sin él se arma con la ficha y los viajes. */
   datosRevision?: Record<number, DatosRevision>;
+  /** Sin catálogo, las reglas responden «prohibido», como la API a quien no es de administración. */
+  reglas?: CatalogoReglas | null;
   sesion?: SesionMemoria;
   latenciaMs?: number;
 }): AdministracionRepository {
@@ -36,6 +40,7 @@ export function crearAdministracionMemoria(opciones: {
   const viajes = opciones.viajes ?? [];
   const gastos = opciones.gastos ?? [];
   return {
+    ...crearReglasMemoria({ catalogo: opciones.reglas ?? null, sesion, latenciaMs }),
     async resumen(signal) {
       await esperar(latenciaMs, signal);
       exigirSesion(sesion);

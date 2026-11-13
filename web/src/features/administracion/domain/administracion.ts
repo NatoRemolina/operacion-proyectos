@@ -1,6 +1,7 @@
 import type { EstadoGasto, GastoDetalle, GastoResumen } from "@/features/gastos/domain/gastos";
 import type { ViajeDetalle, ViajeResumen } from "@/features/viajes/domain/viajes";
 import type { Dinero } from "@/shared/domain/tipos";
+import type { ReglasRepository } from "@/features/reglas/domain/reglas";
 import type { AccionRevision, CamposRevision, DatosRevision } from "./revision";
 
 /** Un gasto reciente con la persona a la que pertenece. */
@@ -50,7 +51,8 @@ export interface ResultadoCambioEstado {
   readonly mensaje: string;
 }
 
-export interface AdministracionRepository {
+/** Lo que solo hace administración. Incluye las reglas y supuestos, que también son solo suyos. */
+export interface AdministracionRepository extends ReglasRepository {
   /** Solo administración; para otro permiso falla con «prohibido». */
   resumen(signal?: AbortSignal): Promise<ResumenAdmin>;
   /** Solo administración y nunca sobre lo propio («autoaprobacion»). */
