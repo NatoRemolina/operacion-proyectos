@@ -735,3 +735,12 @@ def test_los_supuestos_del_gasto_del_asesor_son_editables():
     reglas = {f["clave"]: f["valor"] for f in db.todos("select clave, valor from reglas where ambito='supuesto'")}
     assert reglas["asesor_usd_estimado_sesion"] == "0.05" and reglas["asesor_usd_dia_colaboradores"] == "1"
     assert asesor.estimado_usd_sesion() == Decimal("0.05") and asesor.tope_usd_colaboradores() == Decimal("1")
+
+
+def test_las_categorias_del_mensaje_de_sistema_salen_de_la_configuracion(monkeypatch):
+    """Una categoría nueva en `config.CATEGORIAS` llega a las instrucciones del asesor sin tocar el texto."""
+    assert f"Categorías: {asesor.lista_categorias()}." in asesor.SISTEMA
+    assert all(c in asesor.SISTEMA for c in config.CATEGORIAS)
+    monkeypatch.setattr(config, "CATEGORIAS", {**config.CATEGORIAS, "transporte_terrestre": "Transporte terrestre",
+                                               "compras_proyecto": "Compras del proyecto"})
+    assert asesor.lista_categorias().endswith("transporte_terrestre, compras_proyecto")

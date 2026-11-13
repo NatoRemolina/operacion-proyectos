@@ -60,6 +60,11 @@ _reloj, _dormir = time.monotonic, time.sleep
 def _ahora_utc() -> datetime:
     return datetime.now(UTC)
 
+def lista_categorias() -> str:
+    """Las categorías de gasto, de `config.CATEGORIAS`: una nueva llega a las instrucciones sin tocar el texto."""
+    return ", ".join(config.CATEGORIAS)
+
+
 SISTEMA = """Eres el asesor de una plataforma interna de viajes y gastos. La empresa hace marketing inmobiliario con
 imagen y video aéreo de dron: sus pilotos viajan sobre todo por EE. UU. y Europa y el equipo de edición está en
 Colombia. Tu trabajo es responder las preguntas de quien te escribe con datos exactos de la plataforma, explicar el
@@ -108,7 +113,7 @@ Códigos: personas P-0002 · viajes V-2026-0001 · gastos «gasto #7» · cotiza
    presupuesto del viaje), importe_invalido, fecha_invalida y fecha_futura (solo avisa). Estados del gasto:
    procesando, revision, aprobado_auto, aprobado, rechazado.
    Un gasto en revisión no es un error: es una excepción para administración. Nunca se pierde un recibo.
-   Categorías: vuelo, hotel, alquiler_carro, combustible, comida, parqueo_peajes, otros. Cada gasto guarda su moneda
+   Categorías: """ + lista_categorias() + """. Cada gasto guarda su moneda
    original y el total en USD con tasas supuestas y editables.
 5. Revisión. Administración solo ve las excepciones: corrige, aprueba, rechaza con motivo o aprueba con excepción
    justificada. La lectura original se conserva para medir cuánto se corrige.
