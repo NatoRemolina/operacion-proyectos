@@ -365,3 +365,13 @@ def test_si_falla_la_bitacora_en_ir_a_no_queda_pendiente(piloto, doble, monkeypa
     with pytest.raises(RuntimeError):
         analizador.ir_a(yo, c["id"], c["vuelos"][0]["id"], "American", "Main Cabin")
     assert db.uno("select count(*) n from analisis_vuelo where estado='pendiente'")["n"] == 0
+
+
+# ---------- ronda 1 · punto 15: la comparación de precios es exacta ----------
+@pytest.mark.parametrize("leido, buscador, aviso", [
+    (619, "619.00", None), (619.4, "619.00", None), (620, "619.00", True), ("no es número", "619.00", None),
+    (float("nan"), "619.00", None), (619, None, None),
+])
+def test_aviso_de_precio_con_decimales_exactos(leido, buscador, aviso):
+    r = analizador.aviso_precio({"datos": {"precio_total": leido}}, buscador)
+    assert (r is not None) == bool(aviso), r

@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from urllib.parse import parse_qsl, urlsplit
 
 import httpx
@@ -446,10 +447,14 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
 
 def aviso_precio(analisis: dict | None, precio_buscador) -> str | None:
     """Si Google Flights muestra otro precio total que el buscador, lo dice. La comparación sigue con el del buscador."""
-    leido = ((analisis or {}).get("datos") or {}).get("precio_total")
-    if leido is None or precio_buscador is None or abs(float(leido) - float(precio_buscador)) < 1:
+    try:
+        leido = Decimal(str(((analisis or {}).get("datos") or {}).get("precio_total")))
+        buscador = Decimal(str(precio_buscador))
+    except (InvalidOperation, ValueError):
         return None
-    return (f"Google Flights muestra {float(leido):,.0f} USD y el buscador dio {float(precio_buscador):,.0f} USD. "
+    if not (leido.is_finite() and buscador.is_finite()) or abs(leido - buscador) < 1:
+        return None
+    return (f"Google Flights muestra {leido:,.0f} USD y el buscador dio {buscador:,.0f} USD. "
             "La comparación sigue usando el precio del buscador.")
 
 
