@@ -330,3 +330,38 @@ def test_en_aws_una_invocacion_rechazada_no_guarda_ni_cuenta(piloto, monkeypatch
     a = _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()
     assert (a["estado"], a["motivo"]) == ("no_disponible", getattr(analizador, motivo))
     assert db.uno("select count(*) n from analisis_vuelo")["n"] == 0
+
+
+# ---------- re-revisión del bloque 1: nada fuera del try deja la lectura «pendiente» ----------
+@pytest.mark.parametrize("paso", ["lectura de Google Flights pedida", "página del vuelo leída"])
+def test_si_falla_la_bitacora_la_lectura_no_queda_pendiente(piloto, doble, monkeypatch, paso):
+    from app.servicios import eventos
+    c = _cotizar(piloto)
+    yo = db.uno("select * from usuarios where correo='piloto@demo.local'")
+    original = eventos.registrar
+
+    def registrar(entidad, entidad_id, p, *a, **k):
+        if p == paso:
+            raise RuntimeError("bitácora caída")
+        return original(entidad, entidad_id, p, *a, **k)
+
+    monkeypatch.setattr(eventos, "registrar", registrar)
+    with pytest.raises(RuntimeError):
+        analizador.solicitar(yo, c["id"], c["vuelos"][0]["id"])
+    # sin pendiente: fallida si el error fue antes de guardar; lista si ya se había guardado
+    assert db.uno("select estado from analisis_vuelo")["estado"] == ("fallido" if paso.startswith("lectura") else "listo")
+
+
+def test_si_falla_la_bitacora_en_ir_a_no_queda_pendiente(piloto, doble, monkeypatch):
+    from app.servicios import eventos
+    c = _cotizar(piloto)
+    yo = db.uno("select * from usuarios where correo='piloto@demo.local'")
+    monkeypatch.setattr(analizador, "_invocar", lambda p: {"estado": "fallido", "motivo": "x"})
+
+    def registrar(*a, **k):
+        raise RuntimeError("bitácora caída")
+
+    monkeypatch.setattr(eventos, "registrar", registrar)
+    with pytest.raises(RuntimeError):
+        analizador.ir_a(yo, c["id"], c["vuelos"][0]["id"], "American", "Main Cabin")
+    assert db.uno("select count(*) n from analisis_vuelo where estado='pendiente'")["n"] == 0

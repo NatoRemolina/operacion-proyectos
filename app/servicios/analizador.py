@@ -275,6 +275,18 @@ def _resultado_de(r) -> dict:
             "datos": r["datos"] if listo else ({"extracto": str(r["extracto"])[:500]} if r.get("extracto") else None)}
 
 
+def _no_dejar_pendiente(aid: int | None):
+    """Al salir por cualquier camino (también por un error de la bitácora o de la base), la fila no queda «pendiente»:
+    retendría el turno de todos durante 2 minutos."""
+    if not aid:
+        return
+    try:
+        db.ejecutar("update analisis_vuelo set estado='fallido', motivo=:m, terminado=:t where id=:i and estado='pendiente'",
+                    m=SIN_CAPTURA, t=db.ahora(), i=aid)
+    except Exception as e:  # noqa: BLE001 (si la base no responde, la limpieza de las pendientes viejas la cubre)
+        print(f"analizador: no se pudo cerrar la lectura {aid}: {type(e).__name__}", flush=True)
+
+
 def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") -> dict:
     """Lee la página del vuelo (o reutiliza una lectura de menos de 60 minutos) y devuelve el análisis.
 
@@ -286,22 +298,25 @@ def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") ->
     if "id" not in reserva or reserva.get("estado"):
         return reserva
     aid, url = reserva["id"], reserva["url"]
-    nombre = " + ".join(vuelo.get("numeros") or [])
-    eventos.registrar("solicitud", sid, "lectura de Google Flights pedida", f"{nombre}: {url}", f"{canal} · {usuario['nombre']}")
-    r = _llamar(url, regreso_de(sol, vuelo))
-    if isinstance(r, dict) and r.get("no_disponible"):
-        db.ejecutar("delete from analisis_vuelo where id=:i and estado='pendiente'", i=aid)   # no fue una lectura
-        return no_disponible(r["no_disponible"])
     try:
-        cambios = _resultado_de(r)
-    except Exception as e:  # noqa: BLE001 (lo que sea que falle aquí no puede dejar la lectura «pendiente»)
-        print(f"analizador: la lectura {aid} no se pudo guardar: {type(e).__name__}", flush=True)
-        cambios = {"estado": "fallido", "terminado": db.ahora(), "motivo": SIN_CAPTURA, "captura": None, "datos": None}
-    db.actualizar("analisis_vuelo", aid, **cambios)
-    listo = cambios["estado"] == "listo"
-    eventos.registrar("solicitud", sid, "página del vuelo leída" if listo else "lectura de Google Flights fallida",
-                      f"{nombre}: {'listo' if listo else cambios['motivo']}", "analizador", cambios.get("duracion_ms") or 0)
-    return {**_fila(db.uno("select * from analisis_vuelo where id=:i", i=aid)), "reutilizado": False}
+        nombre = " + ".join(vuelo.get("numeros") or [])
+        eventos.registrar("solicitud", sid, "lectura de Google Flights pedida", f"{nombre}: {url}", f"{canal} · {usuario['nombre']}")
+        r = _llamar(url, regreso_de(sol, vuelo))
+        if isinstance(r, dict) and r.get("no_disponible"):
+            db.ejecutar("delete from analisis_vuelo where id=:i and estado='pendiente'", i=aid)   # no fue una lectura
+            return no_disponible(r["no_disponible"])
+        try:
+            cambios = _resultado_de(r)
+        except Exception as e:  # noqa: BLE001 (lo que sea que falle aquí no puede dejar la lectura «pendiente»)
+            print(f"analizador: la lectura {aid} no se pudo guardar: {type(e).__name__}", flush=True)
+            cambios = {"estado": "fallido", "terminado": db.ahora(), "motivo": SIN_CAPTURA, "captura": None, "datos": None}
+        db.actualizar("analisis_vuelo", aid, **cambios)
+        listo = cambios["estado"] == "listo"
+        eventos.registrar("solicitud", sid, "página del vuelo leída" if listo else "lectura de Google Flights fallida",
+                          f"{nombre}: {'listo' if listo else cambios['motivo']}", "analizador", cambios.get("duracion_ms") or 0)
+        return {**_fila(db.uno("select * from analisis_vuelo where id=:i", i=aid)), "reutilizado": False}
+    finally:
+        _no_dejar_pendiente(aid)
 
 
 def regreso_de(sol: dict, vuelo: dict) -> dict | None:
@@ -376,6 +391,14 @@ def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, ca
     except ValueError:
         url = None
     turno = _reservar_ir(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa)
+    try:
+        return _ir_con_turno(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa, turno, inicio, canal)
+    finally:
+        _no_dejar_pendiente(turno.get("id"))
+
+
+def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict, url: str | None, vendedor: str,
+                  tarifa: str, turno: dict, inicio: datetime, canal: str) -> dict:
     destino, camino, motivo, captura, aid = None, None, turno.get("motivo"), None, turno.get("id")
     if aid:
         r = _invocar({"accion": "ir_a", "url": url, "vendedor": vendedor, "tarifa": tarifa, "regreso": regreso_de(sol, vuelo)})
