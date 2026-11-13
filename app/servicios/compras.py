@@ -250,6 +250,11 @@ def registrar_compra(cid: int, version: int, localizador: str, precio_pagado: De
                       vendedor=vendedor, comprada=hoy, comprada_por=usuario["id"], actualizado=hoy, version=version + 1,
                       anticipacion_dias=(date.fromisoformat(ida[:10]) - date.fromisoformat(hoy[:10])).days if ida else None)
     eventos.registrar("compra", cid, "compra registrada", f"{localizador} · {vendedor} · {precio_pagado} USD", usuario["nombre"])
+    from . import capturas  # aquí: capturas usa el analizador, que usa compras
+    try:   # la captura final del vuelo comprado es evidencia: si no se encola, la compra queda registrada igual
+        capturas.al_comprar(cid)
+    except Exception as e:  # noqa: BLE001
+        eventos.registrar("compra", cid, "evidencia de compra no encolada", f"{type(e).__name__}: {str(e)[:200]}", "sistema")
     _avisar(actual, f"comprada a {vendedor}, localizador {localizador}", usuario)
     return uno(cid)
 

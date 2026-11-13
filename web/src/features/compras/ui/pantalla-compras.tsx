@@ -31,6 +31,7 @@ import {
   type EstadoCompra,
   type RegistroCompra,
 } from "../domain/compras";
+import { EvidenciaGuardada } from "@/features/cotizar/ui/evidencia-guardada";
 
 const TONO: Readonly<Record<EstadoCompra, "neutro" | "aviso" | "exito" | "marca">> = {
   solicitada: "aviso",
@@ -164,6 +165,7 @@ function Detalle({ c }: { c: CompraDetalle }) {
       <Acciones c={c} />
       {c.estado === "se_comprara" ? <Registro c={c} /> : null}
       <Analisis c={c} />
+      {c.evidencia ? <EvidenciaGuardada evidencia={c.evidencia} /> : null}
       <div className="flex flex-col gap-1">
         <h3 className="font-semibold">Clics a las fuentes</h3>
         {c.clics.length ? (

@@ -5,6 +5,7 @@ import type {
   AnalisisVuelo,
   Cotizacion,
   CotizarRepository,
+  Evidencia,
   FormularioCotizacion,
   ListaLugares,
 } from "../domain/cotizar";
@@ -284,6 +285,39 @@ const opcionesBuscadorSchema = z.object({
   vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
 });
 
+/** La evidencia guardada (pieza 5). La usan también las compras. */
+export const evidenciaSchema = z.object({
+  estado: z.enum(["sin_evidencia", "guardando", "guardada"]),
+  guardada: z.string().nullable(),
+  capturas: z.array(z.object({
+    id: z.number().int(),
+    tipo: z.enum(["vuelo", "hotel"]),
+    motivo: z.enum(["decision", "seguimiento", "compra"]),
+    estado: z.enum(["pendiente", "en_curso", "lista", "fallida"]),
+    fallo: z.string().nullable(),
+    intentos: z.number().int(),
+    creado: z.string().nullable(),
+    terminado: z.string().nullable(),
+    datos: z.record(z.string(), z.unknown()).nullable(),
+    imagenes: z.array(z.string()),
+    texto_url: z.string().nullable(),
+  })),
+  seguimiento: z.array(z.object({
+    momento: z.string().nullable(),
+    motivo: z.enum(["decision", "seguimiento", "compra"]),
+    precio_google_usd: dineroSchema,
+    total_aerolinea_usd: dineroSchema,
+  })),
+}) satisfies z.ZodType<Evidencia>;
+
+/** Las rutas de la evidencia, completas contra la base de la API (la API las da con su prefijo). */
+export function conRutasEvidencia(e: Evidencia, absoluta: (ruta: string) => string): Evidencia {
+  return {
+    ...e,
+    capturas: e.capturas.map((c) => ({ ...c, imagenes: c.imagenes.map(absoluta), texto_url: c.texto_url ? absoluta(c.texto_url) : null })),
+  };
+}
+
 const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), url: z.string() });
 
 export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
@@ -333,6 +367,9 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
     async opcionesBuscador(id, vueloId, signal) {
       const o = await cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/reserva`, opcionesBuscadorSchema, { signal });
       return { ...o, tarifas: o.tarifas.map(conIrA) };
+    },
+    async evidencia(id, signal) {
+      return conRutasEvidencia(await cliente.get(`/cotizaciones/${id}/evidencia`, evidenciaSchema, { signal }), absoluta);
     },
     async verAnalisis(id, vueloId, signal): Promise<AnalisisVuelo> {
       const a = await cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, analisisSchema, { signal });

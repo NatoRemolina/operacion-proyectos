@@ -15,7 +15,7 @@ from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint, text
 from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
-from . import acceso, analizador, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
+from . import acceso, analizador, capturas, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
 
 # Un pedido de cotización con `Idempotency-Key` por la API: la misma clave de la misma persona da la misma cotización
 envios_cotizacion = db._tabla(
@@ -683,4 +683,11 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
         raise DecisionBloqueada(CHOQUE_DECISION) from e
     except compras.CompraBloqueada as e:
         raise DecisionBloqueada(str(e)) from e
+    # La evidencia completa del vuelo y del hotel (la hace el trabajador), ya fuera de la transacción y del cerrojo de
+    # la decisión: la decisión nunca depende de ella. Si no se puede encolar, queda el evento.
+    try:
+        capturas.al_decidir(did)
+    except Exception as e:  # noqa: BLE001
+        eventos.registrar("solicitud", sid, "evidencia no encolada", f"decisión #{did} · {type(e).__name__}: {str(e)[:200]}",
+                          "sistema")
     return {"repetida": False, "decision_id": did, "viaje": el_viaje}

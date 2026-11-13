@@ -4,7 +4,7 @@ import pytest
 
 from app import config, db
 
-TABLAS = ("compras", "clics_fuente", "analisis_vuelo", "cupos_buscador")
+TABLAS = ("compras", "clics_fuente", "analisis_vuelo", "cupos_buscador", "capturas")
 ROLES = ("anon", "authenticated")
 PRIVILEGIOS = ("select", "insert", "update", "delete", "truncate", "references", "trigger")
 

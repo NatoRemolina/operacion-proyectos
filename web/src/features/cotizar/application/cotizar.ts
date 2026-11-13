@@ -11,6 +11,7 @@ import type {
   CotizarRepository,
   DecisionPedida,
   AnalisisVuelo,
+  Evidencia,
   DestinoFuente,
   OpcionesBuscador,
   ObjetivoFuente,
@@ -252,6 +253,27 @@ export function useAnalisisVuelo(id: number, vueloId: number) {
     /** Se consultó 15 veces y la lectura sigue en curso. */
     agotado: enCurso && data?.estado === "pendiente" && consultas >= SEGUIMIENTO_INTENTOS && !buscando,
   };
+}
+
+
+/**
+ * Caso de uso «ver la evidencia guardada» (pieza 5): la guarda el trabajador después de decidir. Mientras está
+ * `guardando`, se vuelve a consultar cada 15 s, hasta 20 veces (unos cinco minutos).
+ */
+export const EVIDENCIA_MS = 15_000;
+export const EVIDENCIA_INTENTOS = 20;
+
+export function useEvidencia(id: number, activo: boolean) {
+  const repositorio = useCotizarRepository();
+  const personaId = usePersonaId();
+  return useQuery<Evidencia, ErrorDeAplicacion>({
+    queryKey: claveDePersona(personaId, "cotizar", "evidencia", id),
+    queryFn: ({ signal }) => repositorio.evidencia(id, signal),
+    enabled: activo,
+    retry: false,
+    refetchInterval: (q) =>
+      q.state.data?.estado === "guardando" && q.state.dataUpdateCount < EVIDENCIA_INTENTOS ? EVIDENCIA_MS : false,
+  });
 }
 
 

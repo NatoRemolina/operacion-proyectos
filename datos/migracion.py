@@ -30,6 +30,9 @@ INDICES = [  # nombre, tabla, columnas, único
     ("ix_analisis_vuelo_opcion", "analisis_vuelo", "opcion_id, creado", False),
     ("ix_analisis_vuelo_creado", "analisis_vuelo", "creado", False),
     ("ix_analisis_vuelo_clave", "analisis_vuelo", "clave, creado", False),
+    ("ix_capturas_estado", "capturas", "estado, proximo", False),
+    ("ix_capturas_solicitud", "capturas", "solicitud_id", False),
+    ("ix_capturas_empezado", "capturas", "empezado", False),
     ("ix_clics_fuente_viaje", "clics_fuente", "viaje_id", False),
     ("ix_clics_fuente_solicitud", "clics_fuente", "solicitud_id", False),
 ]
@@ -308,9 +311,9 @@ def _tablas_modelo() -> dict:
 
 
 def migrar() -> dict:
-    from app.servicios import analizador, compras, cotizacion, envios, revision  # noqa: F401  (registran sus tablas y columnas)
+    from app.servicios import analizador, capturas, compras, cotizacion, envios, revision  # noqa: F401  (registran sus tablas y columnas)
     hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas(),
-              "reglas_vendedor": cotizacion.asegurar_reglas_vendedor()}
+              "reglas_vendedor": cotizacion.asegurar_reglas_vendedor(), "reglas_capturas": capturas.asegurar_reglas()}
     hechos.update(_tablas_modelo())
     _indices()
     hechos["compras_rellenadas"] = compras.rellenar()   # después del índice único de la compra activa

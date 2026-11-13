@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { esEnlaceGoogle } from "@/features/cotizar/domain/cotizar";
+import { conRutasEvidencia, evidenciaSchema } from "@/features/cotizar/infrastructure/cotizar-http";
 import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { Compra, CompraDetalle, ComprasRepository } from "../domain/compras";
 
@@ -61,6 +62,7 @@ const detalleSchema = compraSchema.extend({
     }),
   ),
   analisis: analisisSchema,
+  evidencia: evidenciaSchema.nullable(),
 }) satisfies z.ZodType<CompraDetalle>;
 
 export function crearComprasHttp(cliente: ClienteHttp): ComprasRepository {
@@ -76,6 +78,7 @@ export function crearComprasHttp(cliente: ClienteHttp): ComprasRepository {
         ...d,
         vuelo: d.vuelo ? { ...d.vuelo, vendedor_url: absoluta(d.vuelo.vendedor_url) } : null,
         analisis: d.analisis ? { ...d.analisis, captura_url: absoluta(d.analisis.captura_url) } : null,
+        evidencia: d.evidencia ? conRutasEvidencia(d.evidencia, (r) => absoluta(r)!) : null,
       };
     },
     cambiarEstado(id, accion, version, motivo) {

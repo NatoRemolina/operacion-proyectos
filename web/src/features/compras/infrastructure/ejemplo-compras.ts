@@ -31,4 +31,5 @@ export const COMPRA_EJEMPLO: CompraDetalle = {
   },
   clics: [{ destino: "vendedor", dominio: "www.google.com", momento: "2026-11-13T15:18:00Z", opcion_id: 6, usuario: "Andrés Molina" }],
   analisis: null,
+  evidencia: null,
 };

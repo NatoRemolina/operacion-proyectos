@@ -68,7 +68,7 @@ def _detalle(c: dict, sesion: str) -> dict:
         except LookupError:
             a = None
         lectura = v1_analisis._forma(c["solicitud_id"], o["id"], {**a, "reutilizado": True}, sesion) if a else None
-    return {**_forma(c), "vuelo": vuelo, "analisis": lectura,
+    return {**_forma(c), "vuelo": vuelo, "analisis": lectura, "evidencia": v1_analisis.evidencia(c["solicitud_id"]),
             "clics": [{**k, "momento": consultas.instante(k["momento"])} for k in compras.clics(c)]}
 
 
