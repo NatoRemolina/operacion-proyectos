@@ -1087,6 +1087,77 @@
       }
     },
     "/api/v1/gastos/{id}/revision": {
+      "get": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Datos Revision",
+        "description": "Solo administración: la lectura original, cómo mostrar el soporte, las categorías y los viajes a los que se\npuede reasignar. Las mismas opciones que la revisión de las pantallas de administración.",
+        "operationId": "datos_revision_api_v1_gastos__id__revision_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatosRevision"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "gastos"
@@ -1231,6 +1302,74 @@
           },
           "403": {
             "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gastos/{id}/justificaciones/{jid}/audio": {
+      "get": {
+        "tags": [
+          "gastos"
+        ],
+        "summary": "Audio Justificacion",
+        "description": "La nota de voz de una justificación. Se oye si se ve el gasto; si no, 404, como el resto de lo ajeno.",
+        "operationId": "audio_justificacion_api_v1_gastos__id__justificaciones__jid__audio_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Jid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "La nota de voz tal como llegó",
+            "content": {
+              "audio/*": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
             "content": {
               "application/json": {
                 "schema": {
@@ -1888,6 +2027,24 @@
         "title": "CambioEstadoViaje",
         "description": "Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."
       },
+      "Categoria": {
+        "properties": {
+          "clave": {
+            "type": "string",
+            "title": "Clave"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clave",
+          "nombre"
+        ],
+        "title": "Categoria"
+      },
       "CorreoDelSoporte": {
         "properties": {
           "remitente": {
@@ -2220,6 +2377,110 @@
           "bloqueo"
         ],
         "title": "Cotizacion"
+      },
+      "DatosRevision": {
+        "properties": {
+          "gasto_id": {
+            "type": "integer",
+            "title": "Gasto Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "La misma `version` del gasto; la revisión la manda de vuelta."
+          },
+          "metodo_pago": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metodo Pago"
+          },
+          "canal_reserva": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canal Reserva"
+          },
+          "lectura_original": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LecturaOriginal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null si la lectura falló o el gasto no viene de un recibo leído."
+          },
+          "soporte": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SoporteRevision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null si el gasto no tiene archivo original guardado."
+          },
+          "categorias": {
+            "items": {
+              "$ref": "#/components/schemas/Categoria"
+            },
+            "type": "array",
+            "title": "Categorias"
+          },
+          "viajes": {
+            "items": {
+              "$ref": "#/components/schemas/ViajeAsignable"
+            },
+            "type": "array",
+            "title": "Viajes",
+            "description": "Viajes a los que se puede reasignar: todos salvo los rechazados, el más reciente primero."
+          },
+          "propio": {
+            "type": "boolean",
+            "title": "Propio",
+            "description": "Es de quien revisa: nadie revisa lo suyo."
+          },
+          "aviso_propio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso Propio",
+            "description": "Si es propio, por qué no se revisa y si hay otra persona de administración que pueda hacerlo."
+          }
+        },
+        "type": "object",
+        "required": [
+          "gasto_id",
+          "version",
+          "metodo_pago",
+          "canal_reserva",
+          "lectura_original",
+          "soporte",
+          "categorias",
+          "viajes",
+          "propio",
+          "aviso_propio"
+        ],
+        "title": "DatosRevision",
+        "description": "Lo que la revisión de administración necesita además de la ficha del gasto (`GET /gastos/{id}`)."
       },
       "DecisionCotizacion": {
         "properties": {
@@ -3077,6 +3338,156 @@
           "confianza"
         ],
         "title": "Lectura"
+      },
+      "LecturaOriginal": {
+        "properties": {
+          "comercio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comercio"
+          },
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "subtotal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtotal"
+          },
+          "impuesto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impuesto"
+          },
+          "propina": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Propina"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "moneda": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moneda"
+          },
+          "metodo_pago": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metodo Pago"
+          },
+          "canal_reserva": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canal Reserva"
+          },
+          "confianza": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confianza"
+          },
+          "dudas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dudas",
+            "description": "Campos de los que la lectura no estaba segura."
+          }
+        },
+        "type": "object",
+        "required": [
+          "comercio",
+          "fecha",
+          "categoria",
+          "subtotal",
+          "impuesto",
+          "propina",
+          "total",
+          "moneda",
+          "metodo_pago",
+          "canal_reserva",
+          "confianza",
+          "dudas"
+        ],
+        "title": "LecturaOriginal",
+        "description": "Lo que leyó el modelo del recibo, intacto: las correcciones de la revisión no lo cambian."
       },
       "LineaCosto": {
         "properties": {
@@ -4565,6 +4976,42 @@
         ],
         "title": "Sesion"
       },
+      "SoporteRevision": {
+        "properties": {
+          "documento_id": {
+            "type": "integer",
+            "title": "Documento Id"
+          },
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre"
+          },
+          "forma": {
+            "type": "string",
+            "enum": [
+              "imagen",
+              "pdf",
+              "descarga"
+            ],
+            "title": "Forma",
+            "description": "Cómo mostrarlo: `imagen` y `pdf` se ven al lado; `descarga` (correo .eml o confirmación HTML guardada como texto) se ofrece para descargar. El archivo sale de `/documentos/{id}/contenido`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "documento_id",
+          "nombre",
+          "forma"
+        ],
+        "title": "SoporteRevision"
+      },
       "Tarifa": {
         "properties": {
           "nombre": {
@@ -4632,6 +5079,100 @@
           "texto"
         ],
         "title": "Transcripcion"
+      },
+      "ViajeAsignable": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "pendiente_aprobacion",
+              "aprobado",
+              "rechazado",
+              "cerrado"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "titular": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titular"
+          },
+          "origen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen"
+          },
+          "destino": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destino"
+          },
+          "ida": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ida"
+          },
+          "regreso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regreso"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "estado",
+          "estado_texto",
+          "titular",
+          "origen",
+          "destino",
+          "ida",
+          "regreso"
+        ],
+        "title": "ViajeAsignable"
       },
       "ViajeCodigo": {
         "properties": {

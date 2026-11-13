@@ -287,7 +287,7 @@ def test_el_openapi_versionado_coincide_con_la_api():
     rutas = exportar_contrato.contrato()["paths"]
     esperadas = {("post", "/auth/login"), ("get", "/auth/me"), ("post", "/auth/logout"), ("get", "/viajes"), ("get", "/viajes/{id}"),
                  ("get", "/gastos"), ("get", "/gastos/contable"), ("get", "/gastos/{id}"), ("post", "/gastos"), ("post", "/gastos/{id}/justificaciones"),
-                 ("post", "/gastos/{id}/revision"),
+                 ("post", "/gastos/{id}/revision"), ("get", "/gastos/{id}/revision"), ("get", "/gastos/{id}/justificaciones/{jid}/audio"),
                  ("get", "/lugares"), ("get", "/cotizaciones/formulario"), ("post", "/cotizaciones"), ("get", "/cotizaciones/{id}"), ("post", "/cotizaciones/{id}/decision"),
                  ("get", "/resumen"), ("post", "/viajes/{id}/estado"),
                  ("get", "/documentos/{id}/contenido"), ("post", "/asistente"), ("post", "/asistente/voz")}

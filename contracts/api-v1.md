@@ -358,3 +358,36 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 ## Fuera de este contrato (siguientes fases)
 
 Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
+
+## Revisión completa de gastos
+
+Lecturas que la revisión de administración necesita en la web nueva, además de `GET /gastos/{id}`. La escritura sigue siendo `POST /gastos/{id}/revision`, con las reglas de arriba.
+
+### `GET /gastos/{id}/revision`
+Solo administración (403 `FORBIDDEN` para colaborador y gestor, aunque vean el gasto). 404 si no existe. 200 `DatosRevision`:
+
+```ts
+interface DatosRevision {
+  gasto_id: number; version: number;          // la misma versión que devuelve la ficha
+  metodo_pago: string | null; canal_reserva: string | null;   // editables, no salen en GastoDetalle
+  lectura_original: {                          // lo que leyó el modelo, intacto; null si la lectura falló
+    comercio: string | null; fecha: string | null; categoria: string | null;
+    subtotal: Dinero; impuesto: Dinero; propina: Dinero; total: Dinero; moneda: string | null;
+    metodo_pago: string | null; canal_reserva: string | null;
+    confianza: number | null; dudas: string[];
+  } | null;
+  soporte: { documento_id: number; nombre: string | null;
+             forma: "imagen" | "pdf" | "descarga" } | null;   // descarga: correo (.eml) o confirmación HTML
+  categorias: { clave: string; nombre: string }[];            // las de la plataforma, en orden
+  viajes: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string; titular: string | null;
+            origen: string | null; destino: string | null; ida: string | null; regreso: string | null }[];
+  propio: boolean;                             // nadie revisa lo suyo
+  aviso_propio: string | null;                 // por qué no se revisa y si hay otra persona que pueda
+}
+```
+
+- `viajes`: a los que se puede reasignar el gasto con `viaje_id` en la revisión; todos salvo los rechazados, el más reciente primero (las mismas opciones que la revisión de las pantallas de administración).
+- El archivo del soporte se pide a `GET /documentos/{documento_id}/contenido`.
+
+### `GET /gastos/{id}/justificaciones/{jid}/audio`
+La nota de voz de una justificación, tal como llegó (`audio/ogg`, `audio/mpeg` o `audio/mp4`), con `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. Se oye si se ve el gasto; si no, o si la justificación es de otro gasto o es escrita, 404.
