@@ -41,8 +41,9 @@ describe("Asistente flotante", () => {
     expect(within(panel).getByText(/Solo ves lo tuyo/)).toBeInTheDocument();
     expect(within(panel).queryByText(/proyectos que gestionas/) !== null).toBe(permiso === "gestor");
     expect(within(panel).queryByRole("button", { name: "¿Cómo van los indicadores?" })).toBeNull();
-    await usuario.click(within(panel).getByRole("button", { name: "¿Cuánto me queda del presupuesto?" }));
-    expect(preguntar).toHaveBeenCalledWith("¿Cuánto me queda del presupuesto?");
+    const sugerida = permiso === "gestor" ? "¿Cómo va el presupuesto de mi proyecto?" : "¿Cuánto me queda del presupuesto?";
+    await usuario.click(within(panel).getByRole("button", { name: sugerida }));
+    expect(preguntar).toHaveBeenCalledWith(sugerida);
     expect(await within(panel).findByText("Te quedan 120,00 USD.")).toBeInTheDocument();
   });
 

@@ -1,4 +1,5 @@
 """Hallazgos del recorrido de punta a punta del 13 de noviembre: cada prueba reproduce el caso que falló."""
+import pytest
 from conftest import FORM_VIAJE
 
 
@@ -70,3 +71,71 @@ def test_con_el_buscador_en_vivo_se_consulta_con_el_nombre_elegido(cliente, monk
     hoteles, origen = precios.buscar_hoteles("Lisbon", "2026-12-13", "2026-12-16", None, otros_nombres=["lisboa"])
     assert [c["q"] for c in consultas if c.get("engine") == "google_hotels"] == ["Lisbon hotels"]
     assert origen == "en vivo" and hoteles == []
+
+
+# ---------- I-4 e I-5: el asistente y los proyectos ----------
+
+
+
+@pytest.fixture()
+def proyectos_con_revision(nuevo_viaje, monkeypatch):
+    """Un gasto en revisión en cada proyecto: el 1 lo gestiona el gestor de demostración y el 2 no."""
+    from app import db
+    from app.servicios import asistente
+    monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
+    laura = db.uno("select * from usuarios where correo='piloto2@demo.local'")
+    creados = []
+    for proyecto, comercio, total in ((1, "Parqueo Torre Summerlin", 61.25), (2, "Taller Alfama Reservado", 88.4)):
+        v = nuevo_viaje(viajero_id=2, proyecto_id=proyecto)
+        creados.append(db.insertar("gastos", usuario_id=laura["id"], viaje_id=v["id"], proyecto_id=proyecto, viajero_id=2,
+                                   comercio=comercio, fecha="2026-12-09", categoria="comida", total=total, moneda="USD",
+                                   total_usd=total, estado="revision", motivos='["atipico"]', confianza=0.95, creado=db.ahora()))
+    yield
+    for gid in creados:
+        db.ejecutar("delete from eventos where entidad='gasto' and entidad_id=:i", i=gid)
+        db.ejecutar("delete from gastos where id=:i", i=gid)
+
+
+def _usuario(correo):
+    from app import db
+    return db.uno("select * from usuarios where correo=:c", c=correo)
+
+
+def test_la_palabra_proyecto_no_es_una_persona(proyectos_con_revision):
+    from app.servicios import asistente
+    admin = _usuario("admin@demo.local")
+    assert asistente.personas_en_texto("¿Cuánto llevamos gastado en el proyecto Summerlin?", asistente.Alcance(admin)) == []
+    r = asistente.responder("¿Cuánto llevamos gastado en el proyecto Summerlin?", admin)
+    assert "Gestión de proyecto (demo)" not in r["texto"]
+    assert "Residencial Summerlin" in r["texto"] and "gastado aprobado" in r["texto"]
+    assert "Parqueo Torre Summerlin" in r["texto"] and "Taller Alfama Reservado" not in r["texto"]
+    assert "No encontré registros" not in r["texto"]
+
+
+def test_el_gestor_tiene_sus_propias_preguntas_sugeridas():
+    from app.servicios import asistente
+    gestor = asistente.preguntas_sugeridas(_usuario("gestor@demo.local"))
+    assert "¿Cómo va el presupuesto de mi proyecto?" in gestor and "¿Qué gastos de mi proyecto están en revisión?" in gestor
+    assert gestor != asistente.preguntas_sugeridas(_usuario("piloto@demo.local"))
+
+
+def test_el_gestor_ve_lo_que_esta_en_revision_en_su_proyecto(proyectos_con_revision):
+    from app.servicios import asistente
+    gestor = _usuario("gestor@demo.local")
+    r = asistente.responder("¿Qué gastos de mi proyecto están en revisión?", gestor)
+    assert "Parqueo Torre Summerlin" in r["texto"] and "Ningún gasto está en revisión" not in r["texto"]
+    assert "Taller Alfama Reservado" not in r["texto"] and "Alfama" not in r["texto"]
+    r = asistente.responder("¿Cómo va el presupuesto de mi proyecto?", gestor)
+    assert "Residencial Summerlin" in r["texto"] and "presupuesto" in r["texto"] and "Alfama" not in r["texto"]
+    assert "Sin viajes como titular" not in r["texto"]
+
+
+def test_el_gestor_no_ve_un_proyecto_que_no_gestiona(proyectos_con_revision):
+    from app.servicios import asistente
+    gestor = _usuario("gestor@demo.local")
+    r = asistente.responder("¿Qué gastos del proyecto Alfama están en revisión?", gestor)
+    assert "Taller Alfama Reservado" not in r["texto"] and "88.40" not in r["texto"]
+    res = asistente.ejecutar(asistente.Rastro(gestor), "gastos_de", {"proyecto": "Apartamentos Alfama (aéreo)"})
+    assert "error" in res
+    res = asistente.ejecutar(asistente.Rastro(gestor), "gastos_de", {"proyecto": "2"})
+    assert "error" in res
