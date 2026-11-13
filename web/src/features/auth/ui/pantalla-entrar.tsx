@@ -79,8 +79,8 @@ export function PantallaEntrar() {
           <div className="zona-oscura mb-8 inline-block rounded-lg bg-grafito px-4 py-3 text-sobre-grafito lg:hidden">
             <Marca tamano="pequena" />
           </div>
-          <h1 className="text-3xl font-bold">Bienvenido a Inflight</h1>
-          <p className="mb-6 mt-2 text-texto-secundario">Ingresa con tu cuenta de la empresa.</p>
+          <h1 className="text-3xl font-bold">Ingresa a tu cuenta</h1>
+          <p className="mb-6 mt-2 text-texto-secundario">Con el correo y la contraseña que te dio administración.</p>
           <FormularioEntrar
             enviando={entrar.isPending}
             error={error}
