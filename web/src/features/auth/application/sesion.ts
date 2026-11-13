@@ -42,8 +42,21 @@ export function useSalir() {
     onSettled: () => {
       queryClient.clear();
       queryClient.setQueryData(CLAVE_SESION, null);
+      olvidarConversacionesDelAsistente();
     },
   });
+}
+
+/** Las conversaciones del asistente viven en la pestaña (`asistente:v…:<persona>`): al salir no quedan para quien siga. */
+function olvidarConversacionesDelAsistente() {
+  try {
+    for (let i = window.sessionStorage.length - 1; i >= 0; i--) {
+      const clave = window.sessionStorage.key(i);
+      if (clave?.startsWith("asistente:v")) window.sessionStorage.removeItem(clave);
+    }
+  } catch {
+    // Sin almacenamiento no hay nada que borrar.
+  }
 }
 
 /**

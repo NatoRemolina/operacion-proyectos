@@ -31,7 +31,7 @@
   <span class="chip azul">Datos: {{ md.datos }}</span>
   <span class="chip {{ 'ok' if telegram_activo else '' }}">Telegram: {{ 'activo' if telegram_activo else 'apagado' }}</span>
 </footer>
-{% if es_admin and not ruta.startswith('/admin/asistente') %}{% include "_asistente_flotante.html" %}{% endif %}
+{% if yo.id and not ruta.startswith('/admin/asistente') %}{% include "_asistente_flotante.html" %}{% endif %}
 <script>
 // Las acciones que tardan muestran que ya se recibieron, y las que no tienen vuelta atrás piden confirmar.
 document.addEventListener('submit', (e) => {

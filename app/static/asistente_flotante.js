@@ -1,7 +1,8 @@
-/* Asistente flotante (solo administración).
-   Pregunta a /admin/asistente sin salir de la página: la ruta responde JSON cuando llega la cabecera X-Envio: pagina,
-   con el mismo orden de siempre (asesor, modelo, consultas directas). La conversación se guarda en la pestaña
-   (sessionStorage) para que siga al cambiar de página, y se borra al salir. */
+/* Asistente flotante, para los tres permisos.
+   Pregunta a la ruta de `data-ruta` sin salir de la página (/admin/asistente para administración, /asistente para los
+   demás): responde JSON cuando llega la cabecera X-Envio: pagina, con el mismo orden de siempre (asesor, modelo,
+   consultas directas) y el alcance de la sesión. La conversación se guarda en la pestaña (sessionStorage) para que
+   siga al cambiar de página; es de la persona de `data-persona` y se borra al salir. */
 (function () {
   'use strict';
   const raiz = document.getElementById('asistente-flotante');
@@ -11,6 +12,8 @@
     estado = $('af-estado'), aviso = $('af-aviso'), segundos = $('af-segundos'), form = $('af-form'), campo = $('af-pregunta'),
     enviar = $('af-enviar'), cuenta = $('af-cuenta');
   const RUTA = raiz.dataset.ruta || '/admin/asistente';
+  const COMPLETA = raiz.dataset.completa || '';   // solo administración tiene la página completa
+  const PERSONA = raiz.dataset.persona || '';
   const CLAVE = 'asistente-flotante';
   const MAX_MENSAJES = 12;
   const PLAZO_MS = 120000;     // el servidor corta antes (unos 75 s del asesor más el respaldo)
@@ -20,9 +23,10 @@
   function leer() {
     try {
       const d = JSON.parse(sessionStorage.getItem(CLAVE) || 'null');
-      if (d && Array.isArray(d.mensajes)) return d;
+      // La conversación de otra sesión (vencida sin pulsar «Salir») no se muestra a quien entra después en la pestaña
+      if (d && Array.isArray(d.mensajes) && d.persona === PERSONA) return d;
     } catch (e) { /* sin almacenamiento: la burbuja funciona igual, solo no recuerda */ }
-    return { abierto: false, mensajes: [], cuenta: '' };
+    return { persona: PERSONA, abierto: false, mensajes: [], cuenta: '' };
   }
   const memoria = leer();
   function guardar() {
@@ -101,8 +105,9 @@
     salida: { href: '/entrar?siguiente=' + encodeURIComponent(location.pathname + location.search), texto: 'Ingresar' },
   });
   const fallo = (motivo) => ({
-    rol: 'el', error: true, texto: (motivo || 'No pude responder ahora.') + ' Intenta de nuevo o usa la página completa.',
-    salida: { href: RUTA, texto: 'Abrir el asistente completo' },
+    rol: 'el', error: true,
+    texto: (motivo || 'No pude responder ahora.') + (COMPLETA ? ' Intenta de nuevo o usa la página completa.' : ' Intenta de nuevo en un momento.'),
+    salida: COMPLETA ? { href: COMPLETA, texto: 'Abrir el asistente completo' } : null,
   });
 
   async function preguntar(pregunta) {

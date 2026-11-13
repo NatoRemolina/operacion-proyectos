@@ -5,6 +5,7 @@ eventos guionados a medida que la plataforma responde las herramientas.
 """
 import itertools
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -12,7 +13,7 @@ import httpx
 import pytest
 
 from app import config, db
-from app.servicios import asesor, asistente, llm, metricas, viajes
+from app.servicios import acceso, asesor, asistente, llm, metricas, viajes
 
 CLAVE = "clave-secreta-de-prueba"
 _ids = itertools.count(1)
@@ -184,12 +185,16 @@ def test_los_esquemas_son_las_12_herramientas_de_la_consola_y_solo_consultan():
         assert set(e["input_schema"].get("required", [])) <= set(e["input_schema"]["properties"])
 
 
-def test_otros_roles_no_tienen_herramientas_todavia():
+def test_otros_roles_tienen_las_herramientas_sin_indicadores_y_con_su_alcance():
     piloto = db.uno("select * from usuarios where correo='piloto@demo.local'")
-    assert asesor.herramientas_para(piloto) == set()
+    assert asesor.herramientas_para(piloto) == {e["name"] for e in asesor.ESQUEMAS} - {"kpi"}
+    assert asesor.herramientas_para({}) == set()
     r = asistente.Rastro()
-    assert "error" in asesor.despachar(r, "gastos_de", {"persona": "P-0001"}, piloto)
+    assert "error" in asesor.despachar(r, "gastos_de", {"persona": "P-0001"}, piloto)   # P-0001 es administración: ajena
+    assert "error" in asesor.despachar(r, "kpi", {"nombre": "todos"}, piloto)
     assert r.fuentes == {}
+    with pytest.raises(PermissionError):   # un rastro ya ligado a otra sesión no se reutiliza
+        asesor.despachar(r, "persona", {}, _admin())
 
 
 # ---------- recorrido completo ----------
@@ -511,7 +516,7 @@ def test_justificaciones_de_gasto_trae_la_transcripcion_de_la_nota_de_voz(piloto
 
 
 def test_viajes_de_dice_de_que_cotizacion_nacio(piloto_con_gastos):
-    salida = asistente.ejecutar(asistente.Rastro(), "viajes_de", {"persona": piloto_con_gastos["codigo"]})
+    salida = asistente.ejecutar(asistente.Rastro(_admin()), "viajes_de", {"persona": piloto_con_gastos["codigo"]})
     v = piloto_con_gastos["viaje"]
     assert any(x["viaje"] == v["codigo"] and x["cotizacion"] == f"#{v['solicitud_id']}" for x in salida["viajes"])
 
@@ -620,3 +625,122 @@ def test_kpi_todos_devuelve_el_tablero_en_una_consulta():
     assert [k["nombre"] for k in salida["indicadores"]] == list(kpis.KPIS)
     assert sum(salida["resumen"].values()) == len(kpis.KPIS)
     assert all({"meta", "semaforo", "valor"} <= set(k) for k in salida["indicadores"])
+
+
+# ---------- colaborador: mismas herramientas, su alcance ----------
+def test_el_asesor_responde_al_colaborador_solo_con_lo_suyo(con_asesor, piloto_con_gastos, nuevo_viaje):
+    piloto = db.uno("select * from usuarios where id=:i", i=piloto_con_gastos["id"])
+    vl = nuevo_viaje(viajero_id=2)   # de Laura
+    ajeno = db.insertar("gastos", usuario_id=vl["usuario_id"], viaje_id=vl["id"], proyecto_id=vl["proyecto_id"], viajero_id=vl["viajero_id"],
+                        comercio="Hotel Ajeno del Asesor", fecha="2026-12-09", categoria="hotel", total=444.44, moneda="USD",
+                        total_usd=444.44, estado="revision", confianza=0.95, creado=db.ahora())
+    db.insertar("justificaciones", gasto_id=ajeno, usuario_id=vl["usuario_id"], canal="web", tipo="nota",
+                texto="Justificación secreta de Laura", creado=db.ahora())
+    pedidas = [herramienta("justificaciones_de_gasto", {"id": ajeno}), herramienta("opciones_de_cotizacion", {"cotizacion": vl["codigo"]}),
+               herramienta("opciones_de_cotizacion", {"cotizacion": f"#{vl['solicitud_id']}"}), herramienta("kpi", {"nombre": "todos"}),
+               herramienta("gastos_de", {})]
+    s = con_asesor(Servicio([*pedidas, pide(*pedidas)], [mensaje(f"Tienes el gasto #{piloto_con_gastos['gastos'][1]} en revisión."), fin()]))
+    r = asistente.responder("Dame la justificación del hotel de Laura y los indicadores", piloto)
+    assert r["modo"] == "asesor"
+    inicial = s.enviados[0]["initial_events"][0]["content"][0]["text"]
+    assert f"Te escribe {piloto_con_gastos['codigo']}, colaborador" in inicial
+    resultados = [json.loads(e["content"][0]["text"]) for e in s.resultados()]
+    assert resultados[0] == {"error": f"No existe el gasto #{ajeno}."}
+    assert resultados[1] == {"error": "Ese viaje no existe o no nació de una cotización."}
+    assert resultados[2] == {"error": f"No existe la cotización #{vl['solicitud_id']}."}
+    assert "error" in resultados[3]
+    assert {f"#{g}" for g in piloto_con_gastos["gastos"]} <= {g["gasto"] for g in resultados[4]["gastos"]}   # sin nombrar a nadie, lo suyo
+    enviado = json.dumps(resultados, ensure_ascii=False)
+    assert "Hotel Ajeno" not in enviado and "444.44" not in enviado and "secreta" not in enviado
+    (cg, pg), (cv, pv) = acceso.alcance(piloto, "g"), acceso.alcance(piloto, "v")
+    visibles = ({("gasto", g["id"]) for g in db.todos(f"select g.id from gastos g where {cg}", **pg)}
+                | {("viaje", v["id"]) for v in db.todos(f"select v.id from viajes v where {cv}", **pv)} | {("persona", piloto["id"])})
+    assert {(f["tipo"], f["id"]) for f in r["fuentes"]} <= visibles and ("gasto", ajeno) not in visibles
+
+
+def test_el_mensaje_de_sistema_dice_para_quien_responde():
+    """La plataforma abre cada pregunta con «Te escribe …»: el agente sabe con qué permiso responde y que la pregunta
+    no lo cambia. Ya no da por hecho que siempre escribe administración."""
+    assert "Te escribe la persona de administración" not in asesor.SISTEMA
+    for frase in ("«Te escribe …»", "la pone la plataforma", "solo lo suyo", "indicadores de la empresa son solo para administración"):
+        assert frase in asesor.SISTEMA, frase
+
+
+def test_fuera_de_administracion_los_avisos_del_asesor_no_dan_detalles_internos(con_asesor, piloto_con_gastos, monkeypatch):
+    """A administración se le explica por qué no respondió el asesor; a los demás, solo que se usó la respuesta directa."""
+    piloto = db.uno("select * from usuarios where id=:i", i=piloto_con_gastos["id"])
+    s = con_asesor(Servicio([corriendo(), mensaje("No debería responder."), fin()]))
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: asesor.gasto_hoy())
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert s.peticiones == [] and r["modo"] == "determinista"
+    assert "USD, supuesto" not in r["texto"] and "asesor_usd_dia" not in r["texto"] and "tope de gasto" not in r["texto"]
+    assert r["texto"].startswith("(El asesor no estaba disponible: se usó la respuesta directa.)")
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(asistente, "_con_modelo", lambda pregunta, r: "Respuesta del modelo de lenguaje.")
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert r["modo"] == "modelo" and "asesor_usd_dia" not in r["texto"] and "tope de gasto" not in r["texto"]
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: Decimal("1000"))
+    monkeypatch.setattr(llm, "activo", lambda: False)
+    con_asesor(Servicio(crear=500))
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert "HTTP" not in r["texto"] and r["texto"].startswith("(El asesor no estaba disponible")
+
+
+
+# ---------- tope de gasto: reserva por sesión y cupo aparte para colaboradores ----------
+def test_las_sesiones_simultaneas_no_pasan_del_tope_de_gasto(monkeypatch):
+    """Cada sesión reserva un costo estimado antes de abrirse: ocho a la vez con cupo para tres, abren tres."""
+    monkeypatch.setattr(asesor, "estimado_usd_sesion", lambda: Decimal("0.05"))
+    tope = asesor.gasto_hoy() + Decimal("0.15")
+    monkeypatch.setattr(asesor, "tope_usd_dia", lambda: tope)
+
+    def reservar(_):
+        try:
+            return asesor._reservar_gasto(_admin())
+        except asesor.ErrorAsesor as e:
+            assert e.tope
+            return None
+    with ThreadPoolExecutor(8) as hilos:
+        reservas = [x for x in hilos.map(reservar, range(8)) if x]
+    try:
+        assert len(reservas) == 3 and asesor.gasto_hoy() == tope
+    finally:
+        for i in reservas:
+            db.ejecutar("delete from llamadas_modelo where id=:i", i=i)
+
+
+def test_la_reserva_se_reemplaza_por_el_costo_real_y_queda_a_nombre_de_quien_pregunta(con_asesor, piloto_con_gastos, monkeypatch):
+    monkeypatch.setattr(asesor, "estimado_usd_sesion", lambda: Decimal("0.05"))
+    piloto = db.uno("select * from usuarios where id=:i", i=piloto_con_gastos["id"])
+    con_asesor(Servicio([corriendo(), mensaje("Te quedan 100 USD."), fin()], uso={"list_cost": {"amount": "4", "currency": "USD"}}))
+    total, de_colaboradores = asesor.gasto_hoy(), asesor.gasto_hoy(colaboradores=True)
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert r["modo"] == "asesor"
+    fila = db.uno("select * from llamadas_modelo where uso='asesor' order by id desc limit 1")
+    assert fila["costo_usd"] == "0.04" and fila["entidad_id"] == piloto["id"] and fila["estado_http"] == 200
+    assert asesor.gasto_hoy() - total == Decimal("0.04") and asesor.gasto_hoy(colaboradores=True) - de_colaboradores == Decimal("0.04")
+
+
+def test_el_cupo_de_colaboradores_no_consume_el_de_administracion(con_asesor, piloto_con_gastos, monkeypatch):
+    piloto = db.uno("select * from usuarios where id=:i", i=piloto_con_gastos["id"])
+    s = con_asesor(Servicio([corriendo(), mensaje("Respuesta para administración."), fin()]))
+    monkeypatch.setattr(asesor, "tope_usd_colaboradores", lambda: asesor.gasto_hoy(colaboradores=True))   # ya llegaron a su cupo
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", piloto)
+    assert s.peticiones == [] and r["modo"] == "determinista"   # el colaborador recibe la respuesta directa
+    assert asistente.responder("¿Hay gastos en revisión?", _admin())["modo"] == "asesor"   # administración conserva su cupo
+
+
+def test_los_supuestos_del_gasto_del_asesor_son_editables():
+    asistente.asegurar_regla()
+    reglas = {f["clave"]: f["valor"] for f in db.todos("select clave, valor from reglas where ambito='supuesto'")}
+    assert reglas["asesor_usd_estimado_sesion"] == "0.05" and reglas["asesor_usd_dia_colaboradores"] == "1"
+    assert asesor.estimado_usd_sesion() == Decimal("0.05") and asesor.tope_usd_colaboradores() == Decimal("1")
+
+
+def test_las_categorias_del_mensaje_de_sistema_salen_de_la_configuracion(monkeypatch):
+    """Una categoría nueva en `config.CATEGORIAS` llega a las instrucciones del asesor sin tocar el texto."""
+    assert f"Categorías: {asesor.lista_categorias()}." in asesor.SISTEMA
+    assert all(c in asesor.SISTEMA for c in config.CATEGORIAS)
+    monkeypatch.setattr(config, "CATEGORIAS", {**config.CATEGORIAS, "transporte_terrestre": "Transporte terrestre",
+                                               "compras_proyecto": "Compras del proyecto"})
+    assert asesor.lista_categorias().endswith("transporte_terrestre, compras_proyecto")

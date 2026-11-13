@@ -9,10 +9,10 @@
     "/api/v1/asistente": {
       "post": {
         "tags": [
-          "administracion"
+          "asistente"
         ],
         "summary": "Preguntar",
-        "description": "Solo administración. Puede tardar hasta un minuto con el asesor; si no responde, contesta la vía siguiente.",
+        "description": "Para los tres permisos, cada uno con su alcance. Con el asesor puede tardar hasta un minuto; si no, responde la vía siguiente.",
         "operationId": "preguntar_api_v1_asistente_post",
         "requestBody": {
           "content": {
@@ -71,10 +71,10 @@
     "/api/v1/asistente/voz": {
       "post": {
         "tags": [
-          "administracion"
+          "asistente"
         ],
         "summary": "Dictar",
-        "description": "Solo administración. Devuelve la pregunta dictada en texto; no la responde ni la guarda.",
+        "description": "Para los tres permisos. Devuelve la pregunta dictada en texto; no la responde ni la guarda.",
         "operationId": "dictar_api_v1_asistente_voz_post",
         "requestBody": {
           "content": {

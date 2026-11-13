@@ -2,6 +2,7 @@ import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
+import type { Permiso } from "@/shared/domain/navegacion";
 import { renderizarConFuente } from "@/test/renderizar";
 import type { AsistenteRepository, RespuestaAsistente } from "../domain/asistente";
 import { crearAsistenteMemoria } from "../infrastructure/asistente-memoria";
@@ -24,16 +25,33 @@ function respuesta(extra: Partial<RespuestaAsistente> = {}): RespuestaAsistente 
   };
 }
 
-function montar(asistente: AsistenteRepository = crearAsistenteMemoria({ responder: () => respuesta() }), permiso: "admin" | "colaborador" = "admin") {
+function montar(asistente: AsistenteRepository = crearAsistenteMemoria({ responder: () => respuesta() }), permiso: Permiso = "admin") {
   return renderizarConFuente(<AsistenteFlotante />, { asistente, permiso, personaId: 7 });
 }
 
 afterEach(() => window.sessionStorage.clear());
 
 describe("Asistente flotante", () => {
-  it("solo administración ve el botón", () => {
-    montar(undefined, "colaborador");
-    expect(screen.queryByRole("button", { name: "Asistente IA" })).toBeNull();
+  it.each(["colaborador", "gestor"] as const)("%s también ve el botón, con su bienvenida y sus preguntas", async (permiso) => {
+    const usuario = userEvent.setup();
+    const preguntar = vi.fn(() => respuesta({ texto: "Te quedan 120,00 USD.", fuentes: [] }));
+    montar(crearAsistenteMemoria({ responder: preguntar }), permiso);
+    await usuario.click(screen.getByRole("button", { name: "Asistente IA" }));
+    const panel = screen.getByRole("dialog", { name: "Asistente IA" });
+    expect(within(panel).getByText(/Solo ves lo tuyo/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/proyectos que gestionas/) !== null).toBe(permiso === "gestor");
+    expect(within(panel).queryByRole("button", { name: "¿Cómo van los indicadores?" })).toBeNull();
+    await usuario.click(within(panel).getByRole("button", { name: "¿Cuánto me queda del presupuesto?" }));
+    expect(preguntar).toHaveBeenCalledWith("¿Cuánto me queda del presupuesto?");
+    expect(await within(panel).findByText("Te quedan 120,00 USD.")).toBeInTheDocument();
+  });
+
+  it("en el modo demostración responde sin datos en vez de negarse", async () => {
+    const usuario = userEvent.setup();
+    montar(crearAsistenteMemoria(), "colaborador");
+    await usuario.click(screen.getByRole("button", { name: "Asistente IA" }));
+    await usuario.click(screen.getByRole("button", { name: "¿Qué me falta por justificar?" }));
+    expect(await screen.findByText(/modo de demostración/)).toBeInTheDocument();
   });
 
   it("abre el panel con el foco en la pregunta y Escape lo cierra devolviendo el foco", async () => {
@@ -151,6 +169,14 @@ describe("Asistente flotante", () => {
     await usuario.click(screen.getByRole("button", { name: "Empezar una conversación nueva" }));
     expect(screen.getByText("¿En qué te ayudo?")).toBeInTheDocument();
     expect(JSON.parse(window.sessionStorage.getItem("asistente:v1:7") ?? "null")).toEqual([]);
+  });
+
+  it("al entrar otra persona en la pestaña, la conversación anterior se borra del navegador", () => {
+    window.sessionStorage.setItem("asistente:v1:9", JSON.stringify([{ id: "x", rol: "persona", texto: "De otra persona", porVoz: false, estado: "respondida" }]));
+    window.sessionStorage.setItem("otra-cosa", "se conserva");
+    montar();
+    expect(window.sessionStorage.getItem("asistente:v1:9")).toBeNull();
+    expect(window.sessionStorage.getItem("otra-cosa")).toBe("se conserva");
   });
 
   it("una respuesta guardada sin la forma completa se descarta sin romper la pantalla", async () => {

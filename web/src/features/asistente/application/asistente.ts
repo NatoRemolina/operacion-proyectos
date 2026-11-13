@@ -39,8 +39,22 @@ function esMensaje(m: unknown): m is Mensaje {
   return false;
 }
 
+/** Borra de la pestaña las conversaciones de otras personas (una sesión anterior que no pulsó «Salir»). */
+function olvidarOtras(personaId: number) {
+  try {
+    const propia = claveDe(personaId);
+    for (let i = window.sessionStorage.length - 1; i >= 0; i--) {
+      const clave = window.sessionStorage.key(i);
+      if (clave && clave.startsWith("asistente:v") && clave !== propia) window.sessionStorage.removeItem(clave);
+    }
+  } catch {
+    // Sin almacenamiento no hay nada que borrar.
+  }
+}
+
 /** Lo guardado en la pestaña, sin entradas dañadas; una pregunta que esperaba ya no tendrá respuesta. */
 function leer(personaId: number): Mensaje[] {
+  olvidarOtras(personaId);
   try {
     const crudo: unknown = JSON.parse(window.sessionStorage.getItem(claveDe(personaId)) ?? "[]");
     if (!Array.isArray(crudo)) return [];

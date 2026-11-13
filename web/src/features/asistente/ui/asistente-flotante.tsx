@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { usePermiso, usePersonaId } from "@/shared/application/identidad";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
+import type { Permiso } from "@/shared/domain/navegacion";
 import { Distintivo } from "@/shared/ui/distintivo";
 import { PRESIONAR } from "@/shared/ui/movimiento";
 import { useConversacion, useTranscribir, type Mensaje } from "../application/asistente";
@@ -12,10 +13,11 @@ import {
   ESPERA_LARGA_S,
   MAX_GRABACION_S,
   MAX_PREGUNTA,
-  PREGUNTAS_SUGERIDAS,
+  bienvenidaDe,
   bloquesDeTexto,
   duracionLegible,
   esDeIa,
+  preguntasSugeridas,
   reloj,
   rutaDeFuente,
   type RespuestaAsistente,
@@ -24,18 +26,17 @@ import {
 import { IconoCerrar, IconoChispa, IconoDetener, IconoEnviar, IconoMicrofono, IconoNueva } from "./iconos";
 
 /**
- * Asistente de IA flotante: un botón fijo abajo a la derecha en todas las pantallas de administración que
- * abre una conversación sin salir de la pantalla. Se pregunta por escrito o con la voz (se transcribe y se
- * envía). Para otros permisos no se muestra; la API además lo rechaza.
+ * Asistente de IA flotante: un botón fijo abajo a la derecha en todas las pantallas privadas que abre una
+ * conversación sin salir de la pantalla. Se pregunta por escrito o con la voz (se transcribe y se envía).
+ * Lo usan los tres permisos; lo que cada uno puede ver lo decide el servidor con la sesión, nunca la pregunta.
  */
 export function AsistenteFlotante() {
   const permiso = usePermiso();
   const personaId = usePersonaId();
-  if (permiso !== "admin") return null;
-  return <Asistente key={personaId} />;
+  return <Asistente key={personaId} permiso={permiso} />;
 }
 
-function Asistente() {
+function Asistente({ permiso }: { permiso: Permiso }) {
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState("");
   const [transcribiendo, setTranscribiendo] = useState(false);
@@ -262,7 +263,7 @@ function Asistente() {
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-fondo px-3 py-4 sm:px-4"
         >
           {mensajes.length === 0 ? (
-            <Bienvenida conVoz={conVoz} deshabilitado={ocupado} onElegir={elegir} />
+            <Bienvenida permiso={permiso} conVoz={conVoz} deshabilitado={ocupado} onElegir={elegir} />
           ) : (
             <ol className="space-y-4">
               {mensajes.map((m) => (
@@ -366,19 +367,26 @@ function Asistente() {
   );
 }
 
-function Bienvenida({ conVoz, deshabilitado, onElegir }: { conVoz: boolean; deshabilitado: boolean; onElegir: (p: string) => void }) {
+function Bienvenida({
+  permiso,
+  conVoz,
+  deshabilitado,
+  onElegir,
+}: {
+  permiso: Permiso;
+  conVoz: boolean;
+  deshabilitado: boolean;
+  onElegir: (p: string) => void;
+}) {
   return (
     <div className="flex flex-col items-center px-1 pb-1 pt-3 text-center">
       <span className="fondo-ia grid size-14 place-items-center rounded-2xl shadow-md shadow-grafito/20">
         <IconoChispa className="size-7 text-cian-claro" />
       </span>
       <p className="mt-3 text-lg font-bold text-texto">¿En qué te ayudo?</p>
-      <p className="mt-1 max-w-xs text-sm text-texto-secundario">
-        Pregunta por viajes, gastos, cotizaciones o indicadores{conVoz ? ", por escrito o con tu voz" : ""}. Cada respuesta cita de
-        dónde salen los datos.
-      </p>
+      <p className="mt-1 max-w-xs text-sm text-texto-secundario">{bienvenidaDe(permiso, conVoz)}</p>
       <ul className="mt-4 w-full space-y-2 text-left" aria-label="Preguntas sugeridas">
-        {PREGUNTAS_SUGERIDAS.map((p) => (
+        {preguntasSugeridas(permiso).map((p) => (
           <li key={p}>
             <button
               type="button"
