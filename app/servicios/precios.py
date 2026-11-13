@@ -468,6 +468,11 @@ def regreso_guardado(vuelo_ida: dict, origenes: str | list[str], destinos: str |
     return min(candidatos, key=lambda v: v["precio"]) if candidatos else None
 
 
+def _textos(valor) -> list[str]:
+    """Los textos de una lista guardada; cualquier otra cosa (un texto suelto, un diccionario) no es una lista."""
+    return [x[:200] for x in valor if isinstance(x, str)] if isinstance(valor, list) else []
+
+
 def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
                        regreso: str) -> tuple[list[dict], str | None]:
     """Las opciones de reserva del itinerario que ya están guardadas (las trajo el enlace a la página oficial o una
@@ -488,12 +493,12 @@ def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str
         t = o.get("together") if isinstance(o, dict) else None   # billetes separados: el precio de la ida no es el del viaje
         if not isinstance(t, dict) or not isinstance(t.get("price"), int | float):
             continue
-        notas = [x for x in t.get("extensions") or [] if isinstance(x, str)]
+        notas = _textos(t.get("extensions"))
         cambios = [x for x in notas if "change" in x.lower()]
         reembolso = [x for x in notas if "refund" in x.lower()]
-        salida.append({"vendedor": t.get("book_with") or "el vendedor", "aerolinea": bool(t.get("airline")),
-                       "nombre": t.get("option_title") or "Tarifa", "precio": float(t["price"]),
-                       "equipaje": [x for x in t.get("baggage_prices") or [] if isinstance(x, str)],
+        salida.append({"vendedor": str(t.get("book_with") or "el vendedor")[:60], "aerolinea": bool(t.get("airline")),
+                       "nombre": str(t.get("option_title") or "Tarifa")[:60], "precio": float(t["price"]),
+                       "equipaje": _textos(t.get("baggage_prices")),
                        "cambios": cambios, "reembolso": reembolso, "otras": [x for x in notas if x not in cambios + reembolso]})
     return salida, fila["creado"] if fila else None
 

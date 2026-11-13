@@ -61,3 +61,27 @@ def test_permisos(piloto, piloto2, anonimo):
     assert piloto2.get(ruta).status_code == 404
     otra = _vegas(piloto2)
     assert piloto.get(f"{V1}/cotizaciones/{c['id']}/vuelos/{otra['vuelos'][0]['id']}/reserva").status_code == 404
+
+
+# ---------- ronda 2 · punto 13: datos raros guardados no dan 500 ----------
+def test_opciones_guardadas_raras_no_rompen(piloto, sin_red):
+    import json
+
+    from app import db
+    from app.servicios import precios as p
+    c = _vegas(piloto)
+    otro = next(v for v in c["vuelos"] + c["descartados"] if v["numeros"] != ["AA 1851"])
+    sol = db.uno("select * from solicitudes where id=:i", i=c["id"])
+    vuelo = db.de_json(db.uno("select datos from opciones where id=:o", o=otro["id"])["datos"])
+    _, _, n_o, n_d = p.ruta(p.codigos(sol["origen_aeropuertos"] or sol["origen"]), p.codigos(sol["destino_aeropuertos"] or sol["destino"]))
+    clave = f"reserva_{n_o}_{n_d}_{sol['ida']}_{sol['regreso']}_{''.join(n.replace(' ', '') for n in vuelo['numeros'])}.json"
+    raro = {"booking_options": ["texto", {"together": "x"}, {"together": {"book_with": 123, "option_title": ["lista"], "price": 500,
+            "extensions": "no es lista", "baggage_prices": {"a": 1}}}]}
+    db.insertar("busquedas", clave=clave, cuerpo=json.dumps(raro), creado=db.ahora())
+    try:
+        r = piloto.get(f"/api/v1/cotizaciones/{c['id']}/vuelos/{otro['id']}/reserva")
+        assert r.status_code == 200, r.text
+        (t,) = r.json()["tarifas"]
+        assert (t["vendedor"], t["nombre"], t["equipaje"], t["cambios"]) == ("123", "['lista']", [], [])
+    finally:
+        db.ejecutar("delete from busquedas where clave=:c", c=clave)
