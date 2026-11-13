@@ -38,6 +38,10 @@ consultas = db._tabla(
     db._ref("asistente_consultas", "usuario_id", "usuarios"), Column("pregunta", Text), Column("herramientas", Text),
     Column("fuentes", Text), Column("modo", Text), Column("duracion_ms", Integer), Column("momento", Text),
 )
+dictados = db._tabla(
+    "asistente_dictados",  # un cupo de dictado reservado antes de transcribir: es lo que cuenta el tope del día
+    db._ref("asistente_dictados", "usuario_id", "usuarios"), Column("momento", Text),
+)
 
 SISTEMA = """Eres el asistente de administración de una plataforma de viajes y gastos de pilotos de dron.
 Respondes preguntas sobre lo que ha reportado cada persona: viajes, gastos, notas, mensajes y decisiones.
@@ -842,9 +846,25 @@ def tope_dictados() -> int:
 
 
 def dictados_hoy(usuario_id: int) -> int:
-    """Cada intento de transcripción queda en `llamadas_modelo`, haya salido bien o no: es lo que se paga."""
-    return db.uno("select count(*) n from llamadas_modelo where uso='dictado' and entidad_id=:u and momento>=:d",
-                  u=usuario_id, d=db.ahora()[:10])["n"]
+    """Dictados reservados hoy: cada uno se reserva antes de transcribir y cuenta aunque la transcripción falle."""
+    return db.uno("select count(*) n from asistente_dictados where usuario_id=:u and momento>=:d", u=usuario_id, d=db.ahora()[:10])["n"]
+
+
+def _bloquear_persona(c, usuario_id: int):
+    """Ordena las reservas de una misma persona (en SQLite, la transacción ya toma el cerrojo de escritura)."""
+    if not config.ES_SQLITE:
+        c.execute(text("select id from usuarios where id=:u for update"), {"u": usuario_id})
+
+
+def _reservar_dictado(usuario: dict):
+    """Reserva un dictado antes de pagar la transcripción: varios dictados simultáneos no pasan juntos el tope."""
+    with db.transaccion() as c:
+        _bloquear_persona(c, usuario["id"])
+        if usadas_hoy(usuario["id"]) >= tope_diario():
+            raise TopeDeDictado(f"Llegaste al tope de {tope_diario()} preguntas por día: hoy no se transcribe más voz.")
+        if dictados_hoy(usuario["id"]) >= tope_dictados():
+            raise TopeDeDictado(f"Llegaste al tope de {tope_dictados()} dictados por día. Escribe la pregunta.")
+        db.insertar("asistente_dictados", usuario_id=usuario["id"], momento=db.ahora())
 
 
 def usadas_hoy(usuario_id: int) -> int:
@@ -866,10 +886,7 @@ def transcribir_pregunta(audio: bytes, mime: str, usuario: dict) -> str:
         raise PermissionError("El asistente necesita una sesión válida.")
     if not puede_dictar():
         raise llm.ErrorDelModelo("No hay un modelo configurado para transcribir voz.")
-    if usadas_hoy(usuario["id"]) >= tope_diario():
-        raise TopeDeDictado(f"Llegaste al tope de {tope_diario()} preguntas por día: hoy no se transcribe más voz.")
-    if dictados_hoy(usuario["id"]) >= tope_dictados():
-        raise TopeDeDictado(f"Llegaste al tope de {tope_dictados()} dictados por día. Escribe la pregunta.")
+    _reservar_dictado(usuario)
     rapido = llm.RAPIDO.set(True)   # quien dicta espera en pantalla: un intento con espera corta
     try:
         r = llm.generar([{"role": "user", "parts": [llm.parte_archivo(audio, mime), llm.parte_texto(DICTADO)]}],
@@ -907,8 +924,7 @@ def _reservar(usuario: dict, pregunta: str) -> int | None:
     escritura): dos peticiones simultáneas no pasan las dos la comprobación. Devuelve None si no queda cupo.
     """
     with db.transaccion() as c:
-        if not config.ES_SQLITE:
-            c.execute(text("select id from usuarios where id=:u for update"), {"u": usuario["id"]})
+        _bloquear_persona(c, usuario["id"])
         if usadas_hoy(usuario["id"]) >= tope_diario():
             return None
         return db.insertar("asistente_consultas", usuario_id=usuario["id"], pregunta=pregunta, modo="en_curso", momento=db.ahora())

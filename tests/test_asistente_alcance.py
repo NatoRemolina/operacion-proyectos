@@ -7,6 +7,8 @@
 Lo ajeno se responde como si no existiera, en las herramientas, en el índice (local y Pinecone) y en las fuentes.
 """
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
@@ -370,3 +372,40 @@ def test_los_mensajes_de_telegram_solo_los_ve_quien_los_escribio(mundo):
     assert "muelle" not in json.dumps(asistente.ejecutar(asistente.Rastro(mundo["gestor"]), "buscar", buscar), ensure_ascii=False)
     assert "muelle" in json.dumps(asistente.ejecutar(asistente.Rastro(laura), "buscar", buscar), ensure_ascii=False)
     assert "muelle" in json.dumps(asistente.ejecutar(asistente.Rastro(_usuario("admin@demo.local")), "buscar", buscar), ensure_ascii=False)
+
+
+def test_el_tope_de_dictados_no_se_salta_con_dictados_simultaneos(mundo, monkeypatch):
+    """El dictado reserva su cupo antes de transcribir: con tope 1, ocho dictados a la vez pagan una sola transcripción."""
+    andres, pagadas = mundo["andres"], []
+
+    def generar(contenidos, **k):
+        pagadas.append(k["uso"])
+        time.sleep(0.3)
+        return {"content": {"role": "model", "parts": [{"text": "¿Cuánto me queda?"}]}}
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(llm, "generar", generar)
+    tope = asistente.dictados_hoy(andres["id"]) + 1
+    monkeypatch.setattr(asistente, "tope_dictados", lambda: tope)
+
+    def dictar(_):
+        try:
+            return asistente.transcribir_pregunta(b"audio", "audio/wav", andres)
+        except asistente.TopeDeDictado:
+            return None
+    with ThreadPoolExecutor(8) as hilos:
+        resultados = list(hilos.map(dictar, range(8)))
+    assert pagadas == ["dictado"] and resultados.count(None) == 7 and asistente.dictados_hoy(andres["id"]) == tope
+
+
+def test_un_dictado_que_falla_cuenta_igual(mundo, monkeypatch):
+    andres = mundo["andres"]
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(asistente, "tope_dictados", lambda: 10_000)
+
+    def falla(contenidos, **k):
+        raise llm.ErrorDelModelo("sin respuesta")
+    monkeypatch.setattr(llm, "generar", falla)
+    antes = asistente.dictados_hoy(andres["id"])
+    with pytest.raises(llm.ErrorDelModelo):
+        asistente.transcribir_pregunta(b"audio", "audio/wav", andres)
+    assert asistente.dictados_hoy(andres["id"]) == antes + 1   # lo seguro: la reserva se paga aunque falle

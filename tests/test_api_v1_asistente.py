@@ -198,11 +198,12 @@ def test_dictar_tiene_su_propio_tope_por_dia(cliente, modelo_que_transcribe, mon
     assert len(modelo_que_transcribe) == 2
 
 
-def test_los_dictados_del_dia_se_cuentan_en_las_llamadas_al_modelo():
+def test_los_dictados_del_dia_se_cuentan_por_su_reserva(cliente, modelo_que_transcribe):
+    """Cada dictado reserva su cupo antes de transcribir; lo que registre el modelo después no cuenta dos veces."""
     admin = db.uno("select id from usuarios where correo='admin@demo.local'")
     antes = asistente.dictados_hoy(admin["id"])
+    assert _dictar(cliente, _wav()).status_code == 200
     db.insertar("llamadas_modelo", momento=db.ahora(), uso="dictado", entidad_id=admin["id"], modelo="prueba", estado_http=200)
-    db.insertar("llamadas_modelo", momento=db.ahora(), uso="recibo", entidad_id=admin["id"], modelo="prueba", estado_http=200)
     assert asistente.dictados_hoy(admin["id"]) == antes + 1
 
 
