@@ -1,23 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { TEXTO_PERMISO, type EntradaMenu, type Permiso } from "@/shared/domain/navegacion";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import {
+  TEXTO_PERMISO,
+  type EntradaMenu,
+  type Permiso,
+} from "@/shared/domain/navegacion";
 import { AvisosProvider } from "./aviso-emergente";
 import { PRESIONAR } from "./movimiento";
 
 /** Sobre qué fondo va la marca: la barra grafito o una superficie clara (la portada). */
 type FondoMarca = "grafito" | "claro";
 
-export function Marca({ tamano = "grande", fondo = "grafito" }: { tamano?: "grande" | "pequena"; fondo?: FondoMarca }) {
+export function Marca({
+  tamano = "grande",
+  fondo = "grafito",
+}: {
+  tamano?: "grande" | "pequena";
+  fondo?: FondoMarca;
+}) {
   return (
     <p className="leading-none">
-      <span className={`block font-extrabold tracking-wide ${tamano === "grande" ? "text-2xl" : "text-lg"}`}>
+      <span
+        className={`block font-extrabold tracking-wide ${tamano === "grande" ? "text-2xl" : "text-lg"}`}
+      >
         INFLIGHT
       </span>
       <span
         className={`mt-2 block text-[0.7rem] font-semibold tracking-[0.3em] ${
-          fondo === "grafito" ? "text-sobre-grafito-suave" : "text-texto-secundario"
+          fondo === "grafito"
+            ? "text-sobre-grafito-suave"
+            : "text-texto-secundario"
         }`}
       >
         SOLUTIONS
@@ -36,19 +56,44 @@ const BOTON_OSCURO =
   `font-semibold text-sobre-grafito hover:bg-sobre-grafito/10 active:bg-sobre-grafito-presionado disabled:opacity-60 ${PRESIONAR}`;
 
 /** Enlace del menú: las pantallas de esta web navegan sin recargar; las actuales, con un enlace normal. */
-function EnlaceMenuOscuro({ enlace, activo, onNavegar }: { enlace: EntradaMenu; activo: boolean; onNavegar?: () => void }) {
+function EnlaceMenuOscuro({
+  enlace,
+  activo,
+  onNavegar,
+}: {
+  enlace: EntradaMenu;
+  activo: boolean;
+  onNavegar?: () => void;
+}) {
   const clases = `flex min-h-11 items-center rounded-lg px-3 font-semibold no-underline ${PRESIONAR} ${
     activo ? "bg-marca text-sobre-marca" : "hover:bg-sobre-grafito/10"
   }`;
   if (enlace.externa) {
+    // Otro sitio con su propia sesión: se abre aparte para no perder la web
     return (
-      <a href={enlace.href} className={clases} onClick={onNavegar}>
+      <a
+        href={enlace.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`${enlace.texto} (se abre en otra pestaña)`}
+        data-texto={enlace.texto}
+        className={clases}
+        onClick={onNavegar}
+      >
         {enlace.texto}
+        <span aria-hidden="true" className="ml-1.5 text-sm opacity-70">
+          ↗
+        </span>
       </a>
     );
   }
   return (
-    <Link href={enlace.href} aria-current={activo ? "page" : undefined} className={clases} onClick={onNavegar}>
+    <Link
+      href={enlace.href}
+      aria-current={activo ? "page" : undefined}
+      className={clases}
+      onClick={onNavegar}
+    >
       {enlace.texto}
     </Link>
   );
@@ -63,16 +108,38 @@ function ListaMenu({
   rutaActual: string;
   onNavegar?: () => void;
 }) {
+  const internos = enlaces.filter((e) => !e.externa);
+  const externos = enlaces.filter((e) => e.externa);
+  const lista = (grupo: readonly EntradaMenu[]) => (
+    <ul className="flex flex-col gap-1">
+      {grupo.map((enlace) => (
+        <li key={enlace.href}>
+          <EnlaceMenuOscuro
+            enlace={enlace}
+            activo={esActivo(enlace, rutaActual)}
+            onNavegar={onNavegar}
+          />
+        </li>
+      ))}
+    </ul>
+  );
   return (
     <>
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-cian-claro">Operaciones</p>
-      <ul className="flex flex-col gap-1">
-        {enlaces.map((enlace) => (
-          <li key={enlace.href}>
-            <EnlaceMenuOscuro enlace={enlace} activo={esActivo(enlace, rutaActual)} onNavegar={onNavegar} />
-          </li>
-        ))}
-      </ul>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-cian-claro">
+        Operaciones
+      </p>
+      {lista(internos)}
+      {externos.length > 0 && (
+        <>
+          <p className="mb-1 mt-6 text-xs font-semibold uppercase tracking-wider text-cian-claro">
+            Administración
+          </p>
+          <p className="mb-2 text-xs text-sobre-grafito-suave">
+            Se abre en otra pestaña y pide ingresar aparte.
+          </p>
+          {lista(externos)}
+        </>
+      )}
     </>
   );
 }
@@ -95,15 +162,24 @@ function PiePersona({
   return (
     <div className="flex flex-col gap-3">
       <div className="text-sm">
-        <p className="font-semibold text-sobre-grafito">{TEXTO_PERMISO[permiso]}</p>
-        {entornoDemo ? <p className="mt-1 text-cian-claro">Entorno de demostración</p> : null}
+        <p className="font-semibold text-sobre-grafito">
+          {TEXTO_PERMISO[permiso]}
+        </p>
+        {entornoDemo ? (
+          <p className="mt-1 text-cian-claro">Entorno de demostración</p>
+        ) : null}
       </div>
       <p className="text-sm text-sobre-grafito-suave">
         <span className="sr-only">Sesión de </span>
         {nombre}
         {cargo ? <span className="block text-xs">{cargo}</span> : null}
       </p>
-      <button type="button" className={BOTON_OSCURO} onClick={onSalir} disabled={saliendo}>
+      <button
+        type="button"
+        className={BOTON_OSCURO}
+        onClick={onSalir}
+        disabled={saliendo}
+      >
         {saliendo ? "Saliendo…" : "Salir"}
       </button>
     </div>
@@ -168,7 +244,10 @@ export function MarcoPrivado({
           Saltar al contenido
         </a>
 
-        <aside inert={abierto} className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
+        <aside
+          inert={abierto}
+          className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex"
+        >
           <Marca />
           <nav aria-label="Principal" className="mt-8">
             <ListaMenu enlaces={enlaces} rutaActual={rutaActual} />
@@ -181,50 +260,60 @@ export function MarcoPrivado({
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Como una barra de navegación: queda arriba al desplazar, sólida en grafito. */}
           <div className="sticky top-0 z-20 md:hidden" onKeyDown={alTeclear}>
-          <header className="zona-oscura flex items-center justify-between gap-3 bg-grafito px-4 py-3 text-sobre-grafito">
-            <Marca tamano="pequena" />
-            <button
-              ref={boton}
-              type="button"
-              className={BOTON_OSCURO}
-              aria-expanded={abierto}
-              aria-controls="menu-celular"
-              onClick={() => setAbiertoEn(abierto ? null : rutaActual)}
-            >
-              Menú
-            </button>
-          </header>
-          {/* El menú entra y sale por la izquierda, sobre un velo que lo cierra al tocarlo. */}
-          <div
-            aria-hidden="true"
-            onClick={cerrar}
-            className={`fixed inset-0 z-30 bg-velo transition-opacity duration-200 ease-salida ${
-              abierto ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          />
-          <div
-            id="menu-celular"
-            aria-hidden={!abierto}
-            inert={!abierto}
-            className={`zona-oscura se-mueve fixed inset-y-0 left-0 z-40 flex w-72 max-w-full flex-col overflow-y-auto bg-grafito px-5 py-6 text-sobre-grafito shadow-flotante transition-[translate,opacity] duration-200 ease-salida ${
-              abierto ? "translate-x-0 opacity-100" : "-translate-x-full opacity-0"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
+            <header className="zona-oscura flex items-center justify-between gap-3 bg-grafito px-4 py-3 text-sobre-grafito">
               <Marca tamano="pequena" />
-              <button type="button" className={BOTON_OSCURO} onClick={cerrar}>
-                Cerrar menú
+              <button
+                ref={boton}
+                type="button"
+                className={BOTON_OSCURO}
+                aria-expanded={abierto}
+                aria-controls="menu-celular"
+                onClick={() => setAbiertoEn(abierto ? null : rutaActual)}
+              >
+                Menú
               </button>
-            </div>
-            <nav aria-label="Menú" className="mt-8" ref={panel}>
-              <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
-            </nav>
-            <div className="mt-auto border-t border-sobre-grafito-suave/30 pt-5">
-              <PiePersona {...pie} />
+            </header>
+            {/* El menú entra y sale por la izquierda, sobre un velo que lo cierra al tocarlo. */}
+            <div
+              aria-hidden="true"
+              onClick={cerrar}
+              className={`fixed inset-0 z-30 bg-velo transition-opacity duration-200 ease-salida ${
+                abierto ? "opacity-100" : "pointer-events-none opacity-0"
+              }`}
+            />
+            <div
+              id="menu-celular"
+              aria-hidden={!abierto}
+              inert={!abierto}
+              className={`zona-oscura se-mueve fixed inset-y-0 left-0 z-40 flex w-72 max-w-full flex-col overflow-y-auto bg-grafito px-5 py-6 text-sobre-grafito shadow-flotante transition-[translate,opacity] duration-200 ease-salida ${
+                abierto
+                  ? "translate-x-0 opacity-100"
+                  : "-translate-x-full opacity-0"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <Marca tamano="pequena" />
+                <button type="button" className={BOTON_OSCURO} onClick={cerrar}>
+                  Cerrar menú
+                </button>
+              </div>
+              <nav aria-label="Menú" className="mt-8" ref={panel}>
+                <ListaMenu
+                  enlaces={enlaces}
+                  rutaActual={rutaActual}
+                  onNavegar={() => setAbiertoEn(null)}
+                />
+              </nav>
+              <div className="mt-auto border-t border-sobre-grafito-suave/30 pt-5">
+                <PiePersona {...pie} />
+              </div>
             </div>
           </div>
-        </div>
-        <main id="contenido" inert={abierto} className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10">
+          <main
+            id="contenido"
+            inert={abierto}
+            className="mx-auto w-full max-w-contenido flex-1 px-4 pb-28 pt-6 md:px-8 md:pb-10"
+          >
             {children}
           </main>
         </div>
@@ -234,7 +323,12 @@ export function MarcoPrivado({
           inert={abierto}
           className="material-barra fixed inset-x-0 bottom-0 z-20 pb-[env(safe-area-inset-bottom)] md:hidden"
         >
-          <ul className="grid" style={{ gridTemplateColumns: `repeat(${Math.max(atajos.length, 1)}, minmax(0, 1fr))` }}>
+          <ul
+            className="grid"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(atajos.length, 1)}, minmax(0, 1fr))`,
+            }}
+          >
             {atajos.map((enlace) => {
               const activo = esActivo(enlace, rutaActual);
               return (
@@ -243,7 +337,9 @@ export function MarcoPrivado({
                     href={enlace.href}
                     aria-current={activo ? "page" : undefined}
                     className={`flex min-h-14 items-center justify-center border-t-4 px-1 text-center text-sm font-bold uppercase tracking-wide no-underline ${PRESIONAR} ${
-                      activo ? "border-marca text-marca" : "border-transparent text-texto"
+                      activo
+                        ? "border-marca text-marca"
+                        : "border-transparent text-texto"
                     }`}
                   >
                     {enlace.corto}
@@ -260,11 +356,16 @@ export function MarcoPrivado({
 
 export function AvisoDemo() {
   return (
-    <div role="note" className="border-b-2 border-aviso bg-aviso-suave px-4 py-2 text-center text-sm">
+    <div
+      role="note"
+      className="border-b-2 border-aviso bg-aviso-suave px-4 py-2 text-center text-sm"
+    >
       <strong className="text-aviso">
         <span aria-hidden="true">! </span>Datos de demostración
       </strong>{" "}
-      <span className="text-texto">Nada de lo que ves aquí es real ni se guarda en la plataforma.</span>
+      <span className="text-texto">
+        Nada de lo que ves aquí es real ni se guarda en la plataforma.
+      </span>
     </div>
   );
 }

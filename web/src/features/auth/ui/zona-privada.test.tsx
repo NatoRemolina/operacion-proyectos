@@ -38,7 +38,7 @@ describe("Zona privada", () => {
   it("administración ve el resumen y las pantallas actuales en el menú", async () => {
     const barra = await barraPara(personaDePrueba({ rol: "admin" }));
     expect(within(barra).getByRole("link", { name: "Resumen" })).toHaveAttribute("href", "/resumen");
-    expect(within(barra).getByRole("link", { name: "Proyectos" })).toHaveAttribute(
+    expect(within(barra).getByRole("link", { name: /^Proyectos/ })).toHaveAttribute(
       "href",
       "http://127.0.0.1:8000/admin/proyectos",
     );

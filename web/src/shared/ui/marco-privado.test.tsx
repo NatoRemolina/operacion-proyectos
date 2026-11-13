@@ -52,7 +52,7 @@ describe("Marco privado", () => {
     marco({ permiso: "admin" });
     const barra = barraLateral();
     expect(within(barra).getByText("Operaciones")).toBeInTheDocument();
-    expect(within(barra).getAllByRole("link").map((a) => a.textContent)).toEqual([
+    expect(within(barra).getAllByRole("link").map((a) => a.getAttribute("data-texto") ?? a.textContent)).toEqual([
       "Resumen",
       "Cotizar viaje",
       "Viajes",
@@ -60,6 +60,17 @@ describe("Marco privado", () => {
       "Proyectos",
       "Usuarios",
     ]);
+  });
+
+  it("las pantallas de administración van en su propia sección y se abren en otra pestaña, sin perder la web", () => {
+    marco({ permiso: "admin" });
+    const barra = barraLateral();
+    expect(within(barra).getByText("Administración")).toBeInTheDocument();
+    const proyectos = within(barra).getByRole("link", { name: /^Proyectos/ });
+    expect(proyectos).toHaveAttribute("target", "_blank");
+    expect(proyectos).toHaveAttribute("rel", "noopener noreferrer");
+    expect(proyectos).toHaveAccessibleName("Proyectos (se abre en otra pestaña)");
+    expect(within(barra).getByRole("link", { name: "Viajes" })).not.toHaveAttribute("target");
   });
 
   it("marca la página actual, también en sus subpáginas", () => {
@@ -70,7 +81,7 @@ describe("Marco privado", () => {
 
   it("las pantallas actuales se enlazan con su dirección completa", () => {
     marco({ permiso: "admin" });
-    expect(within(barraLateral()).getByRole("link", { name: "Usuarios" })).toHaveAttribute(
+    expect(within(barraLateral()).getByRole("link", { name: /^Usuarios/ })).toHaveAttribute(
       "href",
       "http://127.0.0.1:8000/admin/usuarios",
     );
@@ -96,7 +107,7 @@ describe("Marco privado", () => {
     await usuario.click(boton);
     expect(boton).toHaveAttribute("aria-expanded", "true");
     const panel = screen.getByRole("navigation", { name: "Menú" });
-    expect(within(panel).getByRole("link", { name: "Usuarios" })).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: /^Usuarios/ })).toBeInTheDocument();
 
     // Lo que queda bajo el velo no recibe el foco mientras el menú está abierto
     expect(document.getElementById("contenido")).toHaveAttribute("inert");
