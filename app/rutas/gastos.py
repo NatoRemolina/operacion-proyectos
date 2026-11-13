@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import acceso, almacen, envios, justificaciones, revision, viajes
+from ..servicios import acceso, almacen, contable, envios, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
 from ..web import (
     NO_ENCONTRADO,
@@ -60,7 +60,8 @@ def gastos(request: Request, estado: str = "", aviso: str = ""):
                          left join proyectos p on p.id=g.proyecto_id left join viajeros v on v.id=g.viajero_id
                          left join documentos d on d.id=g.documento_id where {donde}{filtro} order by g.id desc""", e=estado, **p)
     return plantillas.TemplateResponse(request, "gastos.html", _ctx(
-        gastos=filas, estado=estado, ind=_indicadores() if acceso.es_admin(_yo()) else None, aviso=aviso[:300]))
+        gastos=filas, estado=estado, ind=_indicadores() if acceso.es_admin(_yo()) else None, aviso=aviso[:300],
+        mes=contable.mes_en_curso()))
 
 
 @router.get("/gastos/cargar", response_class=HTMLResponse)
@@ -70,6 +71,21 @@ def gastos_cargar(request: Request):
     elegido, _ = viajes.resolver_para_gasto(_yo())
     return plantillas.TemplateResponse(request, "cargar.html", _ctx(
         ejemplos=ejemplos, correos=correos, mis_viajes=_viajes_para_cargar(), elegido=elegido, tope_bytes=config.MAX_BYTES_SOPORTE))
+
+
+@router.get("/gastos/contable.xlsx")
+def gastos_contable(request: Request, desde: str = "", hasta: str = "", proyecto: int = 0):
+    """Excel contable del periodo (por omisión, el mes en curso) con lo que la sesión puede ver. Va antes de
+    `/gastos/{gid}`: si no, «contable.xlsx» se leería como número de gasto."""
+    mes = contable.mes_en_curso()
+    desde, hasta = desde or mes[0], hasta or mes[1]
+    try:
+        contenido = contable.libro(_yo(), desde, hasta, proyecto or None,
+                                   enlace_base=contable.origen_publico(str(request.base_url)))
+    except (ValueError, contable.SinPermiso) as e:
+        return RedirectResponse(f"/gastos?aviso={quote(str(e))}", status_code=303)
+    contable.registrar_descarga(desde, hasta, proyecto or None, "web")
+    return Response(contenido, media_type=contable.TIPO_XLSX, headers=contable.cabeceras_descarga(desde, hasta, proyecto or None))
 
 
 @router.post("/gastos/cargar")

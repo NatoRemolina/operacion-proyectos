@@ -16,7 +16,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .. import config, db
-from . import acceso, consultas, exportacion, viajes
+from . import acceso, consultas, eventos, exportacion, viajes
 
 ESTADOS_LIBRO = ("aprobado", "aprobado_auto")
 TIPO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -78,7 +78,19 @@ _MAXIMO_TEXTO = 32000   # una celda de Excel admite 32.767 caracteres
 
 
 class SinPermiso(Exception):
-    """La persona pidió el libro de un proyecto que no gestiona."""
+    """La persona pidió el libro de un proyecto que no gestiona (o que no existe: no se le revela cuál de las dos)."""
+
+
+class ProyectoInexistente(ValueError):
+    """Administración pidió el libro de un proyecto que no existe."""
+
+
+class FechaInvalida(ValueError):
+    """Una fecha del periodo no se entiende o el periodo está al revés. `campo` es 'desde' o 'hasta'."""
+
+    def __init__(self, campo: str, mensaje: str):
+        super().__init__(mensaje)
+        self.campo = campo
 
 
 # ---------- mapa de cuentas ----------
@@ -108,19 +120,19 @@ def mes_en_curso(hoy: date | None = None) -> tuple[str, str]:
     return date(hoy.year, hoy.month, 1).isoformat(), date(hoy.year, hoy.month, ultimo).isoformat()
 
 
-def _fecha(valor, cual: str) -> date:
+def _fecha(valor, campo: str, cual: str) -> date:
     if isinstance(valor, date):
         return valor
     try:
         return date.fromisoformat(str(valor or "").strip())
     except ValueError as e:
-        raise ValueError(f"La fecha {cual} debe tener la forma AAAA-MM-DD, por ejemplo 2026-11-01.") from e
+        raise FechaInvalida(campo, f"La fecha {cual} debe tener la forma AAAA-MM-DD, por ejemplo 2026-11-01.") from e
 
 
 def periodo(desde, hasta) -> tuple[date, date]:
-    inicio, fin = _fecha(desde, "inicial"), _fecha(hasta, "final")
+    inicio, fin = _fecha(desde, "desde", "inicial"), _fecha(hasta, "hasta", "final")
     if fin < inicio:
-        raise ValueError("La fecha final no puede ser anterior a la inicial.")
+        raise FechaInvalida("hasta", "La fecha final no puede ser anterior a la inicial.")
     return inicio, fin
 
 
@@ -134,14 +146,29 @@ def origen_publico(de_la_peticion: str = "") -> str:
     return (config.ORIGENES_WEB[0] if config.ORIGENES_WEB else de_la_peticion).rstrip("/")
 
 
+def cabeceras_descarga(desde, hasta, proyecto_id: int | None = None) -> dict:
+    """Las de la página y la API: se descarga con su nombre, sin adivinar el tipo y sin quedar en caché."""
+    return {"Content-Disposition": f'attachment; filename="{nombre_archivo(desde, hasta, proyecto_id)}"',
+            "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
+
+
+def registrar_descarga(desde, hasta, proyecto_id: int | None, canal: str):
+    """Deja el hecho de la descarga. Lo llaman las rutas; el guion de consola no, porque corre en solo lectura."""
+    inicio, fin = periodo(desde, hasta)
+    p = db.uno("select nombre from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
+    eventos.registrar("contabilidad", proyecto_id, "libro contable descargado",
+                      f"{inicio} a {fin} · {p['nombre'] if p else 'todos los proyectos a su alcance'} · {canal}")
+
+
 def _proyecto(usuario: dict, proyecto_id: int | None) -> dict | None:
     if proyecto_id is None:
         return None
+    # El permiso va antes que la existencia: a quien no gestiona el proyecto no se le dice si existe
+    if not acceso.puede_ver(usuario, {"proyecto_id": proyecto_id}):
+        raise SinPermiso("El libro contable de un proyecto lo descargan administración y quien gestiona el proyecto.")
     p = db.uno("select id, nombre from proyectos where id=:i", i=proyecto_id)
     if not p:
-        raise ValueError("Ese proyecto no existe.")
-    if not acceso.puede_ver(usuario, {"proyecto_id": p["id"]}):
-        raise SinPermiso("El libro contable de un proyecto lo descargan administración y quien gestiona el proyecto.")
+        raise ProyectoInexistente("Ese proyecto no existe.")
     return p
 
 
@@ -336,7 +363,8 @@ def _hoja_resumen(hoja, usuario: dict, datos: list[dict], mapa: dict[str, str], 
 def libro(usuario: dict, desde, hasta, proyecto_id: int | None = None, estados=ESTADOS_LIBRO, enlace_base: str = "") -> bytes:
     """El `.xlsx` del periodo [desde, hasta] (por la fecha del recibo) con lo que la persona puede ver.
 
-    Lanza ValueError (fechas, estado o proyecto inexistente) o SinPermiso (proyecto que no gestiona), con un texto para la persona.
+    Lanza FechaInvalida, ProyectoInexistente (ambas ValueError, como un estado que no existe) o SinPermiso (proyecto
+    que no gestiona), con un texto para la persona.
     """
     inicio, fin = periodo(desde, hasta)
     estados = tuple(estados)

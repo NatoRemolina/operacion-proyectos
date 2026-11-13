@@ -285,3 +285,121 @@ def test_la_semilla_siembra_el_mapa_de_cuentas_si_falta():
 def test_el_mes_en_curso_va_del_primero_al_ultimo_dia():
     assert contable.mes_en_curso(date(2026, 2, 14)) == ("2026-02-01", "2026-02-28")
     assert contable.mes_en_curso(date(2026, 12, 31)) == ("2026-12-01", "2026-12-31")
+
+
+# ---------- permisos que no revelan qué proyectos existen ----------
+def test_un_proyecto_ajeno_o_inexistente_da_el_mismo_permiso_negado(mundo):
+    with pytest.raises(contable.SinPermiso):
+        contable.libro(mundo["g"], DESDE, HASTA, proyecto_id=987654)
+    with pytest.raises(contable.ProyectoInexistente):
+        contable.libro(mundo["admin"], DESDE, HASTA, proyecto_id=987654)
+
+
+@pytest.mark.parametrize("desde,hasta,campo", [("marzo", "2031-03-31", "desde"), ("2031-03-01", "", "hasta"),
+                                               ("2031-03-31", "2031-03-01", "hasta")])
+def test_una_fecha_invalida_dice_que_campo_falla(mundo, desde, hasta, campo):
+    with pytest.raises(contable.FechaInvalida) as e:
+        contable.libro(mundo["admin"], desde, hasta)
+    assert e.value.campo == campo
+
+
+# ---------- rutas: página (Jinja) y API v1 ----------
+CLAVE = "clave-contable-2031"
+V1 = "/api/v1"
+
+
+@pytest.fixture(scope="module")
+def sesiones(mundo):
+    from conftest import _con_sesion
+    return {"a": _con_sesion("contable-a@demo.local", CLAVE), "g": _con_sesion("contable-gestor@demo.local", CLAVE),
+            "admin": _con_sesion("admin@demo.local", "demo-admin-2026")}
+
+
+def test_la_pagina_descarga_el_libro_con_el_alcance_de_la_sesion(mundo, sesiones):
+    r = sesiones["a"].get("/gastos/contable.xlsx", params={"desde": DESDE, "hasta": HASTA})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == contable.TIPO_XLSX
+    assert r.headers["content-disposition"] == 'attachment; filename="libro_contable_2031-03-01_2031-03-31.xlsx"'
+    assert r.headers["cache-control"] == "private, no-store"
+    assert _ids(r.content) == {mundo["vuelo_a"], mundo["hotel_a"]}
+    soporte = _filas(r.content)[0]["Soporte en la plataforma"]
+    assert soporte.startswith("http") and soporte.endswith(f"/gastos/{mundo['vuelo_a']}")
+
+
+def test_la_pagina_filtra_por_proyecto_solo_si_lo_gestiona(mundo, sesiones):
+    r = sesiones["g"].get("/gastos/contable.xlsx", params={"desde": DESDE, "hasta": HASTA, "proyecto": P_A})
+    assert r.status_code == 200 and _ids(r.content) == {mundo["vuelo_a"], mundo["comida_b"]}
+    assert r.headers["content-disposition"].endswith(f'_proyecto_{P_A}.xlsx"')
+    ajeno = sesiones["g"].get("/gastos/contable.xlsx", params={"desde": DESDE, "hasta": HASTA, "proyecto": P_B},
+                              follow_redirects=False)
+    assert ajeno.status_code == 303 and ajeno.headers["location"].startswith("/gastos?aviso=")
+
+
+def test_la_pagina_explica_una_fecha_invalida_sin_romperse(sesiones):
+    r = sesiones["a"].get("/gastos/contable.xlsx", params={"desde": HASTA, "hasta": DESDE}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/gastos?aviso=")
+    assert "fecha final" in sesiones["a"].get(r.headers["location"]).text
+
+
+def test_sin_fechas_la_pagina_entrega_el_mes_en_curso(sesiones):
+    desde, hasta = contable.mes_en_curso()
+    r = sesiones["a"].get("/gastos/contable.xlsx")
+    assert r.status_code == 200
+    assert r.headers["content-disposition"] == f'attachment; filename="libro_contable_{desde}_{hasta}.xlsx"'
+
+
+def test_sin_sesion_la_pagina_pide_ingresar(anonimo):
+    r = anonimo.get("/gastos/contable.xlsx", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/entrar")
+
+
+def test_la_descarga_deja_su_evento(mundo, sesiones):
+    sesiones["admin"].get("/gastos/contable.xlsx", params={"desde": DESDE, "hasta": HASTA, "proyecto": P_A})
+    e = db.uno("select * from eventos where entidad='contabilidad' order by id desc")
+    assert e["paso"] == "libro contable descargado" and DESDE in e["detalle"] and "Obra contable Norte" in e["detalle"]
+    assert e["usuario_id"] == mundo["admin"]["id"]
+
+
+def test_la_lista_de_gastos_y_el_tablero_ofrecen_el_excel_contable(cliente, gestor):
+    desde, hasta = contable.mes_en_curso()
+    lista = cliente.get("/gastos").text
+    assert 'action="/gastos/contable.xlsx"' in lista and "Excel contable" in lista
+    assert f'name="desde" value="{desde}"' in lista and f'name="hasta" value="{hasta}"' in lista
+    tablero = gestor.get("/proyectos/1").text
+    assert 'action="/gastos/contable.xlsx"' in tablero and 'name="proyecto" value="1"' in tablero
+    assert "Excel contable" in tablero
+
+
+def test_la_api_entrega_el_xlsx_con_su_nombre(mundo, sesiones):
+    r = sesiones["g"].get(f"{V1}/gastos/contable", params={"desde": DESDE, "hasta": HASTA, "proyecto_id": P_A})
+    assert r.status_code == 200 and r.headers["content-type"] == contable.TIPO_XLSX
+    assert r.headers["content-disposition"] == f'attachment; filename="libro_contable_{DESDE}_{HASTA}_proyecto_{P_A}.xlsx"'
+    assert r.headers["cache-control"] == "private, no-store"
+    assert _ids(r.content) == {mundo["vuelo_a"], mundo["comida_b"]}
+    assert _ids(sesiones["a"].get(f"{V1}/gastos/contable", params={"desde": DESDE, "hasta": HASTA}).content) == \
+        {mundo["vuelo_a"], mundo["hotel_a"]}
+
+
+def _error_api(r, estado: int, codigo: str) -> dict:
+    assert r.status_code == estado, r.text
+    cuerpo = r.json()
+    assert cuerpo["error"]["code"] == codigo and cuerpo["error"]["message"]
+    return cuerpo["error"]
+
+
+def test_la_api_responde_401_sin_sesion(anonimo):
+    _error_api(anonimo.get(f"{V1}/gastos/contable", params={"desde": DESDE, "hasta": HASTA}), 401, "UNAUTHENTICATED")
+
+
+def test_la_api_responde_403_con_un_proyecto_que_no_gestiona(sesiones):
+    for quien, proyecto in (("g", P_B), ("g", 987654), ("a", P_A)):
+        _error_api(sesiones[quien].get(f"{V1}/gastos/contable",
+                                       params={"desde": DESDE, "hasta": HASTA, "proyecto_id": proyecto}), 403, "FORBIDDEN")
+
+
+def test_la_api_valida_fechas_y_proyecto(sesiones):
+    error = _error_api(sesiones["a"].get(f"{V1}/gastos/contable", params={"desde": "marzo", "hasta": HASTA}),
+                       422, "VALIDATION_ERROR")
+    assert "desde" in error["fields"]
+    _error_api(sesiones["admin"].get(f"{V1}/gastos/contable",
+                                     params={"desde": DESDE, "hasta": HASTA, "proyecto_id": 987654}), 404, "NOT_FOUND")
