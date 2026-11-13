@@ -500,6 +500,15 @@ def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int) -> dict:
         eventos.registrar("solicitud", sid, "página oficial abierta", f"{numeros} (opción {vuelo_id}): {texto}"[:500],
                           f"api v1 · {usuario['nombre']}")
 
+    try:
+        return _destino_vendedor(usuario, sol, vuelo, sid, vuelo_id, google, anotar)
+    except Exception as e:  # noqa: BLE001 (una respuesta rara o un fallo no deja a la persona en un 500: va a Google Flights)
+        anotar(f"error al preparar el enlace ({type(e).__name__}) · Google Flights")
+        return google
+
+
+def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id: int, google: dict, anotar) -> dict:
+    """El cuerpo de `enlace_vendedor`: tope, regreso, opciones de reserva y la elegida (aerolínea primero)."""
     if not config.SERPAPI_KEY:
         anotar("sin clave del buscador · Google Flights")
         return google
@@ -518,7 +527,7 @@ def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int) -> dict:
             return google
     regreso = precios.vuelo_regreso(vuelo, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid)
     opciones = precios.reserva_en_vivo(vuelo, regreso, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid) if regreso else []
-    validas = [x for x in opciones if _salida_permitida(x["url"])]
+    validas = [x for x in opciones if _salida_permitida(x["url"]) and isinstance(x["post_data"], str)]
     elegida = next((x for x in validas if x["aerolinea"]), validas[0] if validas else None)
     if not elegida:
         anotar(f"{'sin opciones de reserva' if not opciones else 'vendedor fuera de la lista blanca'} · Google Flights")

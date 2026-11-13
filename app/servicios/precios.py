@@ -511,17 +511,26 @@ def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[
     except Exception as e:  # noqa: BLE001 (se anota solo el tipo: el mensaje podría traer datos de la reserva)
         _anotar("vendedor", nombre, "fallida", solicitud_id, inicio, error=type(e).__name__)
         return []
+    if not isinstance(datos, dict):
+        _anotar("vendedor", nombre, "fallida", solicitud_id, inicio, error="respuesta que no es un objeto")
+        return []
     _guardar(nombre, datos)
     opciones = []
-    for o in datos.get("booking_options") or []:
-        t = (o.get("together") or o.get("departing") or {}) if isinstance(o, dict) else {}
+    lista = datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []
+    for o in lista:   # cada campo se comprueba: una respuesta rara deja la opción fuera, nunca rompe
+        t = (o.get("together") or o.get("departing")) if isinstance(o, dict) else None
+        if not isinstance(t, dict):
+            continue
         pedido = t.get("booking_request") if isinstance(t.get("booking_request"), dict) else {}
-        opciones.append({"vendedor": t.get("book_with") or "el vendedor", "aerolinea": bool(t.get("airline")),
-                         "precio": t.get("price"), "tarifa": t.get("option_title") or "Tarifa",
-                         "notas": [x for x in t.get("extensions") or [] if isinstance(x, str)],
-                         "equipaje": [x for x in t.get("baggage_prices") or [] if isinstance(x, str)],
-                         "url": pedido.get("url"), "post_data": pedido.get("post_data")})
-    _anotar("vendedor", nombre, "en vivo", solicitud_id, inicio, [o["precio"] for o in opciones if o["precio"]])
+        precio = t.get("price") if isinstance(t.get("price"), int | float) and not isinstance(t.get("price"), bool) else None
+        opciones.append({"vendedor": str(t.get("book_with") or "el vendedor")[:60], "aerolinea": t.get("airline") is True,
+                         "precio": precio, "tarifa": str(t.get("option_title") or "Tarifa")[:60],
+                         "notas": [x for x in t.get("extensions") or [] if isinstance(x, str)] if isinstance(t.get("extensions"), list) else [],
+                         "equipaje": [x for x in t.get("baggage_prices") or [] if isinstance(x, str)]
+                         if isinstance(t.get("baggage_prices"), list) else [],
+                         "url": pedido.get("url") if isinstance(pedido.get("url"), str) else None,
+                         "post_data": pedido.get("post_data") if isinstance(pedido.get("post_data"), str) else None})
+    _anotar("vendedor", nombre, "en vivo", solicitud_id, inicio, [o["precio"] for o in opciones if o["precio"] is not None])
     return opciones
 
 

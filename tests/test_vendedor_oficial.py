@@ -167,3 +167,35 @@ def test_permisos_todas_las_personas_que_ven_la_cotizacion(piloto, piloto2, gest
 def test_las_reglas_del_tope_se_crean_con_la_migracion():
     db.ejecutar("delete from reglas where clave='enlace_vendedor_persona_dia'")
     assert cotizacion.asegurar_reglas_vendedor() == 1 and cotizacion.asegurar_reglas_vendedor() == 0
+
+
+# ---------- ronda 1 · punto 17: una respuesta rara del buscador manda a Google Flights ----------
+@pytest.mark.parametrize("respuesta", [
+    {"booking_options": [{"together": "texto"}]},
+    {"booking_options": ["texto", 7, None]},
+    {"booking_options": [{"together": {"book_with": 123, "airline": True, "price": 458,
+                                       "booking_request": dict(url=SECRETO_URL, post_data={"u": "dict"})}}]},
+    {"booking_options": [{"together": {"book_with": "American", "booking_request": "texto"}}]},
+    ["no", "es", "un", "objeto"],
+    "texto",
+])
+def test_una_respuesta_rara_del_buscador_va_a_google_flights(piloto, buscador, respuesta):
+    _, respuestas, _ = buscador
+    respuestas["reserva"] = respuesta
+    c = _vegas(piloto)
+    vuelo = c["vuelos"][0]
+    r = _abrir(piloto, c["id"], vuelo["id"])
+    assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"], r.text
+
+
+def test_un_fallo_inesperado_va_a_google_flights_con_nota(piloto, buscador, monkeypatch):
+    def roto(*a, **k):
+        raise RuntimeError("fallo inesperado")
+
+    monkeypatch.setattr(precios, "vuelo_regreso", roto)
+    c = _vegas(piloto)
+    vuelo = c["vuelos"][0]
+    r = _abrir(piloto, c["id"], vuelo["id"])
+    assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"]
+    ev = db.uno("select detalle from eventos where entidad_id=:i and paso='página oficial abierta' order by id desc", i=c["id"])
+    assert ev["detalle"].endswith("error al preparar el enlace (RuntimeError) · Google Flights")
