@@ -272,6 +272,27 @@ describe("Revisar un gasto", () => {
     expect(leido).not.toHaveTextContent("transporte_terrestre");
   });
 
+  it("si las reglas no dejan aprobarlo, el aviso ofrece aprobar con excepción ahí mismo (motivo de 8 o más)", async () => {
+    const usuario = userEvent.setup();
+    let llamadas = 0;
+    const { revisar } = montar({
+      revisar: async (_id, r) => {
+        llamadas += 1;
+        return llamadas === 1
+          ? { ...EN_REVISION, estado: "revision", estado_texto: "En revisión", version: 3, alertas: ["Posible duplicado del gasto #9."] }
+          : { ...EN_REVISION, estado: r.accion === "excepcion" ? "aprobado" : "revision", estado_texto: "Aprobado", version: 4 };
+      },
+    });
+    await usuario.click(await screen.findByRole("button", { name: "Aprobar gasto" }));
+    const aviso = await screen.findByRole("alert");
+    await usuario.click(within(aviso).getByRole("button", { name: "Aprobar con excepción" }));
+    const dialogo = screen.getByRole("dialog", { name: "Aprobar con excepción" });
+    await usuario.type(within(dialogo).getByLabelText("Motivo de la excepción"), "Dos peajes iguales en el mismo día");
+    await usuario.click(within(dialogo).getByRole("button", { name: "Aprobar con excepción" }));
+    expect(revisar).toHaveBeenLastCalledWith(123, { version: 3, accion: "excepcion", motivo: "Dos peajes iguales en el mismo día" });
+    expect(await within(screen.getByRole("status", { name: "Avisos" })).findByText(/aprobado con excepción/)).toBeInTheDocument();
+  });
+
   it("si llegó por correo, muestra el remitente y el asunto junto al recibo, como la ficha", async () => {
     montar({
       gastos: [

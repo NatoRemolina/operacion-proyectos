@@ -399,7 +399,13 @@ function RevisionCompleta({
       {sigueEnRevision ? (
         <Alerta tono="aviso" rol="alert" titulo="No se aprobó: las reglas todavía no lo dejan pasar">
           <p>
-            Mira «Por qué va a revisión». Corrige los datos abajo y vuelve a aprobar, o usa «Aprobar con excepción» si el gasto es legítimo.
+            Mira «Por qué va a revisión». Corrige los datos abajo y vuelve a aprobar o, si el gasto es legítimo, apruébalo con una excepción
+            justificada: el motivo queda en la auditoría.
+          </p>
+          <p className="mt-2">
+            <Boton variante="secundario" onClick={() => abrir("excepcion")} disabled={ocupado}>
+              Aprobar con excepción
+            </Boton>
           </p>
         </Alerta>
       ) : null}
