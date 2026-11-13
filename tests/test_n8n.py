@@ -18,12 +18,14 @@ from datos import avisos as consola_avisos
 from datos import claves_servicio as consola
 
 SECRETO = "secreto-de-prueba-n8n"
+SECRETO_ENLACES = "secreto-de-enlaces-solo-del-servidor"
 
 
 @pytest.fixture(autouse=True)
 def _secreto(monkeypatch):
     """Secreto para firmar; sin N8N_WEBHOOK_URL el aviso sigue apagado salvo en las pruebas que lo encienden."""
     monkeypatch.setenv("N8N_WEBHOOK_SECRETO", SECRETO)
+    monkeypatch.setenv("SOPORTE_ENLACE_SECRETO", SECRETO_ENLACES)
     monkeypatch.delenv("N8N_WEBHOOK_URL", raising=False)
     monkeypatch.setenv("URL_PUBLICA", "http://testserver")
 
@@ -116,9 +118,9 @@ def test_enlace_alterado_vencido_o_ausente_no_sirve(cliente, anonimo, monkeypatc
     assert codigo(f"{V1}/servicio/gastos/{otro}/soporte?vence={vence}&firma={firma}") == (403, "LINK_INVALID")  # otro gasto
     vencido = _ruta(avisos.enlace_soporte(gid, ahora=int(time.time()) - avisos.VIGENCIA_ENLACE - 1))
     assert codigo(vencido) == (403, "LINK_EXPIRED")
-    monkeypatch.setenv("N8N_WEBHOOK_SECRETO", "otro-secreto")                                  # rotar el secreto los invalida
+    monkeypatch.setenv("SOPORTE_ENLACE_SECRETO", "otro-secreto")                               # rotar el secreto los invalida
     assert codigo(bueno) == (403, "LINK_INVALID")
-    monkeypatch.setenv("N8N_WEBHOOK_SECRETO", SECRETO)
+    monkeypatch.setenv("SOPORTE_ENLACE_SECRETO", SECRETO_ENLACES)
     assert anonimo.get(bueno, headers=cab).status_code == 200
     assert anonimo.get(bueno).status_code == 401                                               # el enlace sin la clave no basta
 
@@ -409,3 +411,28 @@ def test_los_nodos_del_flujo_verifican_preparan_y_arman_la_fila():
     r = subprocess.run([shutil.which("node"), str(arnes), str(flujo)], capture_output=True, text=True, timeout=60)  # noqa: S603
     assert r.returncode == 0, r.stdout + r.stderr
     assert r.stdout.strip().endswith("todo bien")
+
+
+def test_quien_recibe_el_aviso_no_puede_fabricar_enlaces(cliente, anonimo):
+    """n8n conoce N8N_WEBHOOK_SECRETO (verifica el aviso con él); los enlaces se firman con un secreto que solo tiene
+    el servidor, así que con la clave de servicio y el secreto del aviso no se recorre el soporte de otros gastos."""
+    import hashlib
+    import hmac
+    gid = _gasto_con_soporte(cliente)
+    _, clave = claves_servicio.crear("n8n", ["soportes:leer"])
+    vence = int(time.time()) + 300
+    for raiz in (SECRETO.encode(), hmac.new(SECRETO.encode(), b"enlace-soporte-v1", hashlib.sha256).digest()):
+        firma = hmac.new(raiz, f"soporte:{gid}:{vence}".encode(), hashlib.sha256).hexdigest()
+        r = anonimo.get(f"{V1}/servicio/gastos/{gid}/soporte?vence={vence}&firma={firma}",
+                        headers={"X-Clave-Servicio": clave})
+        assert (r.status_code, r.json()["error"]["code"]) == (403, "LINK_INVALID")
+
+
+def test_sin_secreto_de_enlaces_los_avisos_quedan_apagados_y_ningun_enlace_sirve(cliente, anonimo, monkeypatch):
+    gid = _gasto_con_soporte(cliente)
+    bueno = _url(gid)
+    monkeypatch.setenv("N8N_WEBHOOK_URL", "http://n8n.invalid/webhook")
+    monkeypatch.delenv("SOPORTE_ENLACE_SECRETO")
+    assert not avisos.activo()
+    q = parse_qs(urlsplit(bueno).query)
+    assert avisos.enlace_valido(gid, int(q["vence"][0]), q["firma"][0]) == "LINK_INVALID"

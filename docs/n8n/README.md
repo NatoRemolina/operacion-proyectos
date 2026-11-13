@@ -26,7 +26,7 @@ Plataforma ──POST firmado──▶ n8n: Webhook → Configuración → Verif
    - Cuerpo: `evento`, `entrega`, `gasto_id`, `viaje`, `proyecto`, `persona` (código, no el nombre), `fecha`, `comercio`, `categoria`, `total`, `moneda`, `total_usd`, `estado`, `alertas`, `enlace_gasto`, `lectura`, `enlace_soporte` y `enlace_vence_en_segundos`. El archivo no viaja en el aviso: se descarga con el enlace.
    - `lectura` es la lectura original del modelo: comercio, fecha, categoría, base, impuesto, propina, total, moneda, método de pago, canal de reserva, ciudad, **número de factura**, **identificación tributaria del proveedor** (NIT, RUT, NIF, VAT o EIN), **líneas de detalle** (`descripcion`, `cantidad`, `total`), confianza y dudas. `null` si la lectura falló. Todos los números viajan como texto con dos decimales (`"119.00"`), para que la firma se verifique igual en JavaScript.
 2. **Verificar firma** (nodo Code) rechaza el aviso si la firma no coincide, si tiene más de 5 minutos, si el enlace no apunta a la plataforma configurada (así la clave de servicio nunca viaja a otro sitio) o si esa entrega ya se procesó.
-3. **Descargar soporte**: GET al `enlace_soporte` (vence a los 15 minutos) con la cabecera `X-Clave-Servicio`. La plataforma exige las dos cosas: un enlace filtrado no sirve sin la clave, y la clave sola no recorre los soportes por número. La descarga queda en la bitácora del gasto con el nombre de la clave («n8n»).
+3. **Descargar soporte**: GET al `enlace_soporte` (vence a los 15 minutos) con la cabecera `X-Clave-Servicio`. La plataforma exige las dos cosas: un enlace filtrado no sirve sin la clave, y la clave sola no recorre los soportes por número. El enlace se firma con un secreto que solo tiene la plataforma (`SOPORTE_ENLACE_SECRETO`), distinto del secreto del aviso que conoce n8n: con el secreto del aviso y la clave tampoco se pueden fabricar enlaces a otros gastos. La descarga queda en la bitácora del gasto con el nombre de la clave («n8n»).
 4. **Carpetas**: para cada nivel (raíz, proyecto, viaje, mes) busca la carpeta por nombre exacto dentro de la anterior y, si no existe, la crea.
 5. **Subir a Drive** con el nombre legible.
 6. **Preparar lectura** y **Subir lectura**: el gasto y su `lectura` como JSON, en la misma carpeta y con el mismo nombre base (`… · lectura.json`).
@@ -40,7 +40,7 @@ El flujo ya está creado en la instancia de n8n, **inactivo**, con el nombre «I
 
 ### 1. Clave de servicio (en la plataforma)
 
-Desde el equipo, con la conexión a la base de la plataforma:
+Desde el equipo, con la conexión a la base de la plataforma, **después** de migrarla con la semilla (ver `docs/despliegue.md`): la migración es la que activa la seguridad por filas de `claves_servicio` y `avisos_salientes`; si la clave se creara antes, esas tablas nacerían sin ella.
 
 ```bash
 python -m datos.claves_servicio crear n8n --permiso soportes:leer
@@ -62,6 +62,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 |---|---|---|
 | `N8N_WEBHOOK_URL` | La *Production URL* del nodo «Aviso gasto.registrado»: `https://<instancia>.app.n8n.cloud/webhook/inflight/gasto-registrado` | Avisos apagados |
 | `N8N_WEBHOOK_SECRETO` | El secreto del paso 2 | Avisos apagados |
+| `SOPORTE_ENLACE_SECRETO` | Otro valor aleatorio (se genera igual que el del paso 2), **solo** en la plataforma: nunca va a n8n | Avisos apagados y ningún enlace al soporte sirve |
 | `URL_PUBLICA` | `https://software.nataliaremolinarodriguez.com` (sin barra final) | En local se usa `http://localhost:8000`; fuera de local, avisos apagados |
 
 En la nube van en el secreto de la función: `infra/poblar_secreto.py` ya las incluye en `CLAVES`, así que basta con tenerlas en el archivo de origen al poblar el secreto.
@@ -92,7 +93,7 @@ Registrar un gasto con un recibo de ejemplo y comprobar:
 
 - La clave de servicio se guarda como huella (SHA-256), tiene un solo permiso (`soportes:leer`) y solo sirve en `/api/v1/servicio/…`: no abre ninguna otra parte de la API.
 - La firma cubre la hora y el cuerpo exacto; n8n rechaza avisos de más de 5 minutos y entregas repetidas (recuerda las últimas 500).
-- El enlace al soporte se firma con una clave derivada del secreto del aviso: rotar `N8N_WEBHOOK_SECRETO` invalida los enlaces pendientes.
+- El enlace al soporte se firma con `SOPORTE_ENLACE_SECRETO`, que solo tiene la plataforma: rotarlo invalida los enlaces pendientes. Rotar `N8N_WEBHOOK_SECRETO` exige cambiarlo también en n8n.
 - Para rotar la clave de servicio: crear otra, cambiarla en la credencial de n8n y revocar la anterior.
 - **Datos personales que salen a Drive:** el soporte original (puede traer el nombre de quien viaja o del huésped), la lectura en JSON y la fila de la hoja: código de la persona (no su nombre), comercios, importes, identificación tributaria del proveedor, método de pago (por ejemplo «Visa 4417», con los últimos dígitos de la tarjeta) y las descripciones de las líneas, que pueden nombrar a huéspedes. Compartir la carpeta y la hoja solo con contabilidad.
 - **Lo que guarda n8n:** el flujo no guarda las ejecuciones exitosas (`saveDataSuccessExecution: none`), porque llevarían la lectura y el archivo; las fallidas sí, para poder revisarlas, y n8n Cloud las borra según la retención del plan.

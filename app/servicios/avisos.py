@@ -2,7 +2,9 @@
 
 Configuración (sin `N8N_WEBHOOK_URL` o sin `N8N_WEBHOOK_SECRETO` queda apagado y nada cambia):
 - `N8N_WEBHOOK_URL`: adónde se manda el aviso (el webhook de producción del flujo en n8n).
-- `N8N_WEBHOOK_SECRETO`: secreto compartido para la firma; también firma los enlaces al soporte.
+- `N8N_WEBHOOK_SECRETO`: secreto compartido para la firma del aviso (n8n lo conoce para verificarlo).
+- `SOPORTE_ENLACE_SECRETO`: secreto que solo tiene el servidor y firma los enlaces temporales al soporte; sin él el
+  aviso queda apagado.
 - `URL_PUBLICA`: dirección pública de la plataforma, para armar el enlace al soporte (en local, http://localhost:8000).
 
 Cada aviso es un POST JSON con estas cabeceras:
@@ -69,12 +71,16 @@ def _secreto() -> bytes:
     return os.getenv("N8N_WEBHOOK_SECRETO", "").strip().encode()
 
 
+def _secreto_enlaces() -> bytes:
+    return os.getenv("SOPORTE_ENLACE_SECRETO", "").strip().encode()
+
+
 def url_publica() -> str:
     return (os.getenv("URL_PUBLICA", "").strip() or ("http://localhost:8000" if config.LOCAL else "")).rstrip("/")
 
 
 def activo() -> bool:
-    return bool(_destino() and _secreto() and url_publica())
+    return bool(_destino() and _secreto() and _secreto_enlaces() and url_publica())
 
 
 # ---------- firmas ----------
@@ -85,8 +91,9 @@ def firmar(cuerpo: bytes, momento: int, secreto: bytes | None = None) -> str:
 
 
 def _clave_enlaces() -> bytes:
-    # Derivada del secreto del aviso: quien recibe el aviso no puede fabricar enlaces, y rotar el secreto los invalida
-    return hmac.new(_secreto(), b"enlace-soporte-v1", hashlib.sha256).digest()
+    # Del secreto que solo tiene el servidor: quien recibe el aviso (y conoce su secreto) no puede fabricar enlaces a
+    # otros soportes. Rotar SOPORTE_ENLACE_SECRETO invalida los enlaces pendientes.
+    return hmac.new(_secreto_enlaces(), b"enlace-soporte-v1", hashlib.sha256).digest()
 
 
 def _firma_enlace(gasto_id: int, vence: int) -> str:
@@ -101,7 +108,7 @@ def enlace_soporte(gasto_id: int, ahora: int | None = None) -> str:
 
 def enlace_valido(gasto_id: int, vence: int | None, firma: str | None) -> str | None:
     """None si el enlace sirve; si no, el motivo: 'LINK_INVALID' o 'LINK_EXPIRED'."""
-    if not _secreto() or vence is None or not firma:
+    if not _secreto_enlaces() or vence is None or not firma:
         return "LINK_INVALID"
     if not hmac.compare_digest(firma.encode(), _firma_enlace(gasto_id, vence).encode()):
         return "LINK_INVALID"
