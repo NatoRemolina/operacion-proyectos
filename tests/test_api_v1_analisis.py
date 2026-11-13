@@ -185,3 +185,54 @@ def test_cada_vuelo_enlaza_a_su_pagina_y_el_clic_queda_con_el_vuelo(piloto):
     otra = piloto.post(ruta, json={"destino": "vuelos", "vuelo_id": c["hoteles"][0]["id"] if c["hoteles"] else 999999},
                        headers=_csrf(piloto))
     assert otra.status_code == 422 and otra.json()["error"]["fields"] == {"vuelo_id": "Ese vuelo no es de esta cotización."}
+
+
+# ---------- ronda 1 · punto 1: topes y «una a la vez» sin carrera ----------
+def test_veinte_pedidos_simultaneos_no_pasan_el_tope_ni_leen_dos_a_la_vez(piloto, doble, monkeypatch):
+    import threading
+    import time
+    llamadas, respuesta = doble
+    c = _cotizar(piloto)
+    yo = db.uno("select * from usuarios where correo='piloto@demo.local'")
+    opciones = [v["id"] for v in c["vuelos"] + c["descartados"]]
+    en_curso, maximo, cerrojo = [0], [0], threading.Lock()
+
+    def lento(url):
+        with cerrojo:
+            en_curso[0] += 1
+            maximo[0] = max(maximo[0], en_curso[0])
+        time.sleep(0.15)
+        with cerrojo:
+            en_curso[0] -= 1
+        llamadas.append(url)
+        return dict(respuesta)
+
+    monkeypatch.setattr(analizador, "_llamar", lento)
+    monkeypatch.setattr(analizador, "topes", lambda: (100, 3))
+    resultados, errores = [], []
+
+    def pedir(i):
+        try:
+            resultados.append(analizador.solicitar(yo, c["id"], opciones[i % len(opciones)]))
+        except Exception as e:  # noqa: BLE001
+            errores.append(e)
+
+    hilos = [threading.Thread(target=pedir, args=(i,)) for i in range(20)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    assert errores == []
+    assert maximo[0] == 1                                                   # nunca dos lecturas a la vez
+    assert db.uno("select count(*) n from analisis_vuelo")["n"] <= 3        # el tope total no se pasa
+    assert db.uno("select count(*) n from analisis_vuelo where estado='pendiente'")["n"] == 0
+    assert {r["motivo"] for r in resultados if r["estado"] == "no_disponible"} <= {analizador.OCUPADO, analizador.TOPE_TOTAL_TEXTO}
+
+
+def test_una_lectura_que_no_termino_se_da_por_fallida_y_libera_el_turno(piloto, doble):
+    c = _cotizar(piloto)
+    vieja = db.insertar("analisis_vuelo", opcion_id=c["vuelos"][1]["id"], solicitud_id=c["id"], clave="x",
+                        url="https://www.google.com/travel/flights", estado="pendiente", creado="2026-01-01 00:00:00")
+    assert _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()["estado"] == "listo"
+    f = db.uno("select estado, motivo from analisis_vuelo where id=:i", i=vieja)
+    assert (f["estado"], f["motivo"]) == ("fallido", analizador.NO_TERMINO)

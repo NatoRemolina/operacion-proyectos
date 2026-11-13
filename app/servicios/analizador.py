@@ -19,9 +19,9 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import Column, Integer, Text
+from sqlalchemy import Column, Integer, Text, text
 
-from .. import db
+from .. import config, db
 from . import almacen, costo, eventos, precios
 
 analisis_vuelo = db._tabla(
@@ -166,6 +166,48 @@ def no_disponible(motivo: str) -> dict:
             "creado": None, "terminado": None, "duracion_ms": None, "reutilizado": False}
 
 
+BLOQUEO_TURNO = 7_311_803   # clave propia del cerrojo de transacción (PostgreSQL) que pone en fila las reservas de turno
+NO_TERMINO = "la lectura no terminó"
+
+
+def _reservar(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict) -> dict:
+    """Toma el turno de lectura en fila con las demás reservas: cuenta los topes, comprueba que no haya otra lectura en
+    curso e inserta la fila `pendiente` en la misma transacción. En PostgreSQL con un cerrojo de transacción (nunca de
+    sesión: el agrupador reparte las conexiones); en SQLite la transacción ya toma el cerrojo de escritura.
+
+    Devuelve `{"id", "url"}` con el turno tomado; si no, la lectura reutilizada o `no_disponible` con su motivo."""
+    try:
+        url = enlace_itinerario(sol, vuelo)
+    except ValueError:
+        url = None
+    with db.transaccion() as c:
+        if not config.ES_SQLITE:
+            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_TURNO})
+        # una lectura que se quedó a medias (caída del proceso) no retiene el turno ni cuenta como en curso
+        db.ejecutar("update analisis_vuelo set estado='fallido', motivo=:m, terminado=:t where estado='pendiente' and creado<:c",
+                    m=NO_TERMINO, t=db.ahora(), c=_hace(EN_CURSO))
+        previo = vigente(opcion_id)
+        if previo:
+            return {**previo, "reutilizado": True}
+        if apagado():
+            return no_disponible(APAGADO)
+        if not _modo():
+            return no_disponible(SIN_ANALIZADOR)
+        if not url:
+            return no_disponible(SIN_TRAMOS)
+        hoy = db.ahora()[:10]
+        por_persona, total = topes()
+        if db.uno("select count(*) n from analisis_vuelo where usuario_id=:u and creado>=:h", u=usuario["id"], h=hoy)["n"] >= por_persona:
+            return no_disponible(TOPE_PERSONA_TEXTO)
+        if db.uno("select count(*) n from analisis_vuelo where creado>=:h", h=hoy)["n"] >= total:
+            return no_disponible(TOPE_TOTAL_TEXTO)
+        if db.uno("select id from analisis_vuelo where estado='pendiente' limit 1"):
+            return no_disponible(OCUPADO)
+        aid = db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"],
+                          clave=clave(sol, vuelo), url=url, estado="pendiente", creado=db.ahora())
+    return {"id": aid, "url": url}
+
+
 def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") -> dict:
     """Lee la página del vuelo (o reutiliza una lectura de menos de 60 minutos) y devuelve el análisis.
 
@@ -173,27 +215,10 @@ def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") ->
     leer (apagado, sin analizador, topes, otra lectura en curso, vuelo sin tramos) devuelve `estado: no_disponible`
     con el motivo, sin guardar nada."""
     sol, o, vuelo = _opcion(sid, opcion_id)
-    previo = vigente(opcion_id)
-    if previo:
-        return {**previo, "reutilizado": True}
-    if apagado():
-        return no_disponible(APAGADO)
-    if not _modo():
-        return no_disponible(SIN_ANALIZADOR)
-    try:
-        url = enlace_itinerario(sol, vuelo)
-    except ValueError:
-        return no_disponible(SIN_TRAMOS)
-    hoy = db.ahora()[:10]
-    por_persona, total = topes()
-    if db.uno("select count(*) n from analisis_vuelo where usuario_id=:u and creado>=:h", u=usuario["id"], h=hoy)["n"] >= por_persona:
-        return no_disponible(TOPE_PERSONA_TEXTO)
-    if db.uno("select count(*) n from analisis_vuelo where creado>=:h", h=hoy)["n"] >= total:
-        return no_disponible(TOPE_TOTAL_TEXTO)
-    if db.uno("select id from analisis_vuelo where estado='pendiente' and creado>=:c limit 1", c=_hace(EN_CURSO)):
-        return no_disponible(OCUPADO)
-    aid = db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"], clave=clave(sol, vuelo),
-                      url=url, estado="pendiente", creado=db.ahora())
+    reserva = _reservar(usuario, sid, opcion_id, sol, vuelo)
+    if "id" not in reserva or reserva.get("estado"):
+        return reserva
+    aid, url = reserva["id"], reserva["url"]
     nombre = " + ".join(vuelo.get("numeros") or [])
     eventos.registrar("solicitud", sid, "lectura de Google Flights pedida", f"{nombre}: {url}", f"{canal} · {usuario['nombre']}")
     r = _llamar(url)
