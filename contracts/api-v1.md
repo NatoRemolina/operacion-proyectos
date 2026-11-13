@@ -405,9 +405,10 @@ interface AnalisisVuelo {
 }
 ```
 
-- Un análisis por itinerario y fechas: si hay uno `listo` de menos de 60 minutos (o uno `pendiente` de menos de 2), se devuelve con `reutilizado: true` y no se abre la página.
-- `no_disponible` (no se guarda nada y el desglose muestra solo lo del buscador): `ANALIZADOR=apagado`, entorno sin analizador, tope del día por persona (regla `analisis_persona_dia`, 10) o en total (regla `analisis_vuelo_dia`, 40), u otra lectura en curso (una a la vez).
-- `fallido` con su `motivo`: la página pidió verificación o aceptar condiciones (nunca se resuelven), tardó demasiado o el analizador no respondió.
+- Un análisis por itinerario (números de vuelo y fecha) y fechas de la cotización, **de cualquier cotización**: si hay uno `listo` de menos de 60 minutos, uno `fallido` de menos de 10 (para no repetirlo enseguida) o uno `pendiente` de menos de 2, se devuelve con `reutilizado: true` y no se abre la página. Una `pendiente` de más de 2 minutos se da por `fallido: la lectura no terminó`.
+- Si llega `pendiente` (otra persona la está leyendo), la web la sigue con `GET …/analisis` cada 3 s, hasta 15 veces.
+- `no_disponible` (no se guarda nada, no cuenta para los topes y el desglose muestra solo lo del buscador): `ANALIZADOR=apagado`, entorno sin analizador, analizador que no responde a la conexión o función inexistente, tope del día por persona (regla `analisis_persona_dia`, 10) o en total (regla `analisis_vuelo_dia`, 40), u otra lectura en curso (una a la vez; el turno se toma en una transacción con cerrojo, y en AWS la función tiene concurrencia reservada de 1).
+- `fallido` con su `motivo`: la página pidió verificación o aceptar condiciones (nunca se resuelven), llevó a otro sitio o quiso abrir otra pestaña, tardó demasiado (plazo total de 45 s), el analizador respondió algo que no se entiende o no se pudo guardar la lectura.
 - Lo leído **no reemplaza** el precio del buscador. Al decidir, la lectura vigente se copia a la decisión (`desglose.analisis_google`).
 - La pide quien ve la cotización; un vuelo de otra cotización o una cotización ajena: 404.
 
@@ -415,7 +416,7 @@ interface AnalisisVuelo {
 200 `AnalisisVuelo` con la última lectura del vuelo (para seguir una en curso); 404 si nunca se leyó.
 
 ### `GET /cotizaciones/{id}/analisis/{analisis_id}/captura`
-200 `image/png` con la captura de la página leída, `no-store`. Lo ajeno o sin captura: 404.
+200 `image/png` con la captura de la página leída (hasta 4000 px de alto), `no-store`. Se ve desde cualquier cotización que tenga ese itinerario, aunque la lectura la pidiera otra. Lo ajeno o sin captura: 404.
 
 ## Fuera de este contrato (siguientes fases)
 
