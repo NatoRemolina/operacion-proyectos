@@ -37,15 +37,21 @@ describe("alarmas de la API (H-37)", () => {
 });
 
 describe("correo de avisos (H-36)", () => {
-  test("sin -c correo no se sintetiza: CloudFormation borraría la suscripción y el presupuesto", () => {
+  test("sin -c correo no se sintetiza: CloudFormation borraría la suscripción de las alarmas", () => {
     assert.throws(() => sintetizar({ correo: "" }), /-c correo=/);
     assert.throws(() => sintetizar({ correo: "sin-arroba" }), /-c correo=/);
   });
 
-  test("con correo, la suscripción y el presupuesto siempre están", () => {
+  test("con correo, la suscripción de las alarmas siempre está", () => {
     const { base } = sintetizar({ correo: "avisos@example.com" });
-    const [suscripcion] = propiedades(base, "AWS::SNS::Subscription");
+    const [suscripcion, ...otras] = propiedades(base, "AWS::SNS::Subscription");
+    assert.equal(otras.length, 0);
+    assert.equal(suscripcion.Protocol, "email");
     assert.equal(suscripcion.Endpoint, "avisos@example.com");
-    base.resourceCountIs("AWS::Budgets::Budget", 1);
+  });
+
+  test("el presupuesto es el de la cuenta («cuenta-mensual», de la dueña): la pila no crea otro", () => {
+    const { base, api, web } = sintetizar();
+    for (const plantilla of [base, api, web]) plantilla.resourceCountIs("AWS::Budgets::Budget", 0);
   });
 });
