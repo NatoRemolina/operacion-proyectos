@@ -54,6 +54,18 @@ def test_entradas_invalidas_no_crean_solicitud(cliente):
         assert "error" in str(_crear(cliente, **cambios)), cambios
 
 
+def test_valores_no_finitos_o_fuera_de_los_limites_no_crean_solicitud(cliente):
+    """Con NaN en el presupuesto los listados de viajes respondían 500; con infinito el control de presupuesto no saltaba.
+    El formulario acepta los mismos límites que la API v1."""
+    antes = db.uno("select count(*) n from solicitudes")["n"]
+    for cambios in (dict(carro_dia="nan"), dict(carro_dia="inf"), dict(carro_dia="-400"), dict(carro_dia="10000"),
+                    dict(baterias_wh="nan"), dict(baterias_wh="1001"), dict(prob_cambio="nan"), dict(prob_cambio="-5")):
+        destino = _crear(cliente, **cambios)
+        assert isinstance(destino, str) and "error=" in destino, cambios
+    assert db.uno("select count(*) n from solicitudes")["n"] == antes
+    assert cliente.get("/admin/viajes").status_code == 200
+
+
 def test_decidir_sin_hotel_y_ficha(cliente):
     sid = _crear(cliente, origen="LIM", destino="SCL", ciudad="Ciudad sin datos")   # ruta sin respaldo: sin vuelos ni hoteles
     assert _comparacion(sid)["vuelos"] == []

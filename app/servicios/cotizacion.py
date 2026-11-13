@@ -6,6 +6,7 @@ Los errores de datos salen como excepciones con el texto para la persona; cada c
 """
 import hashlib
 import json
+import math
 import re
 from datetime import UTC, date, datetime, timedelta
 
@@ -159,7 +160,13 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
     # La hora límite siempre se refiere al día de llegada: se conserva la hora y se ata a la fecha de ida
     hora = llegar_antes[11:16] if len(llegar_antes) >= 16 else ""
     llegar_antes = f"{ida}T{hora}" if re.fullmatch(r"\d\d:\d\d", hora) else ""
-    prob_cambio, baterias_n = min(max(prob_cambio, 0), 100), max(baterias_n, 0)
+    # Los mismos límites que la API v1: un NaN o un infinito en el presupuesto rompe los listados y el control de saldo
+    for campo, valor, tope, texto in (("carro_dia", carro_dia, 9999.99, "El carro de alquiler por día debe estar entre 0 y 9.999,99 USD."),
+                                      ("baterias_wh", baterias_wh, 1000, "La capacidad de cada batería debe estar entre 0 y 1.000 Wh."),
+                                      ("prob_cambio", prob_cambio, 100, "La probabilidad de cambio de fecha debe estar entre 0 y 100 %.")):
+        if not (math.isfinite(valor) and 0 <= valor <= tope):
+            raise CotizacionInvalida(campo, texto)
+    baterias_n = max(baterias_n, 0)
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
     solicitado_por, viajero_nuevo = usuario["nombre"], viajero_nuevo.strip()[:80]  # quien consulta sale de la sesión
     # Todos viajan: quien cotiza viaja, salvo que gestión o administración marquen que es para otra persona.
