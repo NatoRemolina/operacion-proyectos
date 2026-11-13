@@ -74,6 +74,10 @@ ORIGENES_WEB = [o.strip().rstrip("/") for o in _txt("ORIGENES_WEB").split(",") i
 # Vacío: siguen disponibles, como en local y en las pruebas.
 INTERFAZ_ANTIGUA = _txt("INTERFAZ_ANTIGUA").lower()
 
+# Recolector diario de precios de las rutas frecuentes (datos/recolectar.py --frecuentes): gasta búsquedas pagas.
+# «apagado» por omisión; se enciende con «encendido» cuando se decida el presupuesto de búsquedas
+RECOLECTOR = _txt("RECOLECTOR").lower() or "apagado"
+
 # Índice del asistente en Pinecone (opcional). Sin clave y dirección se usa el índice local por palabras
 PINECONE_API_KEY = _txt("PINECONE_API_KEY")
 PINECONE_INDICE = _txt("PINECONE_INDICE") or "asistente-fichas"

@@ -45,6 +45,7 @@ CLAVES = [
     "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRETO", "TELEGRAM_BOT_NOMBRE",
     "ORIGENES_WEB", "INTERFAZ_ANTIGUA",
     "PROVEEDOR_LUGARES",
+    "RECOLECTOR",
 ]
 OBLIGATORIAS = ("DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_KEY")   # sin ellas la función no arranca (app/config.py)
 # Tienen que venir en el archivo: el webhook (paso 6 de docs/despliegue.md) se registra con ese mismo archivo, y si

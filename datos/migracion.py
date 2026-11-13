@@ -281,10 +281,12 @@ def permisos_de_vistas(vistas):
 
 
 def _tablas_modelo() -> dict:
-    """Tablas del conjunto de datos para modelos (frente datos-modelo): se crean si faltan, con sus índices y, en
-    PostgreSQL, con RLS y sin permisos para los roles públicos. Repetirlo no cambia nada."""
+    """Tablas del conjunto de datos para modelos: se crean si faltan, con sus índices y, en PostgreSQL, con RLS y sin
+    permisos para los roles públicos; y la regla del tope diario del recolector. Repetirlo no cambia nada."""
     from app.servicios import ofertas
+    from datos import recolectar
     db.crear_tablas()
+    recolectar.asegurar_regla()   # el tope diario del recolector aparece en Reglas desde el inicio
     for nombre, columnas, unico in ofertas.INDICES:
         db.ejecutar(f"create {'unique ' if unico else ''}index if not exists {nombre} on ofertas_tarifa ({columnas})")
     if not config.ES_SQLITE:
