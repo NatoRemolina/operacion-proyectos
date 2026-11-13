@@ -233,7 +233,7 @@ interface OpcionVuelo {
   lineas: LineaCosto[];
   avisos: string[];
   descartada: string | null;                  // la razón, si no sirve
-  recomendada: boolean; mas_barata: boolean;
+  recomendada: boolean; mas_barata: boolean;  // la más barata entre las que sirven, no entre las descartadas
   origen_dato: string | null;                 // "en vivo" | "guardado" | "guardado (otras fechas)"
   esperado_usd: Dinero; frente_esperado_pct: number | null;   // modelo de precios, si hay uno utilizable
 }

@@ -8,7 +8,7 @@
   <div class="tarjeta"><div class="eti">Ahorro capturado en decisiones</div><div class="num">{{ a.ahorro_capturado|dinero }}</div><div class="eti">frente a elegir por precio</div></div>
   <div class="tarjeta"><div class="eti">Anticipación media</div><div class="num">{{ a.anticipacion_media if a.anticipacion_media is not none else '—' }} <small>días</small></div><div class="eti">entre la consulta y el viaje</div></div>
 </div>
-<p class="nota"><b>Cómo se mide el ahorro.</b> Costo total esperado de la opción más barata del buscador menos el de la opción recomendada. Es un valor esperado (incluye el riesgo de cambio y el equipaje), no dinero ya ahorrado, y depende de los supuestos de la página Reglas.</p>
+<p class="nota"><b>Cómo se mide el ahorro.</b> Costo total esperado de la opción más barata que sirve (llega a tiempo y lleva el equipo) menos el de la opción recomendada; contra un vuelo descartado no se cuenta ahorro. Es un valor esperado (incluye el riesgo de cambio y el equipaje), no dinero ya ahorrado, y depende de los supuestos de la página Reglas.</p>
 
 <h2>Frecuencia de viajes</h2>
 <div class="dos">

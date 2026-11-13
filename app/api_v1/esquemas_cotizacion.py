@@ -181,7 +181,7 @@ class OpcionVuelo(BaseModel):
     avisos: list[str]
     descartada: str | None = Field(description="Por qué no sirve (llega tarde, el equipo no cabe...); null si sirve.")
     recomendada: bool
-    mas_barata: bool = Field(description="La de menor precio del buscador.")
+    mas_barata: bool = Field(description="La de menor precio entre las que sirven; una descartada más barata no cuenta.")
     origen_dato: str | None = Field(description="`en vivo`, `guardado` o `guardado (otras fechas)`.")
     esperado_usd: Dinero = Field(description="Precio esperado según el modelo, si hay uno utilizable.")
     frente_esperado_pct: int | None

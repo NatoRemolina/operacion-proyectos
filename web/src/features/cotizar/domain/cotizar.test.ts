@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { COTIZACION_MOAB } from "../infrastructure/ejemplo-moab";
 import {
   BORRADOR_VACIO,
   agregarAeropuertos,
+  barataDescartada,
   borradorDeEjemplo,
   distanciaKm,
   erroresDelServidor,
@@ -135,5 +137,18 @@ describe("decisión", () => {
     });
     expect(partes.map((p) => p.tipo)).toEqual(["precio", "equipaje", "riesgo_cambio"]);
     expect(partes[0]).toMatchObject({ nombre: "Precio", valor: "415.00" });
+  });
+});
+
+describe("la más barata", () => {
+  const [descartada] = COTIZACION_MOAB.descartados;
+
+  it("si la más barata del buscador sirve, no hay descartada que nombrar aparte", () => {
+    expect(barataDescartada(COTIZACION_MOAB)).toBeNull();
+  });
+
+  it("una descartada más barata que la que sirve se nombra aparte, como en el servidor", () => {
+    const c = { ...COTIZACION_MOAB, descartados: [{ ...descartada!, precio_usd: "279.00" }] };
+    expect(barataDescartada(c)?.id).toBe(descartada!.id);
   });
 });

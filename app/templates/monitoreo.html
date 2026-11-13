@@ -62,7 +62,7 @@
 <div class="rejilla">
   {{ cifra("Consultas de viaje", d.consultas, d.decisiones ~ " con decisión guardada") }}
   {{ cifra("Siguen la recomendación", d.acuerdo, "de " ~ d.decisiones_con_dato ~ " decisiones con registro", "%") }}
-  {{ cifra("Ahorro identificado", d.ahorro_identificado|dinero, "más barato del buscador − recomendado") }}
+  {{ cifra("Ahorro identificado", d.ahorro_identificado|dinero, "más barato que sirve − recomendado") }}
   {{ cifra("Ahorro capturado", d.ahorro_capturado|dinero, "en las decisiones guardadas") }}
   {{ cifra("Resueltas sin pagar consulta", d.tasa_reutilizacion, d.consultas_reutilizadas ~ " reutilizadas · " ~ d.consultas_en_vivo ~ " en vivo", "%") }}
 </div>

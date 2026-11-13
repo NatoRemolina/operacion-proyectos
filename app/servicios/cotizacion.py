@@ -299,16 +299,26 @@ def comparacion(sid: int) -> dict | None:
     validos = sorted([v for v in vuelos if not v["ev"]["descartada"]], key=lambda v: v["ev"]["total"])
     descartados = [v for v in vuelos if v["ev"]["descartada"]]
     hoteles.sort(key=lambda h: h["h"]["total"])
-    mas_barato = min(vuelos, key=lambda v: v["v"]["precio"]) if vuelos else None
-    aviso = None
-    if validos and mas_barato and validos[0]["id"] != mas_barato["id"]:
+    # El más barato de la comparación es el más barato entre los que sirven: frente a uno descartado (llega tarde, el
+    # equipo no cabe) no hay ahorro que contar. Si el más barato de todos está descartado, se dice aparte.
+    mas_barato = min(validos, key=lambda v: v["v"]["precio"]) if validos else None
+    de_todos = min(vuelos, key=lambda v: v["v"]["precio"]) if vuelos else None
+    descartado = de_todos if mas_barato and de_todos["ev"]["descartada"] and de_todos["v"]["precio"] < mas_barato["v"]["precio"] else None
+    partes = []
+    if descartado:
+        motivo = descartado["ev"]["descartada"]
+        partes.append(f"La más barata del buscador, {descartado['v']['aerolinea']} {' + '.join(descartado['v']['numeros'])} por "
+                      f"{descartado['v']['precio']:.0f} USD, está descartada: {motivo[:1].lower()}{motivo[1:]}")
+    if mas_barato and validos[0]["id"] != mas_barato["id"]:
         m = validos[0]
-        aviso = (f"La opción más barata del buscador es {mas_barato['v']['aerolinea']} por {mas_barato['v']['precio']:.0f} USD, "
-                 f"pero con el equipo, el riesgo de cambio y las millas su costo esperado es {mas_barato['ev']['total']:.0f} USD. "
-                 f"La mejor es {m['v']['aerolinea']} {m['v']['numeros'][0]} ({m['ev']['tarifa']['nombre']}): {m['ev']['total']:.0f} USD.")
+        partes.append(f"{'La más barata que sirve' if descartado else 'La opción más barata del buscador'} es "
+                      f"{mas_barato['v']['aerolinea']} por {mas_barato['v']['precio']:.0f} USD, "
+                      f"pero con el equipo, el riesgo de cambio y las millas su costo esperado es {mas_barato['ev']['total']:.0f} USD. "
+                      f"La mejor es {m['v']['aerolinea']} {m['v']['numeros'][0]} ({m['ev']['tarifa']['nombre']}): {m['ev']['total']:.0f} USD.")
+    aviso = " ".join(partes) or None
     n = costo.noches(sol["ida"], sol["regreso"])
     return {"sol": sol, "vuelos": validos, "descartados": descartados, "hoteles": hoteles, "aviso": aviso,
-            "mas_barato": mas_barato, "hay_modelo": modelo.utilizable(),
+            "mas_barato": mas_barato, "mas_barato_descartado": descartado, "hay_modelo": modelo.utilizable(),
             "baterias": costo.baterias(sol["baterias_n"], sol["baterias_wh"]), "noches": n,
             "carro": round((sol["carro_dia"] or 0) * n, 2), "membresias": membresias,
             "fallos": db.todos("select detalle from eventos where entidad='solicitud' and entidad_id=:i and paso='consulta externa fallida'", i=sid),
@@ -392,7 +402,7 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
                                 "hotel": hotel["h"] if hotel else None,
                                 "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
                                 "aviso": c["aviso"], "baterias": c["baterias"], "aviso_tope": aviso_tope,
-                                # lo que se evita frente a la opción más barata del buscador, por costo esperado
+                                # lo que se evita frente a la opción más barata que sirve, por costo esperado
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
                       total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=usuario["id"],
                       razones=razones, recomendado_id=recomendado["id"] if recomendado else None,
