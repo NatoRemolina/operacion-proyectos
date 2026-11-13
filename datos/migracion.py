@@ -280,9 +280,25 @@ def permisos_de_vistas(vistas):
             db.ejecutar(f"revoke all on {v} from {rol}")
 
 
+def _tablas_modelo() -> dict:
+    """Tablas del conjunto de datos para modelos (frente datos-modelo): se crean si faltan, con sus índices y, en
+    PostgreSQL, con RLS y sin permisos para los roles públicos. Repetirlo no cambia nada."""
+    from app.servicios import ofertas
+    db.crear_tablas()
+    for nombre, columnas, unico in ofertas.INDICES:
+        db.ejecutar(f"create {'unique ' if unico else ''}index if not exists {nombre} on ofertas_tarifa ({columnas})")
+    if not config.ES_SQLITE:
+        publicos = [r["rolname"] for r in db.todos("select rolname from pg_roles where rolname in ('anon','authenticated')")]
+        db.ejecutar("alter table ofertas_tarifa enable row level security")
+        for rol in publicos:
+            db.ejecutar(f"revoke all on ofertas_tarifa from {rol}")
+    return {"tablas_modelo": ["ofertas_tarifa"]}
+
+
 def migrar() -> dict:
     from app.servicios import envios, revision  # noqa: F401  (registran la tabla de envíos y las columnas de la revisión)
     hechos = {**_roles(), **_datos(), **_columnas()}
+    hechos.update(_tablas_modelo())
     _indices()
     if not config.ES_SQLITE:
         hechos.update(_restricciones_postgres())
