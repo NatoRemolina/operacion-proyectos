@@ -233,7 +233,7 @@ class RespuestaError(BaseModel):
 
 DESCRIPCION_ERROR = {
     401: "Sin sesión, sesión vencida o credenciales incorrectas",
-    403: "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+    403: "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso, aprobación de lo propio, o enlace al soporte vencido o alterado",
     404: "No existe o no es visible para la persona",
     409: "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
     413: "Archivo de más de 4,5 MB", 415: "El contenido no es JPG, PNG, WebP, PDF ni correo",

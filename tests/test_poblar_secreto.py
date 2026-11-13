@@ -41,6 +41,11 @@ FUERA_DEL_SECRETO = {
     "ADMIN_INICIAL_CLAVE": "lo usa la migración, que corre desde el equipo",
     "USUARIO_DEMO_CORREO": "lo usa la migración, que corre desde el equipo",
     "USUARIO_DEMO_CLAVE": "lo usa la migración, que corre desde el equipo",
+    # Avisos a n8n: pendientes de pasar a CLAVES de infra/poblar_secreto.py al integrar (el frente n8n no toca infra/).
+    # Mientras no estén en el secreto, los avisos quedan apagados en la nube, que es lo seguro.
+    "N8N_WEBHOOK_URL": "pendiente de integrar en el secreto",
+    "N8N_WEBHOOK_SECRETO": "pendiente de integrar en el secreto",
+    "URL_PUBLICA": "pendiente de integrar en el secreto",
 }
 
 
