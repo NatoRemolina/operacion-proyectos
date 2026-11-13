@@ -138,14 +138,18 @@ def _lectura(extraido) -> dict | None:
 
 
 def _cuerpo_gasto(gasto_id: int) -> dict | None:
+    # La persona del gasto se decide igual que en el Excel contable: titular del viaje, si no la cuenta del viajero,
+    # si no quien lo cargó
     g = db.uno("""select g.id, g.fecha, g.comercio, g.categoria, g.total, g.moneda, g.total_usd, g.estado, g.alertas, g.extraido,
-                         g.viaje_id, v.creado viaje_creado, coalesce(v.usuario_id, g.usuario_id) persona_id, p.nombre proyecto
+                         g.origen_dato, g.viaje_id, v.creado viaje_creado, p.nombre proyecto,
+                         coalesce(v.usuario_id, (select min(x.id) from usuarios x where x.viajero_id=g.viajero_id), g.usuario_id) persona_id
                   from gastos g left join viajes v on v.id=g.viaje_id left join proyectos p on p.id=g.proyecto_id
                   where g.id=:i""", i=gasto_id)
     if not g:
         return None
     g["viaje"] = codigo_viaje({"id": g["viaje_id"], "creado": g["viaje_creado"]}) if g["viaje_id"] else None
     alertas = db.de_json(g["alertas"], [])
+    lectura = db.de_json(g["extraido"], None)
     return {"gasto_id": g["id"], "viaje": g["viaje"], "proyecto": g["proyecto"], "fecha": g["fecha"],
             "comercio": g["comercio"], "total": _importe(g["total"]), "moneda": g["moneda"],
             # Lo leído de la factura, para guardarlo en Drive y en la hoja de lecturas
@@ -153,7 +157,7 @@ def _cuerpo_gasto(gasto_id: int) -> dict | None:
             "alertas": [str(a) for a in alertas] if isinstance(alertas, list) else [],
             "persona": codigo_persona(g["persona_id"]) if g["persona_id"] else None,
             "enlace_gasto": f"{url_publica()}/gastos/{g['id']}" if url_publica() else None,
-            "lectura": _lectura(db.de_json(g["extraido"], None))}
+            "lectura": _lectura(lectura | {"origen_dato": g["origen_dato"]} if isinstance(lectura, dict) else None)}
 
 
 def _serializar(datos: dict) -> bytes:
@@ -222,7 +226,8 @@ def reintentar_pendientes(limite: int = REINTENTOS_POR_VUELTA) -> int:
 def emitir(evento: str, datos: dict) -> int | None:
     """Pone un aviso del catálogo en la bandeja y lo intenta entregar. Devuelve el id del aviso, o None si están apagados.
 
-    `datos` es el cuerpo mínimo del evento (sin datos sensibles); `gasto_id`, si lo trae, enlaza el aviso con el gasto
+    `datos` es el cuerpo del evento: lo que el flujo necesita y nada más (nunca claves, secretos ni rutas internas; el
+    de `gasto.registrado` lleva la lectura de la factura y el código de la persona, no su nombre); `gasto_id`, si lo trae, enlaza el aviso con el gasto
     en la bitácora. Un evento fuera del catálogo es un error de programación: lanza `ValueError`. Un fallo del destino
     no lanza: queda en la bandeja para reintentarlo.
     """

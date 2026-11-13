@@ -2,9 +2,12 @@
 import hashlib
 import hmac
 import json
+import shutil
+import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -334,3 +337,75 @@ def test_la_lectura_guardada_conserva_los_datos_de_factura(cliente, monkeypatch)
     gid = _gasto_con_soporte(cliente, PNG + b"guardada")
     extraido = db.de_json(db.uno("select extraido from gastos where id=:i", i=gid)["extraido"], {})
     assert extraido["numero_factura"] == "A-1" and extraido["id_fiscal"] is None and extraido["lineas"] == []
+
+
+def _lectura_de_prueba(**extra) -> dict:
+    from app.servicios import extraccion
+    return {c: None for c in extraccion.CAMPOS} | {
+        "comercio": "Hotel Ñandú «Centro»", "fecha": "2026-12-09", "categoria": "hotel", "subtotal": 100.0, "impuesto": 19.0,
+        "total": 119.0, "moneda": "USD", "numero_factura": "000123", "id_fiscal": "900123456",
+        "lineas": [{"descripcion": "Noche 😀", "cantidad": 2.0, "total": 59.5}], "confianza": 0.4, "dudas": ["propina"],
+        "origen_dato": "en vivo", "error": None} | extra
+
+
+def test_un_archivo_identico_reutiliza_la_lectura_con_sus_datos_de_factura(receptor, monkeypatch):
+    from app.servicios import extraccion, gastos
+    llamadas = []
+    monkeypatch.setattr(extraccion, "extraer", lambda *a, **k: llamadas.append(1) or _lectura_de_prueba())
+    admin = db.uno("select * from usuarios where correo='admin@demo.local'")
+    contenido = PNG + b"identico"
+    gastos.registrar(contenido, "a.png", "web", admin, proyecto_id=1, viajero_id=1)
+    g2 = gastos.registrar(contenido, "b.png", "web", admin, proyecto_id=1, viajero_id=1)
+    assert len(llamadas) == 1   # el segundo no se vuelve a pagar
+    lectura = json.loads(receptor.recibidos[-1][1])["lectura"]
+    assert json.loads(receptor.recibidos[-1][1])["gasto_id"] == g2
+    assert lectura["numero_factura"] == "000123" and lectura["origen_dato"] == "reutilizado"
+    assert lectura["lineas"] == [{"descripcion": "Noche 😀", "cantidad": "2.00", "total": "59.50"}]
+
+
+def test_la_revision_no_toca_los_datos_de_factura_leidos(monkeypatch):
+    from app.servicios import extraccion, gastos, revision
+    monkeypatch.setattr(extraccion, "extraer", lambda *a, **k: _lectura_de_prueba())
+    piloto = db.uno("select * from usuarios where correo='piloto@demo.local'")
+    admin = db.uno("select * from usuarios where correo='admin@demo.local'")
+    gid = gastos.registrar(PNG + b"revisado", "f.png", "web", piloto, proyecto_id=1, viajero_id=1)
+    antes = db.uno("select extraido, version, estado from gastos where id=:i", i=gid)
+    assert antes["estado"] == "revision"   # confianza baja
+    revision.guardar(gid, admin, antes["version"], "guardar", {"comercio": "Corregido a mano", "total": 120})
+    despues = db.uno("select extraido, comercio from gastos where id=:i", i=gid)
+    assert despues["comercio"] == "Corregido a mano" and despues["extraido"] == antes["extraido"]
+    assert db.de_json(despues["extraido"])["numero_factura"] == "000123"
+
+
+def test_la_persona_del_aviso_es_la_del_excel_contable(receptor, monkeypatch):
+    """Administración carga un gasto sin viaje para el viajero 1: la persona es la cuenta del viajero, no quien lo cargó."""
+    from app.servicios import extraccion, gastos, viajes
+    monkeypatch.setattr(extraccion, "extraer", lambda *a, **k: _lectura_de_prueba())
+    admin = db.uno("select * from usuarios where correo='admin@demo.local'")
+    gastos.registrar(PNG + b"persona", "p.png", "web", admin, proyecto_id=1, viajero_id=1)
+    datos = json.loads(receptor.recibidos[-1][1])
+    viajero = db.uno("select min(id) i from usuarios where viajero_id=1")["i"]
+    assert datos["persona"] == viajes.codigo_persona(viajero) != viajes.codigo_persona(admin["id"])
+
+
+def test_el_cuerpo_no_lleva_rutas_ni_datos_internos(receptor, monkeypatch):
+    from app.servicios import extraccion
+    monkeypatch.setattr(extraccion, "extraer", lambda *a, **k: _lectura_de_prueba())
+    _gasto_con_soporte(None, PNG + b"rutas")
+    texto = receptor.recibidos[-1][1].decode()
+    datos = json.loads(texto)
+    for prohibido in ("/Users/", "datos/archivos", "\"ruta\"", "huella", "extraido", "usuario_id", "@demo.local"):
+        assert prohibido not in texto
+    assert datos["lectura"]["origen_dato"] == "en vivo"
+    assert isinstance(datos["gasto_id"], int) and isinstance(datos["enlace_vence_en_segundos"], int)
+
+
+# ---------- el código de los nodos del flujo, ejecutado con Node ----------
+@pytest.mark.skipif(not shutil.which("node"), reason="sin Node en este equipo")
+def test_los_nodos_del_flujo_verifican_preparan_y_arman_la_fila():
+    arnes = Path(__file__).parent / "n8n_nodos.mjs"
+    flujo = Path(__file__).parents[1] / "docs" / "n8n" / "soportes-a-drive.json"
+    # Argumentos fijos del repositorio: nada viene de fuera
+    r = subprocess.run([shutil.which("node"), str(arnes), str(flujo)], capture_output=True, text=True, timeout=60)  # noqa: S603
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.strip().endswith("todo bien")

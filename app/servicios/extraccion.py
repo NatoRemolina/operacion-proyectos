@@ -38,11 +38,11 @@ INSTRUCCION = f"""Eres un asistente de contabilidad. Lee el soporte de gasto adj
 - ciudad: ciudad del gasto o null
 - confianza: número entre 0 y 1 con tu seguridad sobre el conjunto
 - dudas: lista de campos que no se leen con claridad (vacía si todo es legible)
-Si el soporte tiene varias páginas, lee todas las páginas: el total y los impuestos suelen ir en la última.
 - numero_factura: número o código de la factura o del recibo tal como aparece, o null
 - id_fiscal: identificación tributaria del proveedor tal como aparece (NIT, RUT, NIF, VAT o EIN), o null
 - lineas: las líneas de detalle, como lista de objetos {{descripcion, cantidad, total}} (como mucho {MAX_LINEAS}); lista vacía
   si el soporte no las trae
+Si el soporte tiene varias páginas, lee todas las páginas: el total y los impuestos suelen ir en la última.
 No inventes valores: si algo no se lee, usa null y nómbralo en dudas."""
 
 
@@ -176,7 +176,7 @@ def _en_vivo(contenido: bytes, mime: str) -> dict:
     r = httpx.post(
         config.MODELO_API_URL, timeout=90,
         headers={"x-api-key": config.MODELO_API_KEY, "content-type": "application/json", **config.MODELO_CABECERAS},
-        json={"model": config.MODELO_NOMBRE, "max_tokens": 1024, "messages": [{"role": "user", "content": partes}]},
+        json={"model": config.MODELO_NOMBRE, "max_tokens": 4096, "messages": [{"role": "user", "content": partes}]},
     )
     r.raise_for_status()
     texto = "".join(b.get("text", "") for b in r.json().get("content", []))
@@ -230,7 +230,7 @@ def _guardado(contenido: bytes) -> dict | None:
 def _num(valor):
     try:
         return None if valor in (None, "") else round(float(valor), 2)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):   # OverflowError: un entero gigante que no cabe en un float
         return None
 
 

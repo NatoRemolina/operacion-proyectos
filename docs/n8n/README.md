@@ -30,7 +30,7 @@ Plataforma ──POST firmado──▶ n8n: Webhook → Configuración → Verif
 4. **Carpetas**: para cada nivel (raíz, proyecto, viaje, mes) busca la carpeta por nombre exacto dentro de la anterior y, si no existe, la crea.
 5. **Subir a Drive** con el nombre legible.
 6. **Preparar lectura** y **Subir lectura**: el gasto y su `lectura` como JSON, en la misma carpeta y con el mismo nombre base (`… · lectura.json`).
-7. **Fila de la hoja** y **Agregar a la hoja**: una fila por gasto en la pestaña «Lecturas» (*append or update* por la columna `Gasto`, así que un reintento no la duplica). Un texto que empieza con `=`, `+`, `-` o `@` se guarda con un apóstrofo delante, para que nunca sea una fórmula. Si la hoja no está configurada, el flujo termina después de subir los archivos.
+7. **Fila de la hoja** y **Agregar a la hoja**: una fila por gasto en la pestaña «Lecturas» (*append or update* por la columna `Gasto`, así que un reintento no la duplica). La hoja se escribe en modo `RAW`: un texto que empieza con `=` nunca se vuelve fórmula, un número de factura «000123» conserva sus ceros y «12-10» no se convierte en fecha; los importes y la confianza van como números. Si la hoja no está configurada, el flujo termina después de subir los archivos.
 
 Si n8n no responde o responde con error, el gasto se registra igual: el aviso queda pendiente en la tabla `avisos_salientes` y se reintenta a los 1, 5, 30, 120 y 720 minutos (con la misma entrega y con un enlace y una firma nuevos). Los pendientes se reintentan cuando se registra otro gasto y n8n responde, o con `python -m datos.avisos reintentar`. Estado de la bandeja: `python -m datos.avisos estado`.
 
@@ -64,7 +64,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 | `N8N_WEBHOOK_SECRETO` | El secreto del paso 2 | Avisos apagados |
 | `URL_PUBLICA` | `https://software.nataliaremolinarodriguez.com` (sin barra final) | En local se usa `http://localhost:8000`; fuera de local, avisos apagados |
 
-En la nube van en el secreto de la función (hay que añadirlas a `CLAVES` en `infra/poblar_secreto.py`).
+En la nube van en el secreto de la función: `infra/poblar_secreto.py` ya las incluye en `CLAVES`, así que basta con tenerlas en el archivo de origen al poblar el secreto.
 
 ### 4. En n8n
 
@@ -74,7 +74,7 @@ En la nube van en el secreto de la función (hay que añadirlas a `CLAVES` en `i
 4. En «Configuración», revisar `url_plataforma` (la misma que `URL_PUBLICA`) y `carpeta_raiz`.
 5. **Hoja de lecturas**: en Google Drive, crear una hoja de cálculo «Inflight · Lecturas de facturas» con una pestaña llamada `Lecturas` y esta primera fila (los encabezados, en este orden):
 
-   `Gasto | Fecha de carga | Estado | Proyecto | Viaje | Persona | Comercio | NIT o ID fiscal | N.º factura | Fecha | Categoría | Base | Impuesto | Propina | Total | Moneda | Total USD | Confianza | Dudas | Alertas | Líneas | Soporte en Drive | Lectura en Drive | Gasto en la plataforma`
+   `Gasto | Fecha de carga (UTC) | Estado | Proyecto | Viaje | Persona | Comercio | NIT o ID fiscal | N.º factura | Fecha | Categoría | Base | Impuesto | Propina | Total | Moneda | Total USD | Confianza | Dudas | Alertas | Líneas | Soporte en Drive | Lectura en Drive | Gasto en la plataforma`
 
    Copiar la dirección de la hoja (`https://docs.google.com/spreadsheets/d/…/edit`) en `hoja_lecturas` del nodo «Configuración». En el nodo «Agregar a la hoja» → *Credential to connect with* → *Create new credential* (Google Sheets) → *Sign in with Google* con la misma cuenta → *Save*. «Subir lectura» usa la credencial de Google Drive del punto 2.
 6. *Save* y, cuando todo lo anterior esté listo, activar el flujo (interruptor *Inactive → Active*).
@@ -94,7 +94,8 @@ Registrar un gasto con un recibo de ejemplo y comprobar:
 - La firma cubre la hora y el cuerpo exacto; n8n rechaza avisos de más de 5 minutos y entregas repetidas (recuerda las últimas 500).
 - El enlace al soporte se firma con una clave derivada del secreto del aviso: rotar `N8N_WEBHOOK_SECRETO` invalida los enlaces pendientes.
 - Para rotar la clave de servicio: crear otra, cambiarla en la credencial de n8n y revocar la anterior.
-- La lectura en JSON y la hoja llevan el código de la persona (no su nombre), comercios, importes e identificaciones tributarias de proveedores: compartir la carpeta y la hoja solo con contabilidad.
+- **Datos personales que salen a Drive:** el soporte original (puede traer el nombre de quien viaja o del huésped), la lectura en JSON y la fila de la hoja: código de la persona (no su nombre), comercios, importes, identificación tributaria del proveedor, método de pago (por ejemplo «Visa 4417», con los últimos dígitos de la tarjeta) y las descripciones de las líneas, que pueden nombrar a huéspedes. Compartir la carpeta y la hoja solo con contabilidad.
+- **Lo que guarda n8n:** el flujo no guarda las ejecuciones exitosas (`saveDataSuccessExecution: none`), porque llevarían la lectura y el archivo; las fallidas sí, para poder revisarlas, y n8n Cloud las borra según la retención del plan.
 
 ## Para los flujos siguientes
 - **Permisos:** una clave lleva una lista de permisos `recurso:acción` del catálogo `PERMISOS` de `app/servicios/claves_servicio.py` (hoy solo `soportes:leer`). Un flujo nuevo añade su permiso al catálogo y su endpoint bajo `/api/v1/servicio/` lo pide con `autorizar`. Ninguna clave aprueba, rechaza ni revisa: un permiso con esas acciones no entra al catálogo (la aplicación no arranca) ni a una clave, y `autorizar` lo niega aunque esté escrito a mano en la base.
