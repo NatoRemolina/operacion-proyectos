@@ -36,6 +36,23 @@ def tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
     return None
 
 
+def preparar(contenido: bytes, nombre: str) -> tuple[bytes, str, str]:
+    """Lo que se guarda y se lee de un soporte: (contenido, tipo, extensión). Lanza SoporteRechazado si no se admite.
+
+    Una confirmación en HTML se reduce a texto plano, sin scripts, estilos ni enlaces activos, antes de guardarla y de
+    enviarla al modelo. La medición de exactitud usa esta misma preparación."""
+    tipo = tipo_real(contenido, nombre)
+    if not tipo:
+        raise SoporteRechazado("Tipo de archivo no admitido. " + TIPOS_ADMITIDOS)
+    mime, extension = tipo
+    if mime == "text/html":
+        texto = extraccion.html_a_texto(contenido)
+        if not texto:
+            raise SoporteRechazado("La confirmación en HTML no tiene texto legible.")
+        return texto.encode(), "text/plain", "txt"
+    return contenido, mime, extension
+
+
 def tipo_audio(contenido: bytes) -> tuple[str, str] | None:
     if contenido[:4] == b"OggS":
         return "audio/ogg", "ogg"
@@ -114,17 +131,9 @@ def registrar_envio(contenido: bytes, nombre: str, canal: str, usuario: dict | N
     if len(contenido) > config.MAX_BYTES_SOPORTE:
         raise SoporteRechazado(f"El archivo pesa {len(contenido) / 1e6:.1f} MB; el máximo es {config.MAX_BYTES_SOPORTE / 1e6:.1f} MB.")
     tipo = tipo_real(contenido, nombre)
-    if not tipo:
-        raise SoporteRechazado("Tipo de archivo no admitido. " + TIPOS_ADMITIDOS)
-    mime, extension = tipo
-    if mime in FORMATOS_DE_CORREO and canal in CANALES_DE_SUBIDA:
+    if tipo and tipo[0] in FORMATOS_DE_CORREO and canal in CANALES_DE_SUBIDA:
         canal = "correo"
-    if mime == "text/html":
-        # Una confirmación en HTML se guarda y se lee como texto plano: sin scripts, estilos ni enlaces activos
-        texto = extraccion.html_a_texto(contenido)
-        if not texto:
-            raise SoporteRechazado("La confirmación en HTML no tiene texto legible.")
-        contenido, mime, extension = texto.encode(), "text/plain", "txt"
+    contenido, mime, extension = preparar(contenido, nombre)
     op = None
     clave = (clave_idempotencia or "").strip()
     if clave and usuario:

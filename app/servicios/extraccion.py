@@ -182,7 +182,7 @@ ESQUEMA = {"type": "OBJECT", "properties": {
     "required": ["comercio", "fecha", "categoria", "total", "moneda", "confianza", "dudas"]}
 
 
-def _con_cliente(contenido: bytes, mime: str, entidad_id: int | None) -> dict:
+def _con_cliente(contenido: bytes, mime: str, entidad_id: int | None, uso: str = "recibo") -> dict:
     """Lectura con el cliente único: salida con esquema fijo, de modo que siempre llega un JSON con los mismos campos."""
     if mime == "message/rfc822":
         texto, adjunto, mime_adjunto = _correo(contenido)
@@ -192,7 +192,7 @@ def _con_cliente(contenido: bytes, mime: str, entidad_id: int | None) -> dict:
     else:
         parte = llm.parte_archivo(contenido, mime)
     candidato = llm.generar([{"role": "user", "parts": [parte, llm.parte_texto(INSTRUCCION)]}],
-                            uso="recibo", entidad_id=entidad_id, esquema=ESQUEMA)
+                            uso=uso, entidad_id=entidad_id, esquema=ESQUEMA)
     return llm.json_de(candidato)
 
 
@@ -221,13 +221,13 @@ def _num(valor):
         return None
 
 
-def extraer(contenido: bytes, mime: str, nombre: str, entidad_id: int | None = None) -> dict:
-    """Devuelve {campos..., confianza, dudas, origen_dato, error}."""
+def extraer(contenido: bytes, mime: str, nombre: str, entidad_id: int | None = None, uso: str = "recibo") -> dict:
+    """Devuelve {campos..., confianza, dudas, origen_dato, error}. `uso` etiqueta la llamada en `llamadas_modelo`."""
     activo = config.modo()["extraccion"] == "en vivo"
     datos, origen, error = None, "guardado", None
     if activo:
         try:
-            datos = _con_cliente(contenido, mime, entidad_id) if llm.activo() else _en_vivo(contenido, mime)
+            datos = _con_cliente(contenido, mime, entidad_id, uso) if llm.activo() else _en_vivo(contenido, mime)
             origen = "en vivo"
         except llm.ErrorDelModelo as e:
             error = f"No se pudo leer el soporte: {e}"
