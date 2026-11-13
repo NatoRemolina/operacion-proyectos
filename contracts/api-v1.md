@@ -358,3 +358,21 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 ## Fuera de este contrato (siguientes fases)
 
 Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
+
+## KPIs
+
+Solo administración, como la pantalla `/admin/kpis`: otra cuenta recibe 403 `FORBIDDEN`. Las cifras salen de la misma definición que la pantalla y que `/api/metricas` (`app/servicios/kpis.py`). Filtros comunes: `proyecto_id` (0 o ausente: todos), `desde` y `hasta` (`AAAA-MM-DD`; una fecha que no es válida se ignora, como en la pantalla).
+
+### `GET /kpis`
+200 `TableroKpis`:
+
+- `kpis`: cada indicador de los dos retos con `valor` (número en su `unidad`, o `null` sin datos), `meta`, `alerta`, `sentido` (`mayor` o `menor` es mejor), `estado` (`verde`, `ambar`, `rojo`, `sin datos`), `responsable`, `formula` y `principal`.
+- `resumen`: cuántos hay en cada estado. `tendencia`: los principales semana a semana (8 semanas, de lunes a domingo, hasta `hasta` u hoy).
+- `cotizacion` y `gastos`: los desgloses de la pantalla. Los conteos van como `{etiqueta, valor}`.
+- `personas` (una fila por cuenta con lo suyo) y `por_cargo`. `proyectos` y `retos` sirven para armar los filtros y los títulos.
+
+### `GET /kpis/personas/{id}`
+200 `FichaPersona`: datos de la cuenta (sin contraseña), totales, indicadores de la persona, cotizaciones, viajes, gastos, evidencias y `eventos`, la línea de tiempo con los hechos sobre lo suyo (200 como máximo, del más reciente). Deja el evento «ficha consultada». Una persona que no existe: 404.
+
+### `GET /kpis/exportar.csv?que=kpis|consultas|personas`
+El mismo CSV de la pantalla con los filtros comunes, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Otro valor de `que`: 422.
