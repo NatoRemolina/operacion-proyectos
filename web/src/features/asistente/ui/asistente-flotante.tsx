@@ -48,6 +48,8 @@ function Asistente() {
   const boton = useRef<HTMLButtonElement>(null);
   const campo = useRef<HTMLTextAreaElement>(null);
   const historial = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLElement>(null);
+  const devolverFoco = useRef(false);
   const controlVoz = useRef<AbortController | null>(null);
   const idPanel = useId();
   const idTitulo = useId();
@@ -78,7 +80,9 @@ function Asistente() {
           setAvisoVoz(
             error.tipo === "sesion_vencida" || error.tipo === "red"
               ? error.message
-              : "La voz no está disponible en este momento. Escribe la pregunta.",
+              : error.tipo === "demasiados_intentos"
+                ? "Llegaste al tope de dictados de hoy. Escribe la pregunta."
+                : "La voz no está disponible en este momento. Escribe la pregunta.",
           );
         }
       } finally {
@@ -99,12 +103,6 @@ function Asistente() {
     setAbierto(true);
     setVistos(mensajes.length);
   };
-  const cerrar = useCallback(() => {
-    setAbierto(false);
-    setVistos(mensajes.length);
-    boton.current?.focus();
-  }, [mensajes.length]);
-
   const cancelarVoz = useCallback(() => {
     grabadora.cancelar();
     controlVoz.current?.abort();
@@ -112,6 +110,21 @@ function Asistente() {
     setTranscribiendo(false);
     campo.current?.focus();
   }, [grabadora]);
+
+  const cerrar = useCallback(() => {
+    if (grabando || procesandoVoz) cancelarVoz(); // cerrar nunca deja el micrófono encendido
+    setAbierto(false);
+    setVistos(mensajes.length);
+    devolverFoco.current = true;
+  }, [mensajes.length, grabando, procesandoVoz, cancelarVoz]);
+
+  useEffect(() => {
+    // Después de pintar: en celular el botón vuelve a verse solo cuando el panel ya se cerró.
+    if (!abierto && devolverFoco.current) {
+      devolverFoco.current = false;
+      boton.current?.focus();
+    }
+  }, [abierto]);
 
   useEffect(() => {
     if (abierto) campo.current?.focus();
@@ -122,6 +135,10 @@ function Asistente() {
     // Escape cierra desde cualquier parte (también si el foco quedó fuera del panel); grabando, solo cancela.
     const alTeclear = (evento: globalThis.KeyboardEvent) => {
       if (evento.key !== "Escape" || evento.defaultPrevented) return;
+      const foco = document.activeElement;
+      // Solo desde el asistente (o si el foco quedó suelto): Escape en otra parte de la pantalla es de esa parte.
+      const enAsistente = foco === document.body || foco === boton.current || !!(foco && panel.current?.contains(foco));
+      if (!enAsistente) return;
       evento.preventDefault();
       if (grabando || procesandoVoz) cancelarVoz();
       else cerrar();
@@ -179,7 +196,7 @@ function Asistente() {
         onClick={() => (abierto ? cerrar() : abrir())}
         aria-expanded={abierto}
         aria-controls={idPanel}
-        className={`fondo-ia fixed bottom-20 right-4 z-40 flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-full px-4 text-sobre-marca shadow-lg shadow-grafito/25 md:bottom-6 md:right-6 md:px-5 ${PRESIONAR} ${
+        className={`fondo-ia fixed bottom-20 right-4 z-10 flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-full px-4 text-sobre-marca shadow-lg shadow-grafito/25 md:bottom-6 md:right-6 md:px-5 ${PRESIONAR} ${
           abierto ? "max-md:hidden" : ""
         }`}
       >
@@ -191,12 +208,13 @@ function Asistente() {
       </button>
 
       <section
+        ref={panel}
         id={idPanel}
         role="dialog"
         aria-modal="false"
         aria-labelledby={idTitulo}
         hidden={!abierto}
-        className="entrada-ia se-mueve fixed inset-x-0 bottom-0 z-40 flex h-[85dvh] flex-col overflow-hidden rounded-t-2xl border border-linea bg-superficie shadow-2xl shadow-grafito/30 md:inset-x-auto md:bottom-24 md:right-6 md:h-auto md:max-h-[min(42rem,calc(100dvh-8rem))] md:w-[26rem] md:rounded-2xl [@media(max-height:30rem)]:overflow-y-auto"
+        className="entrada-ia se-mueve fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden border-linea bg-superficie shadow-2xl shadow-grafito/30 md:inset-auto md:bottom-24 md:right-6 md:h-auto md:border md:max-h-[min(42rem,calc(100dvh-8rem))] md:w-[26rem] md:rounded-2xl [@media(max-height:30rem)]:overflow-y-auto"
       >
         <div className="zona-oscura fondo-ia flex shrink-0 items-center gap-3 py-2.5 pl-4 pr-2 text-sobre-grafito">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-sobre-grafito/10 ring-1 ring-sobre-grafito/25">
@@ -257,7 +275,7 @@ function Asistente() {
           {esperandoDesde !== null ? <Pensando desde={esperandoDesde} /> : null}
         </div>
 
-        <form onSubmit={alEnviar} className="shrink-0 border-t border-linea bg-superficie px-3 pb-3 pt-2.5">
+        <form onSubmit={alEnviar} className="shrink-0 border-t border-linea bg-superficie px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5">
           {avisoVoz ? (
             <div role="alert" className="mb-2 flex items-start gap-2 rounded-xl border border-aviso bg-aviso-suave py-2 pl-3 pr-1 text-sm text-texto">
               <p className="flex-1 py-1">{avisoVoz}</p>
@@ -265,7 +283,7 @@ function Asistente() {
                 type="button"
                 onClick={() => setAvisoVoz(null)}
                 aria-label="Cerrar el aviso"
-                className="grid size-9 shrink-0 place-items-center rounded-lg text-texto-secundario hover:bg-superficie"
+                className="grid size-11 shrink-0 place-items-center rounded-lg text-texto-secundario hover:bg-superficie"
               >
                 <IconoCerrar className="size-4" />
               </button>
@@ -342,6 +360,8 @@ function Asistente() {
           </p>
         </form>
       </section>
+      {/* Aire al final de la pantalla para que el botón flotante no tape lo último del contenido. */}
+      <div aria-hidden="true" className="h-8 md:h-16" />
     </>
   );
 }
@@ -549,7 +569,7 @@ function Pensando({ desde }: { desde: number }) {
           </span>
         </div>
         {segundos >= ESPERA_LARGA_S ? (
-          <p className="mt-1 text-xs text-texto-secundario">El asesor está revisando varias fuentes; puede tardar hasta un minuto.</p>
+          <p className="mt-1 text-xs text-texto-secundario">Está revisando varias fuentes; puede tardar hasta un minuto y medio.</p>
         ) : null}
       </div>
     </div>

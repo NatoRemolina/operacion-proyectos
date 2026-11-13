@@ -63,6 +63,7 @@ export function useGrabadora(opciones: { alTerminar: (wav: Blob) => void; alFall
   const [segundos, setSegundos] = useState(0);
   const [nivel, setNivel] = useState(0);
   const avisos = useRef(opciones);
+  const montado = useRef(true);
   const g = useRef<Grabacion>({ grabador: null, flujo: null, contexto: null, marco: 0, reloj: 0, cancelada: false, trozos: [] });
 
   useEffect(() => {
@@ -73,8 +74,9 @@ export function useGrabadora(opciones: { alTerminar: (wav: Blob) => void; alFall
     const actual = g.current;
     actual.flujo?.getTracks().forEach((pista) => pista.stop());
     if (actual.contexto && actual.contexto.state !== "closed") void actual.contexto.close();
-    cancelAnimationFrame(actual.marco);
+    if (actual.marco) cancelAnimationFrame(actual.marco);
     window.clearInterval(actual.reloj);
+    actual.marco = 0;
     actual.flujo = null;
     actual.contexto = null;
   }, []);
@@ -84,13 +86,17 @@ export function useGrabadora(opciones: { alTerminar: (wav: Blob) => void; alFall
     if (grabador && grabador.state !== "inactive") grabador.stop();
   }, []);
 
+  /** Descarta lo grabado en cualquier momento: pidiendo el micrófono, grabando o convirtiendo a WAV. */
   const cancelar = useCallback(() => {
     g.current.cancelada = true;
-    detener();
-  }, [detener]);
+    const grabador = g.current.grabador;
+    if (grabador && grabador.state !== "inactive") grabador.stop();
+    else setEstado("lista");
+  }, []);
 
   const empezar = useCallback(async () => {
     if (g.current.grabador?.state === "recording") return;
+    g.current.cancelada = false;
     setEstado("pidiendo");
     let flujo: MediaStream;
     try {
@@ -99,13 +105,18 @@ export function useGrabadora(opciones: { alTerminar: (wav: Blob) => void; alFall
       });
     } catch (causa) {
       setEstado("lista");
-      avisos.current.alFallar(mensajeDelMicrofono(causa));
+      if (!g.current.cancelada) avisos.current.alFallar(mensajeDelMicrofono(causa));
       return;
     }
     const actual = g.current;
+    if (actual.cancelada || !montado.current) {
+      // Se canceló (o se cerró) mientras el navegador pedía el permiso: el micrófono no queda encendido.
+      flujo.getTracks().forEach((pista) => pista.stop());
+      if (montado.current) setEstado("lista");
+      return;
+    }
     actual.flujo = flujo;
     actual.trozos = [];
-    actual.cancelada = false;
     const grabador = new MediaRecorder(flujo);
     actual.grabador = grabador;
     grabador.ondataavailable = (evento) => {
@@ -122,17 +133,20 @@ export function useGrabadora(opciones: { alTerminar: (wav: Blob) => void; alFall
       setEstado("procesando");
       try {
         const wav = await aWav(new Blob(actual.trozos, { type: grabador.mimeType }));
+        if (!montado.current) return;
         setEstado("lista");
-        avisos.current.alTerminar(wav);
+        if (!actual.cancelada) avisos.current.alTerminar(wav);
       } catch {
+        if (!montado.current) return;
         setEstado("lista");
-        avisos.current.alFallar("No se pudo procesar la grabación. Intenta de nuevo o escribe la pregunta.");
+        if (!actual.cancelada) avisos.current.alFallar("No se pudo procesar la grabación. Intenta de nuevo o escribe la pregunta.");
       }
     };
 
     // Nivel de la voz para las barras: unas 12 veces por segundo, no en cada cuadro.
     try {
       const contexto = new AudioContext();
+      void contexto.resume(); // Safari lo crea suspendido si no nace de un toque
       const analizador = contexto.createAnalyser();
       analizador.fftSize = 512;
       contexto.createMediaStreamSource(flujo).connect(analizador);
@@ -161,19 +175,21 @@ export function useGrabadora(opciones: { alTerminar: (wav: Blob) => void; alFall
       setSegundos(transcurrido);
       if (transcurrido >= MAX_GRABACION_S) detener();
     }, 250);
-    grabador.start(250);
+    grabador.start(); // un solo trozo al parar: Safari decodifica mejor el MP4 sin fragmentar
     setEstado("grabando");
   }, [detener, soltar]);
 
-  useEffect(
-    () => () => {
-      g.current.cancelada = true;
-      const grabador = g.current.grabador;
+  useEffect(() => {
+    montado.current = true;
+    const actual = g.current;
+    return () => {
+      montado.current = false;
+      actual.cancelada = true;
+      const grabador = actual.grabador;
       if (grabador && grabador.state !== "inactive") grabador.stop();
       soltar();
-    },
-    [soltar],
-  );
+    };
+  }, [soltar]);
 
   return { estado, segundos, nivel, empezar, detener, cancelar };
 }

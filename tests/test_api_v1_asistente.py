@@ -14,6 +14,15 @@ from app.servicios import acceso, asistente, llm, viajes
 V1 = "/api/v1"
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _sin_rastro_propio():
+    """Las preguntas de estas pruebas no cuentan para el tope diario de los módulos que corren después."""
+    desde = db.uno("select coalesce(max(id), 0) m from asistente_consultas")["m"]
+    yield
+    # Se fechan en el pasado en vez de borrarlas: borrar haría que la base reutilice sus ids y los eventos ya escritos.
+    db.ejecutar("update asistente_consultas set momento='2000-01-01T00:00:00' where id>:d", d=desde)
+
+
 @pytest.fixture(autouse=True)
 def _sin_tope(monkeypatch):
     """Toda la suite pregunta como la misma administración: el tope diario se prueba aparte, fijándolo."""
@@ -172,3 +181,9 @@ def test_los_dictados_del_dia_se_cuentan_en_las_llamadas_al_modelo():
     db.insertar("llamadas_modelo", momento=db.ahora(), uso="dictado", entidad_id=admin["id"], modelo="prueba", estado_http=200)
     db.insertar("llamadas_modelo", momento=db.ahora(), uso="recibo", entidad_id=admin["id"], modelo="prueba", estado_http=200)
     assert asistente.dictados_hoy(admin["id"]) == antes + 1
+
+
+def test_sin_modelo_el_tablero_se_resume_con_sus_indicadores(cliente):
+    d = cliente.post(f"{V1}/asistente", json={"pregunta": "¿Cómo van los indicadores?"}, headers=_csrf(cliente)).json()
+    assert d["modo"] == "determinista" and "Tablero de indicadores:" in d["texto"]
+    assert "No encontré" not in d["texto"] and d["herramientas"] == ["kpi"]

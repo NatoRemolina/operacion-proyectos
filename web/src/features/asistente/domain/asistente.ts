@@ -42,6 +42,37 @@ export interface AsistenteRepository {
   transcribir(audio: Blob, signal?: AbortSignal): Promise<string>;
 }
 
+const MODOS: readonly string[] = ["asesor", "modelo", "determinista", "tope"];
+const DESTINOS: readonly string[] = ["viaje", "gasto", "cotizacion"];
+const esTexto = (x: unknown): x is string => typeof x === "string";
+const esNumero = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+
+/** Una respuesta con la forma completa del contrato (lo guardado en la pestaña puede venir dañado o de otra versión). */
+export function esRespuestaAsistente(x: unknown): x is RespuestaAsistente {
+  if (!x || typeof x !== "object") return false;
+  const r = x as Record<string, unknown>;
+  return (
+    esTexto(r.texto) &&
+    esTexto(r.modo) &&
+    MODOS.includes(r.modo) &&
+    esTexto(r.modo_texto) &&
+    Array.isArray(r.herramientas) &&
+    r.herramientas.every(esTexto) &&
+    esNumero(r.duracion_ms) &&
+    esNumero(r.usadas) &&
+    esNumero(r.tope) &&
+    Array.isArray(r.fuentes) &&
+    r.fuentes.every((f: unknown) => {
+      if (!f || typeof f !== "object") return false;
+      const fuente = f as Record<string, unknown>;
+      if (!esTexto(fuente.tipo) || !esTexto(fuente.codigo)) return false;
+      if (fuente.destino === null) return true;
+      const d = fuente.destino as Record<string, unknown> | undefined;
+      return !!d && esTexto(d.tipo) && DESTINOS.includes(d.tipo) && esNumero(d.id);
+    })
+  );
+}
+
 export const MAX_PREGUNTA = 500;
 /** La grabación se detiene sola al llegar aquí: una pregunta, no una reunión. */
 export const MAX_GRABACION_S = 60;

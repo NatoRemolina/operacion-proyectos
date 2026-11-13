@@ -375,6 +375,13 @@ AYUDA = ("Nombra a la persona por su código (P-0002) o su nombre, un viaje por 
          "un indicador (por ejemplo «gasto real aprobado») o una palabra de una nota.")
 
 
+def _cifra(valor, unidad) -> str:
+    return "sin datos" if valor is None else f"{valor} {unidad or ''}".strip()
+
+
+_TABLERO = re.compile(r"\b(indicadores|tablero|kpis?|semaforos?)\b")
+
+
 def _determinista(pregunta: str, r: Rastro) -> str:
     """Resuelve los códigos y nombres de la pregunta contra la base y lista sus hechos con cifras exactas.
 
@@ -414,6 +421,15 @@ def _determinista(pregunta: str, r: Rastro) -> str:
         lineas += _bloque_gastos(r, persona=p["codigo"])
         partes.append("\n".join(lineas))
     q, usadas = memoria.normalizar(pregunta), set()
+    if _TABLERO.search(q):   # «¿cómo van los indicadores?»: el tablero completo, como la pantalla de KPIs
+        t = ejecutar(r, "kpi", {"nombre": "todos"})
+        res = t["resumen"]
+        lineas = [f"Tablero de indicadores: {res['rojo']} en rojo, {res['ambar']} en ámbar, {res['verde']} en verde y {res['sin datos']} sin datos."]
+        for estado, texto in (("rojo", "En rojo"), ("ambar", "En ámbar")):
+            lineas += [f"- {texto}: {k['titulo']}: {_cifra(k['valor'], k['unidad'])} (meta {_cifra(k['meta'], k['unidad'])})."
+                       for k in t["indicadores"] if k["semaforo"] == estado]
+        partes.append("\n".join(lineas))
+        usadas |= set(memoria.palabras(pregunta))   # la pregunta era el tablero: no se busca en los textos libres
     for nombre, (titulo, unidad, *_resto) in metricas.CATALOGO.items():
         if memoria.normalizar(titulo) in q or nombre.replace("_", " ") in q:
             valor = ejecutar(r, "kpi", {"nombre": nombre})["valor"]
@@ -495,7 +511,7 @@ def transcribir_pregunta(audio: bytes, mime: str, usuario: dict) -> str:
     rapido = llm.RAPIDO.set(True)   # quien dicta espera en pantalla: un intento con espera corta
     try:
         r = llm.generar([{"role": "user", "parts": [llm.parte_archivo(audio, mime), llm.parte_texto(DICTADO)]}],
-                        uso="dictado", entidad_id=usuario["id"], tope_salida=1024)
+                        uso="dictado", entidad_id=usuario["id"], tope_salida=2048)
     finally:
         llm.RAPIDO.reset(rapido)
     return " ".join(llm.texto_de(r).strip().strip("\"'«»“”").split())[:500]

@@ -11,6 +11,15 @@ JSON = {"X-Envio": "pagina"}
 CLAVES = {"texto", "modo", "modo_texto", "modo_clase", "fuentes", "herramientas", "duracion_ms", "usadas", "tope"}
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _sin_rastro_propio():
+    """Las preguntas de estas pruebas no cuentan para el tope diario de los módulos que corren después."""
+    desde = db.uno("select coalesce(max(id), 0) m from asistente_consultas")["m"]
+    yield
+    # Se fechan en el pasado en vez de borrarlas: borrar haría que la base reutilice sus ids y los eventos ya escritos.
+    db.ejecutar("update asistente_consultas set momento='2000-01-01T00:00:00' where id>:d", d=desde)
+
+
 @pytest.fixture(autouse=True)
 def _sin_tope(monkeypatch):
     """Toda la suite pregunta como la misma administración: el tope diario se prueba aparte, fijándolo."""

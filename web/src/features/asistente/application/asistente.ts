@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { crearContextoRepositorio } from "@/shared/application/contexto-repositorio";
 import { usePersonaId } from "@/shared/application/identidad";
 import { comoErrorDeAplicacion, type TipoError } from "@/shared/domain/errores";
-import type { AsistenteRepository, RespuestaAsistente } from "../domain/asistente";
+import { esRespuestaAsistente, type AsistenteRepository, type RespuestaAsistente } from "../domain/asistente";
 
 const contexto = crearContextoRepositorio<AsistenteRepository>("AsistenteRepository");
 export const AsistenteRepositoryProvider = contexto.Proveedor;
@@ -33,9 +33,9 @@ function esMensaje(m: unknown): m is Mensaje {
   if (!m || typeof m !== "object") return false;
   const x = m as Record<string, unknown>;
   if (typeof x.id !== "string") return false;
-  if (x.rol === "persona") return typeof x.texto === "string";
-  if (x.rol === "asistente") return !!x.respuesta && typeof (x.respuesta as Record<string, unknown>).texto === "string";
-  if (x.rol === "error") return typeof x.texto === "string" && typeof x.pregunta === "string";
+  if (x.rol === "persona") return typeof x.texto === "string" && typeof x.porVoz === "boolean";
+  if (x.rol === "asistente") return esRespuestaAsistente(x.respuesta);
+  if (x.rol === "error") return typeof x.texto === "string" && typeof x.pregunta === "string" && typeof x.tipo === "string";
   return false;
 }
 
@@ -103,6 +103,7 @@ export function useConversacion() {
           setEsperandoDesde(null);
         }
       }
+      if (abortar.signal.aborted) return; // la respuesta llegó justo al reiniciar: no entra en la conversación nueva
       setMensajes((previos) => [
         ...previos.map((m) => (m.id === id && m.rol === "persona" ? { ...m, estado: "respondida" as const } : m)),
         siguiente,

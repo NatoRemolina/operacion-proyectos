@@ -153,6 +153,18 @@ describe("Asistente flotante", () => {
     expect(JSON.parse(window.sessionStorage.getItem("asistente:v1:7") ?? "null")).toEqual([]);
   });
 
+  it("una respuesta guardada sin la forma completa se descarta sin romper la pantalla", async () => {
+    window.sessionStorage.setItem(
+      "asistente:v1:7",
+      JSON.stringify([{ id: "c", rol: "asistente", respuesta: { texto: "solo texto" } }, { id: "d", rol: "persona", texto: "¿Sigue?", porVoz: false, estado: "respondida" }]),
+    );
+    const usuario = userEvent.setup();
+    montar();
+    await usuario.click(screen.getByRole("button", { name: "Asistente IA" }));
+    expect(screen.queryByText("solo texto")).toBeNull();
+    expect(screen.getByText("¿Sigue?")).toBeInTheDocument();
+  });
+
   it("sin micrófono en el navegador no ofrece dictar", async () => {
     const usuario = userEvent.setup();
     montar();
