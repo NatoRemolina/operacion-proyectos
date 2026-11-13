@@ -1,7 +1,8 @@
 """El analizador con Chromium de verdad y sin red: las direcciones de Google las responde la página de ejemplo.
 
-Corre dentro de la imagen del analizador (tiene Playwright):
-    docker compose run --rm --no-deps analizador python -m pytest -q analizador/pruebas
+Corre dentro de la etapa `pruebas` de la imagen del analizador (tiene Playwright y pytest):
+    docker build --target pruebas -t analizador-pruebas analizador
+    docker run --rm --network none --shm-size 1g analizador-pruebas python -m pytest -q analizador/pruebas
 """
 import base64
 from pathlib import Path

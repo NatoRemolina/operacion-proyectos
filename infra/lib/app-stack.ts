@@ -82,6 +82,7 @@ export class AppStack extends Stack {
     const analizador = new lambda.DockerImageFunction(this, "Analizador", {
       code: lambda.DockerImageCode.fromImageAsset(path.join(raiz, "analizador"), {
         platform: Platform.LINUX_ARM64,
+        target: "produccion",   // sin herramientas de prueba
         entrypoint: ["python", "-m", "awslambdaric"],
         cmd: ["analizador.lambda_handler.handler"],
       }),
