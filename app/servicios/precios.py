@@ -484,9 +484,9 @@ def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str
         return [], None
     fila = db.uno("select creado from busquedas where clave=:c order by id desc limit 1", c=nombre)
     salida = []
-    for o in datos.get("booking_options") or []:
-        t = (o.get("together") or o.get("departing") or {}) if isinstance(o, dict) else {}
-        if not t.get("price"):
+    for o in datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []:
+        t = o.get("together") if isinstance(o, dict) else None   # billetes separados: el precio de la ida no es el del viaje
+        if not isinstance(t, dict) or not isinstance(t.get("price"), int | float):
             continue
         notas = [x for x in t.get("extensions") or [] if isinstance(x, str)]
         cambios = [x for x in notas if "change" in x.lower()]
@@ -525,7 +525,9 @@ def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[
     opciones = []
     lista = datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []
     for o in lista:   # cada campo se comprueba: una respuesta rara deja la opción fuera, nunca rompe
-        t = (o.get("together") or o.get("departing")) if isinstance(o, dict) else None
+        # con billetes separados (`departing` y `returning` sin `together`) el pedido de la ida solo compraría la ida:
+        # esa opción no sirve para la página oficial
+        t = o.get("together") if isinstance(o, dict) else None
         if not isinstance(t, dict):
             continue
         pedido = t.get("booking_request") if isinstance(t.get("booking_request"), dict) else {}

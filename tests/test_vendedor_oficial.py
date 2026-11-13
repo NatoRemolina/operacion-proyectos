@@ -208,3 +208,14 @@ def test_un_envio_a_google_fuera_de_travel_clk_no_se_usa(piloto, buscador):
     vuelo = c["vuelos"][0]
     r = _abrir(piloto, c["id"], vuelo["id"])
     assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"]
+
+
+# ---------- ronda 1 · punto 19: billetes separados ----------
+def test_con_billetes_separados_va_a_google_flights(piloto, buscador):
+    _, respuestas, _ = buscador
+    ida = _opcion("Spirit", False, 120)["together"]
+    respuestas["reserva"] = {"booking_options": [{"separate_tickets": True, "departing": ida, "returning": dict(ida)}]}
+    c = _vegas(piloto)
+    vuelo = c["vuelos"][0]
+    r = _abrir(piloto, c["id"], vuelo["id"])
+    assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"]   # nunca solo la ida
