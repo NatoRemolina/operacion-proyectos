@@ -91,7 +91,7 @@ El ensayo muestra las claves que subiría, sin valores y sin contactar AWS. **Ex
 
 Qué debe mostrar:
 
-- **OperacionBase:** solo se añade la suscripción por correo al tema de avisos. Hoy la pila no tiene suscripción (se desplegó sin `-c correo`) y no tendrá presupuesto. El secreto no se reemplaza.
+- **OperacionBase:** solo se añade la suscripción por correo al tema de avisos. Hoy la pila no tiene suscripción ni presupuesto (se desplegó sin `-c correo`), así que esta noche no debe aparecer nada más. El secreto no se reemplaza. Si alguna vez se hubiera desplegado OperacionBase con correo desde un commit anterior a `75236e3`, el diff mostraría además que se **borra** `Presupuesto`: sería lo esperado, porque el único presupuesto es «cuenta-mensual».
 - **OperacionApp:** la imagen nueva, `ORIGENES_WEB` en la función (`https://software.nataliaremolinarodriguez.com`), el filtro de métrica de las líneas `ERROR peticion=` y las alarmas `ErroresDeLaAplicacion` y `Respuestas5xx`. La función y su dirección se **actualizan**: si el diff dice que alguna se reemplaza, no se despliega.
 - **OperacionWeb:** todo nuevo. Un certificado, dos distribuciones, el bucket, la función de la web y cuatro registros: A y AAAA de `software.` y de `admin.software.`. **No debe aparecer** ningún `AWS::Route53::HostedZone` ni ningún registro de `nataliaremolinarodriguez.com` ni de `www`.
 
