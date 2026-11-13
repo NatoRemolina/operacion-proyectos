@@ -9,7 +9,7 @@ import "./globals.css";
 const mulish = Mulish({ subsets: ["latin"], variable: "--font-mulish", display: "swap" });
 
 export const metadata: Metadata = {
-  title: { default: "Plataforma de viajes y gastos", template: "%s · Viajes y gastos" },
+  title: { default: "Inflight · Viajes y gastos (propuesta)", template: "%s · Inflight (propuesta)" },
   description: "Consulta tus viajes, envía recibos y sigue su estado.",
   robots: { index: false, follow: false },
 };

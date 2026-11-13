@@ -34,7 +34,7 @@ export function FormularioEntrar({
       ) : null}
       <CampoTexto
         id="correo"
-        etiqueta="Correo electrónico"
+        etiqueta="Correo"
         placeholder="nombre@empresa.com"
         type="email"
         name="correo"

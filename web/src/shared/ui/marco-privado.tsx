@@ -6,38 +6,36 @@ import { TEXTO_PERMISO, type EntradaMenu, type Permiso } from "@/shared/domain/n
 import { AvisosProvider } from "./aviso-emergente";
 import { PRESIONAR } from "./movimiento";
 
-/**
- * Marca del producto: «Plataforma de viajes y gastos», con el mismo símbolo del ícono de la pestaña (una ruta que
- * llega a su destino). Es una propuesta: no lleva el nombre ni el logotipo de ninguna empresa.
- */
-export function Marca({
-  tamano = "grande",
-  fondo = "grafito",
-}: {
-  tamano?: "grande" | "pequena";
-  /** Sobre qué fondo va: la barra grafito o una superficie clara. */
-  fondo?: "grafito" | "claro";
-}) {
-  const grande = tamano === "grande";
+/** Sobre qué fondo va la marca: la barra grafito o una superficie clara (la portada). */
+type FondoMarca = "grafito" | "claro";
+
+export function Marca({ tamano = "grande", fondo = "grafito" }: { tamano?: "grande" | "pequena"; fondo?: FondoMarca }) {
   return (
-    <p className="flex items-center gap-2.5 leading-none">
-      <svg aria-hidden="true" viewBox="0 0 32 32" className={`shrink-0 ${grande ? "size-8" : "size-7"}`}>
-        <rect width="32" height="32" rx="7" fill={fondo === "grafito" ? "rgb(255 255 255 / 0.1)" : "var(--grafito)"} />
-        <path d="M9 22 23 10" stroke="var(--cian-claro)" strokeWidth="3" strokeLinecap="round" />
-        <circle cx="23" cy="10" r="3" fill="#ffffff" />
-      </svg>
-      <span>
-        <span
-          className={`block text-xs font-semibold ${fondo === "grafito" ? "text-sobre-grafito-suave" : "text-texto-secundario"}`}
-        >
-          Plataforma de{" "}
-        </span>
-        <span className={`mt-1 block font-extrabold tracking-tight ${grande ? "text-lg" : "text-base"}`}>
-          viajes y gastos
-        </span>
+    <p className="leading-none">
+      <span className={`block font-extrabold tracking-wide ${tamano === "grande" ? "text-2xl" : "text-lg"}`}>
+        INFLIGHT
+      </span>
+      <span
+        className={`mt-2 block text-[0.7rem] font-semibold tracking-[0.3em] ${
+          fondo === "grafito" ? "text-sobre-grafito-suave" : "text-texto-secundario"
+        }`}
+      >
+        SOLUTIONS
       </span>
     </p>
   );
+}
+
+/**
+ * Sello junto al logotipo: la plataforma es una propuesta para la prueba técnica, no el sitio oficial de la
+ * empresa. Visible en la portada; discreto en la barra lateral.
+ */
+export function SelloPropuesta({ fondo = "grafito" }: { fondo?: FondoMarca }) {
+  const tono =
+    fondo === "grafito"
+      ? "border-sobre-grafito-suave/40 px-2 py-0.5 text-[0.7rem] text-sobre-grafito-suave"
+      : "border-marca/40 bg-superficie/70 px-3 py-1.5 text-xs text-marca-oscura";
+  return <p className={`inline-block rounded-full border font-semibold ${tono}`}>Propuesta · prueba técnica</p>;
 }
 
 function esActivo(enlace: EntradaMenu, ruta: string): boolean {
@@ -184,7 +182,10 @@ export function MarcoPrivado({
 
         <aside inert={abierto} className="zona-oscura sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-grafito px-5 py-7 text-sobre-grafito md:flex">
           <Marca />
-          <nav aria-label="Principal" className="mt-10">
+          <div className="mt-3">
+            <SelloPropuesta />
+          </div>
+          <nav aria-label="Principal" className="mt-8">
             <ListaMenu enlaces={enlaces} rutaActual={rutaActual} />
           </nav>
           <div className="mt-auto pt-6">
@@ -229,6 +230,9 @@ export function MarcoPrivado({
               <button type="button" className={BOTON_OSCURO} onClick={cerrar}>
                 Cerrar menú
               </button>
+            </div>
+            <div className="mt-3">
+              <SelloPropuesta />
             </div>
             <nav aria-label="Menú" className="mt-8" ref={panel}>
               <ListaMenu enlaces={enlaces} rutaActual={rutaActual} onNavegar={() => setAbiertoEn(null)} />
