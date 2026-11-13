@@ -1,11 +1,15 @@
 """Claves de servicio: credenciales para integraciones (por ejemplo, n8n), no para personas.
 
-- Cada clave tiene un nombre (el que queda en la bitácora) y permisos acotados de la lista `PERMISOS`.
+- Cada clave tiene un nombre (el que queda en la bitácora) y una lista de permisos del catálogo `PERMISOS`
+  (`recurso:acción`). Un flujo nuevo añade su permiso al catálogo y su endpoint lo pide con `autorizar`.
+- Ninguna clave aprueba, rechaza ni revisa: esas decisiones son siempre de una persona con sesión. Un permiso con esas
+  acciones no puede entrar al catálogo ni a una clave.
 - Se muestra una sola vez al crearla; en la base solo queda su huella y un prefijo para reconocerla.
 - Se revoca sin borrarla: la fila queda como registro de que existió.
 - Viaja en la cabecera `X-Clave-Servicio`, sin cookie ni token CSRF: no hay navegador de por medio.
 """
 import hmac
+import re
 import secrets
 
 from sqlalchemy import Column, Text, UniqueConstraint
@@ -16,6 +20,22 @@ from . import acceso, eventos
 CABECERA = "X-Clave-Servicio"
 PREFIJO = "isk_"
 PERMISOS = {"soportes:leer": "Descargar el soporte de un gasto con un enlace firmado y vigente"}
+FORMATO_PERMISO = re.compile(r"^[a-z_]+:[a-z_]+$")
+ACCIONES_VEDADAS = ("aprobar", "rechazar", "revisar", "decidir", "excepcion")
+
+
+def _vedado(permiso: str) -> bool:
+    return any(a in permiso for a in ACCIONES_VEDADAS)
+
+
+def comprobar_catalogo(catalogo: dict | None = None) -> None:
+    """Falla al cargar si alguien añade al catálogo un permiso mal escrito o que decide por una persona."""
+    for p in catalogo if catalogo is not None else PERMISOS:
+        if not FORMATO_PERMISO.match(p) or _vedado(p):
+            raise RuntimeError(f"Permiso de servicio no admitido en el catálogo: {p}")
+
+
+comprobar_catalogo()
 
 claves_servicio = db._tabla(
     "claves_servicio",
@@ -45,7 +65,7 @@ def crear(nombre: str, permisos: list[str], creado_por: str = "administración")
     """Crea la clave y devuelve (id, clave en claro). La clave en claro no se puede recuperar después."""
     nombre = _limpiar_nombre(nombre)
     permisos = sorted(set(permisos))
-    desconocidos = [p for p in permisos if p not in PERMISOS]
+    desconocidos = [p for p in permisos if p not in PERMISOS or _vedado(p) or not FORMATO_PERMISO.match(p)]
     if not permisos or desconocidos:
         raise ValueError("Permisos no válidos: " + (", ".join(desconocidos) or "ninguno") + ". Opciones: " + ", ".join(PERMISOS))
     clave = PREFIJO + secrets.token_urlsafe(32)
@@ -80,7 +100,7 @@ def autorizar(clave: str | None, permiso: str) -> dict:
     # La búsqueda ya es por huella; la comparación en tiempo constante evita depender de cómo compara la base
     if not c or c["revocado"] or not hmac.compare_digest(c["huella"], acceso.huella(clave)):
         raise ClaveInvalida
-    if permiso not in c["permisos"].split(","):
+    if _vedado(permiso) or permiso not in c["permisos"].split(","):
         raise SinPermiso
     ahora = db.ahora()
     if (c["ultimo_uso"] or "")[:16] != ahora[:16]:   # a lo sumo una escritura por minuto

@@ -37,6 +37,11 @@ from .viajes import codigo_viaje
 
 registro = logging.getLogger(__name__)
 
+# Catálogo de eventos: un evento nuevo se declara aquí y se emite con `emitir(evento, datos)`; todos van firmados igual.
+# `enlace_soporte`: si cada intento añade un enlace firmado y temporal al soporte del gasto (`datos["gasto_id"]`).
+EVENTOS = {
+    "gasto.registrado": {"enlace_soporte": True},
+}
 EVENTO_GASTO = "gasto.registrado"
 VIGENCIA_ENLACE = 15 * 60                 # segundos
 TIEMPO_ESPERA = httpx.Timeout(3.0, connect=2.0)
@@ -133,10 +138,15 @@ def _fmt(d: datetime) -> str:
     return d.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _entidad(aviso: dict) -> tuple[str, int]:
+    """Dónde queda el rastro de la entrega: en el gasto si el aviso es de uno; si no, en el propio aviso."""
+    return ("gasto", aviso["gasto_id"]) if aviso["gasto_id"] else ("aviso", aviso["id"])
+
+
 def _intentar(aviso: dict) -> bool:
     """Un intento de entrega. Nunca lanza: el resultado queda en la fila y en la bitácora."""
     datos = json.loads(aviso["cuerpo"])
-    if datos.get("gasto_id"):
+    if EVENTOS.get(aviso["evento"], {}).get("enlace_soporte") and datos.get("gasto_id"):
         datos["enlace_soporte"] = enlace_soporte(datos["gasto_id"])
         datos["enlace_vence_en_segundos"] = VIGENCIA_ENLACE
     datos = {"evento": aviso["evento"], "entrega": aviso["entrega"], **datos}
@@ -156,13 +166,13 @@ def _intentar(aviso: dict) -> bool:
     if error is None:
         db.actualizar("avisos_salientes", aviso["id"], estado="entregado", intentos=intentos, respuesta=estado_http,
                       entregado=db.ahora(), proximo=None, ultimo_error=None)
-        eventos.registrar("gasto", aviso["gasto_id"], "aviso entregado", f"{aviso['evento']} · intento {intentos}", "avisos")
+        eventos.registrar(*_entidad(aviso), "aviso entregado", f"{aviso['evento']} · intento {intentos}", "avisos")
         return True
     agotado = intentos > len(ESPERAS)
     db.actualizar("avisos_salientes", aviso["id"], estado="fallido" if agotado else "pendiente", intentos=intentos,
                   respuesta=estado_http, ultimo_error=error[:300],
                   proximo=None if agotado else _fmt(_ahora() + timedelta(minutes=ESPERAS[intentos - 1])))
-    eventos.registrar("gasto", aviso["gasto_id"], "aviso fallido" if agotado else "aviso no entregado",
+    eventos.registrar(*_entidad(aviso), "aviso fallido" if agotado else "aviso no entregado",
                       f"{aviso['evento']} · intento {intentos} · {error}", "avisos")
     registro.warning("Aviso %s %s no entregado (intento %s): %s", aviso["evento"], aviso["entrega"], intentos, error)
     return False
@@ -177,19 +187,30 @@ def reintentar_pendientes(limite: int = REINTENTOS_POR_VUELTA) -> int:
     return sum(_intentar(a) for a in vencidos)
 
 
+def emitir(evento: str, datos: dict) -> int | None:
+    """Pone un aviso del catálogo en la bandeja y lo intenta entregar. Devuelve el id del aviso, o None si están apagados.
+
+    `datos` es el cuerpo mínimo del evento (sin datos sensibles); `gasto_id`, si lo trae, enlaza el aviso con el gasto
+    en la bitácora. Un evento fuera del catálogo es un error de programación: lanza `ValueError`. Un fallo del destino
+    no lanza: queda en la bandeja para reintentarlo.
+    """
+    if evento not in EVENTOS:
+        raise ValueError(f"Evento no declarado en avisos.EVENTOS: {evento}")
+    if not activo():
+        return None
+    aid = db.insertar("avisos_salientes", entrega=str(uuid.uuid4()), evento=evento, gasto_id=datos.get("gasto_id"),
+                      cuerpo=json.dumps(datos, ensure_ascii=False), estado="pendiente", intentos=0,
+                      proximo=db.ahora(), creado=db.ahora())
+    # Solo si el destino respondió se atienden de paso los que esperaban: con el destino caído no se suma espera
+    if _intentar(db.uno("select * from avisos_salientes where id=:i", i=aid)):
+        reintentar_pendientes()
+    return aid
+
+
 def gasto_registrado(gasto_id: int) -> None:
     """Avisa que se registró un gasto. Apagado sin configuración; nunca lanza ni deja de registrar el gasto."""
     try:
-        if not activo():
-            return
-        cuerpo = _cuerpo_gasto(gasto_id)
-        if not cuerpo:
-            return
-        aid = db.insertar("avisos_salientes", entrega=str(uuid.uuid4()), evento=EVENTO_GASTO, gasto_id=gasto_id,
-                          cuerpo=json.dumps(cuerpo, ensure_ascii=False), estado="pendiente", intentos=0,
-                          proximo=db.ahora(), creado=db.ahora())
-        # Solo si el destino respondió se atienden de paso los que esperaban: con el destino caído no se suma espera
-        if _intentar(db.uno("select * from avisos_salientes where id=:i", i=aid)):
-            reintentar_pendientes()
+        if activo() and (cuerpo := _cuerpo_gasto(gasto_id)):
+            emitir(EVENTO_GASTO, cuerpo)
     except Exception:   # el aviso es accesorio: el gasto ya quedó registrado
         registro.exception("No se pudo preparar el aviso %s del gasto %s", EVENTO_GASTO, gasto_id)

@@ -228,3 +228,56 @@ def test_el_aviso_lleva_el_codigo_del_viaje_y_el_proyecto(cliente, receptor, via
     datos = json.loads(receptor.recibidos[-1][1])
     proyecto = db.uno("select nombre from proyectos where id=:i", i=viaje["proyecto_id"])["nombre"]
     assert datos["viaje"] == viajes.codigo_viaje(viaje) and datos["proyecto"] == proyecto
+
+
+# ---------- base para más flujos: catálogo de permisos y de eventos ----------
+def test_una_clave_lleva_una_lista_de_permisos_del_catalogo(anonimo, cliente, monkeypatch):
+    monkeypatch.setitem(claves_servicio.PERMISOS, "contable:leer", "prueba")
+    cid, clave = claves_servicio.crear("n8n", ["soportes:leer", "contable:leer", "soportes:leer"])
+    assert db.uno("select permisos from claves_servicio where id=:i", i=cid)["permisos"] == "contable:leer,soportes:leer"
+    gid = _gasto_con_soporte(cliente, PNG + b"lista")
+    assert anonimo.get(_url(gid), headers={"X-Clave-Servicio": clave}).status_code == 200
+    with pytest.raises(ValueError):
+        claves_servicio.crear("n8n", [])
+
+
+def test_ninguna_clave_aprueba_ni_rechaza(anonimo, cliente, monkeypatch):
+    claves_servicio.comprobar_catalogo()   # el catálogo vigente no trae nada que decida
+    for vedado in ("gasto:aprobar", "gasto:rechazar", "gastos:revisar", "viaje:decidir", "gasto:excepcion", "Gasto Leer"):
+        with pytest.raises(RuntimeError):
+            claves_servicio.comprobar_catalogo({vedado: "x"})
+        monkeypatch.setitem(claves_servicio.PERMISOS, vedado, "x")   # aunque alguien lo cuele en el catálogo
+        with pytest.raises(ValueError):
+            claves_servicio.crear("n8n", [vedado])
+    # Ni siquiera una clave con el permiso escrito a mano en la base pasa una operación que decide
+    cid, clave = claves_servicio.crear("colada", ["soportes:leer"])
+    db.ejecutar("update claves_servicio set permisos='soportes:leer,gasto:aprobar' where id=:i", i=cid)
+    with pytest.raises(claves_servicio.SinPermiso):
+        claves_servicio.autorizar(clave, "gasto:aprobar")
+    # La clave no abre la revisión ni ninguna ruta de personas: sin sesión, 401
+    gid = _gasto_con_soporte(cliente, PNG + b"decidir")
+    _, clave = claves_servicio.crear("n8n", ["soportes:leer"])
+    r = anonimo.post(f"{V1}/gastos/{gid}/revision", headers={"X-Clave-Servicio": clave},
+                     json={"version": 0, "accion": "aprobar"})
+    assert r.status_code == 401
+    assert anonimo.post(f"/gastos/{gid}/aprobar", headers={"X-Clave-Servicio": clave}).status_code in (401, 403, 404)
+
+
+def test_emitir_firma_igual_cualquier_evento_del_catalogo(receptor, monkeypatch):
+    with pytest.raises(ValueError):
+        avisos.emitir("gasto.borrado", {"gasto_id": 1})
+    monkeypatch.setitem(avisos.EVENTOS, "viaje.presupuesto_80", {"enlace_soporte": False})
+    aid = avisos.emitir("viaje.presupuesto_80", {"viaje": "V-2026-0001", "ejecucion_pct": 82})
+    cabeceras, cuerpo = receptor.recibidos[-1]
+    partes = dict(p.split("=", 1) for p in cabeceras["X-Inflight-Firma"].split(","))
+    esperado = hmac.new(SECRETO.encode(), f"{partes['t']}.".encode() + cuerpo, hashlib.sha256).hexdigest()
+    assert hmac.compare_digest(partes["v1"], esperado) and cabeceras["X-Inflight-Evento"] == "viaje.presupuesto_80"
+    datos = json.loads(cuerpo)
+    assert datos == {"evento": "viaje.presupuesto_80", "entrega": cabeceras["X-Inflight-Entrega"],
+                     "viaje": "V-2026-0001", "ejecucion_pct": 82}   # sin enlace: el evento no lo pide
+    assert db.uno("select estado from avisos_salientes where id=:i", i=aid)["estado"] == "entregado"
+    assert db.uno("select 1 x from eventos where entidad='aviso' and entidad_id=:i and paso='aviso entregado'", i=aid)
+
+
+def test_emitir_apagado_no_guarda_nada():
+    assert avisos.emitir("gasto.registrado", {"gasto_id": 1}) is None

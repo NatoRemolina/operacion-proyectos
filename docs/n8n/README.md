@@ -85,6 +85,10 @@ Registrar un gasto con un recibo de ejemplo y comprobar:
 - El enlace al soporte se firma con una clave derivada del secreto del aviso: rotar `N8N_WEBHOOK_SECRETO` invalida los enlaces pendientes.
 - Para rotar la clave de servicio: crear otra, cambiarla en la credencial de n8n y revocar la anterior.
 
+## Para los flujos siguientes
+- **Permisos:** una clave lleva una lista de permisos `recurso:acción` del catálogo `PERMISOS` de `app/servicios/claves_servicio.py` (hoy solo `soportes:leer`). Un flujo nuevo añade su permiso al catálogo y su endpoint bajo `/api/v1/servicio/` lo pide con `autorizar`. Ninguna clave aprueba, rechaza ni revisa: un permiso con esas acciones no entra al catálogo (la aplicación no arranca) ni a una clave, y `autorizar` lo niega aunque esté escrito a mano en la base.
+- **Eventos:** todo aviso sale de `avisos.emitir(evento, datos)` con un evento del catálogo `EVENTOS` de `app/servicios/avisos.py` (hoy solo `gasto.registrado`), con la misma firma, la misma bandeja y los mismos reintentos. Cada evento declara si lleva el enlace temporal al soporte.
+
 ## Pendiente
 
 - Los avisos pendientes se reintentan cuando llega otro gasto o al correr `python -m datos.avisos reintentar`. Para que el reintento no dependa de eso, falta programar esa orden (por ejemplo, una regla de EventBridge cada 5 minutos que invoque la función).
