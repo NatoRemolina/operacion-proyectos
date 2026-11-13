@@ -223,3 +223,11 @@ def test_toda_variable_que_lee_la_aplicacion_va_en_el_secreto_o_tiene_su_razon()
     sin_destino = leidas - set(ps.CLAVES) - set(FUERA_DEL_SECRETO)
     assert not sin_destino, f"decidir si van en el secreto: {sorted(sin_destino)}"
     assert "APP_CLAVE" not in ps.CLAVES
+
+
+def test_un_secreto_recien_creado_por_cdk_no_es_configuracion():
+    """CDK crea el secreto con una contraseña aleatoria (GenerateSecretString): leerlo no debe romper la carga."""
+    class Recien(Nube):
+        def get_secret_value(self, SecretId):  # noqa: N803
+            return {"SecretString": "aB3$kL9!qW7zR2#xV5"}
+    assert ps._actual(Recien(), ARN) == {}

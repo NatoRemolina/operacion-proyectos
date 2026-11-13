@@ -102,11 +102,16 @@ def _arn(sesion) -> str:
 def _actual(cliente, arn: str) -> dict:
     from botocore.exceptions import ClientError
     try:
-        return json.loads(cliente.get_secret_value(SecretId=arn)["SecretString"])
+        texto = cliente.get_secret_value(SecretId=arn)["SecretString"]
     except ClientError as e:
         if e.response.get("Error", {}).get("Code") == "ResourceNotFoundException":   # creado por CDK, aún sin valor
             return {}
         raise
+    try:
+        actual = json.loads(texto)
+    except json.JSONDecodeError:   # la contraseña aleatoria que CDK pone al crear el secreto: aún no es configuración
+        return {}
+    return actual if isinstance(actual, dict) else {}
 
 
 def main(argv: list[str] | None = None, sesion=None) -> int:
