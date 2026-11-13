@@ -50,3 +50,53 @@ jobs:
         run: npm test
       - name: Compilación
         run: npm run build
+
+  infra:
+    # Sin cuenta ni claves de AWS: compila las pilas, corre sus pruebas y las sintetiza con dominio y sin él.
+    # Nada se despliega. La síntesis de OperacionWeb compila los estáticos de la web con Docker.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      CDK_DEFAULT_ACCOUNT: "000000000000"
+      AWS_EC2_METADATA_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Tipos
+        run: npm run build
+      - name: Pruebas de las pilas
+        run: npm test
+      - name: Síntesis con dominio
+        run: npx cdk synth --quiet -c correo=avisos@example.com -c dominio=nataliaremolinarodriguez.com -c zonaId=Z0731422246SUYEGG2Z5R
+      - name: La zona es de la dueña
+        # La pila importa la zona de Route 53; nunca la crea
+        run: "! grep -l '\"AWS::Route53::HostedZone\"' cdk.out/*.template.json"
+      - name: Síntesis sin dominio
+        run: npx cdk synth --quiet -c correo=avisos@example.com
+
+  imagenes:
+    # Construye las dos imágenes sin publicarlas. En la nube corren en arm64: aquí se comprueba que se construyen,
+    # y la imagen para Lambda la construye CDK al desplegar.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Imagen de la API
+        run: docker build --tag operacion-api:ci .
+      - name: Imagen de la web
+        run: docker build --tag operacion-web:ci web
+      - name: La web arranca y responde en /entrar
+        run: |
+          docker run --detach --name web-ci --publish 127.0.0.1:3000:3000 operacion-web:ci
+          for i in $(seq 1 30); do curl --silent --fail --output /dev/null http://127.0.0.1:3000/entrar && exit 0; sleep 1; done
+          docker logs web-ci
+          exit 1

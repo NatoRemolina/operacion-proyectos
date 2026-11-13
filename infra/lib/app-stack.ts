@@ -7,8 +7,19 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import { Construct } from "constructs";
+import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import { dominioDesdeContexto } from "./dominio";
+
+/**
+ * Archivos de app/ y datos/ que no están en git ni ignorados: entrarían en la imagen de la API (el Dockerfile copia
+ * esas dos carpetas), por ejemplo una respuesta del buscador pagada y sin revisar. Fuera de git, nada que comparar.
+ */
+export function sinVersionar(raiz: string, carpetas = ["app", "datos"]): string[] {
+  const r = spawnSync("git", ["ls-files", "--others", "--exclude-standard", "--", ...carpetas], { cwd: raiz, encoding: "utf-8" });
+  if (r.error || r.status !== 0) return [];
+  return r.stdout.split("\n").filter(Boolean);
+}
 
 export interface AppStackProps extends StackProps {
   secreto: secretsmanager.Secret;
@@ -37,8 +48,16 @@ export class AppStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
+    // Al empaquetar para desplegar, se despliega desde una carpeta limpia: nada sin versionar viaja a la imagen
+    const raiz = path.join(__dirname, "..", "..");
+    const sobran = this.bundlingRequired ? sinVersionar(raiz) : [];
+    if (sobran.length) {
+      throw new Error(`Hay archivos sin versionar que entrarían en la imagen de la API: ${sobran.join(", ")}. `
+        + "Despliega desde una carpeta de trabajo limpia (git worktree) o decide si se versionan (docs/despliegue.md).");
+    }
+
     const web = new lambda.DockerImageFunction(this, "Web", {
-      code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, "..", ".."), { platform: Platform.LINUX_ARM64 }),
+      code: lambda.DockerImageCode.fromImageAsset(raiz, { platform: Platform.LINUX_ARM64 }),
       architecture: lambda.Architecture.ARM_64,
       memorySize: 2048,
       timeout: Duration.seconds(180),

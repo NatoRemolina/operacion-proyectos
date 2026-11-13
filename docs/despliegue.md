@@ -14,7 +14,7 @@ Las tres pilas de `infra/`:
 
 ## Antes de empezar
 
-- **Carpeta de trabajo limpia** en el commit que se publica (`git status` sin cambios). La imagen de la API sale de la raíz del repositorio y la de la web de `web/`: lo que no está versionado no debe entrar (ver `.dockerignore`).
+- **Carpeta de trabajo limpia** en el commit que se publica (`git status` sin cambios; lo más seguro es un `git worktree` nuevo). A la imagen de la API solo entran `requirements.txt`, `app/` y `datos/` (`.dockerignore`), y la web sale de `web/`. Si en `app/` o `datos/` hay algo sin versionar (por ejemplo, una respuesta del buscador pagada y sin revisar), la síntesis de `OperacionApp` se detiene y lo nombra: o se versiona, o se despliega desde otra carpeta.
 - **Docker en marcha:** CDK construye en este equipo las dos imágenes y los estáticos de la web.
 - **Credenciales de AWS de la dueña**, región `us-east-1`: `export AWS_PROFILE=operacion` y `aws sts get-caller-identity` para ver la cuenta. La cuenta ya tiene el *bootstrap* de CDK de despliegues anteriores; en una cuenta nueva se hace una vez, con `npx cdk bootstrap aws://<cuenta>/us-east-1`.
 - **Archivos locales, fuera de git:**
