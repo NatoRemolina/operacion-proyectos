@@ -64,6 +64,31 @@ def test_si_no_aparecen_los_precios_falla_con_evidencia():
     assert r["extracto"].startswith("Something went wrong")
 
 
+def test_la_lista_sin_precios_todavia_no_cuenta_como_cargada():
+    """Lo que vio la prueba 3 contra Google: el título de la lista llega antes que los resultados."""
+    paginas = {"https://www.google.com/travel/flights/reserva": "reserva.html",
+               "https://www.google.com/travel/flights?": "regresos_tardios.html"}
+    r = navegador.analizar(URL, servir=_servir(paginas, []))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["datos"]["regreso_elegido"]["precio"] == 564 and r["datos"]["tarifas"]
+
+
+def test_elige_el_regreso_aunque_la_fila_tape_la_etiqueta():
+    """Lo que vio la prueba 5 contra Google: la fila clicable intercepta el clic sobre el elemento con la etiqueta."""
+    paginas = {"https://www.google.com/travel/flights/reserva": "reserva.html",
+               "https://www.google.com/travel/flights?": "regresos_tapados.html"}
+    r = navegador.analizar(URL, servir=_servir(paginas, []))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["datos"]["regreso_elegido"]["precio"] == 564 and r["datos"]["tarifas"]
+
+
+def test_la_pagina_siempre_se_pide_en_ingles_ee_uu_y_dolares():
+    pedidos = []
+    navegador.analizar("https://www.google.com/travel/flights?tfs=prueba&hl=es&curr=EUR",
+                       servir=_servir({"https://www.google.com/travel/flights": "reserva.html"}, pedidos))
+    assert pedidos[0] == "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=prueba"
+
+
 def test_una_verificacion_no_se_resuelve():
     r = navegador.analizar(URL, servir=_servir({"https://www.google.com/": "verificacion.html"}, []))
     assert (r["estado"], r["motivo"]) == ("fallido", lector.VERIFICACION) and r["captura_png_b64"] is None

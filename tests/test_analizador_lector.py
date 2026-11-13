@@ -73,3 +73,13 @@ def test_reconoce_cuando_la_pagina_pide_verificacion_o_condiciones():
     assert lector.bloqueo("https://www.google.com/travel/flights", "Our systems have detected unusual traffic") == lector.VERIFICACION
     assert lector.bloqueo("https://consent.google.com/m?continue=x", "Before you continue to Google") == lector.CONSENTIMIENTO
     assert lector.bloqueo("https://www.google.com/travel/flights?tfs=x", "Booking options") is None
+
+
+def test_reconoce_las_horas_con_el_espacio_fino_de_chromium():
+    etiqueta = ("From 564 US dollars round trip total. Nonstop flight with American. Leaves Harry Reid International "
+                "Airport at 6:00\u202fAM on Friday, December 11 and arrives at Miami International Airport at 1:43\u202fPM on "
+                "Friday, December 11. Total duration 4 hr 43 min.   1 carry-on bag included. 0 checked bags included.  Select flight")
+    (o,) = lector.itinerarios([etiqueta])
+    assert (o["precio"], o["sale"], o["llega"]) == (564, "6:00 AM", "1:43 PM") and o["etiqueta"] == etiqueta
+    d = lector.leer("Selected flights\nTue, Dec 8\n9:48\u202fAM\n – \n12:24\u202fPM\nAmerican\nBooking options\n", [])
+    assert (d["tramos"][0]["sale"], d["tramos"][0]["llega"], d["tramos"][0]["aerolinea"]) == ("9:48 AM", "12:24 PM", "American")

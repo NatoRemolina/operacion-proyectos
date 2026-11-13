@@ -132,17 +132,27 @@ ETIQUETA_ITINERARIO = re.compile(
     r"Total duration (?P<duracion>[^.]+)\.")
 
 
+ESPACIOS_RAROS = re.compile(r"[\u00a0\u2007\u2009\u202f]")
+
+
+def normal(texto: str) -> str:
+    """Chromium escribe la hora con un espacio fino sin salto («6:00\u202fAM») y Google usa espacios duros: todo pasa a
+    espacio normal para que el lector reconozca lo mismo que se ve."""
+    return ESPACIOS_RAROS.sub(" ", texto or "")
+
+
 def itinerarios(etiquetas: list[str]) -> list[dict]:
-    """Las opciones de una lista de vuelos (por ejemplo, los regresos de una ida ya elegida), de su etiqueta accesible."""
+    """Las opciones de una lista de vuelos (por ejemplo, los regresos de una ida ya elegida), de su etiqueta accesible.
+    `etiqueta` guarda la original (sin normalizar), para encontrar el elemento en la página."""
     vistos, salida = set(), []
     for e in etiquetas:
-        m = ETIQUETA_ITINERARIO.search(e or "")
+        m = ETIQUETA_ITINERARIO.search(re.sub(r" {2,}", " ", normal(e)))
         if not m or e in vistos:
             continue
         vistos.add(e)
         d = m.groupdict()
-        equipaje = re.findall(r"(\d+ (?:carry-on|checked) bags? included)", e)
-        escalas = re.findall(r"Layover \(\d+ of \d+\) is a ([^.]+)\.", e)
+        equipaje = re.findall(r"(\d+ (?:carry-on|checked) bags? included)", normal(e))
+        escalas = re.findall(r"Layover \(\d+ of \d+\) is a ([^.]+)\.", normal(e))
         salida.append({**{k: v.strip() for k, v in d.items() if k != "precio" and v}, "precio": float(d["precio"].replace(",", "")),
                        "equipaje": equipaje, "detalle_escalas": escalas, "etiqueta": e[:600]})
     return salida
@@ -151,7 +161,7 @@ def itinerarios(etiquetas: list[str]) -> list[dict]:
 def leer(texto: str, etiquetas: list[str] | None = None) -> dict:
     """Lo visible de la página, ordenado: precio total, vuelos elegidos, opciones de reserva por vendedor y, si la página
     es una lista, los itinerarios. `avisos` dice lo que no se encontró."""
-    lineas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
+    lineas = [l.strip() for l in normal(texto).splitlines() if l.strip()]
     avisos = []
     total = None
     for i, linea in enumerate(lineas):
