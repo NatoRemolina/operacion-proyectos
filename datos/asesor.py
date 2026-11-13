@@ -117,7 +117,7 @@ def sincronizar() -> int:
 
 
 def probar(pregunta: str) -> int:
-    admin = db.uno("select * from usuarios where rol='admin' and activo order by id limit 1")
+    admin = db.uno("select * from usuarios where rol='admin' and activo=1 order by id limit 1")
     if not admin:
         print("No hay ninguna cuenta de administración en la base configurada.")
         return 1
