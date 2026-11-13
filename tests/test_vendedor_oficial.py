@@ -84,7 +84,9 @@ def test_lleva_a_la_pagina_oficial_de_la_aerolinea_sin_guardar_el_pedido(piloto,
     assert r.headers["content-type"].startswith("text/html")
     assert r.headers["Cache-Control"] == "no-store" and r.headers["Referrer-Policy"] == "no-referrer"
     csp = r.headers["Content-Security-Policy"]
-    assert "form-action https://www.google.com" in csp and "default-src 'none'" in csp
+    # Chrome aplica form-action también a las redirecciones que siguen al envío: con solo google.com cortaría el salto de
+    # Google a la aerolínea. El destino del envío ya lo valida el servidor (lista blanca) y el script va con nonce.
+    assert re.search(r"form-action https:(;|$)", csp) and "default-src 'none'" in csp
     nonce = re.search(r"'nonce-([^']+)'", csp).group(1)
     pagina = r.text
     # el envío va a la dirección del vendedor oficial (la aerolínea, aunque una agencia sea más barata), con su cuerpo

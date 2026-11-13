@@ -195,10 +195,12 @@ def _pagina_envio(destino: dict) -> HTMLResponse:
               f'<form id="envio" method="post" action="{html.escape(destino["url"])}">{campos}'
               f'<p>Abriendo la página oficial de {vendedor}… <button type="submit">Continuar</button></p></form>'
               f'<script nonce="{nonce}">document.getElementById("envio").submit();</script></body></html>')
-    destino_csp = "https://www.google.com https://google.com"
+    # `form-action https:`: Chrome aplica la directiva también a las redirecciones que siguen al envío, y Google
+    # redirige a la aerolínea (otro dominio). El destino del envío ya pasó la lista blanca del servidor (solo
+    # https://www.google.com/travel/clk…) y el único script es el de esta página, con nonce.
     return HTMLResponse(cuerpo, headers={
         "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": f"default-src 'none'; script-src 'nonce-{nonce}'; form-action {destino_csp}; "
+        "Content-Security-Policy": f"default-src 'none'; script-src 'nonce-{nonce}'; form-action https:; "
                                    "base-uri 'none'; frame-ancestors 'none'"})
 
 
