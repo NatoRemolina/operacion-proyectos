@@ -202,7 +202,7 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
     if _del_viaje(g, viaje, total_usd, gasto_id or 0, cat, alertas):
         bloquea = True
 
-    # Importe atípico frente a lo habitual de su categoría (solo avisa; con pocos datos no opina)
+    # Importe atípico frente a lo habitual de su categoría (bloquea: va a revisión; con pocos datos no opina)
     from . import inteligencia
     raro = inteligencia.es_atipico(g.get("categoria"), g.get("moneda"), g.get("total"), gasto_id or 0)
     if raro:
