@@ -297,6 +297,14 @@ describe("Revisar un gasto", () => {
     expect(await within(screen.getByRole("status", { name: "Avisos" })).findByText(/aprobado con excepción/)).toBeInTheDocument();
   });
 
+  it("en lo leído, un impuesto o un subtotal vacíos se ven como «—», como en la ficha (M-19)", async () => {
+    const base = datosDe();
+    montar({ datos: { ...base, lectura_original: { ...base.lectura_original!, impuesto: null, subtotal: null } } });
+    const leido = await screen.findByRole("region", { name: "Lo que leímos del recibo" });
+    expect(within(leido).getByText("Impuesto").nextElementSibling).toHaveTextContent(/^—$/);
+    expect(within(leido).getByText("Subtotal").nextElementSibling).toHaveTextContent(/^—$/);
+  });
+
   it("si llegó por correo, muestra el remitente y el asunto junto al recibo, como la ficha", async () => {
     montar({
       gastos: [

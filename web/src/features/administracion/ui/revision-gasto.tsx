@@ -171,8 +171,8 @@ function LecturaDelRecibo({ lectura }: { lectura: LecturaOriginal | null }) {
         <Fila termino="Comercio">{lectura.comercio ?? "Sin leer"}</Fila>
         <Fila termino="Fecha">{formatearFecha(lectura.fecha)}</Fila>
         <Fila termino="Categoría">{etiquetaCategoria(lectura.categoria)}</Fila>
-        <Fila termino="Subtotal">{formatearDinero(lectura.subtotal, lectura.moneda)}</Fila>
-        <Fila termino="Impuesto">{formatearDinero(lectura.impuesto, lectura.moneda)}</Fila>
+        <Fila termino="Subtotal">{lectura.subtotal === null ? "—" : formatearDinero(lectura.subtotal, lectura.moneda)}</Fila>
+        <Fila termino="Impuesto">{lectura.impuesto === null ? "—" : formatearDinero(lectura.impuesto, lectura.moneda)}</Fila>
         <Fila termino="Propina">{lectura.propina === null ? "Sin propina" : formatearDinero(lectura.propina, lectura.moneda)}</Fila>
         <Fila termino="Total">{formatearDinero(lectura.total, lectura.moneda)}</Fila>
         <Fila termino="Confianza de la lectura">
