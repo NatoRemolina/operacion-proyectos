@@ -1,6 +1,7 @@
 """El analizador como servicio interno para el entorno local (`docker compose`): un único endpoint.
 
-    POST /analizar   {"url": "https://www.google.com/travel/flights?...", "elegir_regreso": true}  →  JSON de `navegador.analizar`
+    POST /analizar   {"url": "https://www.google.com/travel/flights?...", "regreso": {"sale", "aerolinea"}}  →  `navegador.analizar`
+                     {"accion": "ir_a", "url", "vendedor", "tarifa", "regreso"}                         →  `navegador.ir_a`
     GET  /salud
 
 No publica puerto hacia fuera: solo lo alcanza la API dentro de la red de Docker. En AWS lo mismo corre como función
@@ -13,6 +14,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import navegador
 
 TOPE_CUERPO = 4096
+
+
+def atender(pedido: dict) -> dict:
+    """La misma entrada para el servidor local y para Lambda."""
+    regreso = pedido.get("regreso") if isinstance(pedido.get("regreso"), dict) else None
+    if pedido.get("accion") == "ir_a":
+        return navegador.ir_a(pedido.get("url"), pedido.get("vendedor"), pedido.get("tarifa"), regreso=regreso)
+    return navegador.analizar(pedido.get("url"), elegir_regreso=pedido.get("elegir_regreso") is not False, regreso=regreso)
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -41,7 +50,7 @@ class Manejador(BaseHTTPRequestHandler):
             return self._responder(400, {"error": "JSON no válido"})
         if not isinstance(pedido, dict):
             return self._responder(400, {"error": "JSON no válido"})
-        return self._responder(200, navegador.analizar(pedido.get("url"), elegir_regreso=pedido.get("elegir_regreso") is not False))
+        return self._responder(200, atender(pedido))
 
     def log_message(self, formato, *args):
         print(f"analizador {self.address_string()} {formato % args}", flush=True)

@@ -206,3 +206,13 @@ def test_ir_a_con_redireccion_a_otro_dominio_falla():
 def test_ir_a_solo_acepta_vendedor_y_tarifa_razonables():
     assert navegador.ir_a(URL, "", "Main Cabin")["estado"] == "fallido"
     assert navegador.ir_a(URL, "American" * 20, "Main Cabin")["estado"] == "fallido"
+
+
+def test_el_servidor_y_lambda_atienden_las_dos_acciones(monkeypatch):
+    from analizador import lambda_handler, servidor
+    vistos = []
+    monkeypatch.setattr(navegador, "analizar", lambda url, **k: vistos.append(("leer", url, k["regreso"])) or {"estado": "listo"})
+    monkeypatch.setattr(navegador, "ir_a", lambda url, v, t, **k: vistos.append(("ir_a", url, v, t)) or {"estado": "listo"})
+    servidor.atender({"url": URL, "regreso": {"sale": "1:43 PM"}})
+    lambda_handler.handler({"accion": "ir_a", "url": URL, "vendedor": "American", "tarifa": "Main Cabin"}, None)
+    assert vistos == [("leer", URL, {"sale": "1:43 PM"}), ("ir_a", URL, "American", "Main Cabin")]
