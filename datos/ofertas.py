@@ -7,10 +7,11 @@ import json
 
 from app import db
 from app.servicios import ofertas
+from datos import migracion
 
 
 def main():
-    db.crear_tablas()
+    migracion._tablas_modelo()   # la tabla, su índice único y el registro, aunque la base no esté migrada
     print(json.dumps(ofertas.actualizar(), ensure_ascii=False))
     total = db.uno("select count(*) n, count(distinct origen_fila) o from ofertas_tarifa")
     print(f"ofertas_tarifa: {total['n']} tarifas de {total['o']} respuestas o lecturas.")

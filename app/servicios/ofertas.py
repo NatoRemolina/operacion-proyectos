@@ -9,7 +9,7 @@ import re
 import time
 from datetime import date
 
-from sqlalchemy import CheckConstraint, Column, Float, Integer, Text, inspect, text
+from sqlalchemy import CheckConstraint, Column, Float, Index, Integer, Text, inspect, text
 
 from .. import config, db
 
@@ -23,6 +23,15 @@ TRAMOS = ("ida_vuelta", "ida", "regreso")   # la tarifa cubre el viaje completo,
 
 def _valores(columna: str, valores: tuple) -> CheckConstraint:
     return CheckConstraint(f"{columna} in ({', '.join(repr(v) for v in valores)})", name=f"ck_ofertas_tarifa_{columna}")
+
+
+TABLAS = ("ofertas_tarifa", "ofertas_origenes")
+INDICES = [  # nombre, columnas, único
+    ("ix_ofertas_tarifa_ruta_ida", "origen, destino, ida", False),
+    ("ix_ofertas_tarifa_ida", "ida", False),
+    ("ux_ofertas_tarifa_origen", "fuente, origen_fila, ordinal, tramo, vuelos, vendedor, tarifa", True),
+]
+INDICES_RETIRADOS = ("ux_ofertas_tarifa_unica",)   # sin ordinal ni tramo rechazaba filas legítimas
 
 
 ofertas_tarifa = db._tabla(
@@ -52,6 +61,8 @@ ofertas_tarifa = db._tabla(
     _valores("fuente", FUENTES), _valores("tarifa_normalizada", TARIFAS), _valores("cambios", CAMBIOS),
     _valores("reembolso", REEMBOLSOS), _valores("asiento", ASIENTOS), _valores("tramo", TRAMOS),
     _valores("normalizacion", ("completa", "parcial")),
+    # Declarados con la tabla: una base nueva los tiene aunque no haya pasado por la migración
+    *(Index(nombre, *(c.strip() for c in columnas.split(",")), unique=unico) for nombre, columnas, unico in INDICES),
 )
 
 ofertas_origenes = db._tabla(
@@ -61,13 +72,6 @@ ofertas_origenes = db._tabla(
     Column("nuevas", Integer),           # de ellas, cuántas entraron (las demás ya estaban)
 )
 
-TABLAS = ("ofertas_tarifa", "ofertas_origenes")
-INDICES = [  # nombre, columnas, único
-    ("ix_ofertas_tarifa_ruta_ida", "origen, destino, ida", False),
-    ("ix_ofertas_tarifa_ida", "ida", False),
-    ("ux_ofertas_tarifa_origen", "fuente, origen_fila, ordinal, tramo, vuelos, vendedor, tarifa", True),
-]
-INDICES_RETIRADOS = ("ux_ofertas_tarifa_unica",)   # sin ordinal ni tramo rechazaba filas legítimas
 
 
 

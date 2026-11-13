@@ -361,3 +361,13 @@ def test_r1_10_el_evento_lo_firma_el_extractor_y_si_falla_no_tumba_la_extraccion
     _guardar_respuesta(clave, _respuesta(411), "2026-11-08 11:00:00")
     assert ofertas.actualizar()["filas"] == 1
     assert db.uno("select count(*) n from ofertas_tarifa where busqueda_clave=:c", c=clave)["n"] == 1
+
+
+def test_r1_11_el_indice_unico_va_con_la_tabla_y_el_programa_migra_su_bloque(monkeypatch, capsys):
+    declarados = {i.name: i.unique for i in ofertas.ofertas_tarifa.indexes}
+    assert declarados["ux_ofertas_tarifa_origen"] is True and "ix_ofertas_tarifa_ruta_ida" in declarados
+    llamadas = []
+    monkeypatch.setattr(migracion, "_tablas_modelo", lambda: llamadas.append(1) or {"tablas_modelo": list(ofertas.TABLAS)})
+    from datos import ofertas as programa
+    programa.main()
+    assert llamadas == [1]
