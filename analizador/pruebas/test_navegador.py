@@ -288,3 +288,21 @@ def test_un_fallo_inesperado_tiene_motivo_fijo(monkeypatch, capsys):
 def test_el_contexto_bloquea_los_service_workers():
     assert navegador.OPCIONES_CONTEXTO["service_workers"] == "block"
     assert navegador.OPCIONES_CONTEXTO["user_agent"] == navegador.AGENTE
+
+
+# ---------- ronda 2 · punto 4: una redirección al envío no sale del navegador ----------
+@pytest.mark.parametrize("accion", ["leer", "ir_a"])
+def test_una_redireccion_a_travel_clk_se_corta_en_el_navegador(accion):
+    """Las rutas de Playwright no ven las redirecciones: sin el corte propio, el GET a /travel/clk saldría a la red."""
+    fallos = []
+    base = _servir({"https://www.google.com/travel/flights?": "302 https://www.google.com/travel/clk/f?u=REDIR"}, [])
+
+    def servir(pagina):
+        pagina.on("requestfailed", lambda q: fallos.append((q.url, q.failure or "")))
+        base(pagina)
+    r = (navegador.analizar(URL, servir=servir) if accion == "leer"
+         else navegador.ir_a(URL, "American", "Main Cabin", servir=servir))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.OTRO_SITIO)
+    assert not r.get("cuerpo") and not r.get("captura_png_b64")
+    assert any("BLOCKED_BY_CLIENT" in f for _, f in fallos), fallos            # se cortó en el navegador
+    assert not any("/travel/clk" in u and "INTERNET_DISCONNECTED" in f for u, f in fallos)   # nunca intentó salir

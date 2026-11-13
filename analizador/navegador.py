@@ -174,6 +174,7 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
 
             contexto.on("page", otra_pestana)
             pagina.on("request", navegacion)
+            _cortar_redirecciones_al_envio(contexto, pagina, fuera)
 
             def salida() -> str | None:
                 """Por qué ya no se puede leer: la pestaña salió de la lista blanca o la página abrió otra."""
@@ -245,6 +246,27 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                               captura_png_b64=base64.b64encode(captura).decode())
         finally:
             navegador.close()
+
+
+PATRONES_ENVIO = [{"urlPattern": f"https://{h}/travel/clk*", "requestStage": "Request"} for h in ("www.google.com", "google.com")]
+
+
+def _cortar_redirecciones_al_envio(contexto, pagina, fuera: dict) -> None:
+    """Las rutas de Playwright no ven las redirecciones (un 302 hacia `/travel/clk` saldría a la red). Chromium sí las
+    pausa con su propia intercepción: todo pedido a `/travel/clk` que no sea el POST del «Continue» (que atiende
+    `interceptar`, la ruta del contexto) se corta aquí, antes de salir, y la lectura termina como otro sitio."""
+    sesion = contexto.new_cdp_session(pagina)
+
+    def pausado(evento):
+        pedido = evento["request"]
+        if pedido.get("method") == "POST" and not evento.get("redirectedRequestId"):
+            sesion.send("Fetch.continueRequest", {"requestId": evento["requestId"]})   # sigue a `interceptar`, que lo corta
+            return
+        fuera.setdefault("url", pedido.get("url") or "https://www.google.com/travel/clk")
+        sesion.send("Fetch.failRequest", {"requestId": evento["requestId"], "errorReason": "BlockedByClient"})
+
+    sesion.on("Fetch.requestPaused", pausado)
+    sesion.send("Fetch.enable", {"patterns": PATRONES_ENVIO})
 
 
 def _desplegar(pagina, restante) -> bool:
