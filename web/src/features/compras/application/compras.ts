@@ -27,6 +27,7 @@ export function useCompra(id: number | null) {
     queryKey: claveDePersona(personaId, "compras", id),
     queryFn: ({ signal }) => repositorio.detalle(id!, signal),
     enabled: id !== null,
+    refetchInterval: 4 * 60_000,   // el enlace a la página oficial vence en 5 minutos
   });
   return { ...consulta, error: consulta.error as ErrorDeAplicacion | null };
 }

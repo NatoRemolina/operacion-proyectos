@@ -1730,6 +1730,25 @@
               "minimum": 1,
               "title": "Vuelo Id"
             }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Token firmado del enlace (vence en 5 minutos).",
+              "title": "T"
+            },
+            "description": "Token firmado del enlace (vence en 5 minutos)."
           }
         ],
         "responses": {

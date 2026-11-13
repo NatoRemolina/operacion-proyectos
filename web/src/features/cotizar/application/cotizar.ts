@@ -145,12 +145,16 @@ export function useCotizar() {
   });
 }
 
+/** El enlace a la página oficial lleva un token que vence en 5 minutos: la cotización se vuelve a pedir antes. */
+export const REFRESCO_COTIZACION_MS = 4 * 60_000;
+
 export function useCotizacion(id: number) {
   const repositorio = useCotizarRepository();
   const personaId = usePersonaId();
   const consulta = useQuery({
     queryKey: claveDePersona(personaId, "cotizar", "detalle", id),
     queryFn: ({ signal }) => repositorio.obtener(id, signal),
+    refetchInterval: REFRESCO_COTIZACION_MS,
   });
   return { ...consulta, error: consulta.error as ErrorDeAplicacion | null };
 }

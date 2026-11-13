@@ -4,8 +4,11 @@ La lógica es la misma de las pantallas (`app/servicios/cotizacion.py`). Ver una
 a quien viaja, al gestor del proyecto y a administración (`acceso.puede_ver`); decidirla, solo a los tres primeros
 sin el gestor (`acceso.es_propio`). Lo que no se ve responde 404.
 """
+import hashlib
+import hmac
 import html
 import secrets
+import time
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
@@ -25,7 +28,7 @@ from ..api_v1.esquemas_cotizacion import (
     NuevaDecision,
     errores_cotizacion,
 )
-from ..servicios import acceso, agente, compras, consultas, cotizacion, geografia, viajes
+from ..servicios import acceso, agente, compras, consultas, cotizacion, eventos, geografia, viajes
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
@@ -95,7 +98,7 @@ def _lado(nombre: str, lado: LadoPedido) -> dict:
 
 
 @router.post("/cotizaciones", status_code=201, response_model=Cotizacion, responses=errores_cotizacion(401, 403, 409, 422, 429))
-def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritura),
+def crear(datos: NuevaCotizacion, response: Response, request: Request, yo: dict = Depends(escritura),
           clave: str | None = Header(None, alias="Idempotency-Key", max_length=200,
                                      description="Un valor único por pedido, que se repite si se reintenta el mismo.")):
     """Guarda el pedido y busca vuelos y hoteles (una consulta para todos los aeropuertos marcados; lo guardado no se paga).
@@ -121,7 +124,7 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
             raise ErrorApi(409, "REQUEST_IN_PROGRESS", str(e)) from e
         if hecha:
             response.status_code = 200
-            return _cotizacion(yo, hecha)
+            return _cotizacion(yo, hecha, _sesion(request))
     try:
         sid = cotizacion.crear(yo, proyecto_id=datos.proyecto_id, viajero_id=viajero_id, para_otra_persona=para_otra,
                                ida=datos.ida.isoformat(), regreso=datos.regreso.isoformat(),
@@ -147,7 +150,7 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
         raise
     if envio:
         cotizacion.completar_envio(envio, sid)
-    return _cotizacion(yo, sid)
+    return _cotizacion(yo, sid, _sesion(request))
 
 
 # ---------- ver ----------
@@ -159,10 +162,10 @@ IdCotizacion = Path(ge=1, le=ENTERO_MAXIMO)
 
 
 @router.get("/cotizaciones/{id}", response_model=Cotizacion, responses=errores_cotizacion(401, 404, 422))
-def detalle(id: int = IdCotizacion, yo: dict = Depends(persona)):
+def detalle(request: Request, id: int = IdCotizacion, yo: dict = Depends(persona)):
     if not acceso.puede_ver(yo, _fila(id)):
         raise _no_encontrado()
-    return _cotizacion(yo, id)
+    return _cotizacion(yo, id, _sesion(request))
 
 
 # ---------- fuente de los precios ----------
@@ -183,6 +186,31 @@ def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escr
 
 # ---------- página oficial del vendedor ----------
 SITIOS_PERMITIDOS = {"same-origin", "same-site", "none"}
+VIDA_ENLACE_S = 300   # 5 minutos: la web refresca la cotización antes de que venza
+
+
+def _sesion(request: Request) -> str:
+    return request.cookies.get(acceso.COOKIE) or ""
+
+
+def token_vendedor(sesion: str, sid: int, vuelo_id: int, ahora: float | None = None) -> str:
+    """`{vence}.{firma}`: HMAC con el token de la sesión como clave, sobre la cotización, el vuelo y el vencimiento. No
+    sirve en otra sesión, para otro vuelo ni pasados 5 minutos; no se guarda nada."""
+    vence = int((time.time() if ahora is None else ahora) + VIDA_ENLACE_S)
+    firma = hmac.new(sesion.encode(), f"vendedor-v1|{sid}|{vuelo_id}|{vence}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{vence}.{firma}"
+
+
+def token_valido(token: str | None, sesion: str, sid: int, vuelo_id: int) -> bool:
+    vence, _, firma = (token or "").partition(".")
+    if not (sesion and vence.isdigit() and firma and int(vence) >= time.time()):
+        return False
+    esperada = hmac.new(sesion.encode(), f"vendedor-v1|{sid}|{vuelo_id}|{vence}".encode(), hashlib.sha256).hexdigest()[:32]
+    return hmac.compare_digest(firma, esperada)
+
+
+def url_vendedor(sesion: str, sid: int, vuelo_id: int) -> str:
+    return f"{PREFIJO}/cotizaciones/{sid}/vuelos/{vuelo_id}/vendedor?t={token_vendedor(sesion, sid, vuelo_id)}"
 
 
 def pagina_aviso(estado: int, titulo: str, texto: str) -> HTMLResponse:
@@ -224,7 +252,9 @@ def _pagina_envio(destino: dict) -> HTMLResponse:
     200: {"description": "Página mínima que envía el pedido del vendedor a Google (redirige a su página oficial)",
           "content": {"text/html": {}}},
     303: {"description": "Sin página oficial disponible: la página del vuelo en Google Flights"}})
-def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1, le=ENTERO_MAXIMO), yo: dict = Depends(persona)):
+def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1, le=ENTERO_MAXIMO),
+             t: str | None = Query(None, max_length=64, description="Token firmado del enlace (vence en 5 minutos)."),
+             yo: dict = Depends(persona)):
     """Lo abre «Ver desglose» en otra pestaña: la página oficial del vendedor del itinerario (la aerolínea si lo vende).
 
     El pedido de un solo uso (`booking_request`) solo viaja en esta respuesta: no se guarda en ninguna parte. Sin clave
@@ -235,6 +265,15 @@ def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1
     if not acceso.puede_ver(yo, _fila(id)) or \
             not db.uno("select id from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=vuelo_id, s=id):
         return pagina_aviso(404, *AJENO)
+    if not token_valido(t, _sesion(request), id, vuelo_id):
+        # sin el token de esta sesión (enlace viejo, copiado o armado en otro sitio): Google Flights, sin buscar nada
+        sol = db.uno("select * from solicitudes where id=:i", i=id)
+        vuelo = db.de_json(db.uno("select datos from opciones where id=:o", o=vuelo_id)["datos"], {}) or {}
+        eventos.registrar("solicitud", id, "página oficial abierta", f"opción {vuelo_id}: enlace sin token válido · Google Flights",
+                          f"api v1 · {yo['nombre']}")
+        destino = cotizacion.fuente_vuelo(sol, vuelo)
+        compras.registrar_clic(yo, id, vuelo_id, "google_flights", destino)
+        return RedirectResponse(destino, status_code=303, headers={"Cache-Control": "no-store"})
     destino = cotizacion.enlace_vendedor(yo, id, vuelo_id)
     if destino["tipo"] == "google":
         return RedirectResponse(destino["url"], status_code=303, headers={"Cache-Control": "no-store"})
@@ -243,7 +282,7 @@ def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1
 
 # ---------- decidir ----------
 @router.post("/cotizaciones/{id}/decision", response_model=Cotizacion, responses=errores_cotizacion(401, 403, 404, 409, 422))
-def decidir(datos: NuevaDecision, id: int = IdCotizacion, yo: dict = Depends(escritura)):
+def decidir(datos: NuevaDecision, request: Request, id: int = IdCotizacion, yo: dict = Depends(escritura)):
     """Guarda la decisión y crea el viaje (o actualiza el que ya tiene la cotización), pendiente de aprobación.
 
     Si el vuelo no es el recomendado, `motivo` es obligatorio. El mismo envío repetido no duplica la decisión.
@@ -264,7 +303,7 @@ def decidir(datos: NuevaDecision, id: int = IdCotizacion, yo: dict = Depends(esc
         raise ErrorApi(409, "DECISION_LOCKED", str(e)) from e
     except cotizacion.DecisionInvalida as e:
         raise _invalido(e.campo, str(e)) from e
-    return _cotizacion(yo, id)
+    return _cotizacion(yo, id, _sesion(request))
 
 
 # ---------- forma del contrato ----------
@@ -279,7 +318,7 @@ def _tipo_linea(linea: dict) -> str:
     return next((tipo for inicio, tipo in _TIPO_POR_INICIO if linea["concepto"].startswith(inicio)), "otro")
 
 
-def _vuelo(o: dict, c: dict) -> dict:
+def _vuelo(o: dict, c: dict, sesion: str = "") -> dict:
     v, ev = o["v"], o["ev"]
     lineas = [{"concepto": l["concepto"], "valor_usd": consultas.dinero(l["valor"]), "origen": l.get("origen") or "supuesto",
                "tipo": _tipo_linea(l)} for l in ev["lineas"]]
@@ -299,7 +338,7 @@ def _vuelo(o: dict, c: dict) -> dict:
             "mas_barata": bool(c["mas_barato"]) and c["mas_barato"]["id"] == o["id"], "origen_dato": o["origen_dato"],
             "esperado_usd": consultas.dinero(o.get("esperado")), "frente_esperado_pct": o.get("frente_esperado"),
             "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel")), "fuente_url": cotizacion.fuente_vuelo(c["sol"], v),
-            "vendedor_url": f"{PREFIJO}/cotizaciones/{c['sol']['id']}/vuelos/{o['id']}/vendedor"}
+            "vendedor_url": url_vendedor(sesion, c["sol"]["id"], o["id"])}
 
 
 def _tipo_linea_hotel(concepto: str) -> str:
@@ -333,7 +372,7 @@ def _compra(viaje: dict | None) -> dict | None:
     return {"id": c["id"], "estado": c["estado"], "estado_texto": c["estado_texto"], "motivo": c["motivo"]} if c else None
 
 
-def _cotizacion(yo: dict, sid: int) -> dict:
+def _cotizacion(yo: dict, sid: int, sesion: str = "") -> dict:
     c = cotizacion.comparacion(sid)
     if not c:
         raise _no_encontrado()
@@ -352,7 +391,7 @@ def _cotizacion(yo: dict, sid: int) -> dict:
         "equipo": {"nivel": c["baterias"]["nivel"], "texto": c["baterias"]["texto"]},
         "origen_dato": _origen_vuelos(sid), "aviso": c["aviso"], "fallos": [f["detalle"] for f in c["fallos"]],
         "recomendacion": agente.recomendar(c, solo_determinista=True)["texto"],
-        "vuelos": [_vuelo(o, c) for o in c["vuelos"]], "descartados": [_vuelo(o, c) for o in c["descartados"]],
+        "vuelos": [_vuelo(o, c, sesion) for o in c["vuelos"]], "descartados": [_vuelo(o, c, sesion) for o in c["descartados"]],
         "hoteles": [_hotel(o) for o in c["hoteles"]], "hoteles_descartados": [_hotel(o) for o in c["hoteles_descartados"]],
         "hotel_recomendado_id": c["hotel_recomendado"]["id"] if c["hotel_recomendado"] else None,
         "recomendada_id": c["vuelos"][0]["id"] if c["vuelos"] else None,

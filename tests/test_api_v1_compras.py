@@ -94,7 +94,7 @@ def test_los_estados_respetan_la_version_y_se_comprara_exige_el_viaje_aprobado(p
     assert aviso and "se va a comprar" in aviso["detalle"]
     # el detalle tiene el vuelo, el enlace oficial y los clics
     d = cliente.get(f"{V1}/compras/{c['id']}").json()
-    assert d["vuelo"]["numeros"] and d["vuelo"]["vendedor_url"].endswith("/vendedor") and d["viaje"]["estado"] == "aprobado"
+    assert d["vuelo"]["numeros"] and "/vendedor?t=" in d["vuelo"]["vendedor_url"] and d["viaje"]["estado"] == "aprobado"
     assert isinstance(d["clics"], list)
 
 

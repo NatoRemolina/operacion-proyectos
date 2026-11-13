@@ -5,13 +5,13 @@ Cada cambio lleva la versión que se vio. La lógica está en `app/servicios/com
 """
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Request
 
 from .. import db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
 from ..api_v1.esquemas_compras import CambioEstadoCompra, Compra, CompraDetalle, ListaCompras, RegistroCompra, errores_compras
 from ..servicios import acceso, analizador, compras, consultas, cotizacion
-from . import v1_analisis
+from . import v1_analisis, v1_cotizaciones
 
 router = APIRouter(prefix=PREFIJO + "/compras", tags=["compras"])
 ENTERO_MAXIMO = 2**31 - 1
@@ -51,7 +51,7 @@ def _forma(c: dict) -> dict:
             "comprada": consultas.instante(c["comprada"]), "frente_presupuesto": frente}
 
 
-def _detalle(c: dict) -> dict:
+def _detalle(c: dict, sesion: str) -> dict:
     o = db.uno("select * from opciones where id=:o", o=c["opcion_id"]) if c["opcion_id"] else None
     vuelo = None
     if o:
@@ -59,7 +59,7 @@ def _detalle(c: dict) -> dict:
         sol = db.uno("select * from solicitudes where id=:i", i=c["solicitud_id"])
         vuelo = {"opcion_id": o["id"], "numeros": v.get("numeros") or [], "aerolinea": v.get("aerolinea"), "sale": v.get("sale"),
                  "llega": v.get("llega"), "precio_usd": consultas.dinero(v.get("precio")),
-                 "vendedor_url": f"{PREFIJO}/cotizaciones/{c['solicitud_id']}/vuelos/{o['id']}/vendedor",
+                 "vendedor_url": v1_cotizaciones.url_vendedor(sesion, c["solicitud_id"], o["id"]),
                  "fuente_url": cotizacion.fuente_vuelo(sol, v) if sol else None}
     lectura = None
     if o:
@@ -90,9 +90,9 @@ def lista(estado: str | None = Query(None, pattern=r"^(solicitada|en_analisis|se
 
 
 @router.get("/{id}", response_model=CompraDetalle, responses=errores_compras(401, 403, 404, 422))
-def detalle(id: int = Id, yo: dict = Depends(admin)):
+def detalle(request: Request, id: int = Id, yo: dict = Depends(admin)):
     """La compra con su vuelo, el enlace a la página oficial, los clics a las fuentes y la última lectura de la página."""
-    return _detalle(_uno(id))
+    return _detalle(_uno(id), request.cookies.get(acceso.COOKIE) or "")
 
 
 def _errores(funcion):
