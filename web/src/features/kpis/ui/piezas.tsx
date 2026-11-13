@@ -134,7 +134,12 @@ export function TablaSimple({
               {filas.map((f) => (
                 <tr key={f.clave} className="border-t border-linea">
                   {f.celdas.map((c, i) => (
-                    <td key={i} className={`py-2 pr-3 align-top ${encabezados[i]?.fin ? "text-right tabular-nums whitespace-nowrap" : ""}`}>
+                    <td
+                      key={i}
+                      className={`py-2 pr-3 align-top [overflow-wrap:normal] ${
+                        encabezados[i]?.fin ? "text-right tabular-nums whitespace-nowrap" : esCorto(c) ? "whitespace-nowrap" : ""
+                      }`}
+                    >
                       {c}
                     </td>
                   ))}
@@ -146,6 +151,11 @@ export function TablaSimple({
       )}
     </section>
   );
+}
+
+/** Un texto corto (código, fecha, estado) no se parte en dos líneas. */
+export function esCorto(c: ReactNode): boolean {
+  return (typeof c === "string" || typeof c === "number") && String(c).length <= 14;
 }
 
 export function usd(valor: number | null): string {

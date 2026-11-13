@@ -25,12 +25,11 @@ describe("Estado de los vuelos", () => {
     montar(crearVuelosMemoria({ tramos: [TRAMO_EJEMPLO] }));
     expect(await screen.findByRole("heading", { level: 1, name: "Vuelos de hoy (2026-12-13, UTC)" })).toBeInTheDocument();
     const tabla = screen.getByRole("table");
-    expect(within(tabla).getByText("Retrasado")).toBeInTheDocument();
-    expect(within(tabla).getByText("20 min")).toBeInTheDocument();
-    expect(within(tabla).getByText("4 · J58")).toBeInTheDocument();
+    expect(within(tabla).getByText("Retrasado · 20 min")).toBeInTheDocument();
+    expect(within(tabla).getByText("Terminal 4 · puerta J58")).toBeInTheDocument();
     expect(within(tabla).getByText("Estado de ejemplo")).toBeInTheDocument();
     expect(within(tabla).getByText("No llega a la grabación")).toBeInTheDocument();
-    expect(within(tabla).getByText("09:50 (prog. 09:30)")).toBeInTheDocument();
+    expect(within(tabla).getByText(/Llega 09:50/)).toHaveTextContent("Llega 09:50 (prog. 09:30)");
     expect(within(tabla).getByText(/Último aviso al viajero .*no tiene Telegram vinculado/)).toBeInTheDocument();
     expect(within(tabla).getByRole("link", { name: "V-2026-0007" })).toHaveAttribute("href", "/viajes/7");
   });

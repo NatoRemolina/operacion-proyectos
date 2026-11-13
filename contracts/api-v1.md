@@ -366,8 +366,8 @@ Solo administración, como la pantalla `/admin/kpis`: otra cuenta recibe 403 `FO
 ### `GET /kpis`
 200 `TableroKpis`:
 
-- `kpis`: cada indicador de los dos retos con `valor` (número en su `unidad`, o `null` sin datos), `meta`, `alerta`, `sentido` (`mayor` o `menor` es mejor), `estado` (`verde`, `ambar`, `rojo`, `sin datos`), `responsable`, `formula` y `principal`.
-- `resumen`: cuántos hay en cada estado. `tendencia`: los principales semana a semana (8 semanas, de lunes a domingo, hasta `hasta` u hoy).
+- `kpis`: cada indicador de los dos retos con `valor` (número en su `unidad`, o `null` sin datos), `meta`, `alerta`, `sentido` (`mayor` o `menor` es mejor), `estado` (`verde`, `ambar`, `rojo`, `sin datos` o `fuera de rango`), `responsable`, `formula` y `principal`. `fuera de rango` es un valor imposible para el indicador (días u horas negativos, una proporción sobre 100 %): un dato malo que hay que revisar, nunca en meta. El ahorro sí puede ser negativo.
+- `resumen`: cuántos hay en cada estado (`verde`, `ambar`, `rojo`, `sin_datos`, `fuera_de_rango`). `tendencia`: los principales semana a semana (8 semanas, de lunes a domingo, hasta `hasta` u hoy).
 - `cotizacion` y `gastos`: los desgloses de la pantalla. Los conteos van como `{etiqueta, valor}`.
 - `personas` (una fila por cuenta con lo suyo) y `por_cargo`. `proyectos` y `retos` sirven para armar los filtros y los títulos.
 

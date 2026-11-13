@@ -44,8 +44,14 @@ function Estado({ t }: { t: TramoVuelo }) {
   return (
     <span className="flex flex-col items-start gap-1">
       <span className="flex flex-wrap gap-1">
-        <InsigniaEstado tono={tonoDeVuelo(t.estado)}>{t.estado_texto}</InsigniaEstado>
+        <InsigniaEstado tono={tonoDeVuelo(t.estado)}>
+          {t.estado_texto}
+          {t.retraso ? ` · ${t.retraso} min` : ""}
+        </InsigniaEstado>
         {t.no_llega ? <InsigniaEstado tono="error">No llega a la grabación</InsigniaEstado> : null}
+      </span>
+      <span className="text-sm">
+        Terminal {t.terminal ?? "—"} · puerta {t.puerta ?? "—"}
       </span>
       {t.no_llega && t.en_destino ? (
         <span className="text-sm text-texto-secundario">
@@ -57,19 +63,36 @@ function Estado({ t }: { t: TramoVuelo }) {
   );
 }
 
-function Origen({ t }: { t: TramoVuelo }) {
-  if (!t.origen_texto) return <span className="text-texto-secundario">Sin datos aún</span>;
-  return <InsigniaEstado tono={t.origen === "en vivo" ? "info" : "aviso"}>{t.origen_texto}</InsigniaEstado>;
+function RutaYHoras({ t }: { t: TramoVuelo }) {
+  const llegaCambio = t.llega_estimada && t.llega_estimada !== t.llega_programada;
+  return (
+    <span className="flex flex-col whitespace-nowrap">
+      <span className="font-semibold">
+        {t.desde ?? "?"} → {t.hasta ?? "?"}
+      </span>
+      <span className="text-sm">Sale {hora(t.sale_programada)}</span>
+      <span className="text-sm">
+        Llega {hora(t.llega_estimada ?? t.llega_programada)}
+        {llegaCambio ? <span className="text-texto-secundario"> (prog. {hora(t.llega_programada)})</span> : null}
+      </span>
+    </span>
+  );
 }
 
-function Actualizado({ t }: { t: TramoVuelo }) {
+/** De dónde salió el estado y cuándo se consultó; si la consulta automática está en pausa, por qué. */
+function Consulta({ t }: { t: TramoVuelo }) {
   return (
-    <span className="flex flex-col text-sm">
+    <span className="flex flex-col items-start gap-1 text-sm">
+      {t.origen_texto ? (
+        <InsigniaEstado tono={t.origen === "en vivo" ? "info" : "aviso"}>{t.origen_texto}</InsigniaEstado>
+      ) : (
+        <span className="text-texto-secundario">Sin datos aún</span>
+      )}
       <span>{textoActualizado(t)}</span>
       {t.ultima_consulta === "sin datos" && t.estado !== "sin datos" ? (
         <span className="text-texto-secundario">La última consulta no trajo datos.</span>
       ) : null}
-      {t.omitida ? <span className="text-texto-secundario">No consultado: {t.omitida}.</span> : null}
+      {t.omitida ? <span className="text-texto-secundario">Consulta automática en pausa: {t.omitida}.</span> : null}
     </span>
   );
 }
@@ -116,54 +139,58 @@ export function PantallaVuelos({ fecha }: { fecha: string | null }) {
             <p role="status" className="text-sm text-texto-secundario">
               {datos.tramos.length} {datos.tramos.length === 1 ? "tramo" : "tramos"}. Las horas son locales de cada aeropuerto.
             </p>
-            <Tabla<TramoVuelo>
-              titulo={titulo}
-              filas={datos.tramos}
-              claveFila={(t) => t.id}
-              columnas={[
-                {
-                  clave: "vuelo",
-                  encabezado: "Vuelo",
-                  principal: true,
-                  celda: (t) => (
+            {/* En celular, tarjetas propias: el estado y la consulta son textos largos y necesitan todo el ancho. */}
+            <ul aria-label={titulo} className="flex flex-col gap-3 md:hidden">
+              {datos.tramos.map((t) => (
+                <li key={t.id} className="flex flex-col gap-3 rounded-tarjeta border border-linea bg-superficie p-4 shadow-tarjeta">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
                     <span className="flex flex-col">
                       <span className="font-semibold">{t.numero}</span>
                       <span className="text-sm text-texto-secundario">
                         {t.aerolinea ?? "—"} · {t.sentido}
                       </span>
                     </span>
-                  ),
-                },
-                {
-                  clave: "viaje",
-                  encabezado: "Viaje",
-                  celda: (t) => (
-                    <span className="flex flex-col">
-                      <Link href={`/viajes/${t.viaje_id}`} className="whitespace-nowrap font-semibold">
-                        {t.codigo}
-                      </Link>
-                      <span className="text-sm text-texto-secundario">{t.titular ?? "—"}</span>
-                    </span>
-                  ),
-                },
-                { clave: "ruta", encabezado: "Ruta", celda: (t) => `${t.desde ?? "?"} → ${t.hasta ?? "?"}`, sinCorte: true },
-                { clave: "sale", encabezado: "Sale", celda: (t) => hora(t.sale_programada), sinCorte: true },
-                { clave: "estado", encabezado: "Estado", celda: (t) => <Estado t={t} /> },
-                { clave: "retraso", encabezado: "Retraso", celda: (t) => (t.retraso ? `${t.retraso} min` : "—"), alinear: "fin" },
-                { clave: "puerta", encabezado: "Terminal · puerta", celda: (t) => `${t.terminal ?? "—"} · ${t.puerta ?? "—"}`, sinCorte: true },
-                {
-                  clave: "llega",
-                  encabezado: "Llega",
-                  celda: (t) =>
-                    t.llega_estimada && t.llega_estimada !== t.llega_programada
-                      ? `${hora(t.llega_estimada)} (prog. ${hora(t.llega_programada)})`
-                      : hora(t.llega_estimada ?? t.llega_programada),
-                },
-                { clave: "origen", encabezado: "Origen", celda: (t) => <Origen t={t} /> },
-                { clave: "actualizado", encabezado: "Actualizado", celda: (t) => <Actualizado t={t} /> },
-              ]}
-              acciones={(t) => <BotonActualizar t={t} />}
-            />
+                    <Link href={`/viajes/${t.viaje_id}`} className="font-semibold">
+                      {t.codigo}
+                    </Link>
+                  </div>
+                  <RutaYHoras t={t} />
+                  <Estado t={t} />
+                  <Consulta t={t} />
+                  <BotonActualizar t={t} />
+                </li>
+              ))}
+            </ul>
+            <div className="hidden md:block">
+              <Tabla<TramoVuelo>
+                titulo={titulo}
+                filas={datos.tramos}
+                claveFila={(t) => t.id}
+                columnas={[
+                  {
+                    clave: "vuelo",
+                    encabezado: "Vuelo",
+                    principal: true,
+                    celda: (t) => (
+                      <span className="flex flex-col">
+                        <span className="whitespace-nowrap font-semibold">{t.numero}</span>
+                        <span className="text-sm text-texto-secundario">
+                          {t.aerolinea ?? "—"} · {t.sentido}
+                        </span>
+                        <Link href={`/viajes/${t.viaje_id}`} className="relative z-10 whitespace-nowrap text-sm font-semibold">
+                          {t.codigo}
+                        </Link>
+                        <span className="text-sm text-texto-secundario">{t.titular ?? "—"}</span>
+                      </span>
+                    ),
+                  },
+                  { clave: "ruta", encabezado: "Ruta y horas", celda: (t) => <RutaYHoras t={t} /> },
+                  { clave: "estado", encabezado: "Estado", celda: (t) => <Estado t={t} /> },
+                  { clave: "consulta", encabezado: "Consulta", celda: (t) => <Consulta t={t} /> },
+                ]}
+                acciones={(t) => <BotonActualizar t={t} />}
+              />
+            </div>
           </>
         )
       ) : consulta.error ? (

@@ -81,7 +81,13 @@ function TablaPestana({ tabla }: { tabla: TablaMonitoreo }) {
                   {fila.map((celda, j) => (
                     <td
                       key={j}
-                      className={`py-2 pr-3 align-top ${tabla.columnas[j]?.fin ? "whitespace-nowrap text-right tabular-nums" : "break-words"}`}
+                      className={`py-2 pr-3 align-top [overflow-wrap:normal] ${
+                        tabla.columnas[j]?.fin
+                          ? "whitespace-nowrap text-right tabular-nums"
+                          : typeof celda === "string" && celda.length <= 14
+                            ? "whitespace-nowrap"
+                            : ""
+                      }`}
                     >
                       <ContenidoCelda celda={celda} columna={tabla.columnas[j]} />
                     </td>
