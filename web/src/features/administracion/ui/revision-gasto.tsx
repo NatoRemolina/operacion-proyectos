@@ -1,8 +1,10 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { estadoVisibleGasto, etiquetaCategoria, type GastoDetalle, type Justificacion } from "@/features/gastos/domain/gastos";
+import { claveDePersona, usePersonaId } from "@/shared/application/identidad";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { useAvisos } from "@/shared/ui/aviso-emergente";
 import { Boton, clasesBoton } from "@/shared/ui/boton";
@@ -202,6 +204,23 @@ const CAMPOS: readonly { campo: CampoTextual; etiqueta: string; tipo?: string; d
  */
 export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetalle; urlOriginal: string | null; migas: readonly Miga[] }) {
   const consulta = useDatosRevision(gasto.id);
+  const queryClient = useQueryClient();
+  const personaId = usePersonaId();
+  const versionDatos = consulta.data?.version;
+  const versionFicha = gasto.version ?? 0;
+  const leyendo = gasto.estado === "procesando";
+  // Los datos de revisión son más nuevos que la ficha (por ejemplo, el servidor recuperó un gasto atascado al abrirlo):
+  // se vuelve a pedir la ficha. Mientras el recibo se sigue leyendo, se pregunta de nuevo cada pocos segundos.
+  useEffect(() => {
+    const ficha = claveDePersona(personaId, "gastos", "detalle", gasto.id);
+    if (versionDatos !== undefined && versionDatos > versionFicha) void queryClient.invalidateQueries({ queryKey: ficha });
+    if (!leyendo) return;
+    const intervalo = setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ficha });
+      void queryClient.invalidateQueries({ queryKey: claveDePersona(personaId, "administracion", "revision", gasto.id) });
+    }, 5000);
+    return () => clearInterval(intervalo);
+  }, [versionDatos, versionFicha, leyendo, gasto.id, personaId, queryClient]);
   // Lo que debe sobrevivir cuando el formulario se vuelve a cargar con la versión nueva del gasto.
   const [sigueEnRevision, setSigueEnRevision] = useState(false);
   const [error, setError] = useState<ErrorDeAplicacion | null>(null);
@@ -273,7 +292,8 @@ function RevisionCompleta({
   const { sigueEnRevision, setSigueEnRevision, error, setError, motivo, setMotivo, motivoExcepcion, setMotivoExcepcion } = persistente;
   const comercio = gasto.comercio ?? "gasto sin comercio leído";
   const version = gasto.version ?? 0;
-  const ocupado = revision.isPending || actualizando;
+  const leyendo = gasto.estado === "procesando";
+  const ocupado = revision.isPending || actualizando || leyendo;
 
   const viajes = datos.viajes.some((v) => String(v.id) === inicial.viaje) || !gasto.viaje
     ? datos.viajes
@@ -396,6 +416,11 @@ function RevisionCompleta({
         </div>
       </header>
 
+      {leyendo ? (
+        <Alerta tono="info" rol="status" titulo="El recibo todavía se está leyendo">
+          <p>La revisión se actualiza sola cuando termine. Si la lectura se cortó, el gasto pasa a revisión al volver a abrirlo.</p>
+        </Alerta>
+      ) : null}
       {sigueEnRevision ? (
         <Alerta tono="aviso" rol="alert" titulo="No se aprobó: las reglas todavía no lo dejan pasar">
           <p>

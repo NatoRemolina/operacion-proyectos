@@ -243,3 +243,25 @@ def test_la_pantalla_de_administracion_tampoco_acepta_una_categoria_inventada(cl
                                              "fecha": v["ida"], "total": "20", "moneda": "USD"}, follow_redirects=False)
     assert r.status_code == 303 and "revision=" in r.headers["location"]
     assert db.uno("select categoria, version from gastos where id=:i", i=gid) == {"categoria": "otros", "version": 0}
+
+
+# ---------- ronda 1: un gasto atascado en «procesando» se recupera al abrir su revisión ----------
+def _procesando(v: dict, comercio: str, hace_min: int) -> int:
+    from datetime import UTC, datetime, timedelta
+    creado = (datetime.now(UTC) - timedelta(minutes=hace_min)).strftime("%Y-%m-%d %H:%M:%S")
+    return db.insertar("gastos", viaje_id=v["id"], proyecto_id=v["proyecto_id"], viajero_id=v["viajero_id"], usuario_id=v["usuario_id"],
+                       comercio=comercio, estado="procesando", creado=creado, version=0)
+
+
+def test_un_gasto_atascado_pasa_a_revision_al_abrir_su_revision(cliente, nuevo_viaje):
+    gid = _procesando(nuevo_viaje(), "Sonda atascada", hace_min=30)
+    datos = _revision(cliente, gid).json()
+    g = db.uno("select estado, version from gastos where id=:i", i=gid)
+    assert g["estado"] == "revision" and datos["version"] == g["version"]
+    assert cliente.get(f"{V1}/gastos/{gid}").json()["estado"] == "revision"
+
+
+def test_un_gasto_que_se_sigue_leyendo_no_se_toca(cliente, nuevo_viaje):
+    gid = _procesando(nuevo_viaje(), "Sonda leyéndose", hace_min=0)
+    datos = _revision(cliente, gid).json()
+    assert db.uno("select estado from gastos where id=:i", i=gid)["estado"] == "procesando" and datos["version"] == 0

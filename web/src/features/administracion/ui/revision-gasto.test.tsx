@@ -65,15 +65,19 @@ function montar({
   revisar,
   permiso = "admin",
   datos = datosDe(),
+  primeraFicha,
 }: {
   gastos?: GastoDetalle[];
   revisar?: AdministracionRepository["revisarGasto"];
   permiso?: "admin" | "colaborador";
   datos?: DatosRevision;
+  /** Lo que responde la primera lectura de la ficha (después, lo de `gastos`). */
+  primeraFicha?: GastoDetalle;
 } = {}) {
   navegacion.push.mockClear();
   const repoGastos: GastosRepository = { ...crearGastosMemoria({ gastos }), urlOriginal: (id) => `/api/v1/documentos/${id}/contenido` };
   const obtener = vi.spyOn(repoGastos, "obtener");
+  if (primeraFicha) obtener.mockResolvedValueOnce(primeraFicha);
   const memoria = crearAdministracionMemoria({ resumen: resumenDePrueba(), gastos, datosRevision: { 123: datos } });
   const administracion = {
     ...memoria,
@@ -420,6 +424,25 @@ describe("Revisar un gasto", () => {
     await usuario.click(within(correccion).getByRole("button", { name: "Guardar correcciones" }));
     expect(await within(correccion).findByText("Esa categoría no existe.")).toBeInTheDocument();
     expect(within(correccion).getByLabelText("Categoría")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("un gasto que se sigue leyendo también abre la revisión, avisa y no deja decidir todavía", async () => {
+    montar({ gastos: [{ ...EN_REVISION, estado: "procesando", estado_texto: "Procesando" }] });
+    expect(await screen.findByRole("heading", { level: 1, name: "Revisar: Café del centro" })).toBeInTheDocument();
+    expect(screen.getByText(/El recibo todavía se está leyendo/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aprobar gasto" })).toBeDisabled();
+  });
+
+  it("si al abrirlo el servidor recuperó un gasto atascado, vuelve a pedir la ficha y deja revisarlo", async () => {
+    const { obtener } = montar({
+      gastos: [{ ...EN_REVISION, version: 4 }],
+      datos: datosDe({ version: 4 }),
+      primeraFicha: { ...EN_REVISION, estado: "procesando", estado_texto: "Procesando", version: 3 },
+    });
+    await screen.findByRole("heading", { level: 1, name: "Revisar: Café del centro" });
+    await vi.waitFor(() => expect(obtener.mock.calls.length).toBeGreaterThan(1));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Aprobar gasto" })).toBeEnabled());
+    expect(screen.queryByText(/El recibo todavía se está leyendo/)).not.toBeInTheDocument();
   });
 
   it("las justificaciones muestran el texto y la nota de voz se escucha aquí", async () => {

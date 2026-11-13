@@ -261,10 +261,14 @@ def datos_revision(id: int, yo: dict = Depends(persona)):
     puede reasignar. Las mismas opciones que la revisión de las pantallas de administración."""
     if not acceso.es_admin(yo):
         raise ErrorApi(403, "FORBIDDEN", "Esta operación es solo para administración.")
-    g = db.uno("""select g.*, d.id doc, d.nombre archivo, d.mime from gastos g left join documentos d on d.id=g.documento_id
-                  where g.id=:i""", i=id)
+    consulta = """select g.*, d.id doc, d.nombre archivo, d.mime from gastos g left join documentos d on d.id=g.documento_id
+                  where g.id=:i"""
+    g = db.uno(consulta, i=id)
     if not g:
         raise _no_encontrado()
+    # Un gasto que quedó «procesando» porque la lectura se cortó pasa a revisión al abrirlo, como en la revisión
+    if g["estado"] == "procesando" and envios.recuperar_si_atascado(g):
+        g = db.uno(consulta, i=id)
     propio = viajes.gasto_propio_de(g, yo)
     aviso = None
     if propio:
