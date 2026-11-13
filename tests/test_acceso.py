@@ -13,7 +13,9 @@ def test_toda_ruta_tiene_nivel_y_sin_sesion_no_se_entra(anonimo):
     for ruta in rutas:
         concreta = ruta.replace("{sid}", "1").replace("{gid}", "1").replace("{pid}", "1").replace("{oid}", "1")
         r = anonimo.get(concreta, follow_redirects=False)
-        if acceso.nivel(ruta) == "publica":
+        if ruta.startswith("/api/v1/servicio/"):   # sin sesión, pero con clave de servicio: sin ella, 401
+            assert anonimo.get(concreta.replace("{id}", "1")).status_code == 401, ruta
+        elif acceso.nivel(ruta) == "publica":
             assert r.status_code == 200, ruta
         else:
             assert r.status_code in (303, 401), ruta      # nunca contenido sin sesión

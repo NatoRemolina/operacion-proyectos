@@ -323,6 +323,13 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 - Decidir consulta el regreso y las opciones de reserva del vuelo (dos búsquedas; lo guardado no se paga). Pasado el tope del día por persona (regla `decisiones_en_vivo_dia`, 10 en la semilla), se decide con lo guardado y `decision.aviso` lo dice.
 - `id`, `vuelo_id`, `hotel_id`, `proyecto_id` y `viajero_id` son enteros de 1 a 2³¹−1; fuera de ese rango, 422.
 
+## Integraciones (clave de servicio)
+
+Las rutas bajo `/api/v1/servicio/` son para integraciones como n8n, no para personas: no usan cookie ni `X-CSRF-Token`. Cada petición lleva `X-Clave-Servicio: isk_…`, una clave de servicio creada por administración (`python -m datos.claves_servicio crear n8n --permiso soportes:leer`), que se muestra una sola vez y se guarda como huella. Sin clave, con una clave inexistente o revocada: 401 `UNAUTHENTICATED`; con una clave sin el permiso de la operación: 403 `FORBIDDEN`. Lo que hace la clave queda en la bitácora con su nombre (por ejemplo, «n8n»). Configuración del flujo: `docs/n8n/README.md`.
+
+### `GET /servicio/gastos/{id}/soporte`
+Permiso `soportes:leer`. El archivo original del soporte del gasto, con su tipo, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. 404 si el gasto no existe o no tiene soporte.
+
 ## Fuera de este contrato (siguientes fases)
 
 Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Ver la sección 9 del plan fullstack.

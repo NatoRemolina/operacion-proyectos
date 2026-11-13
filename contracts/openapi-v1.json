@@ -1251,6 +1251,97 @@
         }
       }
     },
+    "/api/v1/servicio/gastos/{id}/soporte": {
+      "get": {
+        "tags": [
+          "integraciones"
+        ],
+        "summary": "Soporte",
+        "description": "El soporte original de un gasto, para guardarlo fuera de la plataforma. Se entrega como archivo adjunto, sin caché.",
+        "operationId": "soporte_api_v1_servicio_gastos__id__soporte_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "X-Clave-Servicio",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Clave de servicio con el permiso `soportes:leer`.",
+              "title": "X-Clave-Servicio"
+            },
+            "description": "Clave de servicio con el permiso `soportes:leer`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "El archivo original del soporte",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {},
+              "application/pdf": {},
+              "message/rfc822": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/viajes": {
       "get": {
         "tags": [
