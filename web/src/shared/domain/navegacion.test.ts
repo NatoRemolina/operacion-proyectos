@@ -9,7 +9,7 @@ function textos(permiso: Parameters<typeof menuPara>[0]) {
 
 describe("menú por permiso", () => {
   it("administración ve el resumen, cotizar, viajes, gastos, proyectos y usuarios, en ese orden", () => {
-    expect(textos("admin")).toEqual(["Resumen", "Cotizar viaje", "Viajes", "Gastos", "Proyectos", "Usuarios"]);
+    expect(textos("admin")).toEqual(["Resumen", "Cotizar viaje", "Viajes", "Gastos", "Reglas y supuestos", "Proyectos", "Usuarios"]);
   });
 
   it("gestor y colaborador no ven el resumen ni las pantallas de administración", () => {
@@ -39,7 +39,7 @@ describe("menú por permiso", () => {
 
   it("sin dirección de la plataforma no se ofrecen las pantallas actuales (serían enlaces rotos)", () => {
     expect(textos("admin")).toContain("Usuarios");
-    expect(menuPara("admin", "").map((e) => e.texto)).toEqual(["Resumen", "Cotizar viaje", "Viajes", "Gastos"]);
+    expect(menuPara("admin", "").map((e) => e.texto)).toEqual(["Resumen", "Cotizar viaje", "Viajes", "Gastos", "Reglas y supuestos"]);
   });
 
   it("a lo sumo cuatro atajos para la barra inferior del celular", () => {
