@@ -32,9 +32,6 @@ REGLAS = [
     ("aerolinea", "Southwest", "basica", "equipaje_mano", "si", "Incluye equipaje de mano.", "Por confirmar en la página de la aerolínea", "sin verificar"),
     ("aerolinea", "Ryanair", "basica", "equipaje_mano", "no", "Solo bolso pequeño bajo el asiento.", "https://www.which.co.uk/reviews/airlines/article/most-generous-airline-hand-luggage-aF9jK9M1uoMk", "secundaria"),
     ("aerolinea", "easyJet", "basica", "equipaje_mano", "no", "Solo bolso pequeño bajo el asiento.", "https://www.which.co.uk/reviews/airlines/article/most-generous-airline-hand-luggage-aF9jK9M1uoMk", "secundaria"),
-    ("hotel", "Marriott", "", "programa", "Marriott Bonvoy", "Acumula solo con reserva directa.", "Análisis previo", "secundaria"),
-    ("hotel", "Hilton", "", "programa", "Hilton Honors", "Acumula solo con reserva directa.", "Por confirmar", "sin verificar"),
-    ("hotel", "Hyatt", "", "programa", "World of Hyatt", "Acumula solo con reserva directa.", "Por confirmar", "sin verificar"),
     ("supuesto", "", "", "valor_milla_usd", "0.012", "Valor de referencia de una milla en USD.", "Supuesto editable", "supuesto"),
     ("supuesto", "", "", "millas_por_usd", "5", "Millas que acumula un miembro general por dólar.", "Supuesto editable", "supuesto"),
     ("supuesto", "", "", "diferencia_tarifa_cambio", "60", "Diferencia de tarifa esperada al cambiar la fecha (USD).", "Supuesto editable", "supuesto"),
@@ -66,6 +63,7 @@ def sembrar():
     precios.cargar_respaldos()
     geografia.cargar()   # aeropuertos, lugares y países del mundo; sin cambios no recarga, pero deja su registro
     asegurar_supuestos()
+    asegurar_fidelizacion_hotel()
     from app.servicios import asistente, kpis  # metas de los indicadores y tope del asistente, visibles en Reglas desde el inicio
     kpis.asegurar_metas()
     asistente.asegurar_regla()
@@ -148,6 +146,55 @@ def asegurar_supuestos():
         if not db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
             db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor, nota=nota,
                         fuente="Supuesto editable", confianza="supuesto", verificado=HOY)
+
+
+# ---------- fidelización de hoteles ----------
+# Un programa por entidad: sus marcas (para reconocerlo en el nombre del hotel), los puntos por dólar, el valor del punto y
+# la tarifa de miembro. Son valores de referencia sin verificar: confianza «supuesto» y fuente, la página del programa.
+HOY_HOTEL = "2026-11-13"
+PROGRAMAS_HOTEL = [
+    # programa, fuente, marcas, puntos por USD, valor del punto (USD), descuento de miembro
+    ("Marriott Bonvoy", "https://www.marriott.com/loyalty.mi",
+     "Marriott, Courtyard, Residence Inn, Fairfield, SpringHill, Sheraton, Westin, W, Moxy, AC Hotel, Aloft, Four Points, "
+     "Renaissance", "10", "0.008", "0.05"),
+    ("Hilton Honors", "https://www.hilton.com/en/hilton-honors/",
+     "Hilton, Hampton, DoubleTree, Embassy Suites, Homewood, Home2, Tru, Curio, Tapestry, Conrad, Waldorf", "10", "0.005", "0.05"),
+    ("World of Hyatt", "https://world.hyatt.com/", "Hyatt", "5", "0.017", "0.05"),
+    ("IHG One Rewards", "https://www.ihg.com/onerewards/",
+     "Holiday Inn, Crowne Plaza, InterContinental, Staybridge, Candlewood, Kimpton, Indigo, avid", "10", "0.005", "0.05"),
+    ("ALL Accor", "https://all.accor.com/",
+     "Novotel, Ibis, Mercure, Pullman, Sofitel, Fairmont, Swissôtel, MGallery", "2.3", "0.022", "0.05"),
+]
+NOTAS_HOTEL = {
+    "marcas": "Marcas que se reconocen en el nombre del hotel, separadas por comas (sin distinguir mayúsculas ni tildes).",
+    "puntos_por_usd": "Puntos base que acumula un miembro por dólar pagado, solo con reserva directa.",
+    "valor_punto_usd": "Valor de referencia de un punto en USD (supuesto editable).",
+    "descuento_miembro": "Tarifa de miembro: descuento sobre la tarifa (0.05 = 5 %).",
+}
+SUPUESTOS_HOTEL = [
+    ("inscripcion_gratis_hotel", "no", "«sí»: se supone que el viajero se inscribe gratis en el programa del hotel al reservar y "
+                                       "se aplican la tarifa de miembro y los puntos. «no»: solo con una membresía registrada."),
+]
+# Membresía inventada para la demostración: un viajero de ejemplo en Hilton Honors (se rotula «Dato de ejemplo»)
+MEMBRESIA_HOTEL_EJEMPLO = ("Andrés Molina", "Hilton Honors", "Member")
+
+
+def asegurar_fidelizacion_hotel():
+    """Crea lo que falte del catálogo de hoteles y la membresía de ejemplo. No cambia valores que ya se editaron."""
+    for programa, fuente, marcas, puntos, valor_punto, descuento in PROGRAMAS_HOTEL:
+        valores = {"marcas": marcas, "puntos_por_usd": puntos, "valor_punto_usd": valor_punto, "descuento_miembro": descuento}
+        for clave, valor in valores.items():
+            if not db.uno("select id from reglas where ambito='hotel' and entidad=:e and clave=:c", e=programa, c=clave):
+                db.insertar("reglas", ambito="hotel", entidad=programa, tarifa="", clave=clave, valor=valor,
+                            nota=NOTAS_HOTEL[clave], fuente=fuente, confianza="supuesto", verificado=HOY_HOTEL)
+    for clave, valor, nota in SUPUESTOS_HOTEL:
+        if not db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
+            db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor, nota=nota,
+                        fuente="Supuesto editable", confianza="supuesto", verificado=HOY_HOTEL)
+    nombre, programa, estatus = MEMBRESIA_HOTEL_EJEMPLO
+    viajero = db.uno("select id from viajeros where nombre=:n order by id", n=nombre)
+    if viajero and not db.uno("select id from membresias where viajero_id=:v and entidad=:e", v=viajero["id"], e=programa):
+        db.insertar("membresias", viajero_id=viajero["id"], programa=programa, entidad=programa, estatus=estatus, ejemplo=1)
 
 
 def crear_vistas():

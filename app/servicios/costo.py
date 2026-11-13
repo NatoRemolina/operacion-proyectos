@@ -5,10 +5,17 @@
 
 Cada línea del desglose dice de dónde salió el número: "buscador", "regla" o "supuesto".
 """
+import re
+import unicodedata
 from datetime import datetime, timedelta
+
+from sqlalchemy import Column, Integer
 
 from .. import db
 from . import geografia
+
+# Membresía inventada para la demostración: la siembra la marca y las pantallas la rotulan «Dato de ejemplo»
+db.membresias.append_column(Column("ejemplo", Integer))
 
 
 def catalogo() -> dict:
@@ -190,7 +197,7 @@ def evaluar(vuelo: dict, tarifa: dict, sol: dict, membresias: list[dict], cat: d
         if not socio:   # una oportunidad, no un ahorro: no resta hasta que la persona se inscriba
             n = round(tarifa["precio"] * del_viajero)
             avisos.append(f"Inscribirse en {programa_aerolinea(aerolinea, cat)} es gratis y acumularía "
-                          f"~{f'{n:,}'.replace(',', '.')} millas (≈ {n * valor_milla:.0f} USD).")
+                          f"~{_miles(n)} millas (≈ {n * valor_milla:.0f} USD).")
     elif basica:
         avisos.append("La tarifa básica de esta aerolínea no acumula millas.")
 
@@ -235,12 +242,80 @@ def mejor_tarifa(vuelo: dict, tarifas: list[dict], sol: dict, membresias: list[d
     return mejor
 
 
-def programa_hotel(nombre: str, cat: dict) -> str | None:
-    bajo = nombre.lower()
+def _miles(n: int) -> str:
+    return f"{n:,}".replace(",", ".")
+
+
+def _sin_tildes(texto: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", texto.lower()) if not unicodedata.combining(c))
+
+
+def programas_hotel(cat: dict) -> list[dict]:
+    """Programas de fidelización de hoteles del catálogo: ámbito «hotel», una entidad por programa y sus marcas."""
+    por_programa: dict[str, dict] = {}
     for (ambito, entidad, _t, clave), r in cat.items():
-        if ambito == "hotel" and clave == "programa" and entidad.lower() in bajo:
-            return r["valor"]
-    return None
+        if ambito == "hotel" and entidad:
+            por_programa.setdefault(entidad, {})[clave] = r
+    programas = []
+    for nombre, reglas in por_programa.items():
+        marcas = reglas.get("marcas")
+        if not marcas:
+            continue
+        programas.append({
+            "nombre": nombre, "marcas": [m.strip() for m in (marcas["valor"] or "").split(",") if m.strip()],
+            "puntos_por_usd": _numero(reglas.get("puntos_por_usd"), 0), "valor_punto_usd": _numero(reglas.get("valor_punto_usd"), 0),
+            "descuento_miembro": _numero(reglas.get("descuento_miembro"), 0),
+            "fuente": marcas.get("fuente"), "confianza": marcas.get("confianza"), "verificado": marcas.get("verificado")})
+    return programas
+
+
+def programa_hotel(nombre: str, cat: dict) -> dict | None:
+    """Programa del hotel según la marca que aparece en su nombre, sin distinguir mayúsculas ni tildes.
+    Con dos marcas en el nombre («Holiday Inn Fairfield») manda la que aparece primero."""
+    texto, mejor = _sin_tildes(nombre), None
+    for p in programas_hotel(cat):
+        for marca in p["marcas"]:
+            m = _sin_tildes(marca)
+            # una marca de una letra (W) solo cuenta al inicio: «Apartment w/ Patio» no es un hotel W
+            hallado = re.search(rf"^{re.escape(m)}\b" if len(m) == 1 else rf"\b{re.escape(m)}s?\b", texto)
+            if hallado and (mejor is None or (hallado.start(), -len(m)) < mejor[0]):
+                mejor = ((hallado.start(), -len(m)), p)
+    return mejor[1] if mejor else None
+
+
+def _es_si(valor) -> bool:
+    return _sin_tildes(str(valor or "")).strip() in ("si", "yes", "true", "1")
+
+
+def evaluar_hotel(hotel: dict, membresias: list[dict], cat: dict, noches: int) -> dict:
+    """Desglose y costo total de un hotel, espejo de `evaluar`. La tarifa de miembro y los puntos restan solo si hay
+    membresía de ese programa (del viajero o de la empresa) o si el supuesto `inscripcion_gratis_hotel` vale «sí»;
+    sin ninguna de las dos, inscribirse queda como oportunidad en los avisos."""
+    tarifa = float(hotel.get("total") or (hotel.get("noche") or 0) * noches)
+    lineas = [{"concepto": f"Tarifa total ({noches} noche{'' if noches == 1 else 's'})", "valor": tarifa, "origen": "buscador"}]
+    avisos = []
+    p = programa_hotel(hotel.get("nombre") or "", cat)
+    socio = bool(p) and any(_sin_tildes(m.get("entidad") or "") == _sin_tildes(p["nombre"]) for m in membresias)
+    if p:
+        supone = not socio and _es_si((cat.get(("supuesto", "", "", "inscripcion_gratis_hotel")) or {}).get("valor"))
+        descuento, por_usd, valor_punto = p["descuento_miembro"], p["puntos_por_usd"], p["valor_punto_usd"]
+        pagado = round(tarifa * (1 - descuento), 2)
+        if socio or supone:
+            if descuento:
+                lineas.append({"concepto": f"Tarifa de miembro (−{descuento * 100:g} %)", "valor": -round(tarifa * descuento, 2),
+                               "origen": "supuesto"})
+            if por_usd and valor_punto:
+                lineas.append({"concepto": f"Puntos del programa ({por_usd:g} por USD a {valor_punto:g} USD)",
+                               "valor": -round(pagado * por_usd * valor_punto, 2), "origen": "supuesto"})
+        if supone:
+            avisos.append(f"Supone que el viajero se inscribe gratis en {p['nombre']} al reservar (regla «inscripcion_gratis_hotel»).")
+        avisos.append("Acumula solo con reserva directa.")
+        if not socio and not supone:
+            n = round(pagado * por_usd)
+            avisos.append(f"Inscribirse en {p['nombre']} es gratis: tarifa de miembro (−{descuento * 100:g} %) y "
+                          f"~{_miles(n)} puntos (≈ {n * valor_punto:.0f} USD) en esta estadía.")
+    return {"programa": p["nombre"] if p else None, "socio": socio, "tarifa": tarifa, "lineas": lineas,
+            "total": round(sum(l["valor"] for l in lineas), 2), "avisos": avisos}
 
 
 def noches(ida: str, regreso: str) -> int:

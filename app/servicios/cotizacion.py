@@ -316,7 +316,7 @@ def comparacion(sid: int) -> dict | None:
                            "origen_tarifas": t.get("origen"), "capturado": o["capturado"], "tarifas_lista": t.get("lista") or []})
         else:
             hoteles.append({"id": o["id"], "h": datos, "origen_dato": o["origen_dato"],
-                            "programa": costo.programa_hotel(datos["nombre"], cat)})
+                            "programa": (costo.programa_hotel(datos["nombre"], cat) or {}).get("nombre")})
     # Precio esperado según el modelo (solo si hay un modelo utilizable)
     _, _, n_origen, n_destino = precios.ruta(codigos(sol, "origen"), codigos(sol, "destino"))
     ref = db.uno("select tipico_min, tipico_max from observaciones where busqueda=:b limit 1",
