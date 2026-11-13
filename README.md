@@ -104,7 +104,7 @@ Los estados del viaje y del gasto, con sus diagramas, están en la [presentació
 | Asistente | Preguntas en lenguaje natural con cifras exactas y fuentes citadas por su código. Cada permiso pregunta solo por lo que puede ver: el colaborador, lo suyo («¿cuánto me queda del presupuesto?»); el gestor, también sus proyectos; administración, todo, con su pantalla completa. Botón flotante en la plataforma y en la web nueva (con dictado por voz); opcionalmente con un asesor (agente alojado) que también lee justificaciones y cotizaciones |
 | Monitoreo | Catálogo único de métricas, auditoría, errores con identificador, calidad de los datos |
 | API JSON v1 | Contrato para la web nueva (`contracts/api-v1.md`) |
-| Web nueva (Next.js) | Sobre la API v1 (`web/`): cotizar desde y hacia cualquier lugar, comparar vuelos y hoteles con desglose y decidir; mis viajes y mis gastos, con carga de recibos, justificación y el Excel contable; el asistente; y, para administración, resumen, viajes por aprobar (con la reconfirmación del precio) y revisión de gastos |
+| Web nueva (Next.js) | Sobre la API v1 (`web/`): cotizar desde y hacia cualquier lugar, comparar vuelos y hoteles con desglose y decidir; mis viajes y mis gastos, con carga de recibos, justificación y el Excel contable; el asistente; y, para administración, resumen, viajes por aprobar (con la reconfirmación del precio), revisión completa de gastos (corregir, reasignar, aprobar con excepción, rechazar), Reglas y supuestos, KPIs, Monitoreo y estado de los vuelos |
 
 ## Cómo responde a cada reto
 
@@ -197,7 +197,9 @@ Con `make entorno-web`, en http://127.0.0.1:8088 y las mismas cuentas:
 3. **Como colaborador:** *Gastos* → *Cargar recibo* → elegir el viaje (o dejarlo en automático), el archivo y para qué fue. El estado se ve en la lista y en el detalle; si se rechaza, el detalle ofrece cargar el recibo de nuevo.
 4. **Como administración:** *Gastos* → revisión: la decisión va arriba, con «Por qué va a revisión»; aprobar o rechazar con motivo.
 
-Lo que la web nueva todavía no tiene sigue en la plataforma actual (127.0.0.1:8000): Proyectos, Usuarios, Mi cuenta, la revisión completa de un gasto (corregir los datos leídos y aprobar con excepción), Reglas, KPIs, Monitoreo y el tablero de vuelos. La web enlaza allí cuando hace falta; para administración, Proyectos y Usuarios están en la sección «Administración» del menú, que los abre en otra pestaña y pide ingresar aparte. El asistente y el Excel contable están en las dos. Las dos comparten la base, así que lo hecho en una se ve en la otra.
+5. **Como administración:** en la revisión de un gasto se corrigen los datos leídos, se reasigna el viaje y se aprueba, se aprueba con excepción (motivo de 8 caracteres o más) o se rechaza (motivo de 5 o más). *Reglas y supuestos*, *KPIs*, *Monitoreo* y *Vuelos* están en el menú.
+
+Proyectos, Usuarios y Mi cuenta están pasando a la web; hasta entonces se abren desde la sección «Administración» del menú, en otra pestaña, en la plataforma anterior (127.0.0.1:8000 en local), que pide ingresar aparte. Las dos comparten la base, así que lo hecho en una se ve en la otra.
 
 ## Guía de demostración (en local, con Docker)
 
@@ -296,7 +298,7 @@ Publicada en https://software.nataliaremolinarodriguez.com (web nueva) y https:/
 - **Ahorro de cotizaciones anteriores:** el ahorro se calcula contra el vuelo más barato que sirve; las cotizaciones guardadas antes de esa regla conservan el que se calculó contra el más barato de todos, aunque estuviera descartado, así que en una base ya sembrada o importada los indicadores mezclan las dos. Se corrige con un recálculo único del ahorro de esas cotizaciones.
 - Los precios son una foto del momento de la consulta; cada opción muestra su origen.
 - La distancia y el tiempo por carretera son una estimación (línea recta × factor ÷ velocidad), sin mapas ni rutas reales, y no hay tren, bus ni ferri.
-- **Módulos que siguen en las pantallas de administración:** la web Next.js cubre cotizar, viajes, gastos con el Excel contable, el asistente y la aprobación y revisión de administración. Proyectos, Usuarios, Mi cuenta, la revisión completa de un gasto (corregir los datos leídos y aprobar con excepción), Reglas, KPIs, Monitoreo y el tablero de vuelos viven hoy en las pantallas servidas por el backend (en producción, `admin.software.`), con su propia sesión. Pasarlos a la web nueva es el siguiente paso del anillo 1 (`docs/adr/0001-arquitectura-objetivo.md`).
+- **Módulos que todavía están en la plataforma anterior:** la web Next.js cubre cotizar, viajes, gastos con su revisión completa y el Excel contable, Reglas y supuestos, KPIs, Monitoreo, el estado de los vuelos y el asistente. Proyectos, Usuarios y Mi cuenta (en paso a la web) y la analítica de precios y el flujo de la información siguen en las pantallas servidas por el backend (en producción, `admin.software.`), con su propia sesión. Cuando estén en la web, esas pantallas se retiran: cada dirección anterior lleva a su equivalente en la web (`INTERFAZ_ANTIGUA=redirige`, `app/servicios/interfaz.py`).
 - Con el asesor, una respuesta del asistente tarda más que sin él (hasta un tope de 75 s; no hay una medición del tiempo típico); si el asesor falla o llega a su tope de gasto del día, responde el asistente sin él y lo dice.
 - Varias reglas de aerolíneas vienen de fuentes secundarias o están sin verificar; la página *Reglas* lo indica.
 - El canal de Telegram se probó con un bot simulado.

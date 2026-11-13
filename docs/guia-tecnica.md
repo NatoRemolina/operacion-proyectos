@@ -176,9 +176,9 @@ Cifras del [informe técnico, sección 5](informe-tecnico.md#5-pruebas-y-calidad
 
 | Conjunto | Orden | Resultado |
 |---|---|---|
-| Python (pytest, SQLite temporal y servicios simulados) | `.venv/bin/python -m pytest -q` | 777 pruebas en 44 archivos: 774 pasan y 3 se omiten (necesitan Docker) |
+| Python (pytest, SQLite temporal y servicios simulados) | `.venv/bin/python -m pytest -q` | 893 pruebas en 52 archivos: 890 pasan y 3 se omiten (necesitan Docker) |
 | Linter de Python | `.venv/bin/python -m ruff check .` | Sin hallazgos |
-| Web (Vitest) | `cd web && npx vitest run` | 273 pruebas en 34 archivos, todas pasan |
+| Web (Vitest) | `cd web && npx vitest run` | 372 pruebas en 48 archivos, todas pasan |
 | Infraestructura (pilas de CDK) | `cd infra && npm test` | 37 pruebas en 12 grupos, todas pasan |
 
 Todas corren sin claves ni base real. La integración continua las ejecuta en cada envío a `main` o `dev` en cuatro trabajos: Python, web, infraestructura e imágenes. La exactitud de la lectura de recibos con modelo no tiene todavía una cifra medida ([`exactitud-lectura.md`](exactitud-lectura.md)).

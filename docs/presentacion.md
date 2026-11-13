@@ -251,11 +251,12 @@ Lista que se ajusta al integrar cada pantalla de la web.
 
 | Publicado | En publicación |
 |---|---|
-| Ingreso | Proyectos |
-| Cotizar: buscar, comparar y decidir | Usuarios |
+| Ingreso | Proyectos y su tablero |
+| Cotizar: buscar, comparar y decidir | Usuarios y cargos |
 | Viajes: los propios y, para administración, por aprobar con la reconfirmación del precio | Mi cuenta |
-| Gastos: cargar recibo, justificación, lista y detalle | Revisión completa de un gasto (corregir los datos leídos y aprobar con excepción) |
-| Revisión de gastos: aprobar o rechazar con motivo | Reglas |
-| Excel contable | KPIs |
-| Resumen de administración | Monitoreo |
-| Asistente | Estado de los vuelos |
+| Gastos: cargar recibo (foto, PDF, correo, HTML), justificación, lista y detalle | Retiro de las pantallas anteriores |
+| Revisión completa de gastos: corregir, reasignar viaje, aprobar, aprobar con excepción, rechazar | |
+| Excel contable | |
+| Reglas y supuestos | |
+| KPIs, Monitoreo y estado de los vuelos | |
+| Resumen de administración y asistente | |

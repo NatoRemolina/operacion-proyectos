@@ -17,7 +17,7 @@ Es un **producto mínimo viable** que resuelve los dos retos de la prueba sobre 
 | Decisión con su porqué, viaje con código y presupuesto, aprobación con reconfirmación del precio, monitoreo del vuelo el día del viaje | Monitoreo del vuelo con tarea programada (hoy solo con el tablero abierto) |
 | Gastos por web, celular, API, correo (`.eml` y `.html` subidos) y Telegram; lectura automática, 20 motivos de revisión, aprobación sin intervención, revisión versionada, justificaciones con voz | Buzón de correo real; Telegram con el bot de producción |
 | Excel contable, KPIs con semáforo, analítica, monitoreo, asistente con fuentes citadas para los tres permisos | Automatizaciones con n8n (diseñadas en [`n8n/automatizaciones.md`](n8n/automatizaciones.md)) |
-| Web nueva en Next.js para cotizar, viajes, gastos, aprobación y revisión | Proyectos, Usuarios, Mi cuenta, la revisión completa de un gasto (corregir los datos leídos y aprobar con excepción), Reglas, KPIs, Monitoreo y el tablero de vuelos en la web nueva (siguen en las pantallas de administración) |
+| Web nueva en Next.js para cotizar, viajes, gastos con su revisión completa, Reglas, KPIs, Monitoreo y estado de los vuelos | Proyectos, Usuarios y Mi cuenta en la web nueva (en paso; hoy en las pantallas de administración), analítica de precios y flujo de la información |
 
 **Qué es real, qué es simulado y qué es supuesto**
 
@@ -161,9 +161,9 @@ Cifras medidas el 13 de noviembre de 2026 sobre `bf33d50`, el código de `union-
 
 | Conjunto | Orden | Resultado |
 |---|---|---|
-| Python (pytest, SQLite temporal y servicios simulados) | `.venv/bin/python -m pytest -q` | 777 pruebas en 44 archivos: **774 pasan, 3 se omiten** (dos necesitan el PostgreSQL de Docker en el puerto 5433 y una, Docker para el ensayo de vuelta atrás) |
+| Python (pytest, SQLite temporal y servicios simulados) | `.venv/bin/python -m pytest -q` | 893 pruebas en 52 archivos: **890 pasan, 3 se omiten** (dos necesitan el PostgreSQL de Docker en el puerto 5433 y una, Docker para el ensayo de vuelta atrás) |
 | Linter de Python | `.venv/bin/python -m ruff check .` | Sin hallazgos |
-| Web (Vitest) | `cd web && npx vitest run` | **273 pruebas en 34 archivos, todas pasan** |
+| Web (Vitest) | `cd web && npx vitest run` | **372 pruebas en 48 archivos, todas pasan** |
 | Infraestructura (pruebas de las pilas de CDK) | `cd infra && npm test` | **37 pruebas en 12 grupos, todas pasan** |
 
 Qué cubren las de Python: permisos por rol (con una prueba de humo de cada página para cada rol), la regla del viaje, la validación de gastos, la integridad (envíos idempotentes, transacciones, revisión versionada), el buscador mundial, el monitoreo del vuelo, las métricas contra un conjunto conocido, el borde de la API v1, el asistente y su asesor, Telegram con un bot simulado y el comportamiento detrás de CloudFront. `make probar-postgres` corre las mismas contra un PostgreSQL nuevo en Docker; los cambios que tocan la base se prueban además en un proyecto de Supabase de pruebas ([`convenciones.md`](convenciones.md)).
@@ -245,7 +245,7 @@ Qué cubren las de Python: permisos por rol (con una prueba de humo de cada pág
 - El dinero se guarda en coma flotante; las reglas validan con decimales exactos.
 - Con pocos datos, varios indicadores muestran el método y no conclusiones; el ahorro es un valor esperado.
 - El pie de página dice «Datos: Supabase» con cualquier PostgreSQL, también el local.
-- La web nueva no cubre todavía Proyectos, Usuarios, Mi cuenta, la revisión completa de un gasto (corregir los datos leídos y aprobar con excepción), Reglas, KPIs, Monitoreo y el tablero de vuelos: viven en las pantallas de administración, con su propia sesión (desde la web, Proyectos y Usuarios se abren en otra pestaña).
+- La web nueva no cubre todavía Proyectos, Usuarios y Mi cuenta (en paso), ni la analítica de precios y el flujo de la información: viven en las pantallas de administración, con su propia sesión (desde la web, Proyectos y Usuarios se abren en otra pestaña). Cuando pasen, las pantallas anteriores se retiran con `INTERFAZ_ANTIGUA=redirige`.
 - La CSP de las pantallas de administración permite scripts en línea.
 
 ## 10. Hoja de ruta
