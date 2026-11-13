@@ -7,8 +7,9 @@ Solo lee: lo usa también el guion de consola, que corre en solo lectura.
 """
 import calendar
 import io
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
@@ -19,6 +20,9 @@ from .. import config, db
 from . import acceso, consultas, eventos, exportacion, viajes
 
 ESTADOS_LIBRO = ("aprobado", "aprobado_auto")
+# Supuesto: el mes en curso se cuenta en la hora del este de EE. UU. (la de Miami). En UTC, la hora de la nube, desde
+# las 19:00 o 20:00 de Miami del último día del mes ya sería el mes siguiente.
+ZONA_EMPRESA = ZoneInfo("America/New_York")
 TIPO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 # Mapa categoría → cuenta. Es un supuesto: se edita en «Reglas y supuestos» (claves `cuenta_contable_<categoría>`)
@@ -114,8 +118,13 @@ def cuentas() -> dict[str, str]:
 
 
 # ---------- parámetros ----------
+def _ahora() -> datetime:
+    return datetime.now(UTC)
+
+
 def mes_en_curso(hoy: date | None = None) -> tuple[str, str]:
-    hoy = hoy or date.today()
+    """Del primero al último día del mes de `hoy`; sin él, el mes en curso en la zona de la empresa."""
+    hoy = hoy or _ahora().astimezone(ZONA_EMPRESA).date()
     ultimo = calendar.monthrange(hoy.year, hoy.month)[1]
     return date(hoy.year, hoy.month, 1).isoformat(), date(hoy.year, hoy.month, ultimo).isoformat()
 

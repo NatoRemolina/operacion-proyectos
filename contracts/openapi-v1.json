@@ -930,10 +930,10 @@
                   "type": "null"
                 }
               ],
-              "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso.",
+              "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York).",
               "title": "Desde"
             },
-            "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso."
+            "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York)."
           },
           {
             "name": "hasta",
@@ -948,10 +948,10 @@
                   "type": "null"
                 }
               ],
-              "description": "AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso.",
+              "description": "AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York).",
               "title": "Hasta"
             },
-            "description": "AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso."
+            "description": "AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York)."
           },
           {
             "name": "proyecto_id",

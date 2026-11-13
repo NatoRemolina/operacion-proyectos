@@ -98,8 +98,8 @@ def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, pagina
     **errores(401, 403, 404, 422),
     200: {"description": "El libro (.xlsx) con las hojas «Gastos» y «Resumen»", "content": {contable.TIPO_XLSX: {}}}})
 def libro_contable(request: Request,
-                   desde: str | None = Query(None, description="AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso."),
-                   hasta: str | None = Query(None, description="AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso."),
+                   desde: str | None = Query(None, description="AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York)."),
+                   hasta: str | None = Query(None, description="AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York)."),
                    proyecto_id: int | None = Query(None, ge=1, description="Opcional. Solo administración o quien gestiona el proyecto."),
                    yo: dict = Depends(persona)):
     """Excel contable de los gastos aprobados (`aprobado` y `aprobado_auto`) del periodo, con el alcance de la sesión:

@@ -4,7 +4,7 @@ Los gastos de estas pruebas están en proyectos propios y en marzo de 2031: ning
 cifras del libro son exactas.
 """
 import io
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from openpyxl import load_workbook
@@ -489,3 +489,13 @@ def test_las_consultas_del_libro_no_crecen_con_las_filas(mundo):
             _consultas_al_generar(mundo["g"], "2032-05-01", "2032-05-31")
     finally:
         db.ejecutar(f"delete from gastos where id in ({', '.join(str(int(i)) for i in ids)})")
+
+
+@pytest.mark.parametrize("ahora_utc", [datetime(2026, 11, 30, 23, 30, tzinfo=UTC),   # 18:30 en Nueva York
+                                       datetime(2026, 12, 1, 3, 0, tzinfo=UTC)])     # 22:00 del 30 en Nueva York
+def test_el_mes_en_curso_se_cuenta_en_la_zona_de_la_empresa(monkeypatch, sesiones, ahora_utc):
+    monkeypatch.setattr(contable, "_ahora", lambda: ahora_utc)
+    assert contable.ZONA_EMPRESA.key == "America/New_York"
+    assert contable.mes_en_curso() == ("2026-11-01", "2026-11-30")
+    r = sesiones["a"].get(f"{V1}/gastos/contable")
+    assert r.status_code == 200 and "libro_contable_2026-11-01_2026-11-30.xlsx" in r.headers["content-disposition"]
