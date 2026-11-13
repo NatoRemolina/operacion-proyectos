@@ -78,7 +78,7 @@ La migración del paso 2 exige un respaldo **de esa misma base y de las últimas
 "$PY" infra/poblar_secreto.py --env "$PRINCIPAL/.env.produccion"
 ```
 
-El ensayo muestra las claves que subiría, sin valores y sin contactar AWS. La carga de verdad lee el secreto de `OperacionBase`, reemplaza las claves que el archivo trae con valor, conserva las demás y retira `APP_CLAVE`. Se niega a subir el proyecto de pruebas de Supabase. La base va al agrupador de transacción (6543). Si `OperacionBase` no existiera aún (cuenta nueva), se despliega primero (paso 5) y se vuelve aquí.
+El ensayo muestra las claves que subiría, sin valores y sin contactar AWS. **Exige `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRETO` en el archivo** (los del bot de producción) y se detiene si falta alguno: el paso 6 registra el webhook con ese mismo archivo, así el secreto de la función y el del webhook son iguales. Si Telegram no se publica ahora, se agrega `--sin-telegram` a las dos órdenes: no exige esas claves, no toca las que ya tenga el secreto, y el paso 6 se salta. La carga de verdad lee el secreto de `OperacionBase`, reemplaza las claves que el archivo trae con valor, conserva las demás y retira `APP_CLAVE`. Se niega a subir el proyecto de pruebas de Supabase. La base va al agrupador de transacción (6543). Si `OperacionBase` no existiera aún (cuenta nueva), se despliega primero (paso 5) y se vuelve aquí.
 
 ## 4. Revisión del cambio, aprobada por la dueña
 
@@ -127,6 +127,10 @@ curl -s -o /dev/null -w "%{http_code}\n" "${URL_API}salud"        # 200
 
 El bot apunta a la dirección de la función de la API (`<Url>/telegram/webhook`), no a CloudFront: no depende del DNS ni del plazo de 60 s de las distribuciones (ADR 0002).
 
+- **Mismo archivo que el paso 3:** `dotenv run` toma del archivo la clave del bot y el secreto del webhook. En `$PUBLICAR` no hay `.env`, así que no pueden salir de la configuración de desarrollo; y el paso 3 ya se detuvo si faltaban.
+- **`--estado` debe mostrar** `Entrada registrada: <Url>telegram/webhook` y **ninguna línea «Último error»**. Si aparece un error, no se sigue: lo más común es un secreto distinto en la función y en el webhook. Se repiten los pasos 3 y 6 con el mismo archivo, y se despliega una versión nueva de OperacionApp para que la función relea el secreto.
+- **Si Telegram no se publica ahora:** se usó `--sin-telegram` en el paso 3 y este paso se salta entero. Nada del resto depende de Telegram. Si el bot ya tenía un webhook registrado, sigue como estaba.
+
 ## 7. Comprobaciones
 
 | Qué | Cómo | Esperado |
@@ -136,7 +140,7 @@ El bot apunta a la dirección de la función de la API (`<Url>/telegram/webhook`
 | Web | Entrar en `https://software.nataliaremolinarodriguez.com/entrar` con una cuenta real y hacer una escritura (cotizar o cerrar la sesión) | Sin 403: CloudFront reenvía la cookie, `Origin`, `Sec-Fetch-Site` y `X-CSRF-Token` |
 | Estáticos | Abrir un archivo de `/_next/static/` de la página | 200, servido desde S3 (cabecera `server: AmazonS3`) |
 | Alarma de prueba | `aws cloudwatch set-alarm-state --alarm-name <nombre de ErroresDeLaAplicacion> --state-value ALARM --state-reason "Prueba del despliegue"` (el nombre sale de `aws cloudwatch describe-alarms`) | Llega el correo de aviso. La alarma vuelve sola a OK en el periodo siguiente |
-| Telegram | Mandar la foto de un recibo al bot desde un celular | El gasto aparece en la plataforma |
+| Telegram (si se publicó) | `--estado` del paso 6, y mandar la foto de un recibo al bot desde un celular | Sin «Último error»; el gasto aparece en la plataforma |
 | Concurrencia | `aws lambda get-function-concurrency --function-name "$FUNCION"` | Sin reserva |
 
 ## 8. Vuelta atrás, decidida de antemano

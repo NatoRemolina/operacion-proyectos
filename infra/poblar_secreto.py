@@ -44,6 +44,18 @@ CLAVES = [
     "PROVEEDOR_LUGARES",
 ]
 OBLIGATORIAS = ("DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_KEY")   # sin ellas la función no arranca (app/config.py)
+# Tienen que venir en el archivo: el webhook (paso 6 de docs/despliegue.md) se registra con ese mismo archivo, y si
+# faltaran, app/config.py las completaría con las del .env de desarrollo. `--sin-telegram` lo salta a propósito.
+TELEGRAM = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRETO")
+
+
+def comprobar_telegram(valores: dict, archivo: str, sin_telegram: bool):
+    if sin_telegram:
+        return
+    faltan = [k for k in TELEGRAM if not valores.get(k)]
+    if faltan:
+        sys.exit(f"Faltan {', '.join(faltan)} en {archivo}: el webhook de Telegram quedaría con otras claves. "
+                 "Agrégalas, o usa --sin-telegram si Telegram no se publica ahora. No se cambió nada.")
 
 
 def leer(archivo: str) -> dict:
@@ -86,15 +98,22 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     a.add_argument("--env", required=True, help="archivo con la configuración de producción (por ejemplo .env.produccion)")
     a.add_argument("--ensayo", action="store_true", help="solo muestra qué claves subiría, sin valores y sin contactar AWS")
+    a.add_argument("--sin-telegram", action="store_true",
+                   help="Telegram no se publica ahora: no exige sus claves y no toca las que ya tenga el secreto")
     x = a.parse_args(argv)
 
     valores = leer(x.env)
     comprobar(valores, x.env)
+    comprobar_telegram(valores, x.env, x.sin_telegram)
     if x.ensayo:
         print(f"Ensayo: subiría {len(valores)} claves desde {x.env}: {', '.join(sorted(valores))}.")
         faltan = [k for k in OBLIGATORIAS if k not in valores]
         if faltan:
             print(f"No están en el archivo (tendrían que estar ya en el secreto): {', '.join(faltan)}.")
+        if x.sin_telegram:
+            print("Telegram no se publica: se salta el paso 6; las claves de Telegram que ya tenga el secreto se conservan.")
+        else:
+            print(f"Telegram: {' y '.join(TELEGRAM)} vienen en el archivo; el paso 6 registra el webhook con ese mismo archivo.")
         print("Las demás claves del secreto se conservan; " + ", ".join(RETIRADAS) + " se retira si está. No se contactó AWS.")
         return 0
 

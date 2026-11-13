@@ -62,7 +62,8 @@ class Nube:
 def _archivo(tmp_path: Path, **valores) -> str:
     base = {"DATABASE_URL": f"postgresql://postgres.{PRODUCCION}:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:5432/postgres",
             "DATABASE_PASSWORD": "cl@ve/rara", "SUPABASE_URL": f"https://{PRODUCCION}.supabase.co",
-            "SUPABASE_SERVICE_KEY": "servicio-secreta", "SERPAPI_KEY": "serp-secreta"}
+            "SUPABASE_SERVICE_KEY": "servicio-secreta", "SERPAPI_KEY": "serp-secreta",
+            "TELEGRAM_BOT_TOKEN": "bot-inventado", "TELEGRAM_WEBHOOK_SECRETO": "entrada-inventada"}
     ruta = tmp_path / ".env.produccion"
     ruta.write_text("".join(f"{k}={v}\n" for k, v in {**base, **valores}.items()))
     return str(ruta)
@@ -98,7 +99,7 @@ def test_tampoco_si_el_proyecto_de_pruebas_ya_estaba_en_el_secreto(tmp_path):
     ruta.write_text(f"DATABASE_URL=postgresql://postgres.{PRODUCCION}:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:5432/postgres\n")
     nube = Nube(actual={"SUPABASE_URL": f"https://{PRUEBAS}.supabase.co"})
     with pytest.raises(SystemExit, match="pruebas"):
-        ps.main(["--env", str(ruta)], sesion=nube)
+        ps.main(["--env", str(ruta), "--sin-telegram"], sesion=nube)
     assert nube.subido is None
 
 
@@ -135,9 +136,42 @@ def test_incluye_asesor_pinecone_y_origenes_web(tmp_path):
 
 
 def test_las_claves_vacias_del_archivo_no_borran_las_del_secreto(tmp_path):
-    nube = Nube(actual={"TELEGRAM_BOT_TOKEN": "puesto"})
-    ps.main(["--env", _archivo(tmp_path, TELEGRAM_BOT_TOKEN="")], sesion=nube)
-    assert nube.subido["TELEGRAM_BOT_TOKEN"] == "puesto"
+    nube = Nube(actual={"SERPAPI_KEY": "puesta"})
+    ps.main(["--env", _archivo(tmp_path, SERPAPI_KEY="")], sesion=nube)
+    assert nube.subido["SERPAPI_KEY"] == "puesta"
+
+
+@pytest.mark.parametrize("falta", ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRETO"])
+def test_sin_las_claves_de_telegram_el_ensayo_se_detiene(tmp_path, capsys, falta):
+    # El webhook del paso 6 se registra con este mismo archivo: si faltaran, saldrían de otro lado
+    nube = Nube(actual={})
+    with pytest.raises(SystemExit, match=falta):
+        ps.main(["--env", _archivo(tmp_path, **{falta: ""}), "--ensayo"], sesion=nube)
+    assert nube.clientes == []
+    assert "bot-inventado" not in capsys.readouterr().out
+
+
+def test_sin_las_claves_de_telegram_tampoco_se_sube(tmp_path):
+    nube = Nube(actual={"TELEGRAM_BOT_TOKEN": "de-antes", "TELEGRAM_WEBHOOK_SECRETO": "de-antes"})
+    with pytest.raises(SystemExit, match="TELEGRAM_BOT_TOKEN"):
+        ps.main(["--env", _archivo(tmp_path, TELEGRAM_BOT_TOKEN="")], sesion=nube)
+    assert nube.subido is None
+
+
+def test_el_ensayo_nombra_las_claves_de_telegram(tmp_path, capsys):
+    ps.main(["--env", _archivo(tmp_path), "--ensayo"], sesion=Nube())
+    salida = capsys.readouterr().out
+    assert "TELEGRAM_BOT_TOKEN" in salida and "TELEGRAM_WEBHOOK_SECRETO" in salida
+    assert "bot-inventado" not in salida and "entrada-inventada" not in salida
+
+
+def test_sin_telegram_se_puede_saltar_a_proposito(tmp_path, capsys):
+    nube = Nube(actual={"TELEGRAM_BOT_TOKEN": "de-antes"})
+    ruta = _archivo(tmp_path, TELEGRAM_BOT_TOKEN="", TELEGRAM_WEBHOOK_SECRETO="")
+    ps.main(["--env", ruta, "--ensayo", "--sin-telegram"], sesion=nube)
+    assert "paso 6" in capsys.readouterr().out
+    ps.main(["--env", ruta, "--sin-telegram"], sesion=nube)
+    assert nube.subido["TELEGRAM_BOT_TOKEN"] == "de-antes"   # lo que ya tenía el secreto no se toca
 
 
 def test_el_ensayo_dice_las_claves_sin_valores_y_no_toca_aws(tmp_path, capsys):
