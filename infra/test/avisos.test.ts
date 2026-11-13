@@ -50,7 +50,7 @@ describe("correo de avisos (H-36)", () => {
     assert.equal(suscripcion.Endpoint, "avisos@example.com");
   });
 
-  test("el presupuesto es el de la cuenta («cuenta-mensual», de la dueña): la pila no crea otro", () => {
+  test("el presupuesto es el de la cuenta («cuenta-mensual», de la titular de la cuenta): la pila no crea otro", () => {
     const { base, api, web } = sintetizar();
     for (const plantilla of [base, api, web]) plantilla.resourceCountIs("AWS::Budgets::Budget", 0);
   });
