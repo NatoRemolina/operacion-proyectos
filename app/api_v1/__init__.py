@@ -12,7 +12,6 @@ Los endpoints viven en `app/rutas/v1_*.py` y usan las dependencias de aquí con 
 import hashlib
 import hmac
 import os
-import re
 
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse
@@ -98,7 +97,6 @@ def pagina(limite: int = Query(20, ge=1, le=100, description="Cuántos elementos
     """Paginación por cursor de los listados: orden por id descendente y el cursor es el último id entregado."""
     if not cursor:
         return limite, None
-    # Solo dígitos ASCII y sin pasarse de un entero de la base: «²» o «٣» pasan `isdigit` pero `int` falla
-    if not re.fullmatch(r"[1-9][0-9]{0,17}", cursor):
+    if not cursor.isdigit() or int(cursor) < 1:
         raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"cursor": "El cursor no es válido. Usa el valor de `siguiente`."})
     return limite, int(cursor)

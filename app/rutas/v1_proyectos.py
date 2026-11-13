@@ -8,10 +8,11 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 
-from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
+from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
 from ..api_v1.esquemas import errores
 from ..api_v1.esquemas_proyectos import DatosProyecto, ListaProyectos, ProyectoResumen, TableroProyecto
 from ..servicios import acceso, consultas, contable, proyectos
+from .v1_usuarios import pagina_estricta
 
 router = APIRouter(prefix=PREFIJO + "/proyectos", tags=["proyectos"])
 
@@ -47,7 +48,7 @@ def _datos(entrada: DatosProyecto) -> dict:
 
 
 @router.get("", response_model=ListaProyectos, responses=errores(401, 403, 422))
-def lista(paginacion: tuple = Depends(pagina), yo: dict = Depends(persona)):
+def lista(paginacion: tuple = Depends(pagina_estricta), yo: dict = Depends(persona)):
     """Administración, todos; quien gestiona, los suyos; el resto, 403. Más reciente primero."""
     if yo["rol"] not in ("admin", "gestor"):
         raise ErrorApi(403, "FORBIDDEN", "Los proyectos los ven administración y quien los gestiona.")

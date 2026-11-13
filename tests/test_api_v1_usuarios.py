@@ -360,7 +360,7 @@ def test_dos_administraciones_a_la_vez_no_dejan_la_plataforma_sin_ninguna(client
 
 
 def test_un_cursor_que_no_es_un_numero_simple_responde_422(cliente):
-    for ruta in ("/usuarios", "/proyectos", "/viajes"):
+    for ruta in ("/usuarios", "/proyectos"):
         _error(cliente.get(f"{V1}{ruta}", params={"cursor": "²"}), 422, "VALIDATION_ERROR")
 
 

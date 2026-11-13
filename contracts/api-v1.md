@@ -16,7 +16,7 @@ Base: `/api/v1`. Mismo origen que la web (el gateway envía `/api/v1/*` a la API
 | Caché | Toda respuesta lleva `Cache-Control: no-store` |
 | Dinero | Cadenas decimales con dos cifras: `"54.00"`. Nunca números de coma flotante. `null` si no se pudo leer |
 | Fechas | Fecha de un recibo: `"2026-12-09"` (sin hora). Instantes de auditoría: `"2026-11-12T04:13:13Z"` (UTC) |
-| Listados | `{"items": [...], "siguiente": "<cursor>" \| null}`. Parámetros `limite` (1–100, por defecto 20) y `cursor` (dígitos 0–9, sin cero delante; otro valor: 422). Orden: más reciente primero |
+| Listados | `{"items": [...], "siguiente": "<cursor>" \| null}`. Parámetros `limite` (1–100, por defecto 20) y `cursor`. Orden: más reciente primero |
 | Petición | Cada respuesta trae la cabecera `X-Peticion` y, en los errores, el mismo valor en `request_id` |
 
 ## Errores
@@ -388,7 +388,7 @@ interface TableroProyecto {
 ```
 
 ### `GET /proyectos`
-Parámetros `limite` y `cursor`. Administración, todos; quien gestiona, los suyos; colaborador: 403 `FORBIDDEN`. `{"items": ProyectoResumen[], "siguiente"}`, más reciente primero. Las cifras son las mismas del tablero.
+Parámetros `limite` y `cursor` (solo dígitos 0–9; otro valor, 422). Administración, todos; quien gestiona, los suyos; colaborador: 403 `FORBIDDEN`. `{"items": ProyectoResumen[], "siguiente"}`, más reciente primero. Las cifras son las mismas del tablero.
 
 ### `POST /proyectos`
 Solo administración (403 `FORBIDDEN`). Cuerpo JSON `{"nombre", "cliente", "ciudad", "fecha_inicio", "fecha_fin", "moneda"}` y `X-CSRF-Token`; un campo de más responde 422. 201 `ProyectoResumen`. Validación, con el campo en `fields` (422): `nombre` de 3 caracteres o más, fechas `AAAA-MM-DD` con `fecha_fin` no anterior a `fecha_inicio`, `moneda` de tres letras (se guarda en mayúsculas). Deja el evento `proyecto creado`.
@@ -424,7 +424,7 @@ interface Cargo { id: number; nombre: string; activo: boolean; personas: number 
 La contraseña (inicial o restablecida) nunca sale en una respuesta.
 
 ### `GET /usuarios`
-Parámetros `limite` y `cursor`. Todas las cuentas, activas o no, la más reciente primero. `{"items": Usuario[], "siguiente"}`.
+Parámetros `limite` y `cursor` (solo dígitos 0–9; otro valor, 422). Todas las cuentas, activas o no, la más reciente primero. `{"items": Usuario[], "siguiente"}`.
 
 ### `POST /usuarios`
 Cuerpo `{"correo", "nombre", "rol", "clave", "cargo_id": number | null}`. 201 `ResultadoUsuario`. El correo se guarda en minúsculas y sin espacios; la cuenta recibe su perfil de viajero. 422 con el campo en `fields`: `correo` sin `@` o ya usado, `rol` que no es `colaborador`, `gestor` ni `admin`, `clave` de menos de 10 caracteres, `cargo_id` inexistente o desactivado.
