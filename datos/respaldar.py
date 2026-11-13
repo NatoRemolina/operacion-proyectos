@@ -2,6 +2,7 @@
 
     python -m datos.respaldar respaldar --env .env.supabase-publicada [--destino CARPETA]
     python -m datos.respaldar verificar --respaldo CARPETA --env .env.supabase-pruebas --base restauracion_AAAAMMDD
+    python -m datos.respaldar vuelta-atras --respaldo CARPETA > vuelta_atras.sql
 
 `respaldar` no escribe nada en la base de origen: `pg_dump` solo lee y los conteos van en una sesión de
 solo lectura. Copia el esquema `public` (estructura y datos, formato restaurable y estructura legible), descarga
@@ -11,6 +12,10 @@ filas y la huella SHA-256 de cada archivo. Nunca imprime la conexión ni las cla
 `verificar` restaura la copia en una base NUEVA (`--base`) del destino indicado y compara fila por fila los
 conteos con el manifiesto. Se niega a restaurar sobre el mismo servidor y usuario de los que salió la copia
 y sobre la base `postgres`: el ensayo nunca toca ni la base publicada ni la principal del proyecto de pruebas.
+
+`vuelta-atras` escribe el SQL que deja una base migrada lista para restaurar encima la copia (docs/respaldo.md):
+borra las vistas del código y las tablas que esta versión añadió y la copia no trae, con lo que depende de ellas.
+Sin eso, `pg_restore --clean` no puede borrar las tablas de antes, porque las nuevas apuntan a ellas.
 
 `pg_dump` y `pg_restore` corren en Docker (`postgres:17`, la versión del servidor), sin instalar nada.
 El archivo de entorno lleva DATABASE_URL (puede traer [YOUR-PASSWORD] con DATABASE_PASSWORD aparte) y,
@@ -142,12 +147,40 @@ def respaldar(archivo_env: str, destino: str | None) -> Path:
     return carpeta
 
 
-def verificar(carpeta: str, archivo_env: str, base: str) -> bool:
-    carpeta = Path(carpeta).expanduser()
+def _manifiesto(carpeta: Path) -> dict:
+    """El manifiesto de una copia, después de comprobar la huella de cada archivo."""
     manifiesto = json.loads((carpeta / "manifiesto.json").read_text())
     for nombre, datos in manifiesto["archivos"].items():
         if _sha(carpeta / nombre) != datos["sha256"]:
             sys.exit(f"La huella de {nombre} no coincide: el respaldo está alterado o incompleto")
+    return manifiesto
+
+
+def _tablas_del_codigo() -> set[str]:
+    """Las tablas que declara esta versión: las de app/db.py y las que cada servicio declara al importarse."""
+    import importlib
+    import pkgutil
+
+    from app import db, servicios
+    for m in pkgutil.iter_modules(servicios.__path__):
+        importlib.import_module(f"{servicios.__name__}.{m.name}")
+    return set(db.TABLAS)
+
+
+def vuelta_atras(carpeta: str | Path) -> str:
+    """SQL para correr antes de restaurar la copia sobre una base ya migrada. La lista sale del código y del manifiesto,
+    no se escribe a mano: cada tabla nueva que se declare queda incluida sola."""
+    from datos.semilla import VISTAS
+    manifiesto = _manifiesto(Path(carpeta).expanduser())
+    sobran = sorted(_tablas_del_codigo() - set(manifiesto["filas"]))
+    lineas = [f'drop view if exists {ESQUEMA}."{v}" cascade;' for v in sorted(VISTAS)]   # la copia trae las suyas
+    lineas += [f'drop table if exists {ESQUEMA}."{t}" cascade;' for t in sobran]
+    return "\n".join(lineas) + "\n"
+
+
+def verificar(carpeta: str, archivo_env: str, base: str) -> bool:
+    carpeta = Path(carpeta).expanduser()
+    manifiesto = _manifiesto(carpeta)
     e = _entorno(archivo_env)
     if identidad(e["url"]) == manifiesto["origen"]:
         sys.exit("El destino es el mismo servidor del que salió la copia: el ensayo se hace en otro proyecto")
@@ -184,9 +217,14 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--respaldo", required=True)
     v.add_argument("--env", default=".env.supabase-pruebas")
     v.add_argument("--base", required=True)
+    b = sub.add_parser("vuelta-atras")
+    b.add_argument("--respaldo", required=True)
     x = a.parse_args(argv)
     if x.orden == "respaldar":
         respaldar(x.env, x.destino)
+        return 0
+    if x.orden == "vuelta-atras":
+        print(vuelta_atras(x.respaldo), end="")
         return 0
     return 0 if verificar(x.respaldo, x.env, x.base) else 1
 
