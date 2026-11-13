@@ -250,6 +250,8 @@ def registrar_compra(cid: int, version: int, localizador: str, precio_pagado: De
                       vendedor=vendedor, comprada=hoy, comprada_por=usuario["id"], actualizado=hoy, version=version + 1,
                       anticipacion_dias=(date.fromisoformat(ida[:10]) - date.fromisoformat(hoy[:10])).days if ida else None)
     eventos.registrar("compra", cid, "compra registrada", f"{localizador} · {vendedor} · {precio_pagado} USD", usuario["nombre"])
+    from . import capturas  # aquí: capturas usa el analizador, que usa compras
+    capturas.al_comprar(cid)   # la captura final del vuelo comprado, como evidencia
     _avisar(actual, f"comprada a {vendedor}, localizador {localizador}", usuario)
     return uno(cid)
 

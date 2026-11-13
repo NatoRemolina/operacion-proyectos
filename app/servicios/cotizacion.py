@@ -15,7 +15,7 @@ from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint, text
 from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
-from . import acceso, analizador, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
+from . import acceso, analizador, capturas, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
 
 # Un pedido de cotización con `Idempotency-Key` por la API: la misma clave de la misma persona da la misma cotización
 envios_cotizacion = db._tabla(
@@ -679,6 +679,7 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
             el_viaje = viajes.crear_desde_decision(did)
             monitoreo_vuelos.registrar_tramos(el_viaje["id"], vuelo["v"], regreso)
             compras.solicitar(did, usuario)   # la solicitud de compra del tiquete nace con la decisión
+            capturas.al_decidir(did)   # la evidencia completa del vuelo y del hotel: la hace el trabajador, sin esperar
     except IntegrityError as e:
         raise DecisionBloqueada(CHOQUE_DECISION) from e
     except compras.CompraBloqueada as e:

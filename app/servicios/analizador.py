@@ -312,9 +312,13 @@ def _reservar(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict) -
 
 
 def _ocupado() -> bool:
-    """Si el analizador está en uso: una lectura o un «ir a» en curso, o una llamada que se quedó sin respuesta hace
-    menos de lo que puede durar la función (sigue viva aunque la API ya no la espere)."""
-    return bool(db.uno("""select id from analisis_vuelo where estado='pendiente' or (motivo=:m and creado>=:h) limit 1""",
+    """Si el analizador está en uso: una lectura, un «ir a» o una captura en curso, o una llamada que se quedó sin
+    respuesta hace menos de lo que puede durar la función (sigue viva aunque la API ya no la espere)."""
+    if db.uno("""select id from analisis_vuelo where estado='pendiente' or (motivo=:m and creado>=:h) limit 1""",
+              m=SIN_RESPUESTA, h=_hace(FUNCION)):
+        return True
+    # las capturas del trabajador (pieza 5) usan el mismo analizador: una en curso, o sin respuesta hace poco, lo ocupa
+    return bool(db.uno("""select id from capturas where estado='en_curso' or (fallo=:m and terminado>=:h) limit 1""",
                        m=SIN_RESPUESTA, h=_hace(FUNCION)))
 
 
