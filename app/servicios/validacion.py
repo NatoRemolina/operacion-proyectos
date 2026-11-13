@@ -1,5 +1,6 @@
 """Reglas que deciden si un gasto entra solo o va a revisión humana."""
 import re
+import unicodedata
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -33,7 +34,9 @@ class _Alertas(list):
 
 
 def _normal(texto: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", (texto or "").lower())
+    """El comercio para comparar: sin tildes, mayúsculas, espacios ni signos («Café Tres» y «CAFE TRES» son iguales)."""
+    sin_tildes = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", sin_tildes.lower())
 
 
 def a_usd(total, moneda, cat: dict):
@@ -163,10 +166,12 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
     if g.get("comercio") and g.get("fecha") and g.get("total") is not None:
         # Mismo importe en otra moneda no es el mismo gasto; dos gastos sin moneda leída sí se comparan entre sí
         misma_moneda = "moneda=:m" if g.get("moneda") else "moneda is null"
-        repetido = db.uno(
-            f"""select id from gastos where lower(comercio)=lower(:c) and fecha=:f and total=:t and {misma_moneda}
-                and id<>:i and estado<>'rechazado'""",
-            c=g["comercio"], f=g["fecha"], t=g["total"], m=g.get("moneda"), i=gasto_id or 0)
+        # El comercio se compara normalizado en Python: `lower()` de la base no quita tildes
+        mismos = db.todos(
+            f"""select id, comercio from gastos where fecha=:f and total=:t and {misma_moneda}
+                and id<>:i and estado<>'rechazado' order by id""",
+            f=g["fecha"], t=g["total"], m=g.get("moneda"), i=gasto_id or 0)
+        repetido = next((c for c in mismos if _normal(c["comercio"]) == _normal(g["comercio"])), None)
         if repetido:
             alertas.agregar("duplicado", f"Posible duplicado del gasto #{repetido['id']}.")
             bloquea = True
