@@ -146,10 +146,10 @@ def asignar_proyectos(id: int, datos: CambioProyectos, yo: dict = Depends(_admin
     """Reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo para cuentas con permiso de gestor
     (la pantalla actual solo lo ofrece a ellas): si no, al volverla gestora heredaría acceso sin que nadie lo decida."""
     u = _cuenta(id)
-    if u["rol"] != "gestor":
-        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422],
-                       {"proyectos_ids": "Solo una cuenta con permiso de gestor de proyecto gestiona proyectos."})
-    elegidos = usuarios.asignar_proyectos(u, datos.proyectos_ids, yo)
+    try:
+        elegidos = usuarios.asignar_proyectos(u, datos.proyectos_ids, yo)
+    except usuarios.DatosInvalidos as e:
+        raise _invalido(e) from None
     return {"usuario": _usuario(id), "mensaje": f"Proyectos de {u['nombre']} guardados ({len(elegidos)})."}
 
 

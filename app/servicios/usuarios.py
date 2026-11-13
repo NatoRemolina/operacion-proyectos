@@ -143,8 +143,14 @@ def cambiar_cargo(u: dict, cargo_id: int | None) -> str:
     return f"Cargo de {u['nombre']} actualizado."
 
 
+SOLO_GESTOR = "Solo una cuenta con permiso de gestor de proyecto gestiona proyectos."
+
+
 def asignar_proyectos(u: dict, proyectos_ids: list[int], quien: dict) -> list[int]:
-    """Reemplaza los proyectos que gestiona. Lo que no existe se ignora."""
+    """Reemplaza los proyectos que gestiona. Lo que no existe se ignora. Solo a una cuenta gestora: si no, al volverla
+    gestora heredaría acceso sin que nadie lo decidiera."""
+    if u["rol"] != "gestor":
+        raise DatosInvalidos("proyectos_ids", SOLO_GESTOR)
     validos = {p["id"] for p in db.todos("select id from proyectos")}
     elegidos = sorted(set(proyectos_ids) & validos)
     db.ejecutar("delete from proyecto_miembros where usuario_id=:u", u=u["id"])

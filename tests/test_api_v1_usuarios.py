@@ -383,3 +383,11 @@ def test_un_error_de_la_base_no_muestra_los_valores_enviados():
         assert "HUELLA-QUE-NO-DEBE-VERSE" not in str(e)
     else:
         raise AssertionError("se esperaba un correo duplicado")
+
+
+def test_la_pantalla_actual_tampoco_da_proyectos_a_quien_no_gestiona(cliente):
+    """La regla vive en el servicio: vale igual desde la pantalla actual que desde la API."""
+    u = _crear(cliente)
+    r = cliente.post(f"/admin/usuarios/{u['id']}", data={"accion": "proyectos", "proyectos_ids": ["1", "2"]}, follow_redirects=False)
+    assert "gestor%20de%20proyecto%20gestiona%20proyectos" in r.headers["location"]
+    assert not db.todos("select * from proyecto_miembros where usuario_id=:u", u=u["id"])
