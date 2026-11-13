@@ -177,7 +177,7 @@ def sembrar_cuentas():
     if db.uno("select id from usuarios limit 1"):
         return
     # Cuentas de demostración: solo en local, y en PostgreSQL solo si se piden de forma explícita (entorno con Compose)
-    if config.LOCAL and (config.ES_SQLITE or os.getenv("CUENTAS_DEMO") == "1"):
+    if config.LOCAL and (config.ES_SQLITE or (os.getenv("CUENTAS_DEMO") == "1" and _es_local(config.DATABASE_URL))):
         for correo, nombre, rol, clave, viajero, cargo in DEMO:
             uid = acceso.crear_usuario(correo, nombre, rol, clave, viajero, _id_cargo(cargo))
             if rol == "gestor":   # gestiona el primer proyecto de ejemplo

@@ -218,7 +218,7 @@ def abrir_sesion(respuesta, usuario_id: int):
 def cerrar_sesion(respuesta, token: str | None):
     if token:
         db.ejecutar("delete from sesiones where huella=:h", h=huella(token))
-    respuesta.delete_cookie(COOKIE, path="/")
+    respuesta.delete_cookie(COOKIE, path="/", secure=not config.LOCAL, httponly=True, samesite="lax")
     return respuesta
 
 

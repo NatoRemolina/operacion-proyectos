@@ -21,7 +21,7 @@ from .api_v1 import CODIGO_HTTP, MENSAJE_HTTP, ErrorApi, respuesta_error
 from .servicios import acceso
 from .web import AQUI, SOLO_ADMIN, _asegurar, _error_registrado, _pagina_error
 
-app = FastAPI(title="Operación de proyectos")
+app = FastAPI(title="Operación de proyectos", redoc_url=None)
 app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
 
 # Se carga todo módulo de `app/rutas/`: añadir un área es añadir un archivo, sin tocar este

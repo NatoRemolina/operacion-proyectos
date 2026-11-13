@@ -70,7 +70,8 @@ def proyecto_editar(pid: int, nombre: str = Form(""), cliente: str = Form(""), c
 # ---------- tablero por proyecto ----------
 def _proyecto_visible(pid: int) -> bool:
     """Administración ve todos; el gestor, los que gestiona; nadie más (responde como si no existiera)."""
-    return acceso.es_admin(_yo()) or pid in acceso.proyectos_de(_yo())
+    yo = _yo()
+    return acceso.es_admin(yo) or (yo["rol"] == "gestor" and pid in acceso.proyectos_de(yo))
 
 
 @router.get("/proyectos/{pid}", response_class=HTMLResponse)

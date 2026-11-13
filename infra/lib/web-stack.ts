@@ -115,13 +115,16 @@ export class WebStack extends Stack {
       ...comunes,
       comment: "Web de operacion",
       domainNames: dominio ? [dominio.web] : undefined,
-      defaultBehavior: dinamico(origenWeb),
+      // La web no pone sus cabeceras de seguridad: las añade CloudFront (HSTS, nosniff, marco solo del mismo origen,
+      // Referrer-Policy). La API y administración ya traen las suyas (app/web.py).
+      defaultBehavior: { ...dinamico(origenWeb), responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS },
       additionalBehaviors: {
         "/_next/static/*": {
           origin: origenEstaticos,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
           cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+          responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
         },
         "/api/v1/*": dinamico(origenApi),
       },

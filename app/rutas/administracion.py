@@ -69,6 +69,8 @@ def usuario_cambiar(uid: int, accion: str = Form(...), rol: str = Form(""), clav
             aviso = "No puedes quitarte tu propio rol ni dejar la plataforma sin administradores."
         else:
             db.actualizar("usuarios", uid, rol=rol)
+            if u["rol"] == "gestor" and rol != "gestor":   # deja de gestionar: pierde también sus proyectos
+                db.ejecutar("delete from proyecto_miembros where usuario_id=:u", u=uid)
             acceso.cerrar_todas(uid)
             eventos.registrar("usuario", uid, "rol cambiado", f"{u['correo']}: {u['rol']} → {rol}", _yo()["nombre"])
     elif accion == "estado":
