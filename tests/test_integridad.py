@@ -73,6 +73,34 @@ def test_duplicado_exacto_compara_la_moneda():
         _sin_rastro(gid)
 
 
+def test_el_mismo_comercio_con_o_sin_tilde_es_duplicado():
+    """Otra foto del mismo recibo puede leerse «Cafe Tres» en vez de «Café Tres»: sigue siendo el mismo comercio."""
+    gid = db.insertar("gastos", comercio="Café Tres Tildes", fecha="2026-10-05", total=50, moneda="USD", estado="aprobado")
+    try:
+        base = {"comercio": "CAFE TRES TILDES", "fecha": "2026-10-05", "total": 50, "moneda": "USD", "confianza": 1}
+        assert "duplicado" in validacion.revisar(base, None)["motivos"]
+        cerca = validacion.revisar({**base, "comercio": "Cafe Tres Tildes", "fecha": "2026-10-06", "total": 50.3}, None)
+        assert "duplicado_aproximado" in cerca["motivos"] and cerca["estado"] == "revision"
+        otro = validacion.revisar({**base, "comercio": "Café Otro", "fecha": "2026-10-06"}, None)["motivos"]
+        assert "duplicado" not in otro and "duplicado_aproximado" not in otro
+    finally:
+        _sin_rastro(gid)
+
+
+def test_comercios_distintos_con_nombres_no_latinos_no_son_duplicado():
+    """Sin letras latinas, quitar tildes y signos deja el nombre vacío: dos comercios distintos no deben parecer el mismo."""
+    gid = db.insertar("gastos", comercio="東京ラーメン", fecha="2026-10-07", total=30, moneda="USD", estado="aprobado")
+    try:
+        base = {"fecha": "2026-10-07", "total": 30, "moneda": "USD", "confianza": 1}
+        otro = validacion.revisar({**base, "comercio": "大阪寿司"}, None)["motivos"]
+        assert "duplicado" not in otro and "duplicado_aproximado" not in otro
+        assert "duplicado" in validacion.revisar({**base, "comercio": " 東京ラーメン "}, None)["motivos"]
+        cerca = validacion.revisar({**base, "comercio": "東京ラーメン", "fecha": "2026-10-08", "total": 30.2}, None)["motivos"]
+        assert "duplicado_aproximado" in cerca
+    finally:
+        _sin_rastro(gid)
+
+
 def test_dos_gastos_sin_moneda_del_mismo_comercio_dia_e_importe_son_duplicado():
     gid = db.insertar("gastos", comercio="Peaje sin moneda", fecha="2026-10-02", total=7, moneda=None, estado="revision")
     try:

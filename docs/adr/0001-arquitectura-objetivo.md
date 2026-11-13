@@ -22,7 +22,7 @@ Migrar **por anillos, estrangulando la aplicación actual** en lugar de reescrib
 | Anillo | Qué se construye | Fases del plan | Estado |
 |---|---|---|---|
 | 0 · Contrato y borde | API JSON v1 dentro de la aplicación actual; gateway local delante; errores uniformes, token CSRF, permisos por registro | F1, F2, M0, M1 parcial | En curso |
-| 1 · Web nueva | Next.js consume solo la API v1; las pantallas actuales quedan de respaldo | F3 a F6 | En curso (recorrido mínimo) |
+| 1 · Web nueva | Next.js consume solo la API v1; las pantallas actuales quedan de respaldo | F3 a F6 | En curso: cotizar y decidir, mis viajes y mis gastos, y la aprobación de viajes y la revisión de gastos de administración; el resto sigue en las pantallas actuales |
 | 2 · Fronteras de datos | Esquemas privados (`org`, `viajes`, `gastos`) con un rol y una credencial por dominio; se cortan los cruces | M1 completa | Pendiente |
 | 3 · Servicios reales | Gastos sale primero (base, migraciones, almacenamiento y proceso propios; outbox, inbox y saga de presupuesto); luego Viajes; queda Organización | M2, M3 | Pendiente |
 | 4 · Nube | Gateway administrado, una función por servicio con su secreto, temas y colas, hospedaje de la web, dominio | F10 | Pendiente |

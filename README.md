@@ -11,6 +11,8 @@ persona (P-0007) ─► cotización ─► decisión ─► VIAJE (V-2026-0012, 
                                        aprobación de administración
 ```
 
+**Por qué integrados y no por separado.** Los dos retos describen el mismo objeto en dos momentos: el reto 1 decide cuánto debería costar un viaje y el reto 2 registra cuánto costó. Resueltos por separado, quedarían dos listas que alguien concilia a mano: a qué proyecto va cada recibo, si un gasto cabe en lo previsto, qué viaje no tiene soportes. Con el viaje como eje, la decisión de la cotización crea el viaje con su presupuesto, que administración aprueba; cada gasto se asigna solo al viaje de la persona (por quién lo envía y las fechas) y se valida contra ese presupuesto; y previsto frente a real se ve en cada viaje y en el tablero de cada proyecto. El análisis inicial (`ANALISIS.md`, sección 4) proponía una integración ligera, con el proyecto como punto de unión y la opción de recortarla si faltaba tiempo. Se amplió a una sola plataforma con el viaje como eje porque la asignación automática del gasto y el control del presupuesto solo funcionan si cada gasto sabe a qué viaje pertenece. El costo es una aplicación y una base compartidas por los dos retos, más acopladas que dos herramientas sueltas, y se declara como etapa de transición (ver «Arquitectura» y «Limitaciones conocidas»).
+
 ## Qué hay
 
 | Pieza | Para qué |
@@ -32,6 +34,8 @@ persona (P-0007) ─► cotización ─► decisión ─► VIAJE (V-2026-0012, 
 ## Ejecutar
 
 ### Lo más rápido: sin claves y sin Docker
+
+Requiere **Python 3.12** (Docker no lo necesita). Con 3.11 o anterior el código no compila; `make instalar` lo comprueba y usa `python3.12`, o el que se indique con `make instalar PYTHON=/ruta/a/python`.
 
 ```bash
 make instalar
@@ -90,7 +94,7 @@ Lo que la web nueva todavía no tiene sigue en la plataforma actual (127.0.0.1:8
 
 El origen y el destino son un solo campo, como en Google Flights. Se puede escribir un país, una ciudad, un pueblo o un código de aeropuerto (`moab`, `Lisboa`, `LIS`, `Portugal`).
 
-- **Búsqueda local.** Los datos viven en la base (unos 4.000 aeropuertos con servicio regular, 171.838 ciudades y pueblos de más de 1.000 habitantes y 249 países), así que sugerir no llama a ningún servicio externo. Dos lugares con el mismo nombre se distinguen por región y país (Moab, Utah; Moab, Jordania). Ruta: `GET /lugares/buscar`.
+- **Búsqueda local.** Los datos viven en la base (unos 4.000 aeropuertos con servicio regular, 171.838 ciudades y pueblos de más de 1.000 habitantes y 249 países), así que sugerir no llama a ningún servicio externo. Dos lugares con el mismo nombre se distinguen por región y país (al escribir `miami` salen Miami, Florida; Miami, Oklahoma; Miami, Arizona y Miami, Australia). Ruta: `GET /lugares/buscar`.
 - **Aeropuertos cercanos.** Al elegir un lugar se marcan sus aeropuertos con servicio regular dentro de un radio (400 km por defecto, hasta 4); la persona puede quitar alguno. Al elegir un país se proponen sus aeropuertos principales.
 - **Autocompletado de Google, combinado.** Con clave del buscador y tras una pausa de 400 ms con al menos 3 letras, las ciudades y aeropuertos de Google se suman a la lista, marcados como «Google». Solo se envía el texto del campo de lugar. Cada respuesta se guarda y el mismo texto no se paga dos veces. Topes (editables en «Reglas y supuestos»): 60 consultas al mes y 15 por persona al día; alcanzado un tope, o sin clave, sigue solo con los datos locales. `PROVEEDOR_LUGARES=local` lo apaga.
 - **Varios aeropuertos por búsqueda.** Comparar varios aeropuertos de origen y de destino gasta **una** consulta del buscador (los códigos van unidos por coma y ordenados).
@@ -277,6 +281,7 @@ Copiar `.env.example` a `.env`. Cada bloque activa una parte; sin ninguno la pla
 - El dinero se guarda en coma flotante; las reglas validan y comparan con decimales exactos y la API lo entrega como cadenas de dos decimales. Pasar las columnas a decimales exactos está pendiente.
 - Con pocos gastos y pocas decisiones, varios indicadores muestran el método, no conclusiones; sus metas son supuestos editables.
 - El ahorro que muestra la analítica es un valor esperado bajo supuestos editables, no dinero ya ahorrado.
+- **Ahorro de cotizaciones anteriores:** el ahorro se calcula contra el vuelo más barato que sirve; las cotizaciones guardadas antes de esa regla conservan el que se calculó contra el más barato de todos, aunque estuviera descartado, así que en una base ya sembrada o importada los indicadores mezclan las dos. Se corrige con un recálculo único del ahorro de esas cotizaciones.
 - Los precios son una foto del momento de la consulta; cada opción muestra su origen.
 - La distancia y el tiempo por carretera son una estimación (línea recta × factor ÷ velocidad), sin mapas ni rutas reales, y no hay tren, bus ni ferri.
 - La web Next.js cubre cotizar, viajes, gastos y la aprobación y revisión de administración; corregir un gasto, aprobar con excepción, KPIs, asistente, monitoreo, reglas, proyectos y usuarios siguen en las pantallas actuales.
@@ -286,3 +291,16 @@ Copiar `.env.example` a `.env`. Cada bloque activa una parte; sin ninguno la pla
 - Extraer precios de buscadores puede ir contra sus términos de uso; para producción corresponde una API con licencia.
 - El estado del vuelo se probó solo con una respuesta de ejemplo escrita a mano según la documentación del proveedor; falta comprobarlo con una consulta real. El vuelo de regreso que se carga es el más barato que sale del aeropuerto de llegada; no se elige otro horario.
 - Las personas, clientes, comercios y membresías de los datos de ejemplo son inventados.
+- **Vuelos de otras fechas:** sin clave del buscador, una ruta con respuesta guardada para otras fechas usa la de fecha más temprana («guardado (otras fechas)»). La hora límite se compara con ese otro día, así que deja de descartar, y los tramos del viaje quedan con esa fecha. Se mejoraría eligiendo la fecha guardada más cercana y desplazando los horarios, o tratando esas opciones como referencia que no se puede decidir.
+- **Hoteles de otras fechas:** en el mismo caso, el total del hotel es el de la estancia guardada (por ejemplo, 3 noches) aunque se pidan más, y el presupuesto queda corto. Se mejoraría calculando precio por noche × noches pedidas y marcando la cifra como estimada.
+- **Hoteles sin evaluación propia:** se ordenan solo por precio total; el «recomendado» es el más barato, no se marca como tal en la plataforma actual, y la web no muestra el precio por noche ni el origen del dato. Se mejoraría evaluando cada hotel por costo total (distancia al proyecto, programa de fidelización, cancelación), como los vuelos.
+- **Programas de hoteles:** el programa se reconoce solo si el nombre contiene Marriott, Hilton o Hyatt (ninguno de los hoteles guardados de Las Vegas y Lisboa), y es una etiqueta que no cambia el costo ni el orden. Se mejoraría con un mapa de marcas a programas que lea la marca que trae la respuesta (Hampton → Hilton, Holiday Inn → IHG, Novotel → Accor) y con su valor en el costo.
+- **Millas sin membresía:** las millas del viajero se restan del costo esperado aunque no tenga membresía en esa aerolínea; no entran al presupuesto, pero sí cambian el orden. Se mejoraría restándolas solo con membresía propia, de la alianza o de la empresa, y sugiriendo inscribirse cuando no la hay.
+- **Membresías solo en la semilla:** no hay pantalla para crearlas ni editarlas, y quien viaja no ve las suyas. Se mejoraría con una pantalla de membresías para administración y una sección de solo lectura en *Mi cuenta*.
+- **Vuelos nocturnos:** la hora límite se ata a la fecha de ida, así que un vuelo que llega al día siguiente se descarta aunque llegue antes de la hora pedida, con un mensaje sin fecha, y el hotel y los viáticos se cuentan desde el día de salida. Se mejoraría dando a la hora límite su propia fecha, mostrando el día en el mensaje y contando las noches desde la llegada.
+- **Monitoreo del vuelo sin tarea programada:** el estado de cada tramo se consulta solo mientras alguien tiene abierto el tablero *Viajes* de administración, que lo pide cada 15 s; con el tablero cerrado no se consulta ni se avisa. Se mejoraría con una tarea programada que recorra los tramos dentro de su ventana, con los mismos topes.
+- **Rótulos de la demostración:** el estado del IB 5634, escrito a mano, no lleva en el tablero un rótulo de dato de ejemplo, y el pie de página dice «Datos: Supabase» con cualquier PostgreSQL, también el local de Docker. Se mejoraría guardando el origen de cada consulta del tramo y distinguiendo un PostgreSQL local de Supabase.
+- **Lectura de recibos sin clave:** sin clave del modelo solo se leen los 7 recibos de ejemplo, reconocidos por la huella del archivo, y su «lectura guardada» es el valor esperado escrito a mano (`datos/ejemplos/esperados.json`), no una salida guardada del modelo. Cualquier otro recibo, o un ejemplo con un byte distinto, queda «sin datos» y se completa a mano, y la lectura con modelo no tiene una medición versionada. Se mejoraría guardando salidas reales del modelo para los ejemplos y midiéndolas campo por campo contra los valores esperados.
+- **Correo simulado:** no hay un buzón real al que reenviar una reserva. «Buzón de correo (simulado)», solo para administración, lee los `.eml` de la carpeta de ejemplos, y un `.eml` subido en *Cargar gasto* queda con canal «web». Se mejoraría con una dirección de correo entrante que identifique a la persona por el remitente, y con el canal «correo» para los `.eml`.
+- **Categorías de gasto:** no hay categoría para el transporte terrestre (taxi, tren o bus caen en «Otros») ni para las compras del proyecto, y un gasto sin viaje siempre va a revisión y solo se aprueba con excepción. Se mejoraría con las categorías «Transporte terrestre» y «Compras del proyecto», validando las compras contra las fechas del proyecto en vez de exigir un viaje.
+- **Monedas:** solo hay tasas de cambio para EUR y COP. Un recibo en otra moneda (GBP, CHF, MXN…) queda en revisión y no se aprueba ni con excepción, y *Reglas* edita las tasas que existen pero no crea otras. Se mejoraría sembrando más tasas con su fecha, con un formulario para una tasa nueva y guardando en cada gasto la tasa usada.

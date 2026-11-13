@@ -1,4 +1,6 @@
-# Contrato de la API v1 (recorrido mínimo)
+# Contrato de la API v1
+
+Lo que usa la web nueva: ingreso, cotizar y decidir, viajes, gastos y envío de recibos, y la aprobación de viajes y la revisión de gastos de administración.
 
 Fuente de verdad mientras se construye. Cuando la API exista, el OpenAPI que genera (`contracts/openapi-v1.json`) debe coincidir con este documento; si difieren, se corrige uno de los dos en el mismo cambio.
 
@@ -233,7 +235,7 @@ interface OpcionVuelo {
   lineas: LineaCosto[];
   avisos: string[];
   descartada: string | null;                  // la razón, si no sirve
-  recomendada: boolean; mas_barata: boolean;
+  recomendada: boolean; mas_barata: boolean;  // la más barata entre las que sirven, no entre las descartadas
   origen_dato: string | null;                 // "en vivo" | "guardado" | "guardado (otras fechas)"
   esperado_usd: Dinero; frente_esperado_pct: number | null;   // modelo de precios, si hay uno utilizable
 }

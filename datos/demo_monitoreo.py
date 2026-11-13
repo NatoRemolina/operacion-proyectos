@@ -14,6 +14,8 @@ se respeta en local) y abrir «Viajes» en administración.
 import json
 import sys
 
+from sqlalchemy import inspect
+
 from app import config, db
 from app.servicios import eventos, monitoreo_vuelos, viajes
 
@@ -51,6 +53,11 @@ def preparar() -> dict:
     if not config.PREPARAR_BASE_LOCAL:
         return {"hecho": False, "mensaje": "Solo se prepara en local sobre una base desechable "
                                            "(SQLite o PREPARAR_BASE_LOCAL=1): no se escribió nada."}
+    if not inspect(db.motor).has_table("usuarios"):
+        # Base nueva (por ejemplo, una SQLite sin haber arrancado la aplicación): se prepara como al arrancar en local.
+        # Solo si está vacía: sobre una base ya sembrada no se vuelve a pasar por la migración.
+        from datos.semilla import sembrar
+        sembrar()
     colaborador, admin = _cuentas()
     if not colaborador or not admin:
         return {"hecho": False, "mensaje": "Faltan las cuentas de demostración (CUENTAS_DEMO=1): no se escribió nada."}

@@ -1,5 +1,6 @@
 """Reglas que deciden si un gasto entra solo o va a revisión humana."""
 import re
+import unicodedata
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -33,7 +34,17 @@ class _Alertas(list):
 
 
 def _normal(texto: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", (texto or "").lower())
+    """El comercio para comparar: sin tildes, mayúsculas, espacios ni signos («Café Tres» y «CAFE TRES» son iguales)."""
+    sin_tildes = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", sin_tildes.lower())
+
+
+def _mismo_comercio(a: str | None, b: str | None) -> bool:
+    """Compara normalizado; si un nombre no tiene letras latinas (japonés, griego, cirílico…) la normalización lo deja
+    vacío, y entonces se compara el nombre en minúsculas y sin espacios en los extremos."""
+    def clave(texto: str | None) -> str:
+        return _normal(texto) or (texto or "").strip().lower()
+    return bool(clave(a)) and clave(a) == clave(b)
 
 
 def a_usd(total, moneda, cat: dict):
@@ -163,10 +174,12 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
     if g.get("comercio") and g.get("fecha") and g.get("total") is not None:
         # Mismo importe en otra moneda no es el mismo gasto; dos gastos sin moneda leída sí se comparan entre sí
         misma_moneda = "moneda=:m" if g.get("moneda") else "moneda is null"
-        repetido = db.uno(
-            f"""select id from gastos where lower(comercio)=lower(:c) and fecha=:f and total=:t and {misma_moneda}
-                and id<>:i and estado<>'rechazado'""",
-            c=g["comercio"], f=g["fecha"], t=g["total"], m=g.get("moneda"), i=gasto_id or 0)
+        # El comercio se compara normalizado en Python: `lower()` de la base no quita tildes
+        mismos = db.todos(
+            f"""select id, comercio from gastos where fecha=:f and total=:t and {misma_moneda}
+                and id<>:i and estado<>'rechazado' order by id""",
+            f=g["fecha"], t=g["total"], m=g.get("moneda"), i=gasto_id or 0)
+        repetido = next((c for c in mismos if _mismo_comercio(c["comercio"], g["comercio"])), None)
         if repetido:
             alertas.agregar("duplicado", f"Posible duplicado del gasto #{repetido['id']}.")
             bloquea = True
@@ -178,7 +191,7 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
                                      and estado<>'rechazado' and total is not null and {misma_moneda}""",
                                  a=(dia - timedelta(days=1)).isoformat(), b=(dia + timedelta(days=1)).isoformat(),
                                  m=g.get("moneda"), i=gasto_id or 0)
-                parecido = next((c for c in cerca if _normal(c["comercio"]) == _normal(g["comercio"])
+                parecido = next((c for c in cerca if _mismo_comercio(c["comercio"], g["comercio"])
                                  and abs(c["total"] - g["total"]) <= 0.01 * max(abs(g["total"]), 1)), None)
                 if parecido:
                     alertas.agregar("duplicado_aproximado", f"Muy parecido al gasto #{parecido['id']} (mismo comercio, fecha cercana, importe casi igual).")

@@ -6,6 +6,7 @@ Los errores de datos salen como excepciones con el texto para la persona; cada c
 """
 import hashlib
 import json
+import math
 import re
 from datetime import UTC, date, datetime, timedelta
 
@@ -27,6 +28,9 @@ VIGENCIA_ENVIO = timedelta(minutes=5)   # más que una búsqueda en vivo; pasado
 DECISIONES_EN_VIVO_DIA = 10   # la regla `decisiones_en_vivo_dia` lo cambia
 AVISO_TOPE_DECISION = ("Se alcanzó el tope de decisiones con consulta en vivo de hoy: el regreso y la tarifa salen de lo "
                        "guardado o quedan supuestos.")
+
+
+NO_DECIDE = "Esta cotización la decide quien viaja, quien la creó (si es de un proyecto que gestiona) o administración."
 
 
 class CotizacionInvalida(ValueError):
@@ -51,6 +55,48 @@ class ConflictoEnvio(ValueError):
 
 class EnvioEnCurso(ValueError):
     """El primer pedido con esa clave todavía está buscando."""
+
+
+class FueraDeAlcance(PermissionError):
+    """Cotizar o decidir para otra persona fuera de los proyectos que se gestionan."""
+
+
+class TopeAlcanzado(ValueError):
+    """La persona ya hizo hoy las cotizaciones nuevas que permite la regla `tope_cotizaciones_persona_dia`."""
+
+
+TOPE_COTIZACIONES_DIA = 20   # si la regla no existe
+AVISO_TOPE_COTIZACIONES = ("Llegaste al tope de cotizaciones nuevas de hoy. Retoma una de las que ya tienes o pide a "
+                           "administración que amplíe el tope.")
+
+
+def tope_cotizaciones_dia() -> int:
+    return int(costo.supuesto(costo.catalogo(), "tope_cotizaciones_persona_dia", TOPE_COTIZACIONES_DIA))
+
+
+def cotizaciones_de_hoy(usuario: dict) -> int:
+    return db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=usuario["id"], h=db.ahora()[:10])["n"]
+
+
+# ---------- quién cotiza y decide para otra persona (la misma regla en las pantallas y en la API) ----------
+def proyectos_para_otros(usuario: dict) -> set[int] | None:
+    """Dónde puede cotizar y decidir para otra persona: administración en todos (None); el gestor, en los que gestiona."""
+    if acceso.es_admin(usuario):
+        return None
+    return acceso.proyectos_de(usuario) if usuario.get("rol") == "gestor" else set()
+
+
+def para_otros_en(usuario: dict, proyecto_id: int | None) -> bool:
+    permitidos = proyectos_para_otros(usuario)
+    return permitidos is None or proyecto_id in permitidos
+
+
+def puede_decidir(usuario: dict, fila: dict | None) -> bool:
+    """Decide quien la creó, quien viaja o administración; para otra persona, solo dentro de su alcance."""
+    if not acceso.es_propio(usuario, fila):
+        return False
+    para_otro = fila.get("viajero_id") != usuario.get("viajero_id")
+    return not para_otro or para_otros_en(usuario, fila.get("proyecto_id"))
 
 
 # ---------- origen y destino ----------
@@ -115,6 +161,8 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
           origen_lugar=None, destino_lugar=None, canal: str = "formulario") -> int:
     """Guarda la solicitud, busca vuelos y hoteles (una consulta para todos los aeropuertos marcados) y deja las
     opciones listas para comparar. `prob_cambio` va en porcentaje (0 a 100). Devuelve el id de la solicitud."""
+    if cotizaciones_de_hoy(usuario) >= tope_cotizaciones_dia():   # cada cotización nueva puede gastar dos búsquedas pagas
+        raise TopeAlcanzado(AVISO_TOPE_COTIZACIONES)
     sale, llega = lado(origen, origen_aeropuertos, origen_lugar), lado(destino, destino_aeropuertos, destino_lugar)
     if "malo" in sale or "malo" in llega:
         campo, malo = ("origen", sale["malo"]) if "malo" in sale else ("destino", llega["malo"])
@@ -131,7 +179,13 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
     # La hora límite siempre se refiere al día de llegada: se conserva la hora y se ata a la fecha de ida
     hora = llegar_antes[11:16] if len(llegar_antes) >= 16 else ""
     llegar_antes = f"{ida}T{hora}" if re.fullmatch(r"\d\d:\d\d", hora) else ""
-    prob_cambio, baterias_n = min(max(prob_cambio, 0), 100), max(baterias_n, 0)
+    # Los mismos límites que la API v1: un NaN o un infinito en el presupuesto rompe los listados y el control de saldo
+    for campo, valor, tope, texto in (("carro_dia", carro_dia, 9999.99, "El carro de alquiler por día debe estar entre 0 y 9.999,99 USD."),
+                                      ("baterias_wh", baterias_wh, 1000, "La capacidad de cada batería debe estar entre 0 y 1.000 Wh."),
+                                      ("prob_cambio", prob_cambio, 100, "La probabilidad de cambio de fecha debe estar entre 0 y 100 %.")):
+        if not (math.isfinite(valor) and 0 <= valor <= tope):
+            raise CotizacionInvalida(campo, texto)
+    baterias_n = max(baterias_n, 0)
     origen, destino, ciudad = desde[0], hacia[0], ciudad.strip() or hacia[1]
     solicitado_por, viajero_nuevo = usuario["nombre"], viajero_nuevo.strip()[:80]  # quien consulta sale de la sesión
     # Todos viajan: quien cotiza viaja, salvo que gestión o administración marquen que es para otra persona.
@@ -146,6 +200,8 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         viajero_id = existente["id"] if existente else db.insertar("viajeros", nombre=viajero_nuevo, base=desde[1], rol="Viajero")
     if not viajero_id or not db.uno("select id from viajeros where id=:i", i=viajero_id):
         raise CotizacionInvalida("viajero_id", "Elige quién viaja.")
+    if viajero_id != usuario.get("viajero_id") and not para_otros_en(usuario, proyecto_id):
+        raise FueraDeAlcance("Para cotizar para otra persona elige uno de los proyectos que gestionas.")
     sid = db.insertar("solicitudes", proyecto_id=proyecto_id, viajero_id=viajero_id, origen=origen,
                       destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
                       llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,
@@ -269,16 +325,26 @@ def comparacion(sid: int) -> dict | None:
     validos = sorted([v for v in vuelos if not v["ev"]["descartada"]], key=lambda v: v["ev"]["total"])
     descartados = [v for v in vuelos if v["ev"]["descartada"]]
     hoteles.sort(key=lambda h: h["h"]["total"])
-    mas_barato = min(vuelos, key=lambda v: v["v"]["precio"]) if vuelos else None
-    aviso = None
-    if validos and mas_barato and validos[0]["id"] != mas_barato["id"]:
+    # El más barato de la comparación es el más barato entre los que sirven: frente a uno descartado (llega tarde, el
+    # equipo no cabe) no hay ahorro que contar. Si el más barato de todos está descartado, se dice aparte.
+    mas_barato = min(validos, key=lambda v: v["v"]["precio"]) if validos else None
+    de_todos = min(vuelos, key=lambda v: v["v"]["precio"]) if vuelos else None
+    descartado = de_todos if mas_barato and de_todos["ev"]["descartada"] and de_todos["v"]["precio"] < mas_barato["v"]["precio"] else None
+    partes = []
+    if descartado:
+        motivo = descartado["ev"]["descartada"]
+        partes.append(f"La más barata del buscador, {descartado['v']['aerolinea']} {' + '.join(descartado['v']['numeros'])} por "
+                      f"{descartado['v']['precio']:.0f} USD, está descartada: {motivo[:1].lower()}{motivo[1:]}")
+    if mas_barato and validos[0]["id"] != mas_barato["id"]:
         m = validos[0]
-        aviso = (f"La opción más barata del buscador es {mas_barato['v']['aerolinea']} por {mas_barato['v']['precio']:.0f} USD, "
-                 f"pero con el equipo, el riesgo de cambio y las millas su costo esperado es {mas_barato['ev']['total']:.0f} USD. "
-                 f"La mejor es {m['v']['aerolinea']} {m['v']['numeros'][0]} ({m['ev']['tarifa']['nombre']}): {m['ev']['total']:.0f} USD.")
+        partes.append(f"{'La más barata que sirve' if descartado else 'La opción más barata del buscador'} es "
+                      f"{mas_barato['v']['aerolinea']} por {mas_barato['v']['precio']:.0f} USD, "
+                      f"pero con el equipo, el riesgo de cambio y las millas su costo esperado es {mas_barato['ev']['total']:.0f} USD. "
+                      f"La mejor es {m['v']['aerolinea']} {m['v']['numeros'][0]} ({m['ev']['tarifa']['nombre']}): {m['ev']['total']:.0f} USD.")
+    aviso = " ".join(partes) or None
     n = costo.noches(sol["ida"], sol["regreso"])
     return {"sol": sol, "vuelos": validos, "descartados": descartados, "hoteles": hoteles, "aviso": aviso,
-            "mas_barato": mas_barato, "hay_modelo": modelo.utilizable(),
+            "mas_barato": mas_barato, "mas_barato_descartado": descartado, "hay_modelo": modelo.utilizable(),
             "baterias": costo.baterias(sol["baterias_n"], sol["baterias_wh"]), "noches": n,
             "carro": round((sol["carro_dia"] or 0) * n, 2), "membresias": membresias,
             "fallos": db.todos("select detalle from eventos where entidad='solicitud' and entidad_id=:i and paso='consulta externa fallida'", i=sid),
@@ -304,6 +370,8 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     c = comparacion(sid)
     if not c:
         raise LookupError(sid)
+    if not puede_decidir(usuario, c["sol"]):
+        raise FueraDeAlcance(NO_DECIDE)
     previa = c["decision"]
     if previa and previa["vuelo_id"] == vuelo_id and (previa["hotel_id"] or 0) == hotel_id and (previa["motivo"] or "") == motivo.strip()[:300]:
         return {"repetida": True, "decision_id": previa["id"], "viaje": viajes.de_solicitud(sid)}
@@ -360,7 +428,7 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
                                 "hotel": hotel["h"] if hotel else None,
                                 "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
                                 "aviso": c["aviso"], "baterias": c["baterias"], "aviso_tope": aviso_tope,
-                                # lo que se evita frente a la opción más barata del buscador, por costo esperado
+                                # lo que se evita frente a la opción más barata que sirve, por costo esperado
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
                       total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=usuario["id"],
                       razones=razones, recomendado_id=recomendado["id"] if recomendado else None,

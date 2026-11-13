@@ -210,6 +210,8 @@ Integración ligera, en concreto:
 
 Orden de construcción: primero el Reto 2 completo, luego el Reto 1, al final el punto de unión. Si el tiempo no alcanza, se recorta la unión y ambos siguen funcionando por separado.
 
+**Lo que se decidió después.** La integración ligera se amplió: en lugar del proyecto como punto de unión, **el viaje es el eje**. Cada persona tiene un código; la decisión del Reto 1 crea un viaje a su nombre con presupuesto, que administración aprueba; cada gasto del Reto 2 se asigna solo a ese viaje (por quién lo envía y las fechas) y se valida contra su presupuesto; el proyecto agrupa viajes y gastos para comparar previsto frente a real. La unión dejó de ser lo primero que se recorta, porque la asignación automática del gasto y el control del presupuesto dependen de ella. El razonamiento para quien evalúa está en el README («Por qué integrados y no por separado»).
+
 ## 5. Supuestos e información faltante
 
 Supuestos de trabajo:

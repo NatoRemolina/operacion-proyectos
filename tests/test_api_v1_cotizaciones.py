@@ -29,19 +29,7 @@ def _datos(**cambios) -> dict:
 
 
 # ---------- pieza 1: el servicio que comparten las pantallas y la API ----------
-@pytest.fixture(autouse=True, scope="module")
-def _tope_amplio():
-    """La base es de toda la sesión de pruebas y otras suites también cotizan con estas cuentas: aquí el tope del día
-    no debe depender de cuántas llevan. La prueba del tope fija el suyo."""
-    from app import db
-    fila = db.uno("select id, valor from reglas where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
-    if fila:
-        db.ejecutar("update reglas set valor='100000' where id=:i", i=fila["id"])
-    yield
-    if fila:
-        db.ejecutar("update reglas set valor=:v where id=:i", v=fila["valor"], i=fila["id"])
-
-
+# El tope de cotizaciones del día lo amplía `tests/conftest.py` para toda la sesión; la prueba del tope fija el suyo.
 def test_el_servicio_crea_busca_compara_y_decide(cliente):
     admin = _cuenta("admin@demo.local")
     sid = cotizacion.crear(admin, **_datos())
@@ -371,9 +359,13 @@ def test_el_gestor_cotiza_para_otra_persona_solo_en_sus_proyectos(gestor):
     assert "proyectos que gestionas" in cuerpo["error"]["message"] and _solicitudes() == antes
     assert _cotizar(gestor, viajero_id=1, proyecto_id=1).status_code == 201   # en su proyecto, sí
     assert _cotizar(gestor, proyecto_id=2).status_code == 201                 # para sí mismo, en cualquiera
-    # una cotización ajena a su alcance que ya existía (creada antes de esta regla) tampoco la decide
+    # la regla vive en el servicio: tampoco se salta llamándolo directamente
     yo = _cuenta("gestor@demo.local")
-    sid = cotizacion.crear(yo, **_datos(proyecto_id=2, viajero_id=1, destino="las vegas"))
+    with pytest.raises(cotizacion.FueraDeAlcance):
+        cotizacion.crear(yo, **_datos(proyecto_id=2, viajero_id=1, destino="las vegas"))
+    # una cotización ajena a su alcance que ya existía (creada antes de esta regla) tampoco la decide
+    sid = cotizacion.crear(_cuenta("admin@demo.local"), **_datos(proyecto_id=2, viajero_id=1, destino="las vegas"))
+    db.ejecutar("update solicitudes set usuario_id=:u where id=:s", u=yo["id"], s=sid)
     vuelo = cotizacion.comparacion(sid)["vuelos"][0]["id"]
     _contrato(gestor.post(f"{V1}/cotizaciones/{sid}/decision", json={"vuelo_id": vuelo}, headers=_csrf(gestor)),
               403, "FORBIDDEN")

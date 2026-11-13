@@ -54,3 +54,17 @@ def test_el_tablero_con_ese_ahora_muestra_el_tramo_sin_no_llega(cliente, monkeyp
     assert fila["no_llega"] is False and fila["consultas"] == 1          # leyó la respuesta de ejemplo, sin consultas en vivo
     html = cliente.get("/admin/viajes").text
     assert fila["codigo"] in html and "IB 5634" in html
+
+
+def test_fuera_de_docker_funciona_sobre_una_sqlite_nueva(tmp_path):
+    """La guía lo ofrece con SQLite: sin la aplicación arrancada antes, la base todavía no tiene tablas ni cuentas."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    entorno = {**os.environ, "ENTORNO": "local", "DATABASE_URL": f"sqlite:///{tmp_path / 'nueva.db'}",
+               "DIRECTORIO_ARCHIVOS": str(tmp_path / "archivos"), "PREPARAR_BASE_LOCAL": "", "CUENTAS_DEMO": ""}
+    r = subprocess.run([sys.executable, "-m", "datos.demo_monitoreo"], cwd=Path(__file__).resolve().parent.parent,  # noqa: S603  guion fijo de esta prueba
+                       env=entorno, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert "IB 5634" in r.stdout and "MONITOREO_AHORA=2026-12-13T06:00" in r.stdout

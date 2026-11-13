@@ -1,8 +1,14 @@
 # Web de viajes y gastos (Next.js)
 
-Recorrido mínimo del plan fullstack (fases F4 y F5): **entrar, ver mis viajes, ver mis gastos,
-cargar un recibo y ver su estado real**. La web consume solo la API v1 descrita en
-[`contracts/api-v1.md`](../contracts/api-v1.md); no tiene acceso a ninguna base de datos.
+La web nueva de la plataforma. Cubre **cotizar** (origen y destino en cualquier lugar del mundo, comparar
+con desglose y decidir), **mis viajes**, **mis gastos** (cargar un recibo con su justificación y ver su estado
+real) y, para administración, **resumen, aprobación de viajes** (con la reconfirmación del precio) y
+**revisión de gastos**. Lo que todavía no tiene (corregir los datos leídos de un gasto, aprobar con excepción,
+KPIs, asistente, monitoreo, reglas, proyectos y usuarios) sigue en la plataforma actual, y la web enlaza allí
+cuando hace falta.
+
+La web consume solo la API v1 descrita en [`contracts/api-v1.md`](../contracts/api-v1.md); no tiene acceso a
+ninguna base de datos.
 
 ## Requisitos
 
@@ -83,9 +89,13 @@ src/
   app/                      rutas delgadas del App Router
     (public)/entrar
     (private)/layout.tsx    comprueba la sesión (experiencia de uso; los permisos los aplica la API)
-    (private)/viajes, gastos, gastos/nuevo, gastos/[id]
-  features/<auth|viajes|gastos>/
-    domain/                 tipos y puertos (AuthRepository, ViajesRepository, GastosRepository)
+    (private)/cotizar, cotizar/[id]
+    (private)/viajes, viajes/[id]
+    (private)/gastos, gastos/nuevo, gastos/[id]
+    (private)/resumen       inicio de administración
+  features/<auth|cotizar|viajes|gastos|administracion>/
+    domain/                 tipos y puertos (AuthRepository, CotizarRepository, ViajesRepository,
+                            GastosRepository, AdministracionRepository)
     application/            hooks con TanStack Query y casos de uso (envío con idempotencia)
     infrastructure/         adaptador HTTP (fetch + zod) y adaptador en memoria
     ui/                     contenedores y componentes de presentación

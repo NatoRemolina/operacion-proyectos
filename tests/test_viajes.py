@@ -19,9 +19,28 @@ def test_caso_guardado_recomienda_por_costo_total(cliente):
     c = _comparacion(sid)
     assert c["vuelos"] and c["descartados"] and c["hoteles"]
     assert c["vuelos"][0]["ev"]["total"] <= c["vuelos"][-1]["ev"]["total"]
-    assert c["mas_barato"]["v"]["precio"] == 279 and c["vuelos"][0]["v"]["numeros"] == ["AA 1851"]
+    assert c["mas_barato"]["v"]["precio"] == 282 and c["vuelos"][0]["v"]["numeros"] == ["AA 1851"]
     assert db.uno("select ahorro_potencial a from solicitudes where id=:i", i=sid)["a"] is not None
     assert cliente.get(f"/viajes/{sid}").status_code == 200
+
+
+def test_lo_mas_barato_se_compara_entre_los_vuelos_que_sirven(cliente):
+    """Caso por defecto: el más barato del buscador (F9 2135 + F9 1649, 279 USD) llega a las 19:07 y está descartado.
+    La comparación y el ahorro se hacen contra el más barato que sí sirve; el descartado se nombra aparte."""
+    sid = _crear(cliente)
+    c = _comparacion(sid)
+    assert c["mas_barato"]["v"]["numeros"] == ["F9 1279", "F9 2349"] and not c["mas_barato"]["ev"]["descartada"]
+    assert "F9 2135" in c["aviso"] and "descartada" in c["aviso"] and "19:07" in c["aviso"]
+    s = db.uno("select precio_min_buscador, costo_mas_barato, ahorro_potencial from solicitudes where id=:i", i=sid)
+    assert (s["precio_min_buscador"], s["costo_mas_barato"], s["ahorro_potencial"]) == (282, 565.58, 4.92)
+    assert "F9 2135" in cliente.get(f"/viajes/{sid}").text
+    api = cliente.get(f"/api/v1/cotizaciones/{sid}").json()
+    assert api["mas_barata_id"] == c["mas_barato"]["id"] and api["aviso"] == c["aviso"]
+    assert "El más barato que sirve es Frontier por 282 USD" in api["recomendacion"]
+    # la decisión guarda el mismo ahorro
+    cliente.post(f"/viajes/{sid}/decidir", data={"vuelo_id": c["vuelos"][0]["id"], "razones": ["costo_total"]})
+    d = db.uno("select desglose from decisiones where solicitud_id=:s order by id desc", s=sid)
+    assert db.de_json(d["desglose"], {})["ahorro"] == 4.92
 
 
 def test_hora_limite_sigue_a_la_fecha_de_ida(cliente):
@@ -33,6 +52,18 @@ def test_hora_limite_sigue_a_la_fecha_de_ida(cliente):
 def test_entradas_invalidas_no_crean_solicitud(cliente):
     for cambios in (dict(ida="no-es-fecha"), dict(regreso="2026-12-01"), dict(origen="xyz123")):
         assert "error" in str(_crear(cliente, **cambios)), cambios
+
+
+def test_valores_no_finitos_o_fuera_de_los_limites_no_crean_solicitud(cliente):
+    """Con NaN en el presupuesto los listados de viajes respondían 500; con infinito el control de presupuesto no saltaba.
+    El formulario acepta los mismos límites que la API v1."""
+    antes = db.uno("select count(*) n from solicitudes")["n"]
+    for cambios in (dict(carro_dia="nan"), dict(carro_dia="inf"), dict(carro_dia="-400"), dict(carro_dia="10000"),
+                    dict(baterias_wh="nan"), dict(baterias_wh="1001"), dict(prob_cambio="nan"), dict(prob_cambio="-5")):
+        destino = _crear(cliente, **cambios)
+        assert isinstance(destino, str) and "error=" in destino, cambios
+    assert db.uno("select count(*) n from solicitudes")["n"] == antes
+    assert cliente.get("/admin/viajes").status_code == 200
 
 
 def test_decidir_sin_hotel_y_ficha(cliente):
@@ -67,3 +98,43 @@ def test_apartarse_de_la_recomendacion_exige_el_porque_y_deja_datos_etiquetados(
     filas = db.todos("select * from elecciones where decision_id=:d and tipo='vuelo'", d=d["id"])
     assert sum(f["elegida"] for f in filas) == 1 and sum(f["recomendada"] for f in filas) == 1
     assert len(filas) >= len(vuelos)                                           # se guarda todo lo mostrado, no solo lo elegido
+
+
+def test_el_gestor_no_cotiza_ni_decide_para_otra_persona_fuera_de_sus_proyectos(gestor, cliente):
+    """La regla de la API vale también en las pantallas: el gestor del proyecto 1 no cotiza, no trae tarifas pagas ni
+    decide para otra persona en el proyecto 2."""
+    antes = db.uno("select count(*) n from solicitudes")["n"]
+    destino = _crear(gestor, proyecto_id=2, viajero_id=2)
+    assert isinstance(destino, str) and "proyectos+que+gestionas" in destino
+    assert db.uno("select count(*) n from solicitudes")["n"] == antes
+    assert isinstance(_crear(gestor, proyecto_id=1, viajero_id=2), int)   # en su proyecto, sí
+    # una cotización fuera de su alcance que ya existía (creada antes de la regla) tampoco la decide
+    sid = _crear(cliente, proyecto_id=2, viajero_id=2)
+    db.ejecutar("update solicitudes set usuario_id=(select id from usuarios where correo='gestor@demo.local') where id=:s", s=sid)
+    vuelo = _comparacion(sid)["vuelos"][0]["id"]
+    assert gestor.post(f"/viajes/{sid}/tarifas/{vuelo}", follow_redirects=False).status_code == 404
+    r = gestor.post(f"/viajes/{sid}/decidir", data={"vuelo_id": vuelo, "razones": ["costo_total"]}, follow_redirects=False)
+    assert "aviso=" in r.headers["location"]
+    assert not db.uno("select id from decisiones where solicitud_id=:s", s=sid)
+    assert "Solo lectura" in gestor.get(f"/viajes/{sid}").text
+
+
+def test_el_formulario_respeta_el_tope_de_cotizaciones_del_dia():
+    """Cada cotización nueva puede gastar dos búsquedas pagas: el formulario corta en el mismo tope que la API."""
+    from starlette.testclient import TestClient
+
+    from app.main import app
+    from app.servicios import acceso
+    acceso.crear_usuario("tope-formulario@demo.local", "Tope del formulario", "colaborador", "clave-tope-formulario-2026")
+    c = TestClient(app)
+    c.post("/entrar", data={"correo": "tope-formulario@demo.local", "clave": "clave-tope-formulario-2026"})
+    regla = db.uno("select id, valor from reglas where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
+    db.ejecutar("update reglas set valor='1' where id=:i", i=regla["id"])
+    try:
+        assert isinstance(_crear(c), int)
+        antes = db.uno("select count(*) n from solicitudes")["n"]
+        destino = _crear(c, ida="2026-12-09", regreso="2026-12-12")
+        assert isinstance(destino, str) and "tope" in destino
+        assert db.uno("select count(*) n from solicitudes")["n"] == antes
+    finally:
+        db.ejecutar("update reglas set valor=:v where id=:i", v=regla["valor"], i=regla["id"])

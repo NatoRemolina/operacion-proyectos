@@ -39,6 +39,13 @@ def _procesar(contenido: bytes, nombre: str, canal: str, proyecto_id: int | None
     (gasto, repetido).
     """
     yo = _yo()
+    if not acceso.es_admin(yo):
+        # Como en la API: quien no es administración carga a su nombre; el proyecto lo pone el viaje, si lo hay
+        proyecto_id, viajero_id = None, yo.get("viajero_id")
+    elif proyecto_id and not db.uno("select id from proyectos where id=:i", i=proyecto_id):
+        raise SoporteRechazado("El proyecto elegido no existe.")
+    elif viajero_id and not db.uno("select id from viajeros where id=:i", i=viajero_id):
+        raise SoporteRechazado("La persona elegida no existe.")
     viaje, _ = viajes.resolver_para_gasto(yo, viaje_id or None) if yo else (None, [])
     pedido = {"viaje_id": viaje_id or None, "proyecto_id": proyecto_id, "viajero_id": viajero_id}
     return soportes.registrar_envio(contenido, nombre, canal, yo or None, viaje, proyecto_id, viajero_id,
@@ -62,7 +69,7 @@ def gastos_cargar(request: Request):
     correos = sorted(p.name for p in config.DIR_EJEMPLOS.glob("*.eml"))
     elegido, _ = viajes.resolver_para_gasto(_yo())
     return plantillas.TemplateResponse(request, "cargar.html", _ctx(
-        ejemplos=ejemplos, correos=correos, mis_viajes=_viajes_para_cargar(), elegido=elegido))
+        ejemplos=ejemplos, correos=correos, mis_viajes=_viajes_para_cargar(), elegido=elegido, tope_bytes=config.MAX_BYTES_SOPORTE))
 
 
 @router.post("/gastos/cargar")

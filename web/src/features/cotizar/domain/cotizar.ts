@@ -521,6 +521,17 @@ export function idDeRuta(texto: string): number | null {
 // ---------- reglas de la comparación y la decisión ----------
 export const MOTIVO_MINIMO = 5;
 
+/**
+ * La descartada (llega tarde, el equipo no cabe) más barata que la más barata que sirve, si la hay. La comparación y el
+ * ahorro se hacen contra la que sirve (`mas_barata_id`, como en el servidor); esta solo se nombra aparte.
+ */
+export function barataDescartada(c: Pick<Cotizacion, "vuelos" | "descartados" | "mas_barata_id">): OpcionVuelo | null {
+  const barata = c.vuelos.find((v) => v.id === c.mas_barata_id);
+  if (!barata) return null;
+  const masBarata = [...c.descartados].sort((a, b) => Number(a.precio_usd) - Number(b.precio_usd))[0];
+  return masBarata && Number(masBarata.precio_usd) < Number(barata.precio_usd) ? masBarata : null;
+}
+
 export function sinDatos(c: Pick<Cotizacion, "vuelos" | "descartados">): boolean {
   return c.vuelos.length === 0 && c.descartados.length === 0;
 }

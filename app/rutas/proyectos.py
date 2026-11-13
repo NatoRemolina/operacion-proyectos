@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import acceso, eventos, viajes
+from ..servicios import acceso, eventos, exportacion, viajes
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
@@ -108,11 +108,13 @@ def proyecto(request: Request, pid: int):
 def proyecto_exportar(pid: int):
     if not _proyecto_visible(pid):
         return NO_ENCONTRADO
-    filas = db.todos("select id,fecha,comercio,categoria,total,moneda,total_usd,estado,metodo_pago,origen_dato from gastos where proyecto_id=:i order by fecha", i=pid)
-    columnas = ["id", "fecha", "comercio", "categoria", "total", "moneda", "total_usd", "estado", "metodo_pago", "origen_dato"]
-    def celda(v):  # texto que empieza como fórmula se neutraliza para las hojas de cálculo
-        t = str(v if v is not None else "").replace('"', "'")
-        return '"' + ("'" + t if t[:1] in "=+-@" and not isinstance(v, int | float) else t) + '"'
-    lineas = [",".join(columnas)] + [",".join(celda(f[c]) for c in columnas) for f in filas]
-    return Response("\n".join(lineas), media_type="text/csv",
+    filas = db.todos("""select g.id, g.fecha, g.comercio, g.categoria, g.total, g.moneda, g.total_usd, g.estado, g.metodo_pago,
+                                g.origen_dato, v.nombre viajero, vj.id viaje_id, vj.creado viaje_creado
+                         from gastos g left join viajeros v on v.id=g.viajero_id left join viajes vj on vj.id=g.viaje_id
+                         where g.proyecto_id=:i order by g.fecha""", i=pid)
+    for f in filas:
+        f["viaje"] = viajes.codigo_viaje({"id": f["viaje_id"], "creado": f["viaje_creado"]}) if f["viaje_id"] else None
+    columnas = ["id", "fecha", "comercio", "categoria", "total", "moneda", "total_usd", "estado", "metodo_pago", "origen_dato",
+                "viajero", "viaje"]
+    return Response(exportacion.csv_de(filas, columnas), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="gastos_proyecto_{pid}.csv"'})

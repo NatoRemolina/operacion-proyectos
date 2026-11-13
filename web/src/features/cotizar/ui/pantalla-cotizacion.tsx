@@ -17,6 +17,7 @@ import { GIRO, PRESIONAR } from "@/shared/ui/movimiento";
 import { useCotizacion, useDecidir, useFormularioCotizacion } from "../application/cotizar";
 import {
   MOTIVO_MINIMO,
+  barataDescartada,
   hora,
   problemaDeDecision,
   requiereMotivo,
@@ -154,7 +155,7 @@ function Resumen({ c }: { c: Cotizacion }) {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <TarjetaResumen titulo="Recomendada por costo total" vuelo={recomendada} destacada />
         {barata && barata.id !== recomendada.id ? (
-          <TarjetaResumen titulo="La más barata del buscador" vuelo={barata} />
+          <TarjetaResumen titulo={barataDescartada(c) ? "La más barata que sirve" : "La más barata del buscador"} vuelo={barata} />
         ) : null}
       </div>
       {c.aviso ? (

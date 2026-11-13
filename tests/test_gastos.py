@@ -1,7 +1,11 @@
 """Recorrido de gastos sin claves: lectura guardada, validación, revisión, subidas hostiles."""
+import json
+import shutil
+import subprocess
+
 import pytest
 
-from app import db
+from app import config, db
 from app.main import _numero
 
 BASE = {"proyecto_id": 1, "viajero_id": 1, "canal": "web"}
@@ -91,3 +95,47 @@ def test_numeros_con_coma_y_miles():
 def test_paginas_de_gastos_responden(cliente):
     for ruta in ("/gastos", "/gastos/cargar", "/gastos?estado=revision", "/proyectos/1", "/proyectos/1/exportar.csv", "/flujo", "/analitica"):
         assert cliente.get(ruta).status_code == 200, ruta
+
+
+_DOBLE_DEL_NAVEGADOR = r"""
+// Ejecuta el guion de la página de carga con lo mínimo del navegador: un lienzo que siempre comprime a 1000 bytes
+const vm = require('vm'), fs = require('fs');
+class File { constructor(partes, nombre, opciones) { this.name = nombre; this.type = opciones.type; this.size = partes[0].size; } }
+const contexto = {
+  File, window: {}, matchMedia: () => ({matches: false}),
+  createImageBitmap: async () => ({width: 4000, height: 3000}),
+  document: {
+    getElementById: () => ({addEventListener() {}}), querySelector: () => null,
+    createElement: () => ({getContext: () => ({drawImage() {}}), toBlob(listo, tipo) { listo({size: 1000, type: tipo}); }}),
+  },
+};
+vm.createContext(contexto);
+vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), contexto);
+(async () => {
+  const salida = {};
+  for (const [nombre, tamano] of JSON.parse(process.argv[3])) {
+    const r = await contexto.reducir({name: nombre, type: 'image/png', size: tamano});
+    salida[nombre] = [r.name, r.type, r.size];
+  }
+  console.log(JSON.stringify(salida));
+})();
+"""
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="hace falta node para ejecutar el guion de la página")
+def test_la_pagina_de_carga_solo_reduce_las_fotos_que_superan_el_tope(piloto, tmp_path, ejemplos):
+    """La lectura guardada de los ejemplos va por la huella del archivo: si la página recodifica una foto que ya cabe,
+    deja de reconocerse. Solo se reduce lo que no cabe en el tope del servidor."""
+    pagina = piloto.get("/gastos/cargar").text
+    guion = next(s.split("</script>")[0] for s in pagina.split("<script>") if "function reducir" in s)
+    (tmp_path / "pagina.js").write_text(guion)
+    (tmp_path / "doble.js").write_text(_DOBLE_DEL_NAVEGADOR)
+    ejemplo = (ejemplos / "recibo_diner.png").stat().st_size
+    casos = [["recibo_diner.png", ejemplo], ["justo.png", config.MAX_BYTES_SOPORTE], ["celular.png", config.MAX_BYTES_SOPORTE + 1]]
+    r = subprocess.run(["node", tmp_path / "doble.js", tmp_path / "pagina.js", json.dumps(casos)],  # noqa: S603, S607  guion fijo de esta prueba
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    salida = json.loads(r.stdout)
+    assert salida["recibo_diner.png"] == ["recibo_diner.png", "image/png", ejemplo]   # va tal cual
+    assert salida["justo.png"] == ["justo.png", "image/png", config.MAX_BYTES_SOPORTE]
+    assert salida["celular.png"] == ["celular.jpg", "image/jpeg", 1000]              # la foto grande sí se reduce

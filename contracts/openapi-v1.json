@@ -3368,7 +3368,7 @@
           "mas_barata": {
             "type": "boolean",
             "title": "Mas Barata",
-            "description": "La de menor precio del buscador."
+            "description": "La de menor precio entre las que sirven; una descartada más barata no cuenta."
           },
           "origen_dato": {
             "anyOf": [

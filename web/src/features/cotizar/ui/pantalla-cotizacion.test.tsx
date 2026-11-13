@@ -90,6 +90,16 @@ describe("Comparación de una cotización", () => {
     expect(screen.getByText(/lo más barato no es lo mejor/i)).toBeInTheDocument();
   });
 
+  it("la más barata del resumen es la que sirve; si una descartada es más barata, no se la llama «del buscador»", async () => {
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB) });
+    expect(await screen.findByText("La más barata del buscador")).toBeInTheDocument();
+
+    const [descartada] = COTIZACION_MOAB.descartados;
+    const conDescartadaBarata: Cotizacion = { ...COTIZACION_MOAB, id: 13, descartados: [{ ...descartada!, precio_usd: "279.00" }] };
+    renderizarConFuente(<PantallaCotizacion id={13} />, { cotizar: repositorio(conDescartadaBarata) });
+    expect(await screen.findByText("La más barata que sirve")).toBeInTheDocument();
+  });
+
   it("apartarse de la recomendada exige el porqué; con él nace el viaje y se enlaza", async () => {
     const usuario = userEvent.setup();
     renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB) });

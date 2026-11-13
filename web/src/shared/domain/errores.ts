@@ -29,7 +29,7 @@ const MENSAJES: Record<TipoError, string> = {
   no_encontrado: "No encontramos lo que buscas o no tienes acceso.",
   conflicto: "Ese envío ya se usó con otro archivo.",
   demasiado_grande: "El archivo pesa más de 4,5 MB.",
-  tipo_no_admitido: "Ese tipo de archivo no se admite. Usa una foto (JPG, PNG o WebP) o un PDF.",
+  tipo_no_admitido: "Ese tipo de archivo no se admite. Usa una foto (JPG, PNG o WebP), un PDF o un correo (.eml).",
   validacion: "Hay datos que no son válidos.",
   autoaprobacion: "Nadie aprueba lo suyo: lo decide otra persona de administración.",
   estado_invalido: "El estado cambió y esa acción ya no aplica. Recarga para ver cómo está.",

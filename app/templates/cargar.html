@@ -7,7 +7,7 @@
 <div class="{{ 'dos' if es_admin else '' }}">
 <form method="post" action="/gastos/cargar" enctype="multipart/form-data" class="tarjeta" id="carga">
   <h3>{{ 'Subir archivos o tomar foto' if es_admin else 'Toma la foto del recibo o elige el archivo' }}</h3>
-  <p><label for="archivos" class="eti" style="font-weight:400">Fotos, PDF o correos (.eml). Las fotos se reducen antes de enviarse; máximo 4,5 MB por archivo y 6 por envío.</label>
+  <p><label for="archivos" class="eti" style="font-weight:400">Fotos, PDF o correos (.eml). Máximo 4,5 MB por archivo y 6 por envío; las fotos más pesadas se reducen antes de enviarse.</label>
   <input id="archivos" type="file" name="archivos" multiple accept="image/*,application/pdf,.eml" required></p>
   <div class="campos"><div><label for="viaje_1">Viaje</label><select id="viaje_1" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div>
   {% if es_admin %}<div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
@@ -37,11 +37,12 @@
 </form></div>{% endif %}
 </div>
 <script>
-// Cada archivo viaja en su propia petición y las fotos se reducen en el navegador:
-// así una foto de celular de varios megas no supera el límite del servidor ni gasta datos de más.
-const LADO_MAX = 2000, CALIDAD = 0.8;
+// Cada archivo viaja en su propia petición, y las fotos que no caben en el tope del servidor se reducen en el navegador:
+// así una foto de celular de varios megas no se rechaza. La que ya cabe va tal cual: recodificarla cambia su huella,
+// y la lectura guardada de un archivo ya leído (los ejemplos, sin clave del modelo) se reconoce por esa huella.
+const LADO_MAX = 2000, CALIDAD = 0.8, TOPE_BYTES = {{ tope_bytes }};
 async function reducir(archivo) {
-  if (!archivo.type.startsWith('image/')) return archivo;
+  if (!archivo.type.startsWith('image/') || archivo.size <= TOPE_BYTES) return archivo;
   try {
     const mapa = await createImageBitmap(archivo);
     const escala = Math.min(1, LADO_MAX / Math.max(mapa.width, mapa.height));

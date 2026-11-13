@@ -127,7 +127,8 @@ def nodo_resumen(e: Estado) -> Estado:
               f"costo total esperado de {m['ev']['total']:.0f} USD (precio en el buscador: {m['v']['precio']:.0f} USD)."]
     barato = c.get("mas_barato")
     if barato and barato["id"] != m["id"]:
-        partes.append(f"El más barato del buscador es {barato['v']['aerolinea']} por {barato['v']['precio']:.0f} USD, "
+        partes.append(f"El más barato {'que sirve' if c.get('mas_barato_descartado') else 'del buscador'} es "
+                      f"{barato['v']['aerolinea']} por {barato['v']['precio']:.0f} USD, "
                       f"pero su costo esperado sube a {barato['ev']['total']:.0f} USD. "
                       + (" ".join(barato["ev"]["avisos"][:2]) if barato["ev"]["avisos"] else ""))
     if len(c["vuelos"]) > 1:

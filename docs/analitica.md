@@ -25,7 +25,7 @@ Las vistas no copian datos. Con el volumen actual se calculan al consultarlas; s
 | `gasto_real` | Suma en USD de los gastos aprobados | Control financiero |
 | `costo_por_recibo` | Costo estimado de tokens ÷ lecturas | Elección de modelo |
 | `acuerdo_recomendacion` | Decisiones que eligen la opción recomendada ÷ decisiones | Validez de las reglas |
-| `ahorro_capturado` | Costo esperado del más barato del buscador − costo esperado de lo elegido | Valor del comparador |
+| `ahorro_capturado` | Costo esperado del más barato que sirve − costo esperado de lo elegido | Valor del comparador |
 | `tasa_reutilizacion` | Búsquedas resueltas con respuestas guardadas ÷ búsquedas | Costo del buscador |
 | `decisiones_etiquetadas` | Decisiones con todas sus opciones registradas | Avance hacia un modelo de decisión |
 

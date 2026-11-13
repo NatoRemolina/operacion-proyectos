@@ -1,12 +1,16 @@
 # Tareas habituales. `make` sin argumentos las lista.
 PY := .venv/bin/python
+# Python 3.12 o posterior: el código usa f-strings anidadas (PEP 701), que no compilan en 3.11 ni antes.
+# Con otro ejecutable: make instalar PYTHON=/ruta/a/python3.13
+PYTHON ?= python3.12
 
 .PHONY: ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo respaldar verificar-respaldo ganchos
 ayuda:            ## Lista las tareas
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
 
-instalar:         ## Crea el entorno e instala dependencias de desarrollo
-	python3 -m venv .venv && $(PY) -m pip install -r requirements-dev.txt
+instalar:         ## Crea el entorno e instala dependencias de desarrollo (requiere Python 3.12)
+	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else "Hace falta Python 3.12 o posterior (este es " + sys.version.split()[0] + "): make instalar PYTHON=python3.12")'
+	$(PYTHON) -m venv .venv && $(PY) -m pip install -r requirements-dev.txt
 
 ejecutar:         ## Arranca la plataforma en http://localhost:8000
 	$(PY) -m uvicorn app.main:app --reload
