@@ -196,7 +196,7 @@ function Asistente() {
         onClick={() => (abierto ? cerrar() : abrir())}
         aria-expanded={abierto}
         aria-controls={idPanel}
-        className={`fondo-ia fixed bottom-20 right-4 z-10 flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-full px-4 text-sobre-grafito shadow-flotante md:bottom-6 md:right-6 md:px-5 ${PRESIONAR} ${
+        className={`fondo-ia fixed bottom-20 right-4 z-10 flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-full px-4 text-sobre-marca shadow-lg shadow-grafito/25 md:bottom-6 md:right-6 md:px-5 ${PRESIONAR} ${
           abierto ? "max-md:hidden" : ""
         }`}
       >
@@ -214,7 +214,7 @@ function Asistente() {
         aria-modal="false"
         aria-labelledby={idTitulo}
         hidden={!abierto}
-        className="entrada-ia se-mueve fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden border-linea bg-superficie md:inset-auto md:bottom-24 md:right-6 md:h-auto md:w-full md:max-w-asistente md:max-h-[min(42rem,calc(100dvh-8rem))] md:rounded-2xl md:border md:shadow-flotante [@media(max-height:30rem)]:overflow-y-auto"
+        className="entrada-ia se-mueve fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden border-linea bg-superficie shadow-2xl shadow-grafito/30 md:inset-auto md:bottom-24 md:right-6 md:h-auto md:border md:max-h-[min(42rem,calc(100dvh-8rem))] md:w-[26rem] md:rounded-2xl [@media(max-height:30rem)]:overflow-y-auto"
       >
         <div className="zona-oscura fondo-ia flex shrink-0 items-center gap-3 py-2.5 pl-4 pr-2 text-sobre-grafito">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-sobre-grafito/10 ring-1 ring-sobre-grafito/25">
@@ -343,7 +343,7 @@ function Asistente() {
                 disabled={ocupado || !texto.trim()}
                 aria-label="Enviar la pregunta"
                 title="Enviar"
-                className={`grid size-11 shrink-0 place-items-center rounded-xl bg-marca text-sobre-marca hover:bg-marca-oscura disabled:opacity-40 ${PRESIONAR}`}
+                className={`fondo-ia grid size-11 shrink-0 place-items-center rounded-xl text-sobre-marca shadow-sm disabled:opacity-40 ${PRESIONAR}`}
               >
                 <IconoEnviar className="size-5" />
               </button>
@@ -369,7 +369,7 @@ function Asistente() {
 function Bienvenida({ conVoz, deshabilitado, onElegir }: { conVoz: boolean; deshabilitado: boolean; onElegir: (p: string) => void }) {
   return (
     <div className="flex flex-col items-center px-1 pb-1 pt-3 text-center">
-      <span className="fondo-ia grid size-14 place-items-center rounded-2xl">
+      <span className="fondo-ia grid size-14 place-items-center rounded-2xl shadow-md shadow-grafito/20">
         <IconoChispa className="size-7 text-cian-claro" />
       </span>
       <p className="mt-3 text-lg font-bold text-texto">¿En qué te ayudo?</p>
@@ -377,24 +377,17 @@ function Bienvenida({ conVoz, deshabilitado, onElegir }: { conVoz: boolean; desh
         Pregunta por viajes, gastos, cotizaciones o indicadores{conVoz ? ", por escrito o con tu voz" : ""}. Cada respuesta cita de
         dónde salen los datos.
       </p>
-      {/* Una lista agrupada, como las de viajes y gastos: la chispa queda para identificar al asistente, no se repite
-          en cada sugerencia. */}
-      <ul
-        className="mt-4 w-full divide-y divide-linea overflow-hidden rounded-tarjeta border border-linea bg-superficie text-left"
-        aria-label="Preguntas sugeridas"
-      >
+      <ul className="mt-4 w-full space-y-2 text-left" aria-label="Preguntas sugeridas">
         {PREGUNTAS_SUGERIDAS.map((p) => (
           <li key={p}>
             <button
               type="button"
               onClick={() => onElegir(p)}
               disabled={deshabilitado}
-              className="flex min-h-11 w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm font-semibold text-texto transition-[background-color] duration-150 hover:bg-marca-suave active:bg-marca-suave disabled:opacity-50"
+              className={`flex min-h-11 w-full items-center gap-3 rounded-xl border border-linea bg-superficie px-3.5 py-2.5 text-left text-sm font-semibold text-texto shadow-sm hover:border-marca hover:bg-marca-suave disabled:opacity-50 ${PRESIONAR}`}
             >
+              <IconoChispa className="size-4 shrink-0 text-marca" />
               {p}
-              <span aria-hidden="true" className="text-texto-secundario">
-                ›
-              </span>
             </button>
           </li>
         ))}
@@ -405,7 +398,7 @@ function Bienvenida({ conVoz, deshabilitado, onElegir }: { conVoz: boolean; desh
 
 function Avatar() {
   return (
-    <span className="fondo-ia mt-0.5 grid size-8 shrink-0 place-items-center rounded-full" aria-hidden="true">
+    <span className="fondo-ia mt-0.5 grid size-8 shrink-0 place-items-center rounded-full shadow-sm" aria-hidden="true">
       <IconoChispa className="size-4 text-cian-claro" />
     </span>
   );
@@ -425,7 +418,7 @@ function VistaMensaje({
   if (m.rol === "persona") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-marca px-4 py-2.5 text-sobre-marca">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-marca px-4 py-2.5 text-sobre-marca shadow-sm">
           <p className="sr-only">Tú:</p>
           {m.porVoz ? (
             <p className="mb-0.5 flex items-center gap-1 text-xs font-bold">
@@ -470,7 +463,7 @@ function VistaRespuesta({ respuesta: r, onAbrirFuente }: { respuesta: RespuestaA
   return (
     <div className="flex gap-2.5">
       <Avatar />
-      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-linea bg-superficie px-4 py-3 shadow-tarjeta">
+      <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-linea bg-superficie px-4 py-3 shadow-sm">
         <p className="sr-only">El asistente:</p>
         <TextoRespuesta texto={r.texto} />
         {fuentes.length > 0 ? (
@@ -499,16 +492,12 @@ function VistaRespuesta({ respuesta: r, onAbrirFuente }: { respuesta: RespuestaA
         ) : null}
         <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-secundario">
           <Distintivo tono={esDeIa(r.modo) ? "marca" : r.modo === "tope" ? "aviso" : "neutro"}>{r.modo_texto}</Distintivo>
-          {/* Tiempo y consultas van juntos y sin partirse: el «·» nunca queda solo al principio de una línea. */}
-          <span className="whitespace-nowrap">
-            {r.duracion_ms > 0 ? <span>{duracionLegible(r.duracion_ms)}</span> : null}
-            {r.duracion_ms > 0 && r.herramientas.length > 0 ? " · " : null}
-            {r.herramientas.length > 0 ? (
-              <span title={r.herramientas.join(" → ")}>
-                {r.herramientas.length} {r.herramientas.length === 1 ? "consulta" : "consultas"}
-              </span>
-            ) : null}
-          </span>
+          {r.duracion_ms > 0 ? <span>{duracionLegible(r.duracion_ms)}</span> : null}
+          {r.herramientas.length > 0 ? (
+            <span title={r.herramientas.join(" → ")}>
+              · {r.herramientas.length} {r.herramientas.length === 1 ? "consulta" : "consultas"}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>
@@ -533,7 +522,7 @@ function Segmentos({ segmentos }: { segmentos: readonly Segmento[] }) {
 
 function TextoRespuesta({ texto }: { texto: string }) {
   return (
-    <div className="space-y-2 text-base leading-relaxed text-texto">
+    <div className="space-y-2 text-[0.9375rem] leading-relaxed text-texto">
       {bloquesDeTexto(texto).map((b, i) => {
         if (b.tipo === "parrafo") {
           return (
@@ -567,7 +556,7 @@ function Pensando({ desde }: { desde: number }) {
   return (
     <div className="mt-4 flex gap-2.5">
       <Avatar />
-      <div className="rounded-2xl rounded-tl-md border border-linea bg-superficie px-4 py-3 shadow-tarjeta">
+      <div className="rounded-2xl rounded-tl-md border border-linea bg-superficie px-4 py-3 shadow-sm">
         <div className="flex items-center gap-2.5">
           <span className="flex gap-1" aria-hidden="true">
             <span className="punto-ia" />
@@ -603,35 +592,30 @@ function BarraGrabacion({
   onListo: () => void;
 }) {
   return (
-    // El punto rojo dice «grabando», la convención de cualquier grabadora; la barra no se tiñe de error, y «Listo»,
-    // que envía lo dicho, es la acción primaria en color de marca.
-    <div className="flex min-h-14 items-center gap-2 rounded-2xl border border-borde-campo bg-superficie py-1.5 pl-3 pr-1.5">
+    <div className="flex min-h-14 items-center gap-2 rounded-2xl border border-error bg-error-suave py-1.5 pl-3 pr-1.5">
       <span className="relative flex size-3 shrink-0" aria-hidden="true">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-error opacity-60" />
         <span className="relative inline-flex size-3 rounded-full bg-error" />
       </span>
-      <span className="whitespace-nowrap text-sm font-bold text-texto">{pidiendo ? "Activando el micrófono…" : "Escuchando"}</span>
-      {/* La onda cede espacio: en un celular angosto se recorta antes de empujar los botones fuera de la barra. */}
-      <span className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden max-[22rem]:hidden" aria-hidden="true">
+      <span className="text-sm font-bold text-error">{pidiendo ? "Activando el micrófono…" : "Escuchando"}</span>
+      <span className="flex h-8 flex-1 items-center justify-center gap-1 max-[22rem]:hidden" aria-hidden="true">
         {FORMA_ONDA.map((forma, i) => (
           <span
             key={i}
-            // Solo se anima la escala (no el alto): la onda sigue la voz sin recalcular la composición.
-            className="h-7 w-1 rounded-full bg-marca transition-transform duration-100"
-            style={{ transform: `scaleY(${((4 + forma * nivel * 24) / 28).toFixed(3)})` }}
+            className="w-1 rounded-full bg-error transition-[height] duration-100"
+            style={{ height: `${Math.round(4 + forma * nivel * 24)}px` }}
           />
         ))}
       </span>
-      <span className="whitespace-nowrap text-xs tabular-nums text-texto" aria-hidden="true">
-        {reloj(segundos)}
-        <span className="max-sm:hidden"> / {reloj(MAX_GRABACION_S)}</span>
+      <span className="text-xs tabular-nums text-texto" aria-hidden="true">
+        {reloj(segundos)} / {reloj(MAX_GRABACION_S)}
       </span>
       <button
         type="button"
         onClick={onCancelar}
         aria-label="Cancelar la grabación"
         title="Cancelar"
-        className="grid size-11 shrink-0 place-items-center rounded-xl text-texto-secundario hover:bg-neutro-suave"
+        className="grid size-11 shrink-0 place-items-center rounded-xl text-texto-secundario hover:bg-superficie"
       >
         <IconoCerrar className="size-5" />
       </button>
@@ -639,7 +623,7 @@ function BarraGrabacion({
         type="button"
         onClick={onListo}
         disabled={pidiendo}
-        className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-marca px-3 text-sm font-bold text-sobre-marca hover:bg-marca-oscura disabled:opacity-50 ${PRESIONAR}`}
+        className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-error px-3 text-sm font-bold text-sobre-marca disabled:opacity-50 ${PRESIONAR}`}
       >
         <IconoDetener className="size-4" /> Listo
       </button>
