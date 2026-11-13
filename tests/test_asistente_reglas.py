@@ -8,7 +8,7 @@ import json
 import pytest
 
 from app import db
-from app.servicios import asistente, justificaciones, validacion, viajes
+from app.servicios import asistente, justificaciones, memoria, validacion, viajes
 
 
 def _usuario(correo: str) -> dict:
@@ -163,3 +163,19 @@ def test_una_herramienta_propia_del_asesor_que_falla_tambien(caso, monkeypatch):
     monkeypatch.setitem(asesor.PROPIAS, "reglas_de_aerolinea", falla)
     salida = asesor.despachar(asistente.Rastro(caso["andres"]), "reglas_de_aerolinea", {"aerolinea": "Avianca"}, caso["andres"])
     assert salida == {"error": "No se pudo consultar ahora."}
+
+
+
+# ---------- el índice se pone al día antes de responder, pero no en cada pregunta ----------
+def test_el_indice_se_pone_al_dia_como_mucho_cada_cinco_minutos(caso, monkeypatch):
+    llamadas, reloj = [], [1000.0]
+    monkeypatch.setattr(memoria, "actualizar", lambda **k: llamadas.append(k))
+    monkeypatch.setattr(asistente, "_reloj", lambda: reloj[0])
+    monkeypatch.setattr(asistente, "_indexado_en", None)
+    asistente.responder("¿Cuánto me queda del presupuesto?", caso["andres"])
+    reloj[0] += asistente.INDEXAR_CADA_S - 1
+    asistente.responder("¿Cuánto me queda del presupuesto?", caso["andres"])
+    assert llamadas == [{"max_envios": asistente.INDEXAR_ANTES}]
+    reloj[0] += 2
+    asistente.responder("¿Cuánto me queda del presupuesto?", caso["andres"])
+    assert len(llamadas) == 2 and asistente.INDEXAR_CADA_S == 300

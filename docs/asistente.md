@@ -137,7 +137,7 @@ python -m datos.indexar --todo     # reenvía todo
 ```
 
 - Botón «Actualizar índice» en la pantalla.
-- Antes de cada respuesta, acotado a 100 fichas (lo más reciente primero); el resto va en la siguiente vuelta.
+- Antes de responder, acotado a 100 fichas (lo más reciente primero) y como mucho cada 5 minutos por proceso (`INDEXAR_CADA_S`); el resto va en la siguiente vuelta. Lo cargado hace menos de 5 minutos puede tardar en salir en `buscar`; las cifras no, porque salen de consultas exactas.
 
 Cada actualización con cambios deja un evento `índice actualizado`; un fallo, `actualización del índice fallida`.
 
@@ -243,7 +243,6 @@ En la web Next, los tres permisos tienen un botón «Asistente IA» fijo abajo a
 - El mensaje de sistema del asesor cambió (ahora dice para quién responde): el agente alojado lo recibe con `python -m datos.asesor --sincronizar` y la versión nueva en `ASESOR_AGENTE_VERSION`. Mientras tanto, el agente anterior sigue respondiendo con el alcance correcto, porque lo aplican las herramientas, pero sus instrucciones suponen que escribe administración.
 - En el índice, una ficha es de la persona titular del viaje (o de quien cargó el gasto si no tiene viaje) y de su proyecto. Un gasto que alguien ve en las pantallas como viajero, pero cuyo viaje tiene otro titular, no le aparece en `buscar`; sí en las consultas exactas. Es una omisión, nunca un dato de más.
 - `reglas_de_aerolinea` (equipaje, millas y cambios por aerolínea) está disponible para los tres permisos: es el catálogo general de reglas, no datos de personas.
-- Antes de cada respuesta, la indexación recalcula todas las fichas de la empresa para comparar huellas; con más personas preguntando, ese costo se repite más veces.
 - Las preguntas sugeridas del gestor son las mismas del colaborador. Para preguntar por alguien de sus proyectos, usa su código (P-…) o el del viaje.
 - El modo determinista reconoce las preguntas de presupuesto, revisión y lo que falta por palabras clave; considera los primeros 50 gastos de la persona y lo dice si hay más.
 - El adaptador de Pinecone se prueba con un transporte simulado que reproduce la forma de las peticiones de la documentación oficial, y se verificó en vivo el 12 de noviembre de 2026 contra el índice `asistente-fichas` (espacio `fichas-local`): carga incremental de las fichas de la base de pruebas y búsquedas por significado en menos de un segundo.

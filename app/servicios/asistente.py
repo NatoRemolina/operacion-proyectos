@@ -32,6 +32,7 @@ MAX_VUELTAS = 6
 PLAZO_TOTAL_S = 60       # toda la conversación con el modelo, no cada llamada
 MAX_GASTOS = 50          # filas por consulta; los totales siempre son exactos
 INDEXAR_ANTES = 100      # fichas que se ponen al día antes de responder
+INDEXAR_CADA_S = 300     # y como mucho cada 5 minutos por proceso: recalcular las fichas en cada pregunta no compensa
 TOPE_DIARIO = 40         # preguntas por persona y día si la regla no existe
 
 consultas = db._tabla(
@@ -963,11 +964,26 @@ def _reservar(usuario: dict, pregunta: str) -> int | None:
         return db.insertar("asistente_consultas", usuario_id=usuario["id"], pregunta=pregunta, modo="en_curso", momento=db.ahora())
 
 
-def _responder(pregunta: str, usuario: dict, cid: int) -> dict:
+_reloj = time.monotonic
+_indexado_en: float | None = None   # última puesta al día del índice en este proceso
+
+
+def _indexar_si_toca():
+    """Pone al día el índice antes de responder, como mucho cada `INDEXAR_CADA_S`. Las cifras no dependen de esto:
+    salen de consultas exactas; lo que se haya cargado hace menos de 5 minutos puede tardar en salir en `buscar`."""
+    global _indexado_en
+    ahora = _reloj()
+    if _indexado_en is not None and ahora - _indexado_en < INDEXAR_CADA_S:
+        return
+    _indexado_en = ahora
     try:
         memoria.actualizar(max_envios=INDEXAR_ANTES)
     except Exception as e:  # el índice al día ayuda, pero nunca impide responder con las consultas exactas
         eventos.registrar("indice", None, "actualización del índice fallida", type(e).__name__)
+
+
+def _responder(pregunta: str, usuario: dict, cid: int) -> dict:
+    _indexar_si_toca()
     from . import asesor  # aquí y no arriba: el asesor importa este módulo
     r, nota, fallo = Rastro(usuario), "", None
     with eventos.cronometro() as t:
