@@ -15,9 +15,10 @@ import {
   type AnalisisVuelo,
   type OpcionVuelo,
   type SegmentoCosto,
-  type TarifaLeida,
+  type TablaVendedor,
+  tablasPorVendedor,
 } from "../domain/cotizar";
-import { useAnalisisVuelo, useRegistrarFuente } from "../application/cotizar";
+import { useAnalisisVuelo, useRegistrarFuente, useUrlIrA } from "../application/cotizar";
 
 const COLOR: Record<SegmentoCosto["tipo"], string> = {
   precio: "bg-marca",
@@ -149,6 +150,7 @@ export function OpcionDeVuelo({
   const [abierto, setAbierto] = useState(false);
   const registrarFuente = useRegistrarFuente(cotizacionId);
   const analisis = useAnalisisVuelo(cotizacionId, vuelo.id);
+  const urlIrA = useUrlIrA(cotizacionId, vuelo.id);
   // Abrir el desglose abre también la página oficial del vendedor (el mismo enlace, en otra pestaña; el servidor deja
   // el rastro del clic) y pide leer la página del vuelo en Google Flights. El servidor reutiliza una lectura de menos
   // de una hora: volver a abrir no gasta otra.
@@ -303,6 +305,7 @@ export function OpcionDeVuelo({
                 agotado={analisis.agotado}
                 error={analisis.error ? "No hubo conexión con el servidor." : null}
                 analisis={analisis.data ?? null}
+                urlIrA={urlIrA}
               />
             </>
           ) : null}
@@ -318,31 +321,62 @@ function horaLocal(iso: string | null): string {
   return new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-function Lista({ titulo, items }: { titulo: string; items: readonly string[] }) {
-  if (!items.length) return null;
-  return (
-    <p className="text-sm">
-      <span className="font-semibold">{titulo}: </span>
-      {items.join(" · ")}
-    </p>
-  );
-}
+const COLUMNAS: readonly { clave: "mano" | "maleta" | "cambios" | "reembolso" | "asiento"; titulo: string }[] = [
+  { clave: "mano", titulo: "Maleta de mano" },
+  { clave: "maleta", titulo: "Primera maleta" },
+  { clave: "cambios", titulo: "Cambios" },
+  { clave: "reembolso", titulo: "Reembolso" },
+  { clave: "asiento", titulo: "Asiento" },
+];
 
-function FichaTarifa({ t }: { t: TarifaLeida }) {
+/**
+ * Una tabla por vendedor y una fila por tarifa, con su «Ir a…». En el celular cada fila se apila con el nombre de
+ * cada columna delante: nada se desplaza de lado.
+ */
+function TablaDeVendedor({ tabla, urlIrA }: { tabla: TablaVendedor; urlIrA: (vendedor: string, tarifa: string) => string }) {
+  const celda = "flex gap-2 py-1 md:table-cell md:py-1.5 md:pr-3 md:align-top before:shrink-0 before:font-semibold " +
+    "before:text-texto-secundario before:content-[attr(data-titulo)] md:before:content-none";
   return (
-    <li className="flex flex-col gap-1 rounded-tarjeta border border-linea p-3">
-      <p className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <span>
-          <span className="font-semibold">{t.nombre}</span>
-          <span className="text-sm text-texto-secundario"> · {t.vendedor}</span>
-        </span>
-        <span className="font-bold tabular-nums">{formatearDinero(t.precio.toFixed(2))}</span>
-      </p>
-      <Lista titulo="Equipaje" items={t.equipaje} />
-      <Lista titulo="Cambios" items={t.cambios} />
-      <Lista titulo="Reembolso" items={t.reembolso} />
-      <Lista titulo="Incluye" items={t.otras} />
-    </li>
+    <table className="w-full text-sm [overflow-wrap:anywhere]">
+      <caption className="mb-1 text-left font-semibold">{tabla.vendedor}</caption>
+      <thead className="sr-only md:not-sr-only">
+        <tr className="text-left text-texto-secundario">
+          <th scope="col" className="py-1 pr-3 font-semibold">Tarifa</th>
+          <th scope="col" className="py-1 pr-3 text-right font-semibold">Precio</th>
+          {COLUMNAS.map((c) => (
+            <th key={c.clave} scope="col" className="py-1 pr-3 font-semibold">{c.titulo}</th>
+          ))}
+          <th scope="col" className="py-1 pr-3 font-semibold">Origen</th>
+          <th scope="col" className="py-1 font-semibold"><span className="sr-only">Comprar</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {tabla.filas.map((f) => (
+          <tr key={`${f.tarifa}-${f.precio}`} className="block border-t border-linea py-2 md:table-row md:py-0">
+            <th scope="row" data-titulo="Tarifa:" className={`${celda} text-left font-semibold`}>{f.tarifa}</th>
+            <td data-titulo="Precio:" className={`${celda} tabular-nums md:text-right md:whitespace-nowrap`}>
+              {formatearDinero(f.precio.toFixed(2))}
+            </td>
+            {COLUMNAS.map((c) => (
+              <td key={c.clave} data-titulo={`${c.titulo}:`} className={celda}>{f[c.clave]}</td>
+            ))}
+            <td data-titulo="Origen:" className={celda}>{f.origen}</td>
+            <td className="py-1 md:table-cell md:py-1.5">
+              <a
+                href={urlIrA(f.vendedor, f.tarifa)}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Ir a ${f.vendedor}, ${f.tarifa}, se abre en otra pestaña`}
+                className={`inline-flex min-h-11 items-center gap-1 whitespace-nowrap px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
+              >
+                Ir a {f.vendedor}
+                <span aria-hidden="true">↗</span>
+              </a>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -355,7 +389,9 @@ function DetalleGoogle({
   agotado = false,
   error,
   analisis,
+  urlIrA,
 }: {
+  urlIrA: (vendedor: string, tarifa: string) => string;
   pendiente: boolean;
   /** Se siguió una lectura en curso hasta el límite y no terminó. */
   agotado?: boolean;
@@ -387,7 +423,7 @@ function DetalleGoogle({
                   ? `No se pudo leer: ${analisis.motivo ?? "sin motivo"}.`
                   : analisis.motivo}
       </p>
-      {!lectura && analisis?.estado === "listo" && analisis.datos ? <Leido a={analisis} /> : null}
+      {!lectura && analisis?.estado === "listo" && analisis.datos ? <Leido a={analisis} urlIrA={urlIrA} /> : null}
       {!lectura && analisis?.estado === "fallido" && analisis.captura_url ? (
         <a href={analisis.captura_url} target="_blank" rel="noopener noreferrer" className="self-start text-sm underline underline-offset-3">
           Ver lo que mostró la página
@@ -397,7 +433,7 @@ function DetalleGoogle({
   );
 }
 
-function Leido({ a }: { a: AnalisisVuelo }) {
+function Leido({ a, urlIrA }: { a: AnalisisVuelo; urlIrA: (vendedor: string, tarifa: string) => string }) {
   const d = a.datos!;
   return (
     <>
@@ -407,13 +443,11 @@ function Leido({ a }: { a: AnalisisVuelo }) {
         </Alerta>
       ) : null}
       {d.tarifas.length ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <h4 className="font-semibold">Tarifas y qué incluye cada una</h4>
-          <ul className="flex flex-col gap-2">
-            {d.tarifas.map((t) => (
-              <FichaTarifa key={`${t.vendedor}-${t.nombre}-${t.precio}`} t={t} />
-            ))}
-          </ul>
+          {tablasPorVendedor(d.tarifas, "página").map((t) => (
+            <TablaDeVendedor key={t.vendedor} tabla={t} urlIrA={urlIrA} />
+          ))}
         </div>
       ) : null}
       {d.vendedores.length ? (

@@ -404,6 +404,19 @@ describe("Comparación de una cotización", () => {
     expect(within(detalle).getByText("El precio de la página no es el del buscador")).toBeInTheDocument();
     expect(within(detalle).getByText(/La comparación sigue usando el precio del buscador/)).toBeInTheDocument();
     expect(within(detalle).getByText("Basic Economy")).toBeInTheDocument();
+    // una tabla por vendedor, una fila por tarifa, con su «Ir a…» (en otra pestaña, sin acceso a esta)
+    const tabla = within(detalle).getByRole("table", { name: "American" });
+    const filas = within(tabla).getAllByRole("row").slice(1);
+    expect(filas.map((f) => within(f).getByRole("rowheader").textContent)).toEqual(["Basic Economy", "Main Cabin", "Main Plus", "Main Select"]);
+    const main = filas[1]!;
+    expect(within(main).getByText("1st checked bag: $100")).toBeInTheDocument();
+    expect(within(main).getByText("Free change, possible fare difference")).toBeInTheDocument();
+    expect(within(main).getByText("Free seat selection")).toBeInTheDocument();
+    expect(within(main).getByText("página")).toBeInTheDocument();
+    const ir = within(main).getByRole("link", { name: "Ir a American, Main Cabin, se abre en otra pestaña" });
+    expect(ir).toHaveAttribute("target", "_blank");
+    expect(ir).toHaveAttribute("rel", "noopener noreferrer");
+    expect(ir.getAttribute("href")).toContain("American");
     expect(within(detalle).getAllByText(/1st checked bag: \$110/).length).toBeGreaterThan(0);
     expect(within(detalle).getAllByText(/Full refunds/).length).toBe(1);
     expect(within(detalle).getByText("Precio por vendedor").nextElementSibling).toHaveTextContent(/American \(aerolínea\)desde/);

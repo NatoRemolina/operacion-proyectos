@@ -215,6 +215,11 @@ export function crearCotizarMemoria(opciones: {
         throw new ErrorDeAplicacion("validacion", { campos: { vuelo_id: "Ese vuelo no es de esta cotización." } });
       }
     },
+    urlIrA(id, vueloId, vendedor, tarifa) {
+      // en memoria no hay vendedor al que ir: la página del vuelo en Google Flights
+      const vuelo = [...obtener(id).vuelos, ...obtener(id).descartados].find((v) => v.id === vueloId);
+      return `${vuelo?.fuente_url ?? "https://www.google.com/travel/flights"}#${encodeURIComponent(`${vendedor}·${tarifa}`)}`;
+    },
     async verAnalisis(id, vueloId, signal) {
       await esperar(latenciaMs, signal);
       exigirSesion(sesion);

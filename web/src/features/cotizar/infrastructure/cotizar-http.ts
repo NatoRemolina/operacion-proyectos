@@ -293,6 +293,9 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       // La API da la ruta con su prefijo; la web la pide a la misma base que el resto
       return { ...a, captura_url: a.captura_url ? absoluta(a.captura_url) : null };
     },
+    urlIrA(id, vueloId, vendedor, tarifa) {
+      return cliente.url(`/cotizaciones/${id}/vuelos/${vueloId}/ir${consulta({ vendedor, tarifa })}`);
+    },
     async verAnalisis(id, vueloId, signal): Promise<AnalisisVuelo> {
       const a = await cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, analisisSchema, { signal });
       return { ...a, captura_url: a.captura_url ? absoluta(a.captura_url) : null };

@@ -248,3 +248,12 @@ export function useAnalisisVuelo(id: number, vueloId: number) {
     agotado: enCurso && data?.estado === "pendiente" && consultas >= SEGUIMIENTO_INTENTOS && !buscando,
   };
 }
+
+/** Dirección de «Ir a…» para una tarifa de un vendedor del vuelo: la abre una pestaña nueva. */
+export function useUrlIrA(id: number, vueloId: number) {
+  const repositorio = useCotizarRepository();
+  return useCallback(
+    (vendedor: string, tarifa: string) => repositorio.urlIrA(id, vueloId, vendedor, tarifa),
+    [repositorio, id, vueloId],
+  );
+}

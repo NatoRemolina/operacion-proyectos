@@ -163,3 +163,28 @@ describe("fecha de ida pasada", () => {
     expect(validarBorrador({ ...base, ida: "2026-11-12" }, hoy).ida).toBeUndefined();
   });
 });
+
+describe("todas las opciones de compra", () => {
+  it("agrupa por vendedor y reparte lo que incluye cada tarifa en columnas", async () => {
+    const { tablasPorVendedor } = await import("./cotizar");
+    const base = { cambios: [], reembolso: [], otras: [], equipaje: [] };
+    const tablas = tablasPorVendedor(
+      [
+        { ...base, vendedor: "American", nombre: "Basic Economy", precio: 619, equipaje: ["1 free carry-on", "1st checked bag: $110"],
+          cambios: ["No ticket changes"], reembolso: ["No refunds"], otras: ["Seat selection for a fee", "Standard seat"] },
+        { ...base, vendedor: "Expedia", nombre: "Economy", precio: 612 },
+        { ...base, vendedor: "American", nombre: "Main Cabin", precio: 1014, cambios: ["Free change, possible fare difference"] },
+      ],
+      "página",
+    );
+    expect(tablas.map((t) => [t.vendedor, t.filas.map((f) => f.tarifa)])).toEqual([
+      ["American", ["Basic Economy", "Main Cabin"]],
+      ["Expedia", ["Economy"]],
+    ]);
+    const basica = tablas[0]!.filas[0]!;
+    expect([basica.mano, basica.maleta, basica.cambios, basica.reembolso, basica.asiento, basica.origen]).toEqual([
+      "1 free carry-on", "1st checked bag: $110", "No ticket changes", "No refunds", "Seat selection for a fee", "página",
+    ]);
+    expect(tablas[1]!.filas[0]!.mano).toBe("—");
+  });
+});

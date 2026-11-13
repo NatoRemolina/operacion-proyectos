@@ -330,6 +330,8 @@ export interface CotizarRepository {
   analizarVuelo(id: number, vueloId: number): Promise<AnalisisVuelo>;
   /** La última lectura del vuelo, para seguir una que está en curso. */
   verAnalisis(id: number, vueloId: number, signal?: AbortSignal): Promise<AnalisisVuelo>;
+  /** Dirección de la página que lleva a esa tarifa de ese vendedor («Ir a…», en otra pestaña). */
+  urlIrA(id: number, vueloId: number, vendedor: string, tarifa: string): string;
 }
 
 // ---------- reglas del campo de lugar ----------
@@ -742,4 +744,51 @@ export function duracion(minutos: number | null): string {
 export function tituloRuta(c: Pick<Cotizacion, "origen" | "destino">): string {
   const lado = (l: Cotizacion["origen"]) => l.lugar?.nombre ?? l.aeropuertos.join(" · ");
   return `${lado(c.origen)} → ${lado(c.destino)}`;
+}
+
+// ---------- todas las opciones de compra (pieza 3b) ----------
+export type OrigenTarifa = "página" | "buscador";
+
+/** Una tarifa de un vendedor, con lo que incluye ya repartido en columnas. El texto es el de la fuente (en inglés). */
+export interface FilaTarifa {
+  readonly vendedor: string;
+  readonly tarifa: string;
+  readonly precio: number;
+  readonly mano: string;
+  readonly maleta: string;
+  readonly cambios: string;
+  readonly reembolso: string;
+  readonly asiento: string;
+  readonly origen: OrigenTarifa;
+}
+
+export interface TablaVendedor {
+  readonly vendedor: string;
+  readonly filas: readonly FilaTarifa[];
+}
+
+const SIN_DATO = "—";
+
+function primera(lineas: readonly string[], patron: RegExp): string {
+  return lineas.find((l) => patron.test(l)) ?? SIN_DATO;
+}
+
+/** Agrupa las tarifas por vendedor, en el orden en que llegan, y reparte lo que incluye cada una. */
+export function tablasPorVendedor(tarifas: readonly TarifaLeida[], origen: OrigenTarifa): TablaVendedor[] {
+  const tablas = new Map<string, FilaTarifa[]>();
+  for (const t of tarifas) {
+    const fila: FilaTarifa = {
+      vendedor: t.vendedor,
+      tarifa: t.nombre,
+      precio: t.precio,
+      mano: primera(t.equipaje, /carry-on|personal item/i),
+      maleta: primera(t.equipaje, /checked bag/i),
+      cambios: t.cambios.join(" · ") || SIN_DATO,
+      reembolso: t.reembolso.join(" · ") || SIN_DATO,
+      asiento: primera(t.otras, /seat/i),
+      origen,
+    };
+    tablas.set(t.vendedor, [...(tablas.get(t.vendedor) ?? []), fila]);
+  }
+  return [...tablas].map(([vendedor, filas]) => ({ vendedor, filas }));
 }

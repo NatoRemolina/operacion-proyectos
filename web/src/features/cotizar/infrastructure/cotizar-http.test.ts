@@ -88,5 +88,12 @@ describe("adaptador HTTP de cotizar", () => {
     expect(new Headers(fetchFalso.mock.calls[1]![1]?.headers).get("Idempotency-Key")).toBe("clave-decidir");
     expect(new Headers(fetchFalso.mock.calls[1]![1]?.headers).get("X-CSRF-Token")).toBe("token-csrf");
   });
+
+  it("las rutas de la API llegan como direcciones de la web: vendedor, «Ir a…» y captura", async () => {
+    const { cotizar } = preparar(respuestaJson(COTIZACION_MOAB));
+    const c = await cotizar.obtener(12);
+    expect(c.vuelos[0]!.vendedor_url).toBe(`/api/v1/cotizaciones/12/vuelos/${c.vuelos[0]!.id}/vendedor`);
+    expect(cotizar.urlIrA(12, 6, "American", "Main Cabin")).toBe("/api/v1/cotizaciones/12/vuelos/6/ir?vendedor=American&tarifa=Main+Cabin");
+  });
 });
 
