@@ -303,3 +303,89 @@ def test_el_contrato_nombra_todas_las_categorias():
     linea = next(l for l in contrato.splitlines() if "categoria: string | null" in l and "//" in l)
     for clave in config.CATEGORIAS:
         assert clave in linea, clave
+
+
+# ---------- pieza 5: materiales de prueba sellados ----------
+NUEVOS = ("confirmacion_vuelo.pdf", "reserva_hotel.eml", "confirmacion_hotel.html", "recibo_taxi.png",
+          "compra_proyecto.pdf", "factura_dos_paginas.pdf")
+SELLO = "FICTICIO · prueba técnica"
+
+
+def _soportes() -> list:
+    return sorted(p for p in config.DIR_EJEMPLOS.iterdir() if p.suffix in (".png", ".jpg", ".pdf", ".eml", ".html"))
+
+
+def test_los_materiales_nuevos_existen_y_todos_tienen_su_lectura_esperada():
+    esperados = json.loads((config.DIR_EJEMPLOS / "esperados.json").read_text())
+    for nombre in NUEVOS:
+        assert (config.DIR_EJEMPLOS / nombre).is_file(), nombre
+    assert sorted(esperados) == [p.name for p in _soportes()]
+
+
+def test_todos_los_soportes_llevan_el_sello_de_ficticio():
+    from app.servicios import extraccion
+    for p in _soportes():
+        datos = p.read_bytes()
+        if p.suffix == ".png":
+            # El sello se dibuja en la imagen; además queda en sus metadatos para poder comprobarlo sin leer píxeles
+            assert SELLO.encode() in datos, p.name
+        elif p.suffix == ".pdf":
+            assert b"FICTICIO" in datos and b"prueba t" in datos, p.name
+        elif p.suffix == ".html":
+            assert SELLO in extraccion.html_a_texto(datos), p.name
+        else:
+            from email import message_from_bytes, policy
+            msg = message_from_bytes(datos, policy=policy.default)
+            assert SELLO in msg["subject"] and SELLO in msg.get_body(("plain",)).get_content(), p.name
+
+
+def test_los_materiales_solo_usan_dominios_de_prueba():
+    import re
+    for p in _soportes():
+        if p.suffix == ".png":
+            continue
+        texto = p.read_bytes().decode("latin-1")
+        dominios = re.findall(r"@([A-Za-z0-9.-]+\.[A-Za-z]{2,})", texto) + re.findall(r"https?://([A-Za-z0-9.-]+)", texto)
+        assert all(d.lower().endswith(".test") for d in dominios), (p.name, dominios)
+
+
+def test_la_reserva_por_correo_trae_la_factura_en_pdf_detras_de_una_imagen():
+    from email import message_from_bytes, policy
+    msg = message_from_bytes((config.DIR_EJEMPLOS / "reserva_hotel.eml").read_bytes(), policy=policy.default)
+    tipos = [a.get_content_type() for a in msg.iter_attachments()]
+    assert tipos == ["image/png", "application/pdf"]
+
+
+def test_la_factura_de_dos_paginas_trae_el_total_en_la_segunda():
+    import re
+    pdf = (config.DIR_EJEMPLOS / "factura_dos_paginas.pdf").read_bytes()
+    assert len(re.findall(rb"/Type /Page\b", pdf)) == 2
+    assert pdf.count(b"258.30") == 1 and pdf.index(b"Continued on page 2") < pdf.index(b"258.30")
+
+
+def test_el_readme_explica_cada_material():
+    readme = (config.DIR_EJEMPLOS / "README.md").read_text()
+    assert "inventado" in readme.lower() and ".test" in readme
+    for p in _soportes():
+        assert f"`{p.name}`" in readme, p.name
+
+
+def test_el_buzon_simulado_lista_y_lee_los_materiales_nuevos(cliente, viaje_aprobado):
+    pagina = cliente.get("/gastos/cargar").text
+    for nombre in NUEVOS:
+        assert f'value="{nombre}"' in pagina, nombre
+    esperados = json.loads((config.DIR_EJEMPLOS / "esperados.json").read_text())
+    antes = db.uno("select coalesce(max(id), 0) m from gastos")["m"]
+    correos = [n for n in NUEVOS if n.endswith((".eml", ".html"))]
+    cliente.post("/gastos/ejemplos", data={"nombres": [n for n in NUEVOS if n not in correos], "viaje_id": viaje_aprobado["id"],
+                                           "canal": "web"})
+    cliente.post("/gastos/ejemplos", data={"nombres": correos, "viaje_id": viaje_aprobado["id"], "canal": "correo"})
+    filas = db.todos("""select g.*, d.nombre archivo, d.canal from gastos g join documentos d on d.id=g.documento_id
+                        where g.id>:m order by g.id""", m=antes)
+    assert sorted(f["archivo"] for f in filas) == sorted(NUEVOS)
+    for f in filas:
+        e = esperados[f["archivo"]]
+        assert (f["comercio"], f["fecha"], f["categoria"], f["total"], f["moneda"]) == \
+            (e["comercio"], e["fecha"], e["categoria"], e["total"], e["moneda"]), f["archivo"]
+        assert f["origen_dato"] == "guardado"
+        assert f["canal"] == ("correo" if f["archivo"] in correos else "web")

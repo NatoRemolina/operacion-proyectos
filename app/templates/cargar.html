@@ -22,14 +22,14 @@
 </form>
 {% if es_admin %}<div>
 <form method="post" action="/gastos/ejemplos" class="tarjeta">
-  <h3>Soportes de ejemplo</h3><p class="eti">Recibos y facturas ficticios en USD y EUR, uno de ellos ilegible a propósito.</p>
+  <h3>Soportes de ejemplo</h3><p class="eti">Recibos, facturas y confirmaciones ficticios (sellados «FICTICIO · prueba técnica») en USD y EUR, uno de ellos ilegible a propósito.</p>
   {% for e in ejemplos %}<label><input type="checkbox" name="nombres" value="{{ e }}" checked> {{ e }}</label>{% endfor %}
   <div class="campos" style="margin-top:10px"><div><label for="viaje_2">Viaje</label><select id="viaje_2" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div><div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
   <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
   <input type="hidden" name="canal" value="web"><p><button>Procesar seleccionados</button></p>
 </form>
 <form method="post" action="/gastos/ejemplos" class="tarjeta">
-  <h3>Buzón de correo (simulado)</h3><p class="eti">Lee los correos de la carpeta de ejemplos como si llegaran a un buzón de gastos.</p>
+  <h3>Buzón de correo (simulado)</h3><p class="eti">Lee los correos (.eml) y las confirmaciones en HTML de la carpeta de ejemplos como si llegaran a un buzón de gastos.</p>
   {% for e in correos %}<label><input type="checkbox" name="nombres" value="{{ e }}" checked> {{ e }}</label>{% endfor %}
   <div class="campos" style="margin-top:10px"><div><label for="viaje_3">Viaje</label><select id="viaje_3" name="viaje_id"><option value="0">{% if elegido %}Automático: {{ elegido.codigo }}{% else %}Sin viaje (irá a revisión){% endif %}</option>{% for v in mis_viajes %}<option value="{{ v.id }}">{{ v.codigo }} · {{ v.origen }} → {{ v.destino }} · {{ v.ida }} · {{ v.estado_texto }}{% if es_admin %} · {{ v.titular or '—' }}{% endif %}</option>{% endfor %}</select></div><div><label>Proyecto (si no hay viaje)</label><select name="proyecto_id">{% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select></div>
   <div><label>Viajero (si no hay viaje)</label><select name="viajero_id">{% for v in viajeros %}<option value="{{ v.id }}">{{ v.nombre }}</option>{% endfor %}</select></div></div>
