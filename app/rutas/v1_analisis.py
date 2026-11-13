@@ -39,20 +39,27 @@ def _visible(yo: dict, sid: int):
         raise _no_encontrado()
 
 
-def _forma(sid: int, opcion_id: int, a: dict) -> dict:
+def _con_enlaces(tarifas: list, sesion: str, sid: int, opcion_id: int) -> list:
+    """Cada tarifa con su «Ir a…» firmado para esta sesión (sin sesión, sin enlace)."""
+    return [{**t, "ir_url": v1_cotizaciones.url_ir(sesion, sid, opcion_id, str(t.get("vendedor") or ""), str(t.get("nombre") or ""))
+             if sesion and t.get("vendedor") and t.get("nombre") else None} for t in tarifas if isinstance(t, dict)]
+
+
+def _forma(sid: int, opcion_id: int, a: dict, sesion: str = "") -> dict:
     precio = (db.uno("select precio from opciones where id=:o", o=opcion_id) or {}).get("precio")
     return {"id": a["id"], "opcion_id": opcion_id, "estado": a["estado"], "motivo": a["motivo"], "url": a["url"],
             "leido": consultas.instante(a["terminado"]) if a.get("terminado") else None, "duracion_ms": a["duracion_ms"],
             "reutilizado": bool(a.get("reutilizado")), "precio_buscador_usd": consultas.dinero(precio),
             "aviso_precio": analizador.aviso_precio(a, precio) if a["estado"] == "listo" else None,
-            "datos": a["datos"] if a["estado"] == "listo" else None,
+            "datos": {**a["datos"], "tarifas": _con_enlaces(a["datos"].get("tarifas") or [], sesion, sid, opcion_id)}
+            if a["estado"] == "listo" and isinstance(a.get("datos"), dict) else None,
             "extracto": (a["datos"] or {}).get("extracto") if a["estado"] == "fallido" else None,
             "captura_url": f"{PREFIJO}/cotizaciones/{sid}/analisis/{a['id']}/captura" if a.get("captura") else None}
 
 
 @router.post("/cotizaciones/{id}/vuelos/{opcion_id}/analisis", response_model=AnalisisVuelo,
              responses=errores_cotizacion(401, 403, 404, 422))
-def pedir(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(escritura)):
+def pedir(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(escritura)):
     """Lee la página del vuelo en Google Flights (tarda unos segundos) o devuelve la lectura de menos de 60 minutos.
 
     Tarifas y qué incluye cada una, equipaje, cambios y reembolso, escalas, precio por vendedor y una captura. Con los
@@ -62,12 +69,12 @@ def pedir(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(escritura)):
         analizador.clave_de(id, opcion_id)   # 404 solo si el vuelo no es de la cotización
     except LookupError as e:
         raise _no_encontrado() from e
-    return _forma(id, opcion_id, analizador.solicitar(yo, id, opcion_id))
+    return _forma(id, opcion_id, analizador.solicitar(yo, id, opcion_id), v1_cotizaciones._sesion(request))
 
 
 @router.get("/cotizaciones/{id}/vuelos/{opcion_id}/analisis", response_model=AnalisisVuelo,
             responses=errores_cotizacion(401, 404, 422))
-def ver(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
+def ver(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
     """La última lectura del vuelo (para seguir una en curso). 404 si nunca se leyó."""
     _visible(yo, id)
     try:
@@ -76,7 +83,7 @@ def ver(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
         raise _no_encontrado() from e
     if not a:
         raise _no_encontrado()
-    return _forma(id, opcion_id, {**a, "reutilizado": True})
+    return _forma(id, opcion_id, {**a, "reutilizado": True}, v1_cotizaciones._sesion(request))
 
 
 @router.get("/cotizaciones/{id}/analisis/{analisis_id}/captura", response_class=Response, responses={
@@ -94,7 +101,7 @@ def captura(id: int = Id(), analisis_id: int = Id(), yo: dict = Depends(persona)
 # ---------- primera capa del desglose: lo del buscador ----------
 @router.get("/cotizaciones/{id}/vuelos/{opcion_id}/reserva", response_model=OpcionesBuscador,
             responses=errores_cotizacion(401, 404, 422))
-def opciones_buscador(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
+def opciones_buscador(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
     """Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada
     vendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial."""
     _visible(yo, id)
@@ -110,7 +117,8 @@ def opciones_buscador(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(
         v = vendedores.setdefault(t["vendedor"], {"vendedor": t["vendedor"], "aerolinea": t["aerolinea"], "precio_desde": t["precio"]})
         v["precio_desde"] = min(v["precio_desde"], t["precio"])
     return {"estado": "listo" if tarifas else "sin_datos", "consultado": consultas.instante(creado) if creado else None,
-            "tarifas": tarifas, "vendedores": list(vendedores.values())}
+            "tarifas": _con_enlaces(tarifas, v1_cotizaciones._sesion(request), id, opcion_id),
+            "vendedores": list(vendedores.values())}
 
 
 # ---------- «Ir a…» (pieza 3b) ----------
@@ -136,7 +144,8 @@ def ir(datos: PedidoIrA, id: int = Id(), opcion_id: int = Id(), yo: dict = Depen
     200: {"description": "Página que prepara el envío al vendedor y lo hace", "content": {"text/html": {}}}})
 def pagina_ir(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona),
               vendedor: str = Query(min_length=1, max_length=60, pattern=r"^[\w .,&'()+/-]+$"),
-              tarifa: str = Query(min_length=1, max_length=60, pattern=r"^[\w .,&'()+/-]+$")):
+              tarifa: str = Query(min_length=1, max_length=60, pattern=r"^[\w .,&'()+/-]+$"),
+              t: str | None = Query(None, max_length=64, description="Token firmado del enlace (vence en 5 minutos).")):
     """La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el
     formulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights."""
     if request.headers.get("sec-fetch-site", "none") not in SITIOS_PERMITIDOS:
@@ -145,6 +154,9 @@ def pagina_ir(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict 
     o = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=opcion_id, s=id)
     if not acceso.puede_ver(yo, fila) or not o:
         return v1_cotizaciones.pagina_aviso(404, *v1_cotizaciones.AJENO)
+    if not v1_cotizaciones.token_ir_valido(t, v1_cotizaciones._sesion(request), id, opcion_id, vendedor, tarifa):
+        # sin el token de esta sesión (enlace viejo, copiado o enviado por correo): no se hace el pedido ni se gasta nada
+        return v1_cotizaciones.pagina_aviso(403, "El enlace venció", "Vuelve a abrir el desglose del vuelo y elige la tarifa otra vez.")
     sol = db.uno("select * from solicitudes where id=:i", i=id)
     vuelo = db.de_json(o["datos"], {}) or {}
     google = cotizacion.fuente_vuelo(sol, vuelo)

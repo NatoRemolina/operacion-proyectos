@@ -254,14 +254,6 @@ export function useAnalisisVuelo(id: number, vueloId: number) {
   };
 }
 
-/** Dirección de «Ir a…» para una tarifa de un vendedor del vuelo: la abre una pestaña nueva. */
-export function useUrlIrA(id: number, vueloId: number) {
-  const repositorio = useCotizarRepository();
-  return useCallback(
-    (vendedor: string, tarifa: string) => repositorio.urlIrA(id, vueloId, vendedor, tarifa),
-    [repositorio, id, vueloId],
-  );
-}
 
 export const OPCIONES_REINTENTO_MS = 1000;
 export const OPCIONES_INTENTOS = 5;

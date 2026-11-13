@@ -89,11 +89,17 @@ describe("adaptador HTTP de cotizar", () => {
     expect(new Headers(fetchFalso.mock.calls[1]![1]?.headers).get("X-CSRF-Token")).toBe("token-csrf");
   });
 
-  it("las rutas de la API llegan como direcciones de la web: vendedor, «Ir a…» y captura", async () => {
-    const { cotizar } = preparar(respuestaJson(COTIZACION_MOAB));
+  it("las rutas de la API llegan como direcciones de la web: vendedor y el «Ir a…» firmado de cada tarifa", async () => {
+    const tarifa = { vendedor: "American", nombre: "Main Cabin", precio: 1014, equipaje: [], cambios: [], reembolso: [], otras: [],
+      ir_url: "/api/v1/cotizaciones/12/vuelos/6/ir?vendedor=American&tarifa=Main+Cabin&t=1.abc" };
+    const { cotizar } = preparar(
+      respuestaJson(COTIZACION_MOAB),
+      respuestaJson({ estado: "listo", consultado: null, tarifas: [tarifa, { ...tarifa, ir_url: null }], vendedores: [] }),
+    );
     const c = await cotizar.obtener(12);
     expect(c.vuelos[0]!.vendedor_url).toBe(`/api/v1/cotizaciones/12/vuelos/${c.vuelos[0]!.id}/vendedor`);
-    expect(cotizar.urlIrA(12, 6, "American", "Main Cabin")).toBe("/api/v1/cotizaciones/12/vuelos/6/ir?vendedor=American&tarifa=Main+Cabin");
+    const o = await cotizar.opcionesBuscador(12, 6);
+    expect(o.tarifas.map((t) => t.ir_url)).toEqual([tarifa.ir_url, null]);   // el de la API tal cual; sin él, ninguno
   });
 });
 

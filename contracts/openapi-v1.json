@@ -461,6 +461,25 @@
               "pattern": "^[\\w .,&'()+/-]+$",
               "title": "Tarifa"
             }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Token firmado del enlace (vence en 5 minutos).",
+              "title": "T"
+            },
+            "description": "Token firmado del enlace (vence en 5 minutos)."
           }
         ],
         "responses": {
@@ -12729,6 +12748,18 @@
             "type": "array",
             "title": "Otras",
             "description": "Lo demás que incluye: asiento, embarque, espacio para las piernas..."
+          },
+          "ir_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ir Url",
+            "description": "«Ir a…» de esta tarifa: la página de envío firmada para esta sesión (5 min)."
           }
         },
         "type": "object",

@@ -404,8 +404,8 @@ Cuerpo JSON `{"vendedor": "American", "tarifa": "Main Cabin"}` (los nombres como
 - Bitácora `ir a vendedor`: quién, opción, vendedor, tarifa, camino, dominio y duración; la captura previa al clic queda en `analisis_vuelo` (`accion: ir_a`).
 - Lo ajeno o un vuelo de otra cotización: 404. Sin CSRF: 403. Un vendedor o tarifa con caracteres raros, o un campo `url`: 422.
 
-### `GET /cotizaciones/{id}/vuelos/{opcion_id}/ir?vendedor=…&tarifa=…`
-Navegación en otra pestaña (la abre «Ir a…»): una página mínima que muestra «Preparando tu enlace a {vendedor} · {tarifa}…», llama a `POST …/ir` con la sesión y envía el formulario (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. CSP con `default-src 'none'`, script por `nonce`, `connect-src 'self'` y `form-action https:`; `no-store`. Abrirla no gasta el tope; desde otro sitio (`Sec-Fetch-Site: cross-site`), 403.
+### `GET /cotizaciones/{id}/vuelos/{opcion_id}/ir?vendedor=…&tarifa=…&t=…`
+Navegación en otra pestaña (la abre «Ir a…»), siempre con la dirección que trae cada tarifa en `ir_url` (en `…/reserva` y en `AnalisisVuelo.datos.tarifas`): el token `t` está firmado con la sesión, la cotización, el vuelo, el vendedor y la tarifa, y vence a los 5 minutos. Sin él (un enlace enviado por correo, viejo o de otra tarifa): 403 con una página legible, sin hacer el pedido ni gastar nada. una página mínima que muestra «Preparando tu enlace a {vendedor} · {tarifa}…», llama a `POST …/ir` con la sesión y envía el formulario (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. CSP con `default-src 'none'`, script por `nonce`, `connect-src 'self'` y `form-action https:`; `no-store`. Abrirla no gasta el tope; desde otro sitio (`Sec-Fetch-Site: cross-site`), 403.
 
 ### `POST /cotizaciones/{id}/vuelos/{opcion_id}/analisis`
 Con `X-CSRF-Token` y sin cuerpo. Lee la página del vuelo en Google Flights (la búsqueda de la cotización con la ida de ese vuelo elegida; el analizador elige el regreso más barato para llegar a las opciones de reserva) y responde 200 `AnalisisVuelo`. Tarda unos segundos (hasta 55); la web muestra «Leyendo la página del vuelo…» mientras tanto.

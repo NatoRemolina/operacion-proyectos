@@ -330,6 +330,7 @@ class TarifaLeida(BaseModel):
     cambios: list[str]
     reembolso: list[str]
     otras: list[str] = Field(description="Lo demás que incluye: asiento, embarque, espacio para las piernas...")
+    ir_url: str | None = Field(None, description="«Ir a…» de esta tarifa: la página de envío firmada para esta sesión (5 min).")
 
 
 class VendedorLeido(BaseModel):

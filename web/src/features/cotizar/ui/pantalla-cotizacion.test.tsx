@@ -408,7 +408,9 @@ describe("Comparación de una cotización", () => {
     expect(within(deBuscador).getAllByRole("row").slice(1).map((f) => within(f).getByRole("rowheader").textContent))
       .toEqual(["Basic Economy", "Main Cabin", "Main Plus", "Main Select"]);
     expect(within(deBuscador).getByRole("link", { name: "Ir a American, Basic Economy, se abre en otra pestaña" })).toBeInTheDocument();
-    responder({ ...ANALISIS_EJEMPLO, opcion_id: RECOMENDADA.id, leido: "2026-11-13T15:10:00Z", captura_url: "/api/v1/captura.png" });
+    // cada tarifa trae su «Ir a…» firmado por la API
+    const datos = { ...ANALISIS_EJEMPLO.datos!, tarifas: ANALISIS_EJEMPLO.datos!.tarifas.map((t) => ({ ...t, ir_url: `/api/v1/ir/${t.nombre}` })) };
+    responder({ ...ANALISIS_EJEMPLO, datos, opcion_id: RECOMENDADA.id, leido: "2026-11-13T15:10:00Z", captura_url: "/api/v1/captura.png" });
     expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las \d\d:\d\d$/)).toBeInTheDocument();
     const detalle = within(tarjeta).getByRole("region", { name: "Detalle de Google Flights" });
     expect(within(detalle).getByText("El precio de la página no es el del buscador")).toBeInTheDocument();
@@ -426,7 +428,7 @@ describe("Comparación de una cotización", () => {
     const ir = within(main).getByRole("link", { name: "Ir a American, Main Cabin, se abre en otra pestaña" });
     expect(ir).toHaveAttribute("target", "_blank");
     expect(ir).toHaveAttribute("rel", "noopener noreferrer");
-    expect(ir.getAttribute("href")).toContain("American");
+    expect(ir).toHaveAttribute("href", "/api/v1/ir/Main Cabin");   // el enlace firmado que da la API, tal cual
     expect(within(detalle).getAllByText(/1st checked bag: \$110/).length).toBeGreaterThan(0);
     expect(within(detalle).getAllByText(/Full refunds/).length).toBe(1);
     expect(within(detalle).getByText("Precio por vendedor").nextElementSibling).toHaveTextContent(/American \(aerolínea\)desde/);

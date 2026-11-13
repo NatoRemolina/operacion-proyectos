@@ -67,7 +67,7 @@ def _detalle(c: dict, sesion: str) -> dict:
             a = analizador.ultimo(c["solicitud_id"], o["id"])
         except LookupError:
             a = None
-        lectura = v1_analisis._forma(c["solicitud_id"], o["id"], {**a, "reutilizado": True}) if a else None
+        lectura = v1_analisis._forma(c["solicitud_id"], o["id"], {**a, "reutilizado": True}, sesion) if a else None
     return {**_forma(c), "vuelo": vuelo, "analisis": lectura,
             "clics": [{**k, "momento": consultas.instante(k["momento"])} for k in compras.clics(c)]}
 

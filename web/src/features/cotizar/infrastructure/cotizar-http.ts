@@ -243,6 +243,7 @@ const analisisSchema = z.object({
           cambios: lista,
           reembolso: lista,
           otras: lista,
+          ir_url: z.string().nullable().default(null),
         }),
       ),
       vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
@@ -274,6 +275,7 @@ const tarifaSchema = z.object({
   cambios: lista,
   reembolso: lista,
   otras: lista,
+  ir_url: z.string().nullable().default(null),
 });
 const opcionesBuscadorSchema = z.object({
   estado: z.enum(["listo", "sin_datos"]),
@@ -287,6 +289,12 @@ const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), ur
 export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
   // La API da sus rutas con el prefijo; la web las abre contra la misma base que el resto de peticiones
   const absoluta = (ruta: string) => cliente.url(ruta.replace(/^\/api\/v1(?=\/)/, ""));
+  const conIrA = <T extends { ir_url: string | null }>(t: T): T => ({ ...t, ir_url: t.ir_url ? absoluta(t.ir_url) : null });
+  const conCaptura = (a: AnalisisVuelo): AnalisisVuelo => ({
+    ...a,
+    captura_url: a.captura_url ? absoluta(a.captura_url) : null,
+    datos: a.datos ? { ...a.datos, tarifas: a.datos.tarifas.map((t) => conIrA({ ...t, ir_url: t.ir_url ?? null })) } : null,
+  });
   const conRutas = (c: Cotizacion): Cotizacion => ({
     ...c,
     vuelos: c.vuelos.map((v) => ({ ...v, vendedor_url: absoluta(v.vendedor_url) })),
@@ -322,15 +330,13 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       // La API da la ruta con su prefijo; la web la pide a la misma base que el resto
       return { ...a, captura_url: a.captura_url ? absoluta(a.captura_url) : null };
     },
-    opcionesBuscador(id, vueloId, signal) {
-      return cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/reserva`, opcionesBuscadorSchema, { signal });
-    },
-    urlIrA(id, vueloId, vendedor, tarifa) {
-      return cliente.url(`/cotizaciones/${id}/vuelos/${vueloId}/ir${consulta({ vendedor, tarifa })}`);
+    async opcionesBuscador(id, vueloId, signal) {
+      const o = await cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/reserva`, opcionesBuscadorSchema, { signal });
+      return { ...o, tarifas: o.tarifas.map(conIrA) };
     },
     async verAnalisis(id, vueloId, signal): Promise<AnalisisVuelo> {
       const a = await cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, analisisSchema, { signal });
-      return { ...a, captura_url: a.captura_url ? absoluta(a.captura_url) : null };
+      return conCaptura(a);
     },
   };
 }

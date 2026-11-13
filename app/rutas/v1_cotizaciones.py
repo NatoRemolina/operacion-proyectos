@@ -7,9 +7,11 @@ sin el gestor (`acceso.es_propio`). Lo que no se ve responde 404.
 import hashlib
 import hmac
 import html
+import re
 import secrets
 import time
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -193,20 +195,41 @@ def _sesion(request: Request) -> str:
     return request.cookies.get(acceso.COOKIE) or ""
 
 
-def token_vendedor(sesion: str, sid: int, vuelo_id: int, ahora: float | None = None) -> str:
-    """`{vence}.{firma}`: HMAC con el token de la sesión como clave, sobre la cotización, el vuelo y el vencimiento. No
-    sirve en otra sesión, para otro vuelo ni pasados 5 minutos; no se guarda nada."""
+def _firma(sesion: str, partes: tuple, vence: int) -> str:
+    mensaje = "|".join(str(p) for p in (*partes, vence)).encode()
+    return hmac.new(sesion.encode(), mensaje, hashlib.sha256).hexdigest()[:32]
+
+
+def _firmar(sesion: str, partes: tuple, ahora: float | None) -> str:
+    """`{vence}.{firma}`: HMAC con el token de la sesión como clave sobre `partes` y el vencimiento. No sirve en otra
+    sesión, para otras partes ni pasados 5 minutos; no se guarda nada."""
     vence = int((time.time() if ahora is None else ahora) + VIDA_ENLACE_S)
-    firma = hmac.new(sesion.encode(), f"vendedor-v1|{sid}|{vuelo_id}|{vence}".encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{vence}.{firma}"
+    return f"{vence}.{_firma(sesion, partes, vence)}"
+
+
+def _firmado(token: str | None, sesion: str, partes: tuple) -> bool:
+    vence, _, firma = (token or "").partition(".")
+    if not (sesion and re.fullmatch(r"[0-9]{1,12}", vence) and firma and int(vence) >= time.time()):
+        return False
+    return hmac.compare_digest(firma, _firma(sesion, partes, int(vence)))
+
+
+def token_vendedor(sesion: str, sid: int, vuelo_id: int, ahora: float | None = None) -> str:
+    return _firmar(sesion, ("vendedor-v1", sid, vuelo_id), ahora)
 
 
 def token_valido(token: str | None, sesion: str, sid: int, vuelo_id: int) -> bool:
-    vence, _, firma = (token or "").partition(".")
-    if not (sesion and vence.isdigit() and firma and int(vence) >= time.time()):
-        return False
-    esperada = hmac.new(sesion.encode(), f"vendedor-v1|{sid}|{vuelo_id}|{vence}".encode(), hashlib.sha256).hexdigest()[:32]
-    return hmac.compare_digest(firma, esperada)
+    return _firmado(token, sesion, ("vendedor-v1", sid, vuelo_id))
+
+
+def url_ir(sesion: str, sid: int, vuelo_id: int, vendedor: str, tarifa: str, ahora: float | None = None) -> str:
+    """La página de «Ir a…» de esa tarifa de ese vendedor, firmada: abrirla sin el token de esta sesión no hace el pedido."""
+    t = _firmar(sesion, ("ir-v1", sid, vuelo_id, vendedor, tarifa), ahora)
+    return f"{PREFIJO}/cotizaciones/{sid}/vuelos/{vuelo_id}/ir?{urlencode({'vendedor': vendedor, 'tarifa': tarifa, 't': t})}"
+
+
+def token_ir_valido(token: str | None, sesion: str, sid: int, vuelo_id: int, vendedor: str, tarifa: str) -> bool:
+    return _firmado(token, sesion, ("ir-v1", sid, vuelo_id, vendedor, tarifa))
 
 
 def url_vendedor(sesion: str, sid: int, vuelo_id: int) -> str:

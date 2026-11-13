@@ -19,7 +19,7 @@ import {
   type TablaVendedor,
   tablasPorVendedor,
 } from "../domain/cotizar";
-import { useAnalisisVuelo, useOpcionesBuscador, useRegistrarFuente, useUrlIrA } from "../application/cotizar";
+import { useAnalisisVuelo, useOpcionesBuscador, useRegistrarFuente } from "../application/cotizar";
 
 const COLOR: Record<SegmentoCosto["tipo"], string> = {
   precio: "bg-marca",
@@ -151,7 +151,6 @@ export function OpcionDeVuelo({
   const [abierto, setAbierto] = useState(false);
   const registrarFuente = useRegistrarFuente(cotizacionId);
   const analisis = useAnalisisVuelo(cotizacionId, vuelo.id);
-  const urlIrA = useUrlIrA(cotizacionId, vuelo.id);
   const buscador = useOpcionesBuscador(cotizacionId, vuelo.id, abierto);
   // Abrir el desglose abre también la página oficial del vendedor (el mismo enlace, en otra pestaña; el servidor deja
   // el rastro del clic) y pide leer la página del vuelo en Google Flights. El servidor reutiliza una lectura de menos
@@ -304,13 +303,12 @@ export function OpcionDeVuelo({
           {abierto ? (
             <>
               <Desglose vuelo={vuelo} />
-              <CapaBuscador esperando={buscador.esperando} error={Boolean(buscador.error)} opciones={buscador.data} urlIrA={urlIrA} />
+              <CapaBuscador esperando={buscador.esperando} error={Boolean(buscador.error)} opciones={buscador.data} />
               <DetalleGoogle
                 pendiente={analisis.isPending}
                 agotado={analisis.agotado}
                 error={analisis.error ? "No hubo conexión con el servidor." : null}
                 analisis={analisis.data ?? null}
-                urlIrA={urlIrA}
               />
             </>
           ) : null}
@@ -338,7 +336,7 @@ const COLUMNAS: readonly { clave: "mano" | "maleta" | "cambios" | "reembolso" | 
  * Una tabla por vendedor y una fila por tarifa, con su «Ir a…». En el celular cada fila se apila con el nombre de
  * cada columna delante: nada se desplaza de lado.
  */
-function TablaDeVendedor({ tabla, urlIrA }: { tabla: TablaVendedor; urlIrA: (vendedor: string, tarifa: string) => string }) {
+function TablaDeVendedor({ tabla }: { tabla: TablaVendedor }) {
   const celda = "flex gap-2 py-1 md:table-cell md:py-1.5 md:pr-3 md:align-top before:shrink-0 before:font-semibold " +
     "before:text-texto-secundario before:content-[attr(data-titulo)] md:before:content-none";
   return (
@@ -369,8 +367,9 @@ function TablaDeVendedor({ tabla, urlIrA }: { tabla: TablaVendedor; urlIrA: (ven
             ))}
             <td data-titulo="Origen:" className={celda}>{f.origen}</td>
             <td className="py-1 md:table-cell md:py-1.5">
+              {f.ir_url ? (
               <a
-                href={urlIrA(f.vendedor, f.tarifa)}
+                href={f.ir_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`Ir a ${f.vendedor}, ${f.tarifa}, se abre en otra pestaña`}
@@ -379,6 +378,7 @@ function TablaDeVendedor({ tabla, urlIrA }: { tabla: TablaVendedor; urlIrA: (ven
                 Ir a {f.vendedor}
                 <span aria-hidden="true">↗</span>
               </a>
+              ) : null}
             </td>
           </tr>
         ))}
@@ -392,12 +392,10 @@ function CapaBuscador({
   esperando,
   error,
   opciones,
-  urlIrA,
 }: {
   esperando: boolean;
   error: boolean;
   opciones: OpcionesBuscador | null;
-  urlIrA: (vendedor: string, tarifa: string) => string;
 }) {
   const listo = opciones?.estado === "listo" && opciones.tarifas.length > 0;
   return (
@@ -412,7 +410,7 @@ function CapaBuscador({
               : "El buscador no trajo opciones de reserva para este vuelo."}
       </p>
       {listo
-        ? tablasPorVendedor(opciones.tarifas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} urlIrA={urlIrA} />)
+        ? tablasPorVendedor(opciones.tarifas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} />)
         : null}
     </section>
   );
@@ -427,9 +425,7 @@ function DetalleGoogle({
   agotado = false,
   error,
   analisis,
-  urlIrA,
 }: {
-  urlIrA: (vendedor: string, tarifa: string) => string;
   pendiente: boolean;
   /** Se siguió una lectura en curso hasta el límite y no terminó. */
   agotado?: boolean;
@@ -461,7 +457,7 @@ function DetalleGoogle({
                   ? `No se pudo leer: ${analisis.motivo ?? "sin motivo"}.`
                   : analisis.motivo}
       </p>
-      {!lectura && analisis?.estado === "listo" && analisis.datos ? <Leido a={analisis} urlIrA={urlIrA} /> : null}
+      {!lectura && analisis?.estado === "listo" && analisis.datos ? <Leido a={analisis} /> : null}
       {!lectura && analisis?.estado === "fallido" && analisis.captura_url ? (
         <a href={analisis.captura_url} target="_blank" rel="noopener noreferrer" className="self-start text-sm underline underline-offset-3">
           Ver lo que mostró la página
@@ -471,7 +467,7 @@ function DetalleGoogle({
   );
 }
 
-function Leido({ a, urlIrA }: { a: AnalisisVuelo; urlIrA: (vendedor: string, tarifa: string) => string }) {
+function Leido({ a }: { a: AnalisisVuelo }) {
   const d = a.datos!;
   return (
     <>
@@ -484,7 +480,7 @@ function Leido({ a, urlIrA }: { a: AnalisisVuelo; urlIrA: (vendedor: string, tar
         <div className="flex flex-col gap-3">
           <h4 className="font-semibold">Tarifas y qué incluye cada una</h4>
           {tablasPorVendedor(d.tarifas, "página").map((t) => (
-            <TablaDeVendedor key={t.vendedor} tabla={t} urlIrA={urlIrA} />
+            <TablaDeVendedor key={t.vendedor} tabla={t} />
           ))}
         </div>
       ) : null}

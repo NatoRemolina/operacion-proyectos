@@ -143,11 +143,16 @@ def test_permisos_y_entrada(piloto, piloto2, anonimo, entorno):
     assert r.status_code == 422                                                       # la URL nunca viene del cliente
 
 
+def _url_ir(c: TestClient, sid: int, vuelo: int, vendedor="American", tarifa="Main Cabin", **k) -> str:
+    """La dirección firmada de «Ir a…», como la entrega la API en cada tarifa (`ir_url`)."""
+    from app.rutas import v1_cotizaciones
+    return v1_cotizaciones.url_ir(c.cookies.get(acceso.COOKIE) or "", sid, vuelo, vendedor, tarifa, **k)
+
+
 def test_la_pagina_de_envio_prepara_el_enlace_con_la_sesion(piloto, piloto2, entorno):
     c = _vegas(piloto)
     vuelo = c["vuelos"][0]
-    ruta = f"{V1}/cotizaciones/{c['id']}/vuelos/{vuelo['id']}/ir"
-    r = piloto.get(ruta, params={"vendedor": "American", "tarifa": "Main Cabin"}, headers={"Sec-Fetch-Site": "same-origin"})
+    r = piloto.get(_url_ir(piloto, c["id"], vuelo["id"]), headers={"Sec-Fetch-Site": "same-origin"})
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
     csp = r.headers["Content-Security-Policy"]
     assert "form-action https:" in csp and "connect-src 'self'" in csp and "default-src 'none'" in csp
@@ -156,13 +161,48 @@ def test_la_pagina_de_envio_prepara_el_enlace_con_la_sesion(piloto, piloto2, ent
     assert api_v1.token_csrf(piloto.cookies.get(acceso.COOKIE)) in r.text
     assert vuelo["fuente_url"].replace("&", "&amp;") in r.text                         # la alternativa: Google Flights
     assert r.headers["Cache-Control"] == "no-store"
-    assert piloto.get(ruta, params={"vendedor": "American", "tarifa": "Main Cabin"},
-                      headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
-    ajena = piloto2.get(ruta, params={"vendedor": "American", "tarifa": "Main Cabin"})
+    assert piloto.get(_url_ir(piloto, c["id"], vuelo["id"]), headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    ajena = piloto2.get(_url_ir(piloto2, c["id"], vuelo["id"]))
     assert ajena.status_code == 404 and ajena.headers["content-type"].startswith("text/html")   # legible en la pestaña
     assert "No encontramos ese vuelo" in ajena.text
-    assert piloto.get(ruta, params={"vendedor": "<b>", "tarifa": "x"}).status_code == 422
     assert db.uno("select count(*) n from analisis_vuelo")["n"] == 0                  # abrir la página no gasta el tope
+
+
+# ---------- ronda 2 · punto 2: GET …/ir con token firmado (sesión, cotización, vuelo, vendedor y tarifa) ----------
+def test_sin_token_valido_la_pagina_de_envio_no_hace_el_pedido(piloto, piloto2, entorno):
+    c = _vegas(piloto)
+    vuelo = c["vuelos"][0]["id"]
+    ruta = f"{V1}/cotizaciones/{c['id']}/vuelos/{vuelo}/ir"
+    datos = {"vendedor": "American", "tarifa": "Main Cabin"}
+    firmado = _url_ir(piloto, c["id"], vuelo)
+    malos = [
+        piloto.get(ruta, params=datos),                                                         # sin token (p. ej., por correo)
+        piloto.get(_url_ir(piloto2, c["id"], vuelo)),                                           # de otra sesión
+        piloto.get(_url_ir(piloto, c["id"], vuelo, ahora=0)),                                   # vencido
+        piloto.get(firmado.replace("Main+Cabin", "Basic+Economy").replace("Main%20Cabin", "Basic%20Economy")),   # otra tarifa
+        piloto.get(_url_ir(piloto, c["id"], c["vuelos"][1]["id"]).replace(str(c["vuelos"][1]["id"]), str(vuelo), 1)),
+    ]
+    for r in malos:
+        assert r.status_code == 403 and r.headers["content-type"].startswith("text/html"), r.url
+        assert "El enlace venció" in r.text and "<script" not in r.text and "X-CSRF-Token" not in r.text
+    assert db.uno("select count(*) n from analisis_vuelo")["n"] == 0
+
+
+def test_cada_tarifa_trae_su_enlace_firmado(piloto, entorno, monkeypatch):
+    monkeypatch.setattr(config, "SERPAPI_KEY", "")
+    c = _vegas(piloto)
+    aa = next(v for v in c["vuelos"] + c["descartados"] if v["numeros"] == ["AA 1851"])
+    o = piloto.get(f"{V1}/cotizaciones/{c['id']}/vuelos/{aa['id']}/reserva").json()
+    t = o["tarifas"][0]
+    assert t["ir_url"].startswith(f"{V1}/cotizaciones/{c['id']}/vuelos/{aa['id']}/ir?") and "&t=" in t["ir_url"]
+    assert piloto.get(t["ir_url"]).status_code == 200                                   # el de la API sirve tal cual
+    from pathlib import Path
+
+    from analizador import lector
+    pagina = (Path(__file__).resolve().parent.parent / "analizador" / "ejemplo" / "reserva.html").read_text(encoding="utf-8")
+    monkeypatch.setattr(analizador, "_llamar", lambda url, *a: {"estado": "listo", "datos": lector.leer(*lector.desde_html(pagina))})
+    a = piloto.post(f"{V1}/cotizaciones/{c['id']}/vuelos/{aa['id']}/analisis", headers=_csrf(piloto)).json()
+    assert all("/ir?" in x["ir_url"] for x in a["datos"]["tarifas"])
 
 
 def test_un_ir_a_fallido_guarda_la_captura_y_el_extracto_como_evidencia(piloto, entorno):

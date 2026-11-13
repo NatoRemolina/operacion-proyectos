@@ -275,6 +275,8 @@ export interface TarifaLeida {
   readonly cambios: readonly string[];
   readonly reembolso: readonly string[];
   readonly otras: readonly string[];
+  /** «Ir a…» de esta tarifa: dirección firmada por el servidor para esta sesión (vence en 5 minutos). */
+  readonly ir_url?: string | null;
 }
 
 export interface DetalleLeido {
@@ -348,8 +350,6 @@ export interface CotizarRepository {
   verAnalisis(id: number, vueloId: number, signal?: AbortSignal): Promise<AnalisisVuelo>;
   /** Las opciones de reserva del buscador ya guardadas para el itinerario (primera capa del desglose). */
   opcionesBuscador(id: number, vueloId: number, signal?: AbortSignal): Promise<OpcionesBuscador>;
-  /** Dirección de la página que lleva a esa tarifa de ese vendedor («Ir a…», en otra pestaña). */
-  urlIrA(id: number, vueloId: number, vendedor: string, tarifa: string): string;
 }
 
 // ---------- reglas del campo de lugar ----------
@@ -778,6 +778,8 @@ export interface FilaTarifa {
   readonly reembolso: string;
   readonly asiento: string;
   readonly origen: OrigenTarifa;
+  /** La página firmada de «Ir a…»; sin ella no se ofrece el enlace. */
+  readonly ir_url: string | null;
 }
 
 export interface TablaVendedor {
@@ -805,6 +807,7 @@ export function tablasPorVendedor(tarifas: readonly TarifaLeida[], origen: Orige
       reembolso: t.reembolso.join(" · ") || SIN_DATO,
       asiento: primera(t.otras, /seat/i),
       origen,
+      ir_url: t.ir_url ?? null,
     };
     tablas.set(t.vendedor, [...(tablas.get(t.vendedor) ?? []), fila]);
   }
