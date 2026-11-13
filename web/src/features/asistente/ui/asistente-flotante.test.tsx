@@ -171,6 +171,14 @@ describe("Asistente flotante", () => {
     expect(JSON.parse(window.sessionStorage.getItem("asistente:v1:7") ?? "null")).toEqual([]);
   });
 
+  it("al entrar otra persona en la pestaña, la conversación anterior se borra del navegador", () => {
+    window.sessionStorage.setItem("asistente:v1:9", JSON.stringify([{ id: "x", rol: "persona", texto: "De otra persona", porVoz: false, estado: "respondida" }]));
+    window.sessionStorage.setItem("otra-cosa", "se conserva");
+    montar();
+    expect(window.sessionStorage.getItem("asistente:v1:9")).toBeNull();
+    expect(window.sessionStorage.getItem("otra-cosa")).toBe("se conserva");
+  });
+
   it("una respuesta guardada sin la forma completa se descarta sin romper la pantalla", async () => {
     window.sessionStorage.setItem(
       "asistente:v1:7",
