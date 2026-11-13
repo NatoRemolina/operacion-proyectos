@@ -3,6 +3,7 @@
 El doble responde con lo que el lector saca de la página de ejemplo (`analizador/ejemplo/reserva.html`): sin red.
 """
 import base64
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -383,3 +384,23 @@ def test_el_dia_de_los_topes_empieza_a_medianoche_de_bogota():
     # 14 nov 03:00 UTC son las 22:00 del 13 nov en Bogotá: el día empezó el 13 a las 05:00 UTC
     assert analizador.inicio_del_dia(datetime(2026, 11, 14, 3, 0, tzinfo=UTC)) == "2026-11-13 05:00:00"
     assert analizador.inicio_del_dia(datetime(2026, 11, 14, 6, 0, tzinfo=UTC)) == "2026-11-14 05:00:00"
+
+
+# ---------- ronda 2 · punto 7: una llamada sin respuesta retiene el turno lo que puede durar la función ----------
+def test_una_llamada_sin_respuesta_retiene_el_turno_lo_que_dura_la_funcion(piloto, doble, monkeypatch):
+    llamadas, respuesta = doble
+    c = _cotizar(piloto)
+    v0, v1 = c["vuelos"][0]["id"], c["vuelos"][1]["id"]
+    monkeypatch.setattr(analizador, "_llamar", lambda url, *a: llamadas.append(url) or
+                        {"estado": "fallido", "motivo": analizador.SIN_RESPUESTA})
+    assert _pedir(piloto, c["id"], v0).json()["motivo"] == analizador.SIN_RESPUESTA
+    # la función puede seguir viva hasta su plazo (60 s): otra lectura no arranca un segundo Chromium
+    monkeypatch.setattr(analizador, "_llamar", lambda url, *a: llamadas.append(url) or dict(respuesta))
+    assert _pedir(piloto, c["id"], v1).json()["motivo"] == analizador.OCUPADO and len(llamadas) == 1
+    # pasado ese plazo, el turno queda libre
+    db.ejecutar("update analisis_vuelo set creado=:c", c=analizador._hace(analizador.FUNCION + timedelta(seconds=1)))
+    assert _pedir(piloto, c["id"], v1).json()["estado"] == "listo" and len(llamadas) == 2
+
+
+def test_la_fila_pendiente_cubre_el_plazo_de_la_funcion():
+    assert analizador.FUNCION >= timedelta(seconds=60) and analizador.EN_CURSO > analizador.FUNCION

@@ -400,7 +400,7 @@ Cuerpo JSON `{"vendedor": "American", "tarifa": "Main Cabin"}` (los nombres como
 
 - Tres caminos, en orden: **`pagina`**: el analizador abre la página del vuelo, elige el mismo regreso de la cotización (si la página lo muestra; si no, el más barato), despliega el vendedor, pulsa el «Continue» de esa tarifa e intercepta el envío que Google iba a hacer, sin que salga del servidor. **`buscador`**: el pedido de un solo uso de esa tarifa en las opciones de reserva del buscador. **`google`**: la página del vuelo en Google Flights (sin `campos`).
 - Con `campos`, el navegador de la persona hace un POST a `url` (siempre `https://www.google.com/travel/clk…`) y Google lo lleva al vendedor. Los `campos` viajan **solo en esta respuesta**: no se guardan ni se registran.
-- Tope por persona y día: regla `ir_a_persona_dia` (20). Alcanzado, `camino: google` con el motivo. Comparte con las lecturas el turno del analizador (una a la vez) y el cerrojo.
+- Topes por día: regla `ir_a_persona_dia` (20, por persona) y `ir_a_dia` (60, en total). Alcanzado uno, `camino: google` con el motivo. Comparte con las lecturas el turno del analizador (una a la vez) y el cerrojo.
 - Bitácora `ir a vendedor`: quién, opción, vendedor, tarifa, camino, dominio y duración; la captura previa al clic queda en `analisis_vuelo` (`accion: ir_a`).
 - Lo ajeno o un vuelo de otra cotización: 404. Sin CSRF: 403. Un vendedor o tarifa con caracteres raros, o un campo `url`: 422.
 

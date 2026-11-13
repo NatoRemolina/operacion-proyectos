@@ -303,3 +303,29 @@ def test_el_enlace_al_vendedor_reserva_su_cupo_antes_de_buscar(piloto, entorno, 
         assert len(busquedas) <= 4                                   # nunca más búsquedas pagas que el tope
     finally:
         _restaurar_cupos()
+
+
+# ---------- ronda 2 · punto 7: tope total diario de «Ir a…» y turno retenido sin respuesta ----------
+def test_tope_total_de_ir_a_por_dia(piloto, piloto2, entorno):
+    pedidos, _, _ = entorno
+    analizador.asegurar_reglas()
+    assert db.uno("select valor from reglas where ambito='supuesto' and clave='ir_a_dia'")["valor"] == "60"
+    db.ejecutar("update reglas set valor='1' where ambito='supuesto' and clave='ir_a_dia'")
+    try:
+        c = _vegas(piloto)
+        assert _ir(piloto, c["id"], c["vuelos"][0]["id"]).json()["camino"] == "pagina"
+        otra = _vegas(piloto2)
+        e = _ir(piloto2, otra["id"], otra["vuelos"][0]["id"]).json()
+        assert (e["camino"], e["motivo"]) == ("google", analizador.TOPE_IR_A_TOTAL_TEXTO) and len(pedidos) == 1
+    finally:
+        db.ejecutar("update reglas set valor='60' where ambito='supuesto' and clave='ir_a_dia'")
+
+
+def test_ir_a_sin_respuesta_retiene_el_turno(piloto, entorno, monkeypatch):
+    pedidos, _, _ = entorno
+    monkeypatch.setattr(analizador, "_invocar", lambda p: pedidos.append(p) or
+                        {"estado": "fallido", "motivo": analizador.SIN_RESPUESTA})
+    c = _vegas(piloto)
+    assert _ir(piloto, c["id"], c["vuelos"][0]["id"]).json()["camino"] == "google"
+    e = _ir(piloto, c["id"], c["vuelos"][1]["id"]).json()
+    assert (e["camino"], e["motivo"]) == ("google", analizador.OCUPADO) and len(pedidos) == 1

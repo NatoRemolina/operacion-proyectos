@@ -50,6 +50,9 @@ TOPE_ENLACE_VENDEDOR = 20   # la regla `enlace_vendedor_persona_dia` (la crea co
 
 VIGENCIA = timedelta(minutes=60)
 EN_CURSO = timedelta(minutes=2)      # una lectura que no terminó en este tiempo ya no va a terminar
+FUNCION = timedelta(seconds=70)      # lo que puede seguir viva la función (60 s en infra) más un margen: una llamada sin
+#                                      respuesta retiene el turno hasta entonces, para no arrancar dos Chromium a la vez
+SIN_RESPUESTA = "el analizador no respondió"
 ESPERA_S = 54   # la lectura cabe en 45 s (analizador/navegador.py); el margen cubre el arranque en frío de la función, siempre
 #                 por debajo de los 60 s de CloudFront
 TOPE_PERSONA, TOPE_TOTAL = 10, 40     # si las reglas no existen
@@ -60,8 +63,10 @@ REGLAS = (
                                             "Alcanzado, el desglose muestra solo lo del buscador."),
     ("ir_a_persona_dia", "20", "Veces por persona y día que el analizador lleva a la tarifa elegida de un vendedor («Ir a…»). "
                                "Alcanzado, el enlace sale del buscador o de Google Flights."),
+    ("ir_a_dia", "60", "Veces por día, en total, que el analizador lleva a la tarifa elegida de un vendedor («Ir a…»). "
+                       "Alcanzado, el enlace sale de Google Flights."),
 )
-TOPE_IR_A = 20
+TOPE_IR_A, TOPE_IR_A_TOTAL = 20, 60
 APAGADO = "La lectura de Google Flights está apagada: el desglose muestra solo lo del buscador."
 SIN_ANALIZADOR = "Este entorno no tiene el analizador de Google Flights: el desglose muestra solo lo del buscador."
 TOPE_PERSONA_TEXTO = "Llegaste al tope de lecturas de Google Flights de hoy: el desglose muestra solo lo del buscador."
@@ -239,7 +244,7 @@ def _invocar(pedido: dict) -> dict:
         return cuerpo
     except Exception as e:   # red, tiempo agotado, respuesta que no es JSON
         print(f"analizador: la llamada falló: {type(e).__name__}", flush=True)   # el detalle, solo al registro
-        return {"estado": "fallido", "motivo": "el analizador no respondió"}
+        return {"estado": "fallido", "motivo": SIN_RESPUESTA}
 
 
 def _guardar_captura(b64: str | None) -> str | None:
@@ -299,11 +304,18 @@ def _reservar(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict) -
             return no_disponible(TOPE_PERSONA_TEXTO)
         if db.uno(f"select count(*) n from analisis_vuelo where creado>=:h and {LEER}", h=hoy)["n"] >= total:
             return no_disponible(TOPE_TOTAL_TEXTO)
-        if db.uno("select id from analisis_vuelo where estado='pendiente' limit 1"):
+        if _ocupado():
             return no_disponible(OCUPADO)
         aid = db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"],
                           clave=clave(sol, vuelo), url=url, estado="pendiente", creado=db.ahora())
     return {"id": aid, "url": url}
+
+
+def _ocupado() -> bool:
+    """Si el analizador está en uso: una lectura o un «ir a» en curso, o una llamada que se quedó sin respuesta hace
+    menos de lo que puede durar la función (sigue viva aunque la API ya no la espere)."""
+    return bool(db.uno("""select id from analisis_vuelo where estado='pendiente' or (motivo=:m and creado>=:h) limit 1""",
+                       m=SIN_RESPUESTA, h=_hace(FUNCION)))
 
 
 SIN_CAPTURA = "no se pudo guardar la lectura"
@@ -380,6 +392,7 @@ def regreso_de(sol: dict, vuelo: dict) -> dict | None:
 
 # ---------- «Ir a…»: la tarifa elegida, en la página del vendedor (pieza 3b) ----------
 TOPE_IR_A_TEXTO = "Llegaste al tope de «Ir a…» de hoy: el enlace sale de Google Flights."
+TOPE_IR_A_TOTAL_TEXTO = "Se alcanzó el tope de «Ir a…» de hoy: el enlace sale de Google Flights."
 
 
 def _es_envio(url) -> bool:
@@ -396,13 +409,16 @@ def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict
             c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_TURNO})
         db.ejecutar("update analisis_vuelo set estado='fallido', motivo=:m, terminado=:t where estado='pendiente' and creado<:c",
                     m=NO_TERMINO, t=db.ahora(), c=_hace(EN_CURSO))
-        tope = int(costo.supuesto(costo.catalogo(), "ir_a_persona_dia", TOPE_IR_A))
+        cat, hoy = costo.catalogo(), inicio_del_dia()
         if db.uno("select count(*) n from analisis_vuelo where accion='ir_a' and usuario_id=:u and creado>=:h",
-                  u=usuario["id"], h=inicio_del_dia())["n"] >= tope:
+                  u=usuario["id"], h=hoy)["n"] >= int(costo.supuesto(cat, "ir_a_persona_dia", TOPE_IR_A)):
             return {"motivo": TOPE_IR_A_TEXTO, "tope": True}
+        if db.uno("select count(*) n from analisis_vuelo where accion='ir_a' and creado>=:h",
+                  h=hoy)["n"] >= int(costo.supuesto(cat, "ir_a_dia", TOPE_IR_A_TOTAL)):
+            return {"motivo": TOPE_IR_A_TOTAL_TEXTO, "tope": True}
         # la fila se reserva en todos los caminos: cuenta para el tope aunque no haya turno del analizador
         motivo = (APAGADO if apagado() else SIN_ANALIZADOR if not _modo() else SIN_TRAMOS if not url
-                  else OCUPADO if db.uno("select id from analisis_vuelo where estado='pendiente' limit 1") else None)
+                  else OCUPADO if _ocupado() else None)
         aid = db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"],
                           clave=clave(sol, vuelo), url=url or "", estado="sin_turno" if motivo else "pendiente",
                           motivo=motivo, creado=db.ahora(), accion="ir_a", vendedor=vendedor, tarifa=tarifa)
