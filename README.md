@@ -31,6 +31,40 @@ persona (P-0007) ─► cotización ─► decisión ─► VIAJE (V-2026-0012, 
 | API JSON v1 | Contrato para la web nueva (`contracts/api-v1.md`) |
 | Web nueva (Next.js) | Sobre la API v1 (`web/`): cotizar desde y hacia cualquier lugar, comparar con desglose y decidir; mis viajes y mis gastos, con carga de recibos y justificación; y, para administración, resumen, viajes por aprobar (con la reconfirmación del precio) y revisión de gastos |
 
+## Cómo responde a cada reto
+
+| El enunciado pide | Dónde se ve | Evidencia |
+|---|---|---|
+| **Reto 1.** Buscar y elegir vuelos | *Cotizar*: origen y destino en cualquier lugar del mundo, varios aeropuertos en una búsqueda, descartes con su razón | `tests/test_cotizacion_mundial.py` y escenarios guardados |
+| Buscar y elegir hoteles | Sección «Hoteles» de la comparación | Respuestas guardadas de Las Vegas, Lisboa y Denver |
+| Programas de fidelización | Desglose de cada opción: maleta gratis por estatus, millas, cuenta de empresa. *Reglas* muestra la fuente y la confianza de cada regla | Pruebas de `costo` |
+| Costos totales del viaje | «Costo total esperado» de cada opción: precio, equipaje, baterías en cabina, riesgo de cambio, millas y traslado por carretera. Al decidir se suman el hotel, el carro y los viáticos | Escenario Miami → Moab |
+| Mejores decisiones en menos tiempo | La recomendación con su porqué; la opción más barata, con la razón de su descarte; y la decisión con sus razones. KPIs de tiempo de la cotización a la decisión y de la decisión a la aprobación | *KPIs* |
+| Factores, oportunidades y desafíos | `ANALISIS.md` (§3 y §5), `EXPLORACION.md` y «Limitaciones conocidas» | — |
+| Herramienta funcional y escenarios propios | Publicada (ver «Despliegue») y en local sin claves; escenarios en la tabla de abajo | Pruebas automáticas sin claves |
+| Lo simulado, claramente identificado | Cada dato muestra su origen en pantalla (en vivo, guardado, supuesto o regla), y el pie dice qué servicios están conectados. Las personas, clientes, comercios y membresías de ejemplo son inventados | — |
+| **Reto 2.** Gastos de distintos tipos, formatos y canales | *Cargar soportes* (web, y celular con la cámara), API v1 y Telegram (apagado en producción). Acepta foto, PDF y correo `.eml` | `datos/ejemplos/` y pruebas de gastos |
+| Revisar y organizar sin trabajo manual | Lectura automática y 20 motivos de revisión. Lo que está claro se aprueba solo; lo demás llega a la bandeja de excepciones. Nadie aprueba lo suyo, y cada gasto lleva su justificación | `tests/test_integridad.py` y `tests/test_autoaprobacion.py` |
+| Seguimiento por proyecto | Tablero del proyecto (previsto frente a real), viaje con su presupuesto, KPIs y asistente con fuentes citadas | — |
+| Información accesible para Finanzas | Exportación CSV y Excel contable con hojas Gastos y Resumen, según el permiso de quien lo descarga | `tests/test_contable.py` |
+| Materiales de prueba propios | `datos/ejemplos/`: correo de un tiquete, facturas de hotel y de alquiler de carro, recibos de comida y de gasolina, un parqueo borroso y un recibo en euros, todos ficticios | `datos/ejemplos/esperados.json` |
+
+### Escenarios de prueba
+
+| Escenario | Qué muestra | Resultado esperado |
+|---|---|---|
+| Miami → Moab, del 8 al 11 de diciembre de 2026 (CNY, GJT y SLC) | Pueblo sin aeropuerto principal: tres aeropuertos con traslado por carretera | La recomendada no es la más barata; desde SLC aparece «Combustible y peajes» |
+| Miami → Las Vegas | Ruta directa con hoteles guardados | Vuelos con desglose y hoteles con el total de las noches |
+| Madrid → Lisboa | Europa, en euros | Vuelos y hoteles guardados. Con `make demo-monitoreo`, el IB 5634 retrasado 20 minutos y su aviso |
+| Recibo borroso | Lectura con poca confianza | Va a revisión por confianza baja |
+| El mismo recibo dos veces | Duplicado exacto | El segundo va a revisión como duplicado |
+| Viaje propio de administración | Nadie aprueba lo suyo | El servicio lo impide y lo deja en la bitácora |
+| Excel contable como colaborador y como gestor | Alcance por permiso | El colaborador solo ve lo suyo y el gestor, solo sus proyectos |
+
+### Tiempo que ahorra (supuesto declarado)
+
+No hay una medición del proceso manual de la empresa. Como referencia, comparar a mano tres aeropuertos, los hoteles y las reglas de equipaje y millas de un viaje toma unos 45 minutos, y transcribir, clasificar y asignar un recibo, unos 5. Con la plataforma, la comparación sale en una pantalla y un recibo claro se aprueba sin intervención. Las dos cifras de referencia son supuestos, no mediciones. Lo real lo miden los KPIs a medida que haya uso: la tasa sin intervención, las horas de la carga a la aprobación y el tiempo de la cotización a la decisión.
+
 ## Ejecutar
 
 ### Lo más rápido: sin claves y sin Docker
