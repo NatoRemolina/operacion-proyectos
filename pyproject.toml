@@ -22,3 +22,4 @@ ignore = [
 testpaths = ["tests"]
 pythonpath = ["."]   # las pruebas importan `app` y `datos` desde la raíz, se lance pytest como se lance
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = ["con_tope: la prueba usa el tope diario real del asistente (tests/conftest.py lo amplía para las demás)"]

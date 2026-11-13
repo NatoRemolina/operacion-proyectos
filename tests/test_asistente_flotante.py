@@ -21,12 +21,6 @@ def _sin_rastro_propio():
     db.ejecutar("update asistente_consultas set momento='2000-01-01T00:00:00' where id>:d", d=desde)
 
 
-@pytest.fixture(autouse=True)
-def _sin_tope(monkeypatch):
-    """Toda la suite pregunta como la misma administración: el tope diario se prueba aparte, fijándolo."""
-    monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
-
-
 def _admin() -> dict:
     return db.uno("select * from usuarios where correo='admin@demo.local'")
 

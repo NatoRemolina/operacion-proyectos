@@ -14,24 +14,31 @@ Cada sesión deja una fila en `llamadas_modelo` (uso «asesor») con sus tokens 
 el tope (`asesor_usd_dia`) no se abre ninguna. Al terminar, bien o con error, la sesión se borra del servicio.
 
 El mensaje de sistema y las herramientas de este módulo son los mismos que tiene el agente en la consola del
-servicio; `python -m datos.asesor --verificar` comprueba que sigan iguales.
+servicio; `python -m datos.asesor --verificar` comprueba que sigan iguales. La versión del agente que usan las sesiones
+está en el candado `app/asesor_agente.json`, que escribe `--sincronizar` junto con la huella de lo que subió; una
+prueba falla si el código cambia sin sincronizar.
 """
 import contextlib
+import hashlib
 import json
 import re
 import time
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from sqlalchemy import text
 
-from .. import config, db
+from .. import config, db, validar_config
 from . import acceso, agente, asistente, costo, justificaciones, viajes
 
-PLAZO_TOTAL_S = 75        # toda la sesión, medido con el reloj: los tiempos de espera de httpx son por fragmento
+# Toda la sesión, medido con el reloj (los tiempos de espera de httpx son por fragmento). Cabe, con el cierre, dentro del
+# presupuesto de la pregunta (asistente.PRESUPUESTO_S), que a su vez cabe en la espera de CloudFront: lo comprueba
+# tests/test_presupuesto_tiempo.py. Medido: una respuesta del asesor tarda de 14 a 17 s.
+PLAZO_TOTAL_S = 40
 SEGUNDA_VIA_S = 20        # si el asesor tardó más que esto en fallar, no se intenta el modelo de lenguaje
 MAX_HERRAMIENTAS = 12     # llamadas a herramientas por pregunta
 MAX_RESULTADO = 20_000    # caracteres del JSON que se devuelve por herramienta
@@ -261,35 +268,90 @@ ESQUEMAS: list[dict] = [
 class ErrorAsesor(RuntimeError):
     """Fallo del asesor con un motivo apto para mostrar: nunca lleva la clave ni la dirección del servicio."""
 
-    def __init__(self, motivo: str, *, agotado: bool = False, vencio: bool = False, tope: bool = False):
+    def __init__(self, motivo: str, *, agotado: bool = False, vencio: bool = False, tope: bool = False,
+                 configuracion: bool = False):
         super().__init__(motivo)
         self.agotado = agotado   # se acabó el plazo de la pregunta
         self.vencio = vencio     # la petición salió y no llegó respuesta: la sesión pudo crearse igual
         self.tope = tope         # no se llamó al servicio por el tope de gasto del día
+        self.configuracion = configuracion   # no se llamó al servicio: la configuración está a medias o mal escrita
         self.segundos = 0.0
 
 
+REQUERIDAS = ("ASESOR_API_URL", "ASESOR_API_KEY", "ASESOR_AGENTE_ID", "ASESOR_ENTORNO_ID", "ASESOR_CABECERAS")
+CANDADO = Path(__file__).resolve().parent.parent / "asesor_agente.json"   # versión del agente y huella de lo subido
+
+
+def candado() -> dict:
+    """Lo que dejó `python -m datos.asesor --sincronizar`: {"version": n, "huella": sha256}. Vacío si no está."""
+    try:
+        datos = json.loads(CANDADO.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return datos if isinstance(datos, dict) else {}
+
+
+def huella() -> str:
+    """sha256 del mensaje de sistema y las herramientas tal como `--sincronizar` los sube al agente."""
+    return hashlib.sha256(json.dumps({"system": SISTEMA, "tools": ESQUEMAS}, sort_keys=True, ensure_ascii=False)
+                          .encode()).hexdigest()
+
+
+def version() -> int | None:
+    """La versión del agente que usan las sesiones: la forzada con ASESOR_AGENTE_VERSION si está bien escrita; si no,
+    la del candado. None = la última del agente (sin candado ni versión forzada)."""
+    forzada = config.ASESOR_AGENTE_VERSION
+    if forzada and validar_config.version_valida(forzada):
+        return int(forzada)
+    v = candado().get("version")
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 1 else None
+
+
+def estado() -> tuple[str, str]:
+    """(«listo», «apagado» o «mal configurado», y el detalle). El detalle nombra variables, nunca valores.
+
+    Una versión forzada mal escrita no apaga el asesor: se ignora y se usa la del candado, y el arranque lo registra
+    como error (app/main.py), que dispara la alarma. Lo que sí lo apaga es la configuración a medias."""
+    faltan = [n for n in REQUERIDAS if not getattr(config, n)]
+    if len(faltan) == len(REQUERIDAS):
+        return "apagado", "sin configurar"
+    if faltan:
+        mal = next((p for p in config.PROBLEMAS if p.startswith("ASESOR_CABECERAS")), "")
+        return "mal configurado", mal or f"faltan {', '.join(faltan)}"
+    if config.ASESOR_AGENTE_VERSION and not validar_config.version_valida(config.ASESOR_AGENTE_VERSION):
+        v = version()
+        return "listo", (f"{validar_config.VERSION_INVALIDA}: se ignora y se usa "
+                         + (f"la versión {v} del candado" if v else "la última versión del agente"))
+    return "listo", ""
+
+
 def activo() -> bool:
-    return bool(config.ASESOR_API_URL and config.ASESOR_API_KEY and config.ASESOR_AGENTE_ID
-                and config.ASESOR_ENTORNO_ID and config.ASESOR_CABECERAS)
+    return estado()[0] == "listo"
 
 
 def motivo(e: BaseException) -> str:
     return str(e) if isinstance(e, ErrorAsesor) else type(e).__name__
 
 
+def avisar_caida(e: BaseException):
+    """Una línea en el registro por cada pregunta que el asesor no respondió. La cuenta la alarma «CaidasDelAsesor»
+    (infra/lib/app-stack.ts). No lleva la pregunta ni datos de la persona. Llegar al tope de gasto del día no es caída."""
+    if getattr(e, "tope", False):
+        return
+    tipo = ("configuracion" if getattr(e, "configuracion", False) else "plazo" if getattr(e, "agotado", False)
+            else "sin_respuesta" if getattr(e, "vencio", False) else "error")
+    print(f"AVISO asesor_caida motivo={tipo} segundos={getattr(e, 'segundos', 0.0):.1f}", flush=True)
+
+
 def _agente() -> str | dict:
-    """El agente de la sesión: con ASESOR_AGENTE_VERSION, esa versión fija; sin ella, la última."""
-    version = config.ASESOR_AGENTE_VERSION
-    if not version:
-        return config.ASESOR_AGENTE_ID
-    if not version.isdigit() or int(version) < 1:
-        raise ErrorAsesor("la versión del agente configurada (ASESOR_AGENTE_VERSION) no es un número entero")
-    return {"type": "agent", "id": config.ASESOR_AGENTE_ID, "version": int(version)}
+    """El agente de la sesión: con versión (forzada o del candado), esa versión fija; sin ella, la última."""
+    v = version()
+    return {"type": "agent", "id": config.ASESOR_AGENTE_ID, "version": v} if v else config.ASESOR_AGENTE_ID
 
 
 def _nombre_agente() -> str:
-    return f"agente {config.ASESOR_AGENTE_ID}" + (f" · versión {config.ASESOR_AGENTE_VERSION}" if config.ASESOR_AGENTE_VERSION else "")
+    v = version()
+    return f"agente {config.ASESOR_AGENTE_ID}" + (f" · versión {v}" if v else "")
 
 
 # ---------- día de la empresa, costo y tope ----------
@@ -724,8 +786,9 @@ def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: b
     limite = inicio + PLAZO_TOTAL_S
     error, reserva = "", None
     try:
-        if not activo():
-            raise ErrorAsesor("no está configurado")
+        situacion, detalle = estado()
+        if situacion != "listo":
+            raise ErrorAsesor(f"no está configurado ({detalle})", configuracion=True)
         reserva = _reservar_gasto(usuario)
         cuerpo = {
             "agent": _agente(), "environment_id": config.ASESOR_ENTORNO_ID,

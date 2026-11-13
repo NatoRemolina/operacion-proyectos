@@ -3,12 +3,14 @@
 Uso:  python -m datos.asesor --esquemas            imprime las herramientas en JSON, tal como van en la consola
       python -m datos.asesor --sistema             imprime el mensaje de sistema
       python -m datos.asesor --verificar           compara el agente y el entorno de la consola con el código (solo lectura)
-      python -m datos.asesor --sincronizar         sube al agente el mensaje de sistema y las herramientas del código
+      python -m datos.asesor --sincronizar         sube al agente el mensaje de sistema y las herramientas del código y
+                                                   escribe el candado app/asesor_agente.json (versión nueva y huella),
+                                                   que se versiona: las sesiones usan esa versión sin copiarla a mano
       python -m datos.asesor --probar "pregunta"   abre una sesión real y muestra cada paso (solo registra su costo;
                                                    la sesión se conserva para abrirla en la consola del servicio)
 
 Necesita ASESOR_API_URL, ASESOR_API_KEY, ASESOR_AGENTE_ID, ASESOR_ENTORNO_ID y ASESOR_CABECERAS en .env;
-ASESOR_AGENTE_VERSION es opcional.
+ASESOR_AGENTE_VERSION es opcional y solo sirve para forzar otra versión que la del candado.
 """
 import argparse
 import json
@@ -81,19 +83,25 @@ def verificar() -> int:
         agente = _leer(cli, f"/v1/agents/{config.ASESOR_AGENTE_ID}")
         entorno = _leer(cli, f"/v1/environments/{config.ASESOR_ENTORNO_ID}")
     modelo = agente.get("model")
-    fijada = config.ASESOR_AGENTE_VERSION
+    fijada = asesor.version()
+    origen = "ASESOR_AGENTE_VERSION" if str(fijada) == config.ASESOR_AGENTE_VERSION else "el candado app/asesor_agente.json"
     print(f"Agente {agente.get('id')} · versión {agente.get('version')} · modelo {json.dumps(modelo, ensure_ascii=False)}"
-          + (f" · las sesiones usan la versión fijada {fijada}" if fijada else " · las sesiones usan la última versión"))
+          + (f" · las sesiones usan la versión fijada {fijada} ({origen})" if fijada else " · las sesiones usan la última versión"))
     red = ((entorno.get("config") or {}).get("networking") or {})
     print(f"Entorno {entorno.get('id')} · red {json.dumps(red, ensure_ascii=False)}")
     problemas = diferencias(agente) + problemas_entorno(entorno)
-    if fijada and str(agente.get("version")) != fijada:
-        problemas.append(f"La versión fijada ({fijada}, ASESOR_AGENTE_VERSION) no es la última del agente ({agente.get('version')}): "
+    situacion, detalle = asesor.estado()
+    if detalle and situacion == "listo":   # una versión forzada mal escrita: se ignora, pero se corrige
+        problemas.append(f"{detalle}.")
+    if fijada and agente.get("version") != fijada:
+        problemas.append(f"La versión fijada ({fijada}, de {origen}) no es la última del agente ({agente.get('version')}): "
                          "lo comparado aquí no es lo que usan las sesiones.")
+    if asesor.candado().get("huella") != asesor.huella():
+        problemas.append("El candado app/asesor_agente.json no tiene la huella del código: falta --sincronizar.")
     for p in problemas:
         print(f"  ✗ {p}")
     if problemas:
-        print("Para dejar el agente igual al código: python -m datos.asesor --sincronizar (y ajustar ASESOR_AGENTE_VERSION). "
+        print("Para dejar el agente igual al código: python -m datos.asesor --sincronizar (escribe el candado; se commitea). "
               "La red del entorno se cambia en la consola del servicio.")
         return 1
     print("  ✓ El agente coincide con el código (mensaje de sistema y 12 herramientas) y el entorno no tiene salida a la red.")
@@ -107,10 +115,15 @@ def sincronizar() -> int:
         nuevo = asesor._peticion(cli, "POST", f"/v1/agents/{config.ASESOR_AGENTE_ID}", time.monotonic() + 30, cuerpo,
                                    reintentar_red=False)
     print(f"Agente actualizado: versión {actual.get('version')} → {nuevo.get('version')}.")
-    if config.ASESOR_AGENTE_VERSION:
-        print(f"Las sesiones siguen en la versión fijada {config.ASESOR_AGENTE_VERSION}: para usar la nueva, "
-              f"ASESOR_AGENTE_VERSION={nuevo.get('version')}.")
     problemas = diferencias(nuevo)
+    if isinstance(nuevo.get("version"), int) and not problemas:
+        asesor.CANDADO.write_text(json.dumps({"version": nuevo["version"], "huella": asesor.huella()}, indent=2) + "\n",
+                                  encoding="utf-8")
+        print(f"Candado {asesor.CANDADO.name} escrito con la versión {nuevo['version']}: hay que commitearlo y desplegar "
+              "para que las sesiones la usen.")
+    if config.ASESOR_AGENTE_VERSION:
+        print(f"ASESOR_AGENTE_VERSION fuerza la versión {config.ASESOR_AGENTE_VERSION} y manda sobre el candado: "
+              "quítala del entorno (y del secreto) para usar la del candado.")
     for p in problemas:
         print(f"  ✗ {p}")
     return 1 if problemas else 0
@@ -155,8 +168,9 @@ def main(argv: list[str] | None = None) -> int:
     if a.sistema:
         print(asesor.SISTEMA)
         return 0
-    if not asesor.activo():
-        print("Falta configurar el asesor: ASESOR_API_URL, ASESOR_API_KEY, ASESOR_AGENTE_ID, ASESOR_ENTORNO_ID y ASESOR_CABECERAS.")
+    situacion, detalle = asesor.estado()
+    if situacion != "listo":
+        print(f"El asesor no está listo ({detalle}): necesita {', '.join(asesor.REQUERIDAS)}.")
         return 1
     try:
         if a.verificar:

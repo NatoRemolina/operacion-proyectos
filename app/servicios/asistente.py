@@ -29,7 +29,12 @@ from .. import config, db
 from . import acceso, costo, eventos, kpis, llm, memoria, metricas, validacion, viajes
 
 MAX_VUELTAS = 6
-PLAZO_TOTAL_S = 60       # toda la conversación con el modelo, no cada llamada
+PLAZO_TOTAL_S = 60       # toda la conversación con el modelo, no cada llamada (y nunca más allá del presupuesto)
+# Presupuesto de una pregunta, de punta a punta: CloudFront corta a los 60 s (infra/lib/web-stack.ts) y lo que pase de
+# ahí no le llega a nadie. El asesor y el modelo de lenguaje se reparten este tiempo; tests/test_presupuesto_tiempo.py
+# comprueba que las cuentas cuadren con la infraestructura.
+PRESUPUESTO_S = 55
+MIN_MODELO_S = 8         # con menos tiempo que esto no se empieza la conversación con el modelo
 MAX_GASTOS = 50          # filas por consulta; los totales siempre son exactos
 INDEXAR_ANTES = 100      # fichas que se ponen al día antes de responder
 INDEXAR_CADA_S = 300     # y como mucho cada 5 minutos por proceso: recalcular las fichas en cada pregunta no compensa
@@ -717,14 +722,18 @@ def ejecutar(r: Rastro, nombre: str, argumentos: dict | None) -> dict:
 
 
 # ---------- con modelo ----------
-def _con_modelo(pregunta: str, r: Rastro) -> str:
+def _con_modelo(pregunta: str, r: Rastro, limite: float | None = None) -> str:
+    """Conversación con el modelo y sus herramientas. `limite` (reloj monotónico) es el fin del presupuesto de la
+    pregunta: ninguna llamada lo pasa, reintentos incluidos."""
     contenidos = [{"role": "user", "parts": [llm.parte_texto(pregunta)]}]
     inicio = time.monotonic()
+    limite = min(limite or inicio + PLAZO_TOTAL_S, inicio + PLAZO_TOTAL_S)
     for _ in range(MAX_VUELTAS):
-        if time.monotonic() - inicio > PLAZO_TOTAL_S:
+        queda = limite - time.monotonic()
+        if queda < 1:
             break
         candidato = llm.generar(contenidos, uso="asistente", sistema=_sistema(r.alcance), herramientas=_declaraciones(r.alcance),
-                                tope_salida=4096)
+                                tope_salida=4096, plazo_s=queda)
         contenidos.append(candidato["content"])
         llamadas = [p["functionCall"] for p in candidato["content"].get("parts", []) if "functionCall" in p]
         if not llamadas:
@@ -1192,6 +1201,7 @@ def _indexar_si_toca():
 
 
 def _responder(pregunta: str, usuario: dict, cid: int, contexto: dict | None = None, historial: list | None = None) -> dict:
+    limite = time.monotonic() + PRESUPUESTO_S   # el índice al día también cuenta: la persona ya está esperando
     _indexar_si_toca()
     from . import asesor  # aquí y no arriba: el asesor importa este módulo
     r, nota, fallo = Rastro(usuario), "", None
@@ -1199,22 +1209,30 @@ def _responder(pregunta: str, usuario: dict, cid: int, contexto: dict | None = N
     adicional = "\n\n".join(x for x in (pantalla["linea"], historial_texto(historial)) if x)
     with eventos.cronometro() as t:
         texto, modo = "", "determinista"
-        if asesor.activo():
+        situacion, detalle = asesor.estado()
+        if situacion == "listo":
             try:
                 texto, modo = asesor.preguntar(pregunta, r, usuario, contexto=adicional), "asesor"
             except Exception as e:   # ningún fallo del asesor llega a la página: responde la vía siguiente
                 fallo = e
                 eventos.registrar("asistente", None, "asesor sin respuesta",
                                   f"{asesor.motivo(e)} · sesión {r.sesion.get('id', '—')} · {len(r.pasos)} herramientas", "asesor")
+                asesor.avisar_caida(e)
                 r = Rastro(usuario)   # las fuentes que se muestran son las de la vía que respondió
-        # Si el asesor agotó el plazo o tardó en fallar, no se suma la espera del modelo de lenguaje
-        salto = fallo is not None and (getattr(fallo, "agotado", False) or getattr(fallo, "segundos", 0) > asesor.SEGUNDA_VIA_S)
-        tope = getattr(fallo, "tope", False)   # el asesor no se llamó: la respuesta lo dice, la dé quien la dé
+        elif situacion == "mal configurado":   # a medias o mal escrito: no se llama, pero tampoco queda en silencio
+            fallo = asesor.ErrorAsesor(f"está mal configurado ({detalle})", configuracion=True)
+            eventos.registrar("asistente", None, "asesor sin respuesta", asesor.motivo(fallo), "asesor")
+            asesor.avisar_caida(fallo)
+        # Si el asesor agotó el plazo, tardó en fallar o ya no queda tiempo, no se suma la espera del modelo de lenguaje
+        salto = ((fallo is not None and (getattr(fallo, "agotado", False) or getattr(fallo, "segundos", 0) > asesor.SEGUNDA_VIA_S))
+                 or limite - time.monotonic() < MIN_MODELO_S)
+        # El asesor no se llamó (tope de gasto del día o configuración): la respuesta lo dice, la dé quien la dé
+        tope = getattr(fallo, "tope", False) or getattr(fallo, "configuracion", False)
         # El porqué de un fallo (costos del día, códigos del servicio) es para administración; los demás reciben un aviso
         admin = r.alcance.admin
         if not texto and llm.activo() and not salto:
             try:
-                texto, modo = _con_modelo(f"{adicional}\n\n{pregunta}" if adicional else pregunta, r), "modelo"
+                texto, modo = _con_modelo(f"{adicional}\n\n{pregunta}" if adicional else pregunta, r, limite=limite), "modelo"
             except llm.ErrorDelModelo as e:
                 nota = (f"(El modelo de lenguaje no respondió: {e} Se usó la respuesta determinista.)\n\n" if admin
                         else "(El modelo de lenguaje no estaba disponible: se usó la respuesta directa.)\n\n")

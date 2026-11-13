@@ -49,9 +49,19 @@ def _registrar(uso: str, entidad_id, cuerpo: dict | None, ms: int, estado_http: 
 RAPIDO: ContextVar[bool] = ContextVar("lectura_rapida", default=False)
 
 
+_reloj = time.monotonic
+
+
 def generar(contenidos: list[dict], *, uso: str, entidad_id: int | None = None, sistema: str = "",
-            esquema: dict | None = None, herramientas: list[dict] | None = None, tope_salida: int = 8192) -> dict:
-    """Devuelve el primer candidato ({'content': {'parts': [...]}, 'finishReason': ...}) o lanza ErrorDelModelo."""
+            esquema: dict | None = None, herramientas: list[dict] | None = None, tope_salida: int = 8192,
+            plazo_s: float | None = None) -> dict:
+    """Devuelve el primer candidato ({'content': {'parts': [...]}, 'finishReason': ...}) o lanza ErrorDelModelo.
+
+    `plazo_s` limita el tiempo total, reintentos y pausas incluidos: lo usa quien tiene a alguien esperando."""
+    fin = _reloj() + plazo_s if plazo_s is not None else None
+
+    def queda() -> float:
+        return fin - _reloj() if fin is not None else float("inf")
     cuerpo: dict = {"contents": contenidos, "generationConfig": {"maxOutputTokens": tope_salida}}
     if sistema:
         cuerpo["systemInstruction"] = {"parts": [{"text": sistema}]}
@@ -63,19 +73,26 @@ def generar(contenidos: list[dict], *, uso: str, entidad_id: int | None = None, 
     ultimo = ""
     rapido = RAPIDO.get()
     for intento in range(1 if rapido else 3):
+        if queda() < 1:
+            ultimo = ultimo or "sin tiempo"
+            break
         inicio = time.perf_counter()
         try:
-            r = httpx.post(url, json=cuerpo, timeout=min(ESPERA_S, 40) if rapido else ESPERA_S,
+            r = httpx.post(url, json=cuerpo, timeout=min(min(ESPERA_S, 40) if rapido else ESPERA_S, queda()),
                            headers={"x-goog-api-key": config.MODELO_API_KEY, **config.MODELO_CABECERAS})
         except httpx.HTTPError as e:
             ultimo = type(e).__name__
             _registrar(uso, entidad_id, None, int((time.perf_counter() - inicio) * 1000), 0, ultimo)
+            if queda() <= 1 + intento:
+                break
             time.sleep(1 + intento)
             continue
         ms = int((time.perf_counter() - inicio) * 1000)
         if r.status_code in REINTENTABLES:
             ultimo = f"HTTP {r.status_code}"
             _registrar(uso, entidad_id, None, ms, r.status_code, ultimo)
+            if queda() <= 2 * (intento + 1):
+                break
             time.sleep(2 * (intento + 1))
             continue
         try:

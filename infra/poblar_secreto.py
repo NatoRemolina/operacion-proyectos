@@ -11,6 +11,9 @@ Uso, desde la raíz del repositorio:
   `.env.supabase-pruebas` (de esta carpeta o de la principal); de él solo se toma el identificador, y sin él no sigue.
 - Fusiona: lee el secreto actual, reemplaza las claves que el archivo trae con valor y conserva las demás (una clave
   puesta a mano no se pierde). Retira APP_CLAVE, que nadie lee.
+- Revisa la forma de lo que se escribe a mano (app/validar_config.py: versión del agente entera, cabeceras en JSON,
+  direcciones por HTTPS, secreto del webhook largo), en el archivo y en el resultado de la fusión: si algo está mal no
+  sube nada. Avisa si ASESOR_AGENTE_VERSION fuerza otra versión que la del candado app/asesor_agente.json.
 - Nunca imprime valores, solo nombres de claves. La función lee el secreto al arrancar: el cambio entra en las
   instancias que arranquen después (las encendidas siguen con el valor anterior hasta apagarse, o hasta que se
   despliegue una versión nueva de la función).
@@ -26,6 +29,7 @@ from dotenv import dotenv_values
 RAIZ = Path(__file__).resolve().parent.parent
 if str(RAIZ) not in sys.path:   # al correrlo como `python infra/poblar_secreto.py`
     sys.path.insert(0, str(RAIZ))
+from app import validar_config  # noqa: E402  (solo reglas: no carga la configuración de este equipo)
 from datos.importar_entorno import _proyectos as proyectos_de  # noqa: E402
 from datos.importar_entorno import _raiz_principal  # noqa: E402
 
@@ -61,6 +65,25 @@ def comprobar_telegram(valores: dict, archivo: str, sin_telegram: bool):
     if faltan:
         sys.exit(f"Faltan {', '.join(faltan)} en {archivo}: el webhook de Telegram quedaría con otras claves. "
                  "Agrégalas, o usa --sin-telegram si Telegram no se publica ahora. No se cambió nada.")
+
+
+def validar(valores: dict, donde: str):
+    """Lo escrito a mano tiene la forma esperada; si no, se detiene sin subir nada. Nombra claves, nunca valores."""
+    problemas = validar_config.problemas(valores, produccion=True)
+    if problemas:
+        sys.exit(f"En {donde}: {'; '.join(problemas)}. No se cambió nada.")
+
+
+def avisar_version(valores: dict):
+    """ASESOR_AGENTE_VERSION manda sobre el candado: si fuerza otra versión, se dice (no se detiene: puede ser a propósito)."""
+    forzada = str(valores.get("ASESOR_AGENTE_VERSION") or "")
+    try:
+        del_candado = json.loads((RAIZ / "app" / "asesor_agente.json").read_text(encoding="utf-8")).get("version")
+    except (OSError, ValueError, AttributeError):
+        return
+    if forzada and forzada != str(del_candado):
+        print(f"Aviso: ASESOR_AGENTE_VERSION fuerza la versión {forzada} y el candado app/asesor_agente.json dice "
+              f"{del_candado}. Si no es a propósito, ponla en {del_candado}.")
 
 
 def leer(archivo: str) -> dict:
@@ -128,6 +151,8 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     pruebas = proyectos_de_pruebas()
     comprobar(valores, x.env, pruebas)
     comprobar_telegram(valores, x.env, x.sin_telegram)
+    validar(valores, x.env)
+    avisar_version(valores)
     if x.ensayo:
         print(f"Ensayo: subiría {len(valores)} claves desde {x.env}: {', '.join(sorted(valores))}.")
         faltan = [k for k in OBLIGATORIAS if k not in valores]
@@ -148,6 +173,7 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     antes = _actual(cliente, arn)
     final = {k: v for k, v in {**antes, **valores}.items() if k not in RETIRADAS}
     comprobar(final, f"el secreto de {PILA}", pruebas)
+    validar(final, f"el secreto de {PILA} tras la fusión (un valor viejo que el archivo no reemplaza)")
     faltan = [k for k in OBLIGATORIAS if not final.get(k)]
     if faltan:
         sys.exit(f"Faltan {', '.join(faltan)}: la función no arrancaría. No se cambió nada.")

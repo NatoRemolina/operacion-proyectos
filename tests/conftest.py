@@ -40,6 +40,29 @@ def _tope_de_cotizaciones_amplio():
     db.ejecutar("update reglas set valor='100000' where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
 
 
+@pytest.fixture(scope="session")
+def _ruta_candado(tmp_path_factory):
+    return tmp_path_factory.mktemp("asesor") / "asesor_agente.json"
+
+
+@pytest.fixture(autouse=True)
+def _asistente_aislado(request, monkeypatch, _ruta_candado):
+    """Lo compartido del asistente no se filtra de una prueba a otra.
+
+    - El tope diario de preguntas y dictados: todas las pruebas preguntan como las mismas cuentas, y el conteo del día
+      no debe depender de cuántas corrieron antes. Las pruebas del tope llevan `@pytest.mark.con_tope` (usan la regla
+      de la base) o fijan el suyo con monkeypatch dentro de la prueba, que manda sobre este.
+    - El candado del agente (app/asesor_agente.json): `--sincronizar` lo escribe, así que cada prueba usa uno
+      temporal que empieza sin existir. El del repositorio solo lo lee su propia prueba."""
+    from app.servicios import asesor, asistente
+    monkeypatch.setattr(asesor, "CANDADO", _ruta_candado)
+    if not request.node.get_closest_marker("con_tope"):
+        monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
+        monkeypatch.setattr(asistente, "tope_dictados", lambda: 10_000)
+    yield
+    _ruta_candado.unlink(missing_ok=True)
+
+
 def _con_sesion(correo: str, clave: str) -> TestClient:
     c = TestClient(app)
     assert c.post("/entrar", data={"correo": correo, "clave": clave}, follow_redirects=False).headers["location"] == "/"

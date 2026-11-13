@@ -37,11 +37,6 @@ def _sin_rastro_propio():
     db.ejecutar("update asistente_consultas set momento='2000-01-01T00:00:00' where id>:d", d=desde)
 
 
-@pytest.fixture(autouse=True)
-def _sin_tope(monkeypatch):
-    monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
-
-
 @pytest.fixture(scope="module")
 def mundo(nuevo_viaje):
     """Andrés (colaborador) y Laura (colaboradora), con un viaje de Laura en un proyecto que el gestor no gestiona."""

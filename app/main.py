@@ -22,6 +22,9 @@ from .servicios import acceso, interfaz
 from .web import AQUI, SOLO_ADMIN, _asegurar, _error_registrado, _pagina_error
 
 app = FastAPI(title="Operación de proyectos", redoc_url=None)
+# Configuración mal escrita: la plataforma arranca igual, pero queda como error en el registro y la alarma avisa
+for _problema in config.PROBLEMAS:
+    print(f"ERROR peticion=arranque ruta=configuracion ConfiguracionInvalida: {_problema}", flush=True)
 app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
 
 # Se carga todo módulo de `app/rutas/`: añadir un área es añadir un archivo, sin tocar este

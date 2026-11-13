@@ -62,7 +62,7 @@ def datos_pestana(pestana: str, f: dict) -> dict:
         cotizacion.completar_ahorros()
         return metricas.busquedas(f)
     if pestana == "modelo":
-        return metricas.uso_modelo(f)
+        return {**metricas.uso_modelo(f), "asistente": asistente_por_via(f)}
     if pestana == "cupos":
         hoy = db.ahora()[:10]
         return {"buscador": precios.cupo(), "busquedas": metricas.busquedas(f),
@@ -80,6 +80,28 @@ def datos_pestana(pestana: str, f: dict) -> dict:
     return {"pruebas": metricas.calidad_de_datos(), "calibracion": g["calibracion"], "por_campo": g["correccion_por_campo"],
             "tasa_correccion": g["tasa_correccion"], "evaluados": g["gastos_evaluados"],
             "umbral": config.UMBRAL_CONFIANZA}
+
+
+RESPONDIDAS = ("asesor", "modelo", "determinista")   # los demás modos (tope, fallida, en curso) no son respuestas
+
+
+def asistente_por_via(f: dict) -> dict:
+    """Qué vía respondió las preguntas del asistente en el periodo y si el asesor está listo. Cuando el asesor cae, la
+    página responde bien con otra vía: sin esta cifra solo se notaría leyendo los errores uno por uno."""
+    donde, par = metricas._filtro({k: v for k, v in f.items() if k not in ("proyecto_id", "persona_id")}, "momento")
+    por_modo = {x["modo"]: x["n"] for x in db.todos(
+        f"select modo, count(*) n from asistente_consultas where {donde} group by modo", **par)}
+    ultima = db.uno(f"select momento, detalle from eventos where paso='asesor sin respuesta' and {donde} order by id desc limit 1",
+                    **par)
+    situacion, detalle = asesor.estado()
+    respondidas = sum(por_modo.get(m, 0) for m in RESPONDIDAS)
+    del_asesor = por_modo.get("asesor", 0)
+    pie = [f"{del_asesor} de {respondidas} preguntas respondidas" + (f" · {respondidas - del_asesor} por otra vía" if respondidas else ""),
+           f"asesor {situacion}" + (f": {detalle}" if detalle else "")]
+    if ultima:
+        pie.append(f"última caída {ultima['momento'][:16]} UTC: {(ultima['detalle'] or '')[:160]}")
+    return {"por_modo": por_modo, "respondidas": respondidas, "del_asesor": del_asesor, "estado": situacion, "detalle": detalle,
+            "porcentaje": round(100 * del_asesor / respondidas) if respondidas else None, "pie": " · ".join(pie)}
 
 
 def catalogo(f: dict) -> list[dict]:
@@ -181,7 +203,8 @@ def _pestana_modelo(d: dict) -> tuple[list, list, list]:
                      f"a {d['precio_entrada']:g} / {d['precio_salida']:g} USD por millón de tokens (entrada / salida)", "USD"),
               _cifra("Costo por recibo", d["costo_por_recibo_usd"], "promedio por lectura", "USD"),
               _cifra("Costo del asesor", a.get("costo_usd", 0), f"{a.get('llamadas', 0)} sesiones en el periodo · tope de "
-                     f"{float(asesor.tope_usd_dia()):g} USD por día (supuesto asesor_usd_dia)", "USD")]
+                     f"{float(asesor.tope_usd_dia()):g} USD por día (supuesto asesor_usd_dia)", "USD"),
+              _cifra("Respondió el asesor", d["asistente"]["porcentaje"], d["asistente"]["pie"], "%")]
     tablas = [_tabla("Por uso", [_col("Uso"), _col("Llamadas", fin=True), _col("Fallidas", fin=True), _col("Tokens de entrada", fin=True),
                                  _col("Tokens de salida", fin=True), _col("Latencia mediana (ms)", fin=True), _col("Costo", "USD")],
                      [[u, x["llamadas"], x["fallidas"], x["tokens_entrada"], x["tokens_salida"], x["latencia_mediana_ms"], x["costo_usd"]]

@@ -78,11 +78,9 @@ def test_con_el_buscador_en_vivo_se_consulta_con_el_nombre_elegido(cliente, monk
 
 
 @pytest.fixture()
-def proyectos_con_revision(nuevo_viaje, monkeypatch):
+def proyectos_con_revision(nuevo_viaje):
     """Un gasto en revisión en cada proyecto: el 1 lo gestiona el gestor de demostración y el 2 no."""
     from app import db
-    from app.servicios import asistente
-    monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
     laura = db.uno("select * from usuarios where correo='piloto2@demo.local'")
     creados = []
     for proyecto, comercio, total in ((1, "Parqueo Torre Summerlin", 61.25), (2, "Taller Alfama Reservado", 88.4)):

@@ -79,7 +79,7 @@ Sin modelo, el modo determinista reconoce esas tres preguntas por sus palabras (
 
 Preguntas sugeridas en el panel: para colaborador y gestor, «¿Cuánto me queda del presupuesto?», «¿Por qué mi gasto quedó en revisión?» y «¿Qué me falta por justificar?»; para administración, las de la empresa («¿Cómo van los indicadores?», «¿Quién mencionó el parqueadero?», «¿Cuál es el gasto real aprobado?»). La plataforma las toma de `asistente.preguntas_sugeridas` y la web nueva de `preguntasSugeridas`, con el mismo texto.
 
-Sin clave del modelo (o si el modelo falla), responde el modo determinista: resuelve los códigos `P-…`, `V-…`, «gasto #N» y los nombres de personas que aparecen en la pregunta, lista sus hechos con cifras exactas usando las mismas herramientas, calcula los indicadores que la pregunta nombra y busca en el índice las palabras que sobran. Con modelo, se usa el cliente único (`llm.generar`) con un tope de 6 vueltas y 60 segundos para toda la conversación.
+Sin clave del modelo (o si el modelo falla), responde el modo determinista: resuelve los códigos `P-…`, `V-…`, «gasto #N» y los nombres de personas que aparecen en la pregunta, lista sus hechos con cifras exactas usando las mismas herramientas, calcula los indicadores que la pregunta nombra y busca en el índice las palabras que sobran. Con modelo, se usa el cliente único (`llm.generar`) con un tope de 6 vueltas y 60 segundos para toda la conversación, y nunca más allá del presupuesto de la pregunta (abajo, «Presupuesto de tiempo»).
 
 ## Qué se indexa y qué no
 
@@ -169,12 +169,22 @@ plataforma ── abre sesión (agente + entorno + pregunta) ──> servicio de
 - **La fecha** que recibe el agente es la de la empresa (zona `America/Bogota`), no la de UTC: a las 22:00 de Bogotá sigue siendo el mismo día.
 - **Herramientas (12).** Las mismas para los tres permisos, cada una con el alcance de quien pregunta, salvo `kpi`, que es solo para administración (`asesor.herramientas_para`). Las seis de arriba; `justificaciones_de_gasto(id)`, con los textos y las notas de voz ya transcritas por el modelo que lee recibos y audios; y cinco de cotización (`opciones_de_cotizacion`, `desglose_de_opcion`, `reglas_de_aerolinea`, `historial_de_ruta`, `sensibilidad`), las mismas funciones del agente de viajes con la cotización como parámetro: «#12» o el código del viaje que nació de ella. Una herramienta fuera de la lista no ejecuta nada.
 - **Herramientas del servicio: nunca.** Si el agente usa cualquier herramienta que no sea de las que responde la plataforma (consola, archivos, web, servidores MCP), con permiso automático o pidiéndolo, la sesión se interrumpe, la respuesta no se acepta y responde la vía siguiente con el motivo «el agente usó una herramienta del servicio (nombre)».
-- **Límites.** 75 s por pregunta en total, 12 herramientas por pregunta, resultados de hasta 20.000 caracteres (se recortan filas, nunca los totales).
+- **Límites.** 40 s por sesión en total (medido: una respuesta tarda de 14 a 17 s), 12 herramientas por pregunta, resultados de hasta 20.000 caracteres (se recortan filas, nunca los totales).
 - **Costo y tope del día.** Cada sesión, termine bien o con error, deja una fila en `llamadas_modelo` con `uso='asesor'`: tokens de entrada (incluida la caché) y de salida, duración, resultado y `costo_usd`, el costo a precio de lista que informa el servicio (centavos de USD en una cadena, convertidos con `Decimal`: «4» = 0,04 USD), leído al cerrar la sesión o, si no se puede, del último evento `session.usage`. Monitoreo lo muestra en la pestaña «Modelo de lenguaje», fila `asesor`, con ese costo y no con el precio de referencia. El supuesto `asesor_usd_dia` (2 USD por defecto, editable en «Reglas y supuestos») es el tope de gasto por día de la empresa (hora de Bogotá): alcanzado, no se abre ninguna sesión y responde la vía siguiente, con la nota «El asesor no se consultó: se alcanzó el tope de gasto del día…». Antes de abrir cada sesión se reserva su costo estimado (`asesor_usd_estimado_sesion`, 0,05 USD) en una fila de `llamadas_modelo` a nombre de quien pregunta, en fila con las demás reservas (un bloqueo de PostgreSQL; en SQLite, el cerrojo de escritura): así varias sesiones simultáneas no pasan juntas el tope. Al cerrar, lo reservado se reemplaza por el costo que informa el servicio; si no lo informa, queda lo reservado, y si la sesión no llegó a abrirse, cero. Colaboradores y gestores tienen además su parte (`asesor_usd_dia_colaboradores`, 1 USD): alcanzada, reciben la respuesta del modelo o la directa, y administración conserva el resto del tope.
 - **Cierre de cada sesión.** Al terminar, bien o con error (después de interrumpirla si quedó en marcha), la sesión se borra del servicio: sus eventos, su contenedor y sus registros. Si el servicio rechaza el borrado porque la sesión aún no se detuvo, se reintenta una vez; si sigue sin poderse, queda allí (ver «Límites conocidos»). `python -m datos.asesor --probar` es la excepción: conserva la sesión para abrirla en la consola del servicio.
 - **Si la creación de la sesión vence** (la petición salió y no llegó respuesta), la sesión pudo crearse igual: cada sesión lleva en sus metadatos una marca aleatoria de su pregunta, y la plataforma la busca entre las últimas 20 del servicio, la interrumpe, la borra y registra su costo.
-- **Orden de respaldo.** Si el asesor no responde, responde el modelo de lenguaje con herramientas; si el asesor agotó el plazo o tardó más de 20 s en fallar, se pasa directamente al modo determinista para no sumar esperas. El motivo queda en el evento `asesor sin respuesta` y en una nota al inicio de la respuesta.
+- **Orden de respaldo.** Si el asesor no responde, responde el modelo de lenguaje con herramientas; si el asesor agotó el plazo o tardó más de 20 s en fallar, se pasa directamente al modo determinista para no sumar esperas.
+- **Presupuesto de tiempo.** Una pregunta tiene 55 s de punta a punta (`asistente.PRESUPUESTO_S`), porque CloudFront corta a los 60 s y lo que llegue después no lo ve nadie.
+  - El asesor tiene 40 s y, con el cierre de la sesión, cabe dentro de ese presupuesto.
+  - El modelo de lenguaje recibe solo lo que queda, con reintentos incluidos, y no empieza con menos de 8 s.
+  - `tests/test_presupuesto_tiempo.py` lee la espera de la pila (`infra/lib/web-stack.ts`) y falla si las cuentas dejan de cuadrar. El motivo queda en el evento `asesor sin respuesta` y en una nota al inicio de la respuesta.
 - **Rastro.** `asistente_consultas.modo` = `asesor`, el evento `pregunta respondida` lleva el identificador de la sesión, los tokens y el costo, y `llamadas_modelo` guarda una fila por sesión.
+- **Vigilancia.** Que el asesor caiga no rompe la página, así que tiene que verse de otra forma:
+  - cada pregunta que no respondió deja en el registro la línea `AVISO asesor_caida motivo=<configuracion|plazo|sin_respuesta|error>`, sin la pregunta ni datos de la persona;
+  - la alarma `CaidasDelAsesor` avisa por correo con 3 caídas en 15 minutos;
+  - en Monitoreo, pestaña «Modelo de lenguaje», la cifra «Respondió el asesor» dice cuántas preguntas respondió, cuántas otra vía, si el asesor está listo y cuál fue la última caída.
+  - Llegar al tope de gasto del día no cuenta como caída.
+- **Configuración a medias o mal escrita.** Si falta alguna de las variables, o `ASESOR_CABECERAS` no es JSON, el asesor queda «mal configurado»: no se llama, la respuesta lo dice a administración y cuenta como caída. Una `ASESOR_AGENTE_VERSION` mal escrita no lo apaga: se ignora y se usa la versión del candado. El arranque registra cualquiera de los dos casos como `ERROR` (lo cuenta la alarma `ErroresDeLaAplicacion`), sin mostrar el valor.
 
 Configuración en `.env` (vacía = apagado):
 
@@ -183,7 +193,7 @@ Configuración en `.env` (vacía = apagado):
 | `ASESOR_API_URL` | Dirección base del servicio, sin `/v1` |
 | `ASESOR_API_KEY` | Clave del servicio (cabecera `x-api-key`) |
 | `ASESOR_AGENTE_ID`, `ASESOR_ENTORNO_ID` | Agente y entorno creados en la consola del servicio |
-| `ASESOR_AGENTE_VERSION` | Opcional: versión fija del agente (un número). Si está, cada sesión pide esa versión; vacía, la última. Así un cambio en la consola no llega a las respuestas hasta que se verifica y se sube este número |
+| `ASESOR_AGENTE_VERSION` | Opcional: fuerza una versión del agente (un número) por encima del candado. Vacía, cada sesión usa la versión del candado `app/asesor_agente.json` |
 | `ASESOR_CABECERAS` | Cabeceras que exige el servicio (versión de la API y función en prueba), en JSON |
 
 Mantenimiento por consola:
@@ -192,11 +202,16 @@ Mantenimiento por consola:
 python -m datos.asesor --esquemas            # herramientas en JSON, tal como van en la consola
 python -m datos.asesor --sistema             # mensaje de sistema
 python -m datos.asesor --verificar           # compara el agente y el entorno guardados con el código (solo lectura)
-python -m datos.asesor --sincronizar         # sube al agente el mensaje de sistema y las herramientas del código
+python -m datos.asesor --sincronizar         # sube al agente el mensaje de sistema y las herramientas, y escribe el candado
 python -m datos.asesor --probar "pregunta"   # sesión real paso a paso; solo registra su costo y conserva la sesión
 ```
 
-El agente se configura sin herramientas propias del servicio (consola, archivos, web) y en un entorno con red limitada sin destinos permitidos: todo lo que sabe de la plataforma le llega por las herramientas. `--verificar` cuenta como problema que el agente tenga herramientas o servidores MCP del servicio, que el entorno no limite la red o que permita algún destino (sitios, gestores de paquetes o servidores MCP), y que la versión fijada en `ASESOR_AGENTE_VERSION` no sea la última del agente. Después de `--sincronizar`, el número de la versión nueva se pasa a `ASESOR_AGENTE_VERSION`.
+El agente se configura sin herramientas propias del servicio (consola, archivos, web) y en un entorno con red limitada sin destinos permitidos: todo lo que sabe de la plataforma le llega por las herramientas. `--verificar` cuenta como problema que el agente tenga herramientas o servidores MCP del servicio, que el entorno no limite la red o que permita algún destino (sitios, gestores de paquetes o servidores MCP), , que la versión que usan las sesiones no sea la última del agente y que el candado no tenga la huella del código.
+
+**Candado del agente.** `app/asesor_agente.json` guarda la versión del agente que usan las sesiones y la huella (sha256) del mensaje de sistema y las herramientas que se le subieron.
+- Lo escribe `--sincronizar` y se commitea con el cambio: la versión nueva llega a producción con el despliegue, sin copiar ningún número a mano.
+- Una prueba falla si el código del asesor cambia sin sincronizar.
+- `infra/poblar_secreto.py` avisa si `ASESOR_AGENTE_VERSION` fuerza otra versión que la del candado.
 
 **Qué sale hacia el servicio:** la pregunta, la fecha del día, la línea «Te escribe …» con el código y el permiso de quien pregunta, y los resultados de las herramientas que pida (solo lo que esa persona puede ver), que incluyen códigos y nombres de personas, comercios, importes y los textos de notas y justificaciones. Es la misma clase de datos que hoy procesa el modelo que lee los recibos.
 
@@ -242,12 +257,12 @@ En la web Next, los tres permisos tienen un botón «Asistente IA» fijo abajo a
 - El modo determinista entiende códigos, nombres de personas, números de gasto y nombres de indicadores; no interpreta fechas relativas («la semana pasada») ni comparaciones. Eso lo hace el modo con modelo.
 - Los audios cargados como evidencia de un viaje (`documentos`) no se transcriben: su ficha solo dice que existe y su pie de texto. Las notas de voz de las justificaciones sí llegan transcritas (`docs/justificaciones.md`) y se indexan y se consultan con su transcripción.
 - La ficha de una persona (`/admin/kpis/persona/{id}`) se enlaza solo si esa pantalla está publicada; si no, el código de la persona se muestra sin enlace.
-- Con el asesor una respuesta tarda más (sesión, idas y vueltas por cada herramienta y el razonamiento del modelo), hasta el tope de 75 s; no hay una medición publicada del tiempo típico. El botón queda desactivado mientras espera.
+- Con el asesor una respuesta tarda más (sesión, idas y vueltas por cada herramienta y el razonamiento del modelo), hasta el tope de 40 s (en las pruebas, de 14 a 17 s). El botón queda desactivado mientras espera.
 - El tope de gasto del día cuenta lo reservado por las sesiones en curso y, al cerrarlas, lo que informa el servicio. Una sesión puede costar más que lo reservado, así que el día puede pasarse del tope por la diferencia; una sesión cuyo costo el servicio no informe queda con lo reservado.
 - Una sesión que no se pudo borrar (seguía en marcha tras dos intentos, o se perdió la conexión) queda en el servicio con la pregunta y los resultados de las herramientas. Este repositorio no conoce un plazo de borrado automático en el servicio: se asume que queda hasta borrarla desde su consola. El identificador está en el evento `asesor sin respuesta` o `pregunta respondida`.
 - Si la creación de la sesión vence, la búsqueda de la sesión huérfana es de mejor esfuerzo: mira las últimas 20 sesiones de la cuenta y puede no encontrarla si el servicio aún no la lista. En ese caso trabaja hasta terminar su turno y queda en el servicio, sin costo registrado en la plataforma.
 - El asistente flotante responde cada pregunta por separado, como la página: no recuerda la anterior. Si se cambia de página mientras espera, esa respuesta se pierde en el panel (la consulta sí queda registrada) y la pregunta aparece marcada como sin respuesta. El panel deja de esperar a los 120 s.
-- El mensaje de sistema del asesor cambió (ahora dice para quién responde): el agente alojado lo recibe con `python -m datos.asesor --sincronizar` y la versión nueva en `ASESOR_AGENTE_VERSION`. Mientras tanto, el agente anterior sigue respondiendo con el alcance correcto, porque lo aplican las herramientas, pero sus instrucciones suponen que escribe administración.
+- El mensaje de sistema del asesor cambió (ahora dice para quién responde): el agente alojado lo recibe con `python -m datos.asesor --sincronizar`, que deja la versión nueva en el candado. Mientras tanto, el agente anterior sigue respondiendo con el alcance correcto, porque lo aplican las herramientas, pero sus instrucciones suponen que escribe administración.
 - En el índice, una ficha es de la persona titular del viaje (o de quien cargó el gasto si no tiene viaje) y de su proyecto. Un gasto que alguien ve en las pantallas como viajero, pero cuyo viaje tiene otro titular, no le aparece en `buscar`; sí en las consultas exactas. Es una omisión, nunca un dato de más.
 - `reglas_de_aerolinea` (equipaje, millas y cambios por aerolínea) está disponible para los tres permisos: es el catálogo general de reglas, no datos de personas.
 - Las preguntas sugeridas del gestor son las mismas del colaborador. Para preguntar por alguien de sus proyectos, usa su código (P-…) o el del viaje.
