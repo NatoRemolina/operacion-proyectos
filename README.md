@@ -281,6 +281,7 @@ Copiar `.env.example` a `.env`. Cada bloque activa una parte; sin ninguno la pla
 - El dinero se guarda en coma flotante; las reglas validan y comparan con decimales exactos y la API lo entrega como cadenas de dos decimales. Pasar las columnas a decimales exactos está pendiente.
 - Con pocos gastos y pocas decisiones, varios indicadores muestran el método, no conclusiones; sus metas son supuestos editables.
 - El ahorro que muestra la analítica es un valor esperado bajo supuestos editables, no dinero ya ahorrado.
+- **Ahorro de cotizaciones anteriores:** el ahorro se calcula contra el vuelo más barato que sirve; las cotizaciones guardadas antes de esa regla conservan el que se calculó contra el más barato de todos, aunque estuviera descartado, así que en una base ya sembrada o importada los indicadores mezclan las dos. Se corrige con un recálculo único del ahorro de esas cotizaciones.
 - Los precios son una foto del momento de la consulta; cada opción muestra su origen.
 - La distancia y el tiempo por carretera son una estimación (línea recta × factor ÷ velocidad), sin mapas ni rutas reales, y no hay tren, bus ni ferri.
 - La web Next.js cubre cotizar, viajes, gastos y la aprobación y revisión de administración; corregir un gasto, aprobar con excepción, KPIs, asistente, monitoreo, reglas, proyectos y usuarios siguen en las pantallas actuales.
