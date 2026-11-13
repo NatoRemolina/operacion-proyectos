@@ -275,3 +275,52 @@ def test_la_evidencia_se_ve_en_la_cotizacion_y_en_la_compra_solo_con_permiso(pil
     detalle = cliente.get(f"{V1}/compras/{compra['id']}").json()
     assert detalle["evidencia"]["estado"] == "guardada" and len(detalle["evidencia"]["capturas"]) == 2
     assert cliente.get(vuelo["imagenes"][0]).status_code == 200
+
+
+# ---------- arreglos antes de unir: la evidencia nunca tumba la compra ni la decisión ----------
+def test_si_no_se_puede_encolar_la_evidencia_la_compra_queda_registrada(piloto, cliente, cola, monkeypatch):
+    cot = _cotizar(piloto)
+    d = _decidir(piloto, cot, hotel=False)
+    viaje = d["viaje"]["id"]
+    assert cliente.post(f"{V1}/viajes/{viaje}/estado", json={"accion": "aprobar", "confirmar_precio": True},
+                        headers=_csrf(cliente)).status_code == 200
+    c = db.uno("select * from compras where viaje_id=:v and activa=1", v=viaje)
+    assert cliente.post(f"{V1}/compras/{c['id']}/estado", json={"accion": "se_comprara", "version": 1, "motivo": "Hoy"},
+                        headers=_csrf(cliente)).status_code == 200
+
+    def falla(_cid):
+        raise RuntimeError("almacén caído")
+    monkeypatch.setattr(capturas, "al_comprar", falla)
+    r = cliente.post(f"{V1}/compras/{c['id']}/registro", json={"version": 2, "localizador": "QX7Z2P", "precio_pagado": "748.80",
+                                                               "vendedor": "American"}, headers=_csrf(cliente))
+    assert r.status_code == 200 and r.json()["estado"] == "comprada", r.text
+    assert db.uno("""select id from eventos where entidad='viaje' and entidad_id=:v and paso='aviso al viajero'
+                     and detalle like '%comprada a American%'""", v=viaje)
+    ev = db.uno("select detalle from eventos where entidad='compra' and entidad_id=:c and paso='evidencia de compra no encolada'",
+                c=c["id"])
+    assert ev and "RuntimeError" in ev["detalle"]
+
+
+def test_si_no_se_puede_encolar_la_evidencia_la_decision_queda_guardada(piloto, cola, monkeypatch):
+    def falla(_did):
+        raise RuntimeError("cola caída")
+    monkeypatch.setattr(capturas, "al_decidir", falla)
+    cot = _cotizar(piloto)
+    d = _decidir(piloto, cot)
+    did = d["decision"]["id"]
+    assert db.uno("select id from decisiones where id=:d", d=did)
+    assert db.uno("select id from compras where viaje_id=:v and activa=1", v=d["viaje"]["id"])
+    ev = db.uno("select detalle from eventos where entidad='solicitud' and entidad_id=:s and paso='evidencia no encolada'",
+                s=cot["id"])
+    assert ev and "RuntimeError" in ev["detalle"] and _de(cot["id"]) == []
+
+
+def test_la_evidencia_se_encola_despues_de_confirmar_la_decision(piloto, cola, monkeypatch):
+    from app import db as base
+    vistos = []
+    real = capturas.al_decidir
+    monkeypatch.setattr(capturas, "al_decidir", lambda did: vistos.append(base._en_transaccion.get()) or real(did))
+    cot = _cotizar(piloto)
+    _decidir(piloto, cot)
+    assert vistos == [None]                      # fuera de la transacción y del cerrojo de la decisión
+    assert len(_de(cot["id"])) == 2
