@@ -43,11 +43,24 @@ describe("Reglas y supuestos", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Reglas y supuestos" })).toBeInTheDocument();
     const aerolineas = await screen.findByRole("region", { name: /Aerolíneas/ });
     expect(within(aerolineas).getByText("equipaje_mano")).toBeInTheDocument();
-    expect(within(aerolineas).getByLabelText("Valor de equipaje_mano")).toHaveValue("no");
+    expect(within(aerolineas).getByLabelText("Valor de equipaje_mano (United, basica)")).toHaveValue("no");
     expect(within(aerolineas).getByText("En rutas nacionales solo artículo personal.")).toBeInTheDocument();
     expect(within(aerolineas).getByRole("link", { name: /Fuente/ })).toHaveAttribute("href", "https://www.united.com/basic-economy");
     expect(within(aerolineas).getByText("oficial")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /Cuentas contables/ })).toHaveTextContent("cuenta_contable_hotel");
+  });
+
+  it("avisa que un cambio se aplica en hasta un minuto", async () => {
+    montar();
+    expect(await screen.findByText(/se aplican en hasta un minuto/)).toBeInTheDocument();
+  });
+
+  it("las etiquetas de valor son únicas aunque la clave se repita entre aerolíneas", async () => {
+    const otra: Regla = { ...EQUIPAJE, id: 4, entidad: "Delta", tarifa: "basica" };
+    montar({ catalogo: { ...CATALOGO, grupos: [{ clave: "aerolinea", titulo: "Aerolíneas", reglas: [EQUIPAJE, otra] }] } });
+    expect(await screen.findByLabelText("Valor de equipaje_mano (United, basica)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Valor de equipaje_mano (Delta, basica)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guardar equipaje_mano (Delta, basica)" })).toBeInTheDocument();
   });
 
   it("una fuente que no es una dirección se muestra como texto", async () => {
@@ -84,10 +97,10 @@ describe("Reglas y supuestos", () => {
   it("una regla de texto guarda el texto", async () => {
     const usuario = userEvent.setup();
     const { editar } = montar();
-    const campo = await screen.findByLabelText("Valor de equipaje_mano");
+    const campo = await screen.findByLabelText("Valor de equipaje_mano (United, basica)");
     await usuario.clear(campo);
     await usuario.type(campo, "sí, en transatlánticas");
-    await usuario.click(screen.getByRole("button", { name: "Guardar equipaje_mano" }));
+    await usuario.click(screen.getByRole("button", { name: "Guardar equipaje_mano (United, basica)" }));
     expect(editar).toHaveBeenCalledWith(3, "sí, en transatlánticas");
   });
 
@@ -98,16 +111,16 @@ describe("Reglas y supuestos", () => {
         throw new ErrorDeAplicacion("validacion", { campos: { valor: "«0.1x» no es un número válido para tolerancia_presupuesto. No se guardó." } });
       },
     });
-    const campo = await screen.findByLabelText("Valor de equipaje_mano");
+    const campo = await screen.findByLabelText("Valor de equipaje_mano (United, basica)");
     await usuario.type(campo, " más");
-    await usuario.click(screen.getByRole("button", { name: "Guardar equipaje_mano" }));
+    await usuario.click(screen.getByRole("button", { name: "Guardar equipaje_mano (United, basica)" }));
     expect(await screen.findByText(/«0.1x» no es un número válido/)).toBeInTheDocument();
   });
 
   it("sin cambios no envía nada", async () => {
     const usuario = userEvent.setup();
     const { editar } = montar();
-    await usuario.click(await screen.findByRole("button", { name: "Guardar equipaje_mano" }));
+    await usuario.click(await screen.findByRole("button", { name: "Guardar equipaje_mano (United, basica)" }));
     expect(editar).not.toHaveBeenCalled();
     expect(await within(screen.getByRole("status", { name: "Avisos" })).findByText(/Sin cambios/)).toBeInTheDocument();
   });

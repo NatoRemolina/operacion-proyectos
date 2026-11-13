@@ -53,6 +53,7 @@ function datosDe(datos: Partial<DatosRevision> = {}): DatosRevision {
     viajes: [
       { id: 7, codigo: "V-2026-0007", estado: "aprobado", estado_texto: "Aprobado", titular: "Alex Rivera", origen: "MIA", destino: "SLC", ida: "2026-12-08", regreso: "2026-12-11" },
       { id: 9, codigo: "V-2026-0009", estado: "aprobado", estado_texto: "Aprobado", titular: "Sam Ortiz", origen: "MIA", destino: "LAS", ida: "2026-12-14", regreso: "2026-12-16" },
+      { id: 11, codigo: "V-2026-0011", estado: "aprobado", estado_texto: "Aprobado", titular: "Administración", origen: "MIA", destino: "SFO", ida: "2026-12-20", regreso: "2026-12-22", propio: true },
     ],
     propio: false,
     aviso_propio: null,
@@ -382,6 +383,18 @@ describe("Revisar un gasto", () => {
     expect(revisar).toHaveBeenCalledWith(123, { version: 3, accion: "aprobar", campos: { categoria: "otros" }, viajeId: 9 });
   });
 
+  it("un viaje propio viene marcado y elegirlo se explica sin enviar nada", async () => {
+    const usuario = userEvent.setup();
+    const { revisar } = montar();
+    const correccion = await screen.findByRole("region", { name: "Corregir los datos" });
+    expect(within(correccion).getByRole("option", { name: /V-2026-0011.*tuyo/ })).toBeInTheDocument();
+    await usuario.selectOptions(within(correccion).getByLabelText("Viaje"), "11");
+    await usuario.click(within(correccion).getByRole("button", { name: "Guardar correcciones" }));
+    expect(within(correccion).getByText(/Es un viaje tuyo/)).toBeInTheDocument();
+    expect(within(correccion).getByLabelText("Viaje")).toHaveAttribute("aria-invalid", "true");
+    expect(revisar).not.toHaveBeenCalled();
+  });
+
   it("quitar el viaje manda 0", async () => {
     const usuario = userEvent.setup();
     const { revisar } = montar();
@@ -459,7 +472,7 @@ describe("Revisar un gasto", () => {
         {
           ...EN_REVISION,
           justificaciones: [
-            { id: 1, tipo: "texto", canal: "web", texto: "Cena con el equipo de grabación", transcripcion: "no_aplica", creado: "2026-11-12T04:00:00Z" },
+            { id: 1, tipo: "texto", canal: "api", texto: "Cena con el equipo de grabación", transcripcion: "no_aplica", creado: "2026-11-12T04:00:00Z" },
             { id: 2, tipo: "audio", canal: "telegram", texto: null, transcripcion: "pendiente", creado: "2026-11-12T05:00:00Z" },
           ],
         },
@@ -467,6 +480,7 @@ describe("Revisar un gasto", () => {
     });
     const contado = await screen.findByRole("region", { name: "Lo que contó la persona" });
     expect(within(contado).getByText("Cena con el equipo de grabación")).toBeInTheDocument();
+    expect(within(contado).getByText(/Por escrito · API ·/)).toBeInTheDocument();
     const audio = contado.querySelector("audio");
     expect(audio).toHaveAttribute("src", "/api/v1/gastos/123/justificaciones/2/audio");
     expect(within(contado).getByText(/Transcripción pendiente/)).toBeInTheDocument();

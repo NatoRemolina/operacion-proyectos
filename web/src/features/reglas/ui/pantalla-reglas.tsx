@@ -62,6 +62,9 @@ function FilaRegla({ regla }: { regla: Regla }) {
   }
 
   const aplica = [regla.entidad, regla.tarifa ? `(${regla.tarifa})` : ""].filter(Boolean).join(" ");
+  // La misma clave se repite entre aerolíneas y tarifas: el nombre accesible lleva a quién aplica para ser único
+  const detalle = [regla.entidad, regla.tarifa].filter(Boolean).join(", ");
+  const nombre = detalle ? `${regla.clave} (${detalle})` : regla.clave;
   return (
     <li id={`r${regla.id}`} className="flex flex-col gap-3 border-b border-linea py-4 last:border-b-0 md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:gap-6">
       <div className="flex min-w-0 flex-col gap-1">
@@ -84,7 +87,7 @@ function FilaRegla({ regla }: { regla: Regla }) {
       </div>
       <form onSubmit={guardar} noValidate className="flex flex-col gap-1">
         <label htmlFor={id} className="font-semibold">
-          Valor<span className="sr-only"> de {regla.clave}</span>
+          Valor<span className="sr-only"> de {nombre}</span>
         </label>
         <div className="flex gap-2">
           <input
@@ -106,7 +109,7 @@ function FilaRegla({ regla }: { regla: Regla }) {
             variante="secundario"
             className="shrink-0 whitespace-nowrap"
             disabled={edicion.isPending}
-            aria-label={`Guardar ${regla.clave}`}
+            aria-label={`Guardar ${nombre}`}
           >
             {edicion.isPending ? "Guardando…" : "Guardar"}
           </Boton>
@@ -163,7 +166,7 @@ export function PantallaReglas() {
   const [busqueda, setBusqueda] = useState("");
   const catalogo = consulta.data;
   const descripcion =
-    "Lo que ningún buscador entrega. Cada regla tiene fuente, nivel de confianza y fecha de verificación, y se edita sin tocar el código.";
+    "Lo que ningún buscador entrega. Cada regla tiene fuente, nivel de confianza y fecha de verificación, y se edita sin tocar el código. Los cambios se aplican en hasta un minuto.";
 
   if (!catalogo) {
     return (

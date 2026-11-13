@@ -74,6 +74,7 @@ export const datosRevisionSchema = z.object({
       destino: z.string().nullable(),
       ida: z.string().nullable(),
       regreso: z.string().nullable(),
+      propio: z.boolean().default(false),
     }),
   ),
   propio: z.boolean(),

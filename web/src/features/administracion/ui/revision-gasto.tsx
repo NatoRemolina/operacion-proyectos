@@ -23,6 +23,7 @@ import {
   formularioInicial,
   importeNormalizado,
   problemaDeMotivoExcepcion,
+  problemaDeViaje,
   type DatosRevision,
   type FormularioRevision,
   type LecturaOriginal,
@@ -37,7 +38,7 @@ const TITULO_ERROR: Partial<Record<ErrorDeAplicacion["tipo"], string>> = {
   validacion: "No se guardó la revisión",
 };
 
-const CANAL: Record<string, string> = { web: "Web", celular: "Celular", correo: "Correo", telegram: "Telegram" };
+const CANAL: Record<string, string> = { web: "Web", celular: "Celular", correo: "Correo", telegram: "Telegram", api: "API" };
 
 const HECHO: Record<"aprobar" | "excepcion" | "rechazar", string> = {
   aprobar: "Gasto aprobado.",
@@ -333,6 +334,12 @@ function RevisionCompleta({
     }
     const hayCampos = conCambios && Object.keys(cambios.campos).length > 0;
     const hayViaje = conCambios && cambios.viajeId !== undefined;
+    const viajePropio = hayViaje ? problemaDeViaje(cambios.viajeId, datos.viajes) : null;
+    if (viajePropio) {
+      setErroresCampos({ viaje: viajePropio });
+      setDialogo(null);
+      return;
+    }
     if (accion === "guardar" && !hayCampos && !hayViaje) {
       avisar({ tono: "info", texto: "No hay correcciones que guardar." });
       return;
@@ -557,11 +564,14 @@ function RevisionCompleta({
                   ayuda="El viaje define el proyecto y quién viaja; el saldo se vuelve a revisar al aprobar."
                   value={formulario.viaje}
                   onChange={(e) => cambiar("viaje", e.target.value)}
+                  error={erroresCampos.viaje}
                 >
                   <option value="">Sin viaje</option>
                   {viajes.map((v) => (
                     <option key={v.id} value={String(v.id)}>
-                      {[v.codigo, v.titular, v.ida, v.estado_texto].filter(Boolean).join(" · ")}
+                      {[v.codigo, v.titular, v.ida, v.estado_texto, "propio" in v && v.propio ? "tuyo: no lo revisarías tú" : null]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </option>
                   ))}
                 </CampoSelector>

@@ -8749,6 +8749,12 @@
               }
             ],
             "title": "Regreso"
+          },
+          "propio": {
+            "type": "boolean",
+            "title": "Propio",
+            "description": "Es un viaje de quien revisa (titular o viajero): cargar el gasto ahí lo haría suyo, y nadie revisa lo suyo.",
+            "default": false
           }
         },
         "type": "object",

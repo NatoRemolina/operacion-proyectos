@@ -92,6 +92,13 @@ class ViajeAsignable(BaseModel):
     destino: str | None
     ida: str | None
     regreso: str | None
+    propio: bool = Field(False, description="Es un viaje de quien revisa (titular o viajero): cargar el gasto ahí lo "
+                                            "haría suyo, y nadie revisa lo suyo.")
+
+
+def viajes_asignables(yo: dict, donde: str) -> list[dict]:
+    """Viajes a los que se puede cargar un gasto, marcando los propios de quien mira."""
+    return [{**v, "propio": viajes.es_propio_de(v, yo)} for v in viajes.lista(donde)]
 
 
 class DatosRevision(BaseModel):
@@ -284,7 +291,7 @@ def datos_revision(id: int, yo: dict = Depends(persona)):
             "lectura_original": _lectura_original(g["extraido"]),
             "soporte": {"documento_id": g["doc"], "nombre": g["archivo"], "forma": _forma_soporte(g["mime"], g["ruta"])} if g["doc"] else None,
             "categorias": [{"clave": c, "nombre": n} for c, n in config.CATEGORIAS.items()],
-            "viajes": viajes.lista("v.estado<>'rechazado'"), "propio": propio, "aviso_propio": aviso}
+            "viajes": viajes_asignables(yo, "v.estado<>'rechazado'"), "propio": propio, "aviso_propio": aviso}
 
 
 @router.post("/gastos/{id}/revision", response_model=GastoRevisable, responses=errores(401, 403, 404, 409, 422))

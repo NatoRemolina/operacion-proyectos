@@ -381,13 +381,14 @@ interface DatosRevision {
              forma: "imagen" | "pdf" | "descarga" } | null;   // según lo que entrega /documentos/{id}/contenido
   categorias: { clave: string; nombre: string }[];            // las de la plataforma, en orden
   viajes: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string; titular: string | null;
-            origen: string | null; destino: string | null; ida: string | null; regreso: string | null }[];
+            origen: string | null; destino: string | null; ida: string | null; regreso: string | null;
+            propio: boolean }[];               // propio: viaje de quien revisa; cargar el gasto ahí lo haría suyo
   propio: boolean;                             // nadie revisa lo suyo
   aviso_propio: string | null;                 // por qué no se revisa y si hay otra persona que pueda
 }
 ```
 
-- `viajes`: a los que se puede reasignar el gasto con `viaje_id` en la revisión; todos salvo los rechazados, el más reciente primero (las mismas opciones que la revisión de las pantallas de administración).
+- `viajes`: a los que se puede reasignar el gasto con `viaje_id` en la revisión; todos salvo los rechazados, el más reciente primero (las mismas opciones que la revisión de las pantallas de administración). Los marcados `propio` son de quien revisa: reasignar el gasto a uno de ellos responde 403 (nadie revisa lo suyo), y la web lo explica antes de enviar.
 - El archivo del soporte se pide a `GET /documentos/{documento_id}/contenido`, y `forma` dice cómo mostrar lo que entrega: `imagen` y `pdf` al lado (un correo `.eml` con su PDF o su foto adjunta también); `descarga` es texto: un correo sin adjunto legible (su texto con De, Asunto y Fecha, en línea) o una confirmación HTML guardada como texto (se descarga como `.txt`).
 
 ### `GET /gastos/{id}/justificaciones/{jid}/audio`
@@ -486,7 +487,8 @@ interface BuzonSimulado {
   aviso: string;                        // el texto que dice que es simulado
   mensajes: { nombre: string; formato: "correo" | "html"; remitente: string | null; asunto: string | null }[];
   viajes: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string; titular: string | null;
-            origen: string | null; destino: string | null; ida: string | null; regreso: string | null }[];   // aprobados o pendientes
+            origen: string | null; destino: string | null; ida: string | null; regreso: string | null;
+            propio: boolean }[];   // aprobados o pendientes; propio: viaje de quien lee
 }
 ```
 

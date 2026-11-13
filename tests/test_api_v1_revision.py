@@ -136,7 +136,7 @@ def test_ofrece_los_viajes_a_los_que_se_puede_reasignar(cliente, recibo, viaje_a
     assert rechazado["id"] not in opciones   # como en la revisión de administración: un viaje rechazado no recibe gastos
     v = opciones[viaje_aprobado["id"]]
     assert v["codigo"] == viaje_aprobado["codigo"] and v["estado"] == "aprobado" and v["estado_texto"]
-    assert set(v) == {"id", "codigo", "estado", "estado_texto", "titular", "origen", "destino", "ida", "regreso"}
+    assert set(v) == {"id", "codigo", "estado", "estado_texto", "titular", "origen", "destino", "ida", "regreso", "propio"}
 
 
 # ---------- nadie revisa lo suyo ----------
@@ -270,3 +270,21 @@ def test_un_gasto_que_se_sigue_leyendo_no_se_toca(cliente, nuevo_viaje):
     gid = _procesando(nuevo_viaje(), "Sonda leyéndose", hace_min=0)
     datos = _revision(cliente, gid).json()
     assert db.uno("select estado from gastos where id=:i", i=gid)["estado"] == "procesando" and datos["version"] == 0
+
+
+# ---------- ronda 1: los viajes propios vienen marcados y reasignar a uno se impide ----------
+def test_los_viajes_propios_vienen_marcados_y_reasignar_a_uno_se_impide(cliente, recibo, nuevo_viaje):
+    v = nuevo_viaje()
+    admin = _persona("admin@demo.local")
+    titular = v["usuario_id"]
+    db.actualizar("viajes", v["id"], usuario_id=admin["id"])   # administración es la titular de este viaje
+    try:
+        datos = _revision(cliente, recibo["id"]).json()
+        opciones = {x["id"]: x for x in datos["viajes"]}
+        assert opciones[v["id"]]["propio"] is True and opciones[recibo["viaje"]["id"]]["propio"] is False
+        r = cliente.post(f"{V1}/gastos/{recibo['id']}/revision", headers=_csrf(cliente),
+                         json={"version": datos["version"], "accion": "guardar", "viaje_id": v["id"]})
+        _error(r, 403, "FORBIDDEN")
+        assert db.uno("select viaje_id from gastos where id=:i", i=recibo["id"])["viaje_id"] == recibo["viaje"]["id"]
+    finally:
+        db.actualizar("viajes", v["id"], usuario_id=titular)

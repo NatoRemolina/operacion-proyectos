@@ -10,7 +10,7 @@ from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, solo_admin
 from ..api_v1.esquemas import errores
 from ..api_v1.esquemas_buzon import LecturaBuzon, MensajeBuzon, ResultadoBuzon
 from ..servicios import acceso, buzon, consultas, viajes
-from .v1_gastos import ViajeAsignable
+from .v1_gastos import ViajeAsignable, viajes_asignables
 
 router = APIRouter(prefix=PREFIJO + "/buzon", tags=["buzón simulado"])
 
@@ -26,7 +26,7 @@ class BuzonSimulado(BaseModel):
 def ver(yo: dict = Depends(solo_admin)):
     """Los correos (.eml) y confirmaciones en HTML de ejemplo que se pueden leer, y los viajes a los que cargarlos."""
     return {"simulado": True, "aviso": buzon.AVISO, "mensajes": buzon.mensajes(),
-            "viajes": viajes.lista("v.estado in ('aprobado','pendiente_aprobacion')")}
+            "viajes": viajes_asignables(yo, "v.estado in ('aprobado','pendiente_aprobacion')")}
 
 
 @router.post("/lectura", response_model=ResultadoBuzon, responses=errores(401, 403, 422))
