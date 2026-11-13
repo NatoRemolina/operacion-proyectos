@@ -56,6 +56,29 @@ def test_usuario_solo_ve_lo_suyo_y_no_aprueba(cliente, piloto, ejemplos):
     assert "Mis últimos gastos" in piloto.get("/").text
 
 
+def test_colaborador_no_carga_gastos_a_nombre_de_otra_persona(piloto2, ejemplos):
+    """El viajero y el proyecto salen de la sesión o del viaje, como en la API, no de los campos del formulario."""
+    acceso.crear_usuario("carga-ajena@demo.local", "Carga ajena", "colaborador", "clave-carga-ajena-2026")
+    sin_viajes = TestClient(app)   # cuenta nueva: no tiene viaje que fije el proyecto y la persona
+    sin_viajes.post("/entrar", data={"correo": "carga-ajena@demo.local", "clave": "clave-carga-ajena-2026"})
+    yo = db.uno("select viajero_id from usuarios where correo='carga-ajena@demo.local'")
+    r = sin_viajes.post("/gastos/cargar", data={"viajero_id": 2, "proyecto_id": 2}, headers={"X-Envio": "pagina"},
+                        files={"archivos": ("r.png", (ejemplos / "recibo_diner.png").read_bytes(), "image/png")})
+    gid = r.json()["gastos"][0]
+    g = db.uno("select viajero_id, proyecto_id from gastos where id=:i", i=gid)
+    assert (g["viajero_id"], g["proyecto_id"]) == (yo["viajero_id"], None)
+    assert piloto2.get(f"/gastos/{gid}").status_code == 404
+
+
+def test_administracion_no_carga_a_un_viajero_o_proyecto_que_no_existe(cliente, ejemplos):
+    antes = db.uno("select count(*) n from gastos")["n"]
+    for campo in ("viajero_id", "proyecto_id"):
+        r = cliente.post("/gastos/cargar", data={campo: 999999}, headers={"X-Envio": "pagina"},
+                         files={"archivos": ("r.png", (ejemplos / "recibo_diner.png").read_bytes(), "image/png")})
+        assert r.status_code == 400 and "no existe" in r.json()["errores"][0], campo
+    assert db.uno("select count(*) n from gastos")["n"] == antes
+
+
 def test_formulario_desde_otro_sitio_se_rechaza(cliente):
     r = cliente.post("/reglas/1", data={"valor": "1"}, headers={"Origin": "https://sitio-ajeno.example"}, follow_redirects=False)
     assert r.status_code == 403
