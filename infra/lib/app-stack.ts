@@ -76,8 +76,9 @@ export class AppStack extends Stack {
     props.secreto.grantRead(web);
 
     // Analizador de la página del vuelo en Google Flights: su propia imagen (Playwright), sin secretos ni base. Solo la
-    // API lo invoca, una lectura a la vez (la API en la base y la concurrencia reservada) y con un minuto como máximo. `ANALIZADOR=apagado` lo
-    // desactiva sin desplegar código nuevo (variable de la función de la API o del analizador).
+    // API lo invoca, una lectura a la vez y con un minuto como máximo. «Una a la vez» lo garantiza la API con un cerrojo
+    // en la base: sin concurrencia reservada, que haría fallar el despliegue en una cuenta con límite bajo.
+    // `ANALIZADOR=apagado` lo desactiva sin desplegar código nuevo (variable de la función de la API o del analizador).
     const analizador = new lambda.DockerImageFunction(this, "Analizador", {
       code: lambda.DockerImageCode.fromImageAsset(path.join(raiz, "analizador"), {
         platform: Platform.LINUX_ARM64,
@@ -87,8 +88,6 @@ export class AppStack extends Stack {
       architecture: lambda.Architecture.ARM_64,
       memorySize: 2048,   // Chromium con una página pesada; menos memoria también es menos CPU en Lambda
       timeout: Duration.seconds(60),
-      // Una lectura a la vez también en AWS (la API ya lo controla en la base): una invocación de más se rechaza
-      reservedConcurrentExecutions: 1,
       logGroup: new logs.LogGroup(this, "RegistroAnalizador", {
         retention: logs.RetentionDays.ONE_MONTH,
         removalPolicy: RemovalPolicy.DESTROY,

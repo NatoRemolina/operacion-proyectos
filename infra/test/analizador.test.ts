@@ -12,7 +12,8 @@ describe("analizador de la página del vuelo (Google Flights)", () => {
     assert.ok(analizador, "falta la función del analizador");
     assert.equal(analizador.PackageType, "Image");
     assert.equal(analizador.Timeout, 60);
-    assert.equal(analizador.ReservedConcurrentExecutions, 1, "una lectura a la vez también en AWS");
+    // una lectura a la vez la garantiza el cerrojo de la base; la concurrencia reservada puede hacer fallar el despliegue
+    assert.equal(analizador.ReservedConcurrentExecutions, undefined);
     assert.equal(analizador.MemorySize, 2048);
     assert.deepEqual(analizador.Architectures, ["arm64"]);
     assert.deepEqual(analizador.ImageConfig, {
