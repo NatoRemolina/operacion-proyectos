@@ -87,7 +87,10 @@ def test_una_verificacion_queda_como_lectura_fallida(piloto, doble, monkeypatch)
     c = _cotizar(piloto)
     a = _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()
     assert (a["estado"], a["motivo"], a["datos"], a["captura_url"]) == ("fallido", "la página pidió verificación", None, None)
-    assert _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()["reutilizado"] is False   # lo fallido no se reutiliza
+    otra = _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()   # una lectura fallida se reutiliza 10 minutos
+    assert otra["reutilizado"] is True and otra["motivo"] == "la página pidió verificación" and len(llamadas) == 1
+    db.ejecutar("update analisis_vuelo set creado='2026-01-01 00:00:00'")
+    assert _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()["reutilizado"] is False and len(llamadas) == 2
 
 
 def test_una_lectura_sin_precios_guarda_lo_que_se_vio(piloto, doble, monkeypatch):
@@ -130,7 +133,8 @@ def test_los_topes_del_dia_son_editables(piloto, piloto2, doble):
         regla("analisis_persona_dia", "10")
         regla("analisis_vuelo_dia", "1")
         otra = _cotizar(piloto2)
-        assert _pedir(piloto2, otra["id"], otra["vuelos"][0]["id"]).json()["motivo"] == analizador.TOPE_TOTAL_TEXTO
+        # otro vuelo (el primero ya está leído y se reutilizaría sin contar)
+        assert _pedir(piloto2, otra["id"], otra["vuelos"][2]["id"]).json()["motivo"] == analizador.TOPE_TOTAL_TEXTO
         assert len(llamadas) == 1
     finally:
         regla("analisis_persona_dia", "10")
@@ -168,7 +172,7 @@ def test_al_decidir_el_detalle_vigente_se_copia_a_la_decision(piloto, doble):
     copia = d["analisis_google"]
     assert copia["id"] == a["id"] and copia["url"] == a["url"] and copia["datos"]["precio_total"] == 619
     # sin lectura vigente, la decisión no lleva detalle
-    assert cotizacion.analizador.para_decision(c["vuelos"][-1]["id"]) is None
+    assert cotizacion.analizador.para_decision(c["id"], c["vuelos"][-1]["id"]) is None
 
 
 def test_cada_vuelo_enlaza_a_su_pagina_y_el_clic_queda_con_el_vuelo(piloto):
@@ -269,3 +273,22 @@ def test_los_plazos_caben_en_el_minuto_de_la_funcion_y_de_cloudfront():
     assert navegador.PRESUPUESTO_MS == 45_000 and navegador.ESPERA_MS <= navegador.PRESUPUESTO_MS
     # la API espera la lectura completa más un margen, siempre por debajo de los 60 s de CloudFront
     assert navegador.PRESUPUESTO_MS / 1000 < analizador.ESPERA_S < 55
+
+
+
+# ---------- ronda 1 · punto 3: se reutiliza por itinerario y fechas ----------
+def test_el_mismo_vuelo_en_otra_cotizacion_reutiliza_la_lectura(piloto, piloto2, doble):
+    llamadas, _ = doble
+    mia, suya = _cotizar(piloto), _cotizar(piloto2)
+    vuelo = mia["vuelos"][0]
+    igual = next(v for v in suya["vuelos"] if v["numeros"] == vuelo["numeros"])
+    a = _pedir(piloto, mia["id"], vuelo["id"]).json()
+    b = _pedir(piloto2, suya["id"], igual["id"]).json()
+    assert b["reutilizado"] is True and b["id"] == a["id"] and len(llamadas) == 1
+    assert piloto2.get(b["captura_url"]).content == PNG       # la captura se ve desde la cotización que la reutiliza
+    assert piloto2.get(f"{V1}/cotizaciones/{suya['id']}/vuelos/{igual['id']}/analisis").json()["id"] == a["id"]
+    # una lectura de un itinerario que la cotización no tiene no se ve desde ella
+    ajena = db.insertar("analisis_vuelo", opcion_id=igual["id"], solicitud_id=suya["id"], clave="XX999_2026-12-08_2026-12-08_2026-12-11",
+                        url="https://www.google.com/travel/flights", estado="listo", creado=db.ahora(), captura=None)
+    db.ejecutar("update analisis_vuelo set captura=(select captura from analisis_vuelo where id=:a) where id=:b", a=a["id"], b=ajena)
+    assert piloto.get(f"{V1}/cotizaciones/{mia['id']}/analisis/{ajena}/captura").status_code == 404

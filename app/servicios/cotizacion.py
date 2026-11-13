@@ -615,7 +615,7 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
                                 "origen_vuelo": vuelo["origen_dato"], "origen_hotel": hotel["origen_dato"] if hotel else None,
                                 "aviso": c["aviso"], "baterias": c["baterias"], "aviso_tope": aviso_tope,
                                 # lo leído de Google Flights en la última hora: evidencia, no cambia el total
-                                "analisis_google": analizador.para_decision(vuelo_id),
+                                "analisis_google": analizador.para_decision(sid, vuelo_id),
                                 # lo que se evita frente a la opción más barata que sirve, por costo esperado
                                 "ahorro": round(max(c["mas_barato"]["ev"]["total"] - vuelo["ev"]["total"], 0), 2) if c["mas_barato"] else 0},
                       total=total, motivo=motivo[:300], aprobado_por=aprobado_por, creado=db.ahora(), usuario_id=usuario["id"],

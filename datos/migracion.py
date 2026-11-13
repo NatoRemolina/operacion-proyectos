@@ -29,6 +29,7 @@ INDICES = [  # nombre, tabla, columnas, único
     ("ix_miembros_usuario", "proyecto_miembros", "usuario_id", False),
     ("ix_analisis_vuelo_opcion", "analisis_vuelo", "opcion_id, creado", False),
     ("ix_analisis_vuelo_creado", "analisis_vuelo", "creado", False),
+    ("ix_analisis_vuelo_clave", "analisis_vuelo", "clave, creado", False),
 ]
 
 

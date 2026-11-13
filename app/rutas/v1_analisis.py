@@ -57,9 +57,10 @@ def pedir(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(escritura)):
 def ver(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
     """La última lectura del vuelo (para seguir una en curso). 404 si nunca se leyó."""
     _visible(yo, id)
-    if not db.uno("select id from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=opcion_id, s=id):
-        raise _no_encontrado()
-    a = analizador.ultimo(opcion_id)
+    try:
+        a = analizador.ultimo(id, opcion_id)
+    except LookupError as e:
+        raise _no_encontrado() from e
     if not a:
         raise _no_encontrado()
     return _forma(id, opcion_id, {**a, "reutilizado": True})
@@ -69,7 +70,7 @@ def ver(id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
     **errores_cotizacion(401, 404, 422), 200: {"description": "La captura de la página leída", "content": {"image/png": {}}}})
 def captura(id: int = Id(), analisis_id: int = Id(), yo: dict = Depends(persona)):
     _visible(yo, id)
-    a = db.uno("select * from analisis_vuelo where id=:a and solicitud_id=:s", a=analisis_id, s=id)
+    a = analizador.de_la_cotizacion(id, analisis_id)
     contenido = analizador.captura(a) if a else None
     if contenido is None:
         raise _no_encontrado()

@@ -116,16 +116,36 @@ def _fila(f: dict | None) -> dict | None:
     return {**f, "datos": db.de_json(f["datos"], None)}
 
 
-def vigente(opcion_id: int) -> dict | None:
-    """El último análisis leído de este vuelo con menos de 60 minutos, o el que está en curso."""
-    f = db.uno("""select * from analisis_vuelo where opcion_id=:o and ((estado='listo' and creado>=:v)
-                  or (estado='pendiente' and creado>=:c)) order by id desc limit 1""",
-               o=opcion_id, v=_hace(VIGENCIA), c=_hace(EN_CURSO))
+REUSO_FALLIDO = timedelta(minutes=10)   # una lectura fallida no se repite enseguida: ni golpea a Google ni gasta el tope
+
+
+def vigente(clave_lectura: str) -> dict | None:
+    """La última lectura de este itinerario y fechas (de cualquier cotización) que todavía vale: `listo` de menos de 60
+    minutos, `fallido` de menos de 10 o una `pendiente` en curso."""
+    f = db.uno("""select * from analisis_vuelo where clave=:k and ((estado='listo' and creado>=:v)
+                  or (estado='fallido' and creado>=:f) or (estado='pendiente' and creado>=:c)) order by id desc limit 1""",
+               k=clave_lectura, v=_hace(VIGENCIA), f=_hace(REUSO_FALLIDO), c=_hace(EN_CURSO))
     return _fila(f)
 
 
-def ultimo(opcion_id: int) -> dict | None:
-    return _fila(db.uno("select * from analisis_vuelo where opcion_id=:o order by id desc limit 1", o=opcion_id))
+def clave_de(sid: int, opcion_id: int) -> str:
+    """La clave de lectura de un vuelo de la cotización. LookupError si el vuelo no es de ella."""
+    sol, _, vuelo = _opcion(sid, opcion_id)
+    return clave(sol, vuelo)
+
+
+def ultimo(sid: int, opcion_id: int) -> dict | None:
+    return _fila(db.uno("select * from analisis_vuelo where clave=:k order by id desc limit 1", k=clave_de(sid, opcion_id)))
+
+
+def de_la_cotizacion(sid: int, analisis_id: int) -> dict | None:
+    """Una lectura que se puede ver desde la cotización: la de alguno de sus vuelos (aunque la pidiera otra)."""
+    a = db.uno("select * from analisis_vuelo where id=:a", a=analisis_id)
+    if not a:
+        return None
+    sol = db.uno("select * from solicitudes where id=:i", i=sid)
+    vuelos = db.todos("select datos from opciones where solicitud_id=:s and tipo='vuelo'", s=sid) if sol else []
+    return a if any(clave(sol, db.de_json(v["datos"], {}) or {}) == a["clave"] for v in vuelos) else None
 
 
 def _llamar(url: str) -> dict:
@@ -187,7 +207,7 @@ def _reservar(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict) -
         # una lectura que se quedó a medias (caída del proceso) no retiene el turno ni cuenta como en curso
         db.ejecutar("update analisis_vuelo set estado='fallido', motivo=:m, terminado=:t where estado='pendiente' and creado<:c",
                     m=NO_TERMINO, t=db.ahora(), c=_hace(EN_CURSO))
-        previo = vigente(opcion_id)
+        previo = vigente(clave(sol, vuelo))
         if previo:
             return {**previo, "reutilizado": True}
         if apagado():
@@ -260,9 +280,9 @@ def aviso_precio(analisis: dict | None, precio_buscador) -> str | None:
             "La comparación sigue usando el precio del buscador.")
 
 
-def para_decision(opcion_id: int) -> dict | None:
+def para_decision(sid: int, opcion_id: int) -> dict | None:
     """El detalle vigente que se copia a la decisión: lo leído, de dónde y cuándo."""
-    a = vigente(opcion_id)
+    a = vigente(clave_de(sid, opcion_id))
     if not a or a["estado"] != "listo":
         return None
     return {"id": a["id"], "url": a["url"], "leido": a["terminado"] or a["creado"], "datos": a["datos"], "captura": a["captura"]}
