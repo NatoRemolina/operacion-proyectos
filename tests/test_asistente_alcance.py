@@ -266,3 +266,35 @@ def test_una_alerta_que_nombra_un_gasto_ajeno_no_dice_su_numero(mundo):
     r = asistente.responder(f"¿Por qué el gasto #{gid} quedó en revisión?", andres)
     assert f"#{gl}" not in r["texto"] and "otro gasto" in r["texto"]
     _sin_fugas(r, andres)
+
+
+# ---------- topes diarios: por persona, para los tres permisos ----------
+def test_el_tope_diario_de_preguntas_vale_para_el_colaborador_y_es_por_persona(mundo, monkeypatch):
+    andres, laura = mundo["andres"], mundo["laura"]
+    asistente.responder("¿Qué he reportado?", andres)   # al menos una pregunta hoy
+    tope = asistente.usadas_hoy(andres["id"])
+    assert asistente.usadas_hoy(laura["id"]) < tope
+    monkeypatch.setattr(asistente, "tope_diario", lambda: tope)
+    r = asistente.responder("¿Cuánto me queda del presupuesto?", andres)
+    assert r["modo"] == "tope" and r["herramientas"] == [] and r["fuentes"] == []
+    assert f"tope de {tope} preguntas por día" in r["texto"]
+    assert "Reglas" not in r["texto"] and "asistente_preguntas_dia" not in r["texto"]   # no puede cambiarlo: no se le sugiere
+    assert asistente.responder("¿Qué he reportado?", laura)["modo"] != "tope"          # el tope de otra persona no cuenta
+    monkeypatch.setattr(asistente, "tope_diario", lambda: 0)
+    admin = asistente.responder("¿Cómo van los indicadores?", _usuario("admin@demo.local"))
+    assert admin["modo"] == "tope" and "asistente_preguntas_dia" in admin["texto"]     # administración sí puede cambiarlo
+
+
+def test_el_tope_de_dictados_vale_para_el_colaborador(mundo, monkeypatch):
+    andres = mundo["andres"]
+    llamadas = []
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(llm, "generar", lambda contenidos, **k: llamadas.append(k) or {
+        "content": {"role": "model", "parts": [{"text": "¿Cuánto me queda del presupuesto?"}]}})
+    monkeypatch.setattr(asistente, "tope_dictados", lambda: 0)
+    with pytest.raises(asistente.TopeDeDictado):
+        asistente.transcribir_pregunta(b"audio", "audio/webm", andres)
+    assert llamadas == []   # en el tope no se paga otra transcripción
+    monkeypatch.setattr(asistente, "tope_dictados", lambda: 10_000)
+    assert asistente.transcribir_pregunta(b"audio", "audio/webm", andres) == "¿Cuánto me queda del presupuesto?"
+    assert llamadas[-1]["uso"] == "dictado" and llamadas[-1]["entidad_id"] == andres["id"]   # cuenta para su tope

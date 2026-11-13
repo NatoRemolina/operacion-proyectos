@@ -860,8 +860,10 @@ def responder(pregunta: str, usuario: dict) -> dict:
     if not pregunta:
         return {"texto": "Escribe una pregunta.", "fuentes": [], "modo": "", "herramientas": [], "duracion_ms": 0}
     asegurar_regla()
-    if usadas_hoy(usuario["id"]) >= tope_diario():
-        return {"texto": f"Llegaste al tope de {tope_diario()} preguntas por día. Se puede cambiar en Reglas y supuestos (asistente_preguntas_dia).",
+    if usadas_hoy(usuario["id"]) >= tope_diario():   # el mismo tope por persona para los tres permisos
+        como = ("Se puede cambiar en Reglas y supuestos (asistente_preguntas_dia)." if acceso.es_admin(usuario)
+                else "Mañana puedes volver a preguntar.")
+        return {"texto": f"Llegaste al tope de {tope_diario()} preguntas por día. {como}",
                 "fuentes": [], "modo": "tope", "herramientas": [], "duracion_ms": 0}
     try:
         memoria.actualizar(max_envios=INDEXAR_ANTES)
