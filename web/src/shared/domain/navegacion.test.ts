@@ -10,7 +10,7 @@ function textos(permiso: Parameters<typeof menuPara>[0]) {
 describe("menú por permiso", () => {
   it("administración ve todas las pantallas en la web, en este orden", () => {
     expect(textos("admin")).toEqual([
-      "Resumen", "Cotizar viaje", "Viajes", "Gastos", "Buzón de correo (simulado)", "KPIs", "Monitoreo", "Vuelos", "Reglas y supuestos", "Proyectos", "Usuarios", "Mi cuenta",
+      "Resumen", "Cotizar viaje", "Viajes", "Gastos", "Buzón de correo (simulado)", "KPIs", "Monitoreo", "Vuelos", "Compras", "Reglas y supuestos", "Proyectos", "Usuarios", "Mi cuenta",
     ]);
   });
 

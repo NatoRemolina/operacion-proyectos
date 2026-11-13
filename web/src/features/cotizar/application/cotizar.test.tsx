@@ -7,7 +7,7 @@ import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { BORRADOR_VACIO, borradorDeEjemplo, pedidoDesdeBorrador, type CotizarRepository } from "../domain/cotizar";
 import { crearCotizarMemoria } from "../infrastructure/cotizar-memoria";
 import { COTIZACION_MOAB, FORMULARIO_EJEMPLO } from "../infrastructure/ejemplo-moab";
-import { CotizarRepositoryProvider, useCotizar, useDecidir } from "./cotizar";
+import { CotizarRepositoryProvider, REFRESCO_COTIZACION_MS, useCotizacion, useCotizar, useDecidir } from "./cotizar";
 
 function envoltorio(repositorio: CotizarRepository) {
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
@@ -53,3 +53,23 @@ describe("idempotencia al cotizar y decidir", () => {
     expect(decidir.mock.calls[1]![2]).toBe(decidir.mock.calls[0]![2]);
   });
 });
+
+describe("enlace firmado a la página oficial", () => {
+  it("la cotización se vuelve a pedir antes de que venza el enlace (5 minutos)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const base = crearCotizarMemoria({ formulario: FORMULARIO_EJEMPLO, existentes: [COTIZACION_MOAB] });
+      const obtener = vi.fn<CotizarRepository["obtener"]>((id, signal) => base.obtener(id, signal));
+      renderHook(() => useCotizacion(12), { wrapper: envoltorio({ ...base, obtener }) });
+      await vi.waitFor(() => expect(obtener).toHaveBeenCalledTimes(1));
+      expect(REFRESCO_COTIZACION_MS).toBeLessThan(5 * 60_000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESCO_COTIZACION_MS + 10);
+      });
+      expect(obtener).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+

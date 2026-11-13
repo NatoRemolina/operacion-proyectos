@@ -292,11 +292,16 @@ def test_r1_6_el_crudo_nunca_lleva_el_pedido_de_reserva():
                           "booking_request": {"url": "https://www.google.com/travel/clk/f", "post_data": "u=secreto"},
                           "extensions": ["No refunds"], "baggage_prices": []}}
     clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7006.json"
-    _guardar_respuesta(clave, _respuesta(opciones=[vieja]), "2026-11-05 10:00:00")
-    ofertas.actualizar()
-    fila = db.uno("select crudo from ofertas_tarifa where busqueda_clave=:c", c=clave)
-    assert "booking_request" not in fila["crudo"] and "post_data" not in fila["crudo"]
-    assert json.loads(fila["crudo"])["price"] == 470
+    bid = _guardar_respuesta(clave, _respuesta(opciones=[vieja]), "2026-11-05 10:00:00")
+    try:
+        ofertas.actualizar()
+        fila = db.uno("select crudo from ofertas_tarifa where busqueda_clave=:c", c=clave)
+        assert "booking_request" not in fila["crudo"] and "post_data" not in fila["crudo"]
+        assert json.loads(fila["crudo"])["price"] == 470
+    finally:   # la respuesta vieja de prueba no queda en la base: otras pruebas buscan que no haya pedidos de reserva
+        db.ejecutar("delete from ofertas_tarifa where origen_fila=:o", o=f"busqueda:{bid}")
+        db.ejecutar("delete from ofertas_origenes where origen_fila=:o", o=f"busqueda:{bid}")
+        db.ejecutar("delete from busquedas where id=:i", i=bid)
 
 
 def test_r1_7_una_reconfirmacion_lleva_sus_fechas_y_su_ruta():

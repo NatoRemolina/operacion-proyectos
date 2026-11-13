@@ -135,6 +135,7 @@ class FuenteAbierta(BaseModel):
     """Qué fuente abre la persona. La URL la arma el servidor: nunca se acepta una del cliente."""
     model_config = ConfigDict(extra="forbid")
     destino: Literal["vuelos", "hoteles"]
+    vuelo_id: int | None = Field(None, ge=1, le=ENTERO_MAXIMO, description="Con `vuelos`: un vuelo de la cotización (su página).")
     hotel_id: int | None = Field(None, ge=1, le=ENTERO_MAXIMO, description="Con `hoteles`: un hotel de la cotización.")
 
 
@@ -194,6 +195,9 @@ class OpcionVuelo(BaseModel):
     frente_esperado_pct: int | None
     total_con_hotel_usd: Dinero = Field(description="Costo total esperado del vuelo más el del hotel recomendado (una suma, no "
                                                     "todas las combinaciones); null sin hotel o si el vuelo está descartado.")
+    fuente_url: str = Field(description="Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida (si "
+                                        "el vuelo no trae sus tramos completos, la búsqueda sin elegir).")
+    vendedor_url: str = Field(description="Ruta de la API que abre la página oficial del vendedor (navegación en otra pestaña).")
 
 
 class LineaHotel(BaseModel):
@@ -250,6 +254,14 @@ class ViajeDeCotizacion(BaseModel):
                                                 "sin el riesgo de cambio ni las millas, que solo sirven para comparar.")
 
 
+class CompraDeCotizacion(BaseModel):
+    """La solicitud de compra del tiquete, que nace al decidir. La lleva administración."""
+    id: int
+    estado: Literal["solicitada", "en_analisis", "se_comprara", "no_se_comprara", "comprada", "cancelada"]
+    estado_texto: str = Field(description="«Solicitud de compra enviada», «En análisis», «Se va a comprar»...")
+    motivo: str | None
+
+
 class Cotizacion(BaseModel):
     id: int
     estado: Literal["buscando", "comparando", "decidido"]
@@ -283,6 +295,7 @@ class Cotizacion(BaseModel):
     mas_barata_id: int | None
     decision: DecisionCotizacion | None
     viaje: ViajeDeCotizacion | None
+    compra: CompraDeCotizacion | None = Field(description="La solicitud de compra del viaje, si ya se decidió.")
     fuente_url: str = Field(description="La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador "
                                         "(`search_metadata.google_flights_url`) o, si falta, una construida con los "
                                         "aeropuertos y las fechas. Siempre `https://www.google.com/travel/...`.")
@@ -294,6 +307,115 @@ class Cotizacion(BaseModel):
 class EnlaceFuente(BaseModel):
     destino: Literal["vuelos", "hoteles"]
     url: str = Field(description="`https://www.google.com/travel/...`, armada por el servidor.")
+
+
+# ---------- análisis de la página del vuelo (Google Flights) ----------
+class TramoLeido(BaseModel):
+    fecha: str | None = Field(description="Como la muestra la página: \"Tue, Dec 8\".")
+    sale: str | None
+    llega: str | None
+    aerolinea: str | None
+    duracion: str | None
+    ruta: str | None = Field(description="\"MIA–LAS\".")
+    escalas: str | None = Field(description="\"Nonstop\", \"1 stop\"...")
+    detalle_escalas: list[str]
+    emisiones: str | None
+
+
+class TarifaLeida(BaseModel):
+    vendedor: str
+    nombre: str = Field(description="«Basic Economy», «Main Cabin»...; «Tarifa» si el vendedor no la nombra.")
+    precio: float = Field(description="USD, total del viaje para una persona, como lo muestra la página.")
+    equipaje: list[str]
+    cambios: list[str]
+    reembolso: list[str]
+    otras: list[str] = Field(description="Lo demás que incluye: asiento, embarque, espacio para las piernas...")
+    ir_url: str | None = Field(None, description="«Ir a…» de esta tarifa: la página de envío firmada para esta sesión (5 min).")
+
+
+class VendedorLeido(BaseModel):
+    vendedor: str
+    aerolinea: bool = Field(description="Vende la propia aerolínea (no una agencia).")
+    precio_desde: float | None
+
+
+class RegresoElegido(BaseModel):
+    """El regreso que eligió el analizador en la página (el más barato), para llegar a las opciones de reserva."""
+    model_config = ConfigDict(extra="ignore")
+    precio: float
+    aerolinea: str | None = None
+    escalas: str | None = None
+    sale: str | None = None
+    llega: str | None = None
+    desde: str | None = None
+    hasta: str | None = None
+    duracion: str | None = None
+
+
+class DetalleLeido(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    precio_total: float | None = Field(description="El precio más bajo del itinerario en la página (USD).")
+    tramos: list[TramoLeido]
+    tarifas: list[TarifaLeida]
+    vendedores: list[VendedorLeido]
+    equipaje: list[str]
+    cambios: list[str]
+    reembolso: list[str]
+    regreso_elegido: RegresoElegido | None = None
+    notas: list[str]
+    avisos: list[str] = Field(description="Lo que la página no mostró (por ejemplo, opciones de reserva).")
+
+
+class OpcionesBuscador(BaseModel):
+    """La primera capa del desglose: las opciones de reserva del buscador para este itinerario, ya guardadas."""
+    estado: Literal["listo", "sin_datos"] = Field(description="`sin_datos`: todavía no hay opciones guardadas (la web "
+                                                             "reintenta unos segundos mientras el enlace al vendedor las trae).")
+    consultado: str | None = Field(description="Cuándo las trajo el buscador (UTC); null si vienen del respaldo del repositorio.")
+    tarifas: list[TarifaLeida]
+    vendedores: list[VendedorLeido]
+
+
+class AnalisisVuelo(BaseModel):
+    """La lectura de la página del vuelo en Google Flights. No reemplaza el precio del buscador."""
+    id: int | None
+    opcion_id: int
+    estado: Literal["pendiente", "listo", "fallido", "no_disponible"] = Field(
+        description="`no_disponible`: no se leyó (apagado, sin analizador, tope del día, otra lectura en curso); "
+                    "el desglose muestra solo lo del buscador y `motivo` lo dice.")
+    motivo: str | None
+    url: str | None = Field(description="La página leída: `https://www.google.com/travel/flights?...` con la ida elegida.")
+    leido: str | None = Field(description="Cuándo terminó la lectura (UTC, ISO 8601).")
+    duracion_ms: int | None
+    reutilizado: bool = Field(description="Es una lectura de menos de 60 minutos del mismo vuelo: no se volvió a abrir la página.")
+    precio_buscador_usd: Dinero
+    aviso_precio: str | None = Field(description="Si la página muestra otro precio que el buscador, lo dice.")
+    datos: DetalleLeido | None
+    extracto: str | None = Field(None, description="Con `fallido`: el comienzo del texto que mostró la página, para saber por qué.")
+    captura_url: str | None = Field(description="La captura de la página (PNG), como evidencia; también de una lectura "
+                                                "fallida, salvo si pidió verificación.")
+
+
+NombreVendedor = Annotated[str, Field(min_length=1, max_length=60, pattern=r"^[\w .,&'()+/-]+$")]
+
+
+class PedidoIrA(BaseModel):
+    """La tarifa que la persona eligió en el desglose. Adónde se va lo decide el servidor."""
+    model_config = ConfigDict(extra="forbid")
+    vendedor: NombreVendedor = Field(description="Como lo muestra el desglose: «American», «Expedia»...")
+    tarifa: NombreVendedor = Field(description="«Main Cabin», «Economy»...; «Tarifa» si el vendedor no la nombra.")
+
+
+class EnvioVendedor(BaseModel):
+    """Adónde enviar a la persona. Con `campos`, un formulario POST a `url` (Google redirige al vendedor); sin ellos, ir a
+    `url`. Los campos son de un solo uso: no se guardan."""
+    camino: Literal["pagina", "buscador", "google"] = Field(
+        description="`pagina`: el analizador pulsó «Continue» en Google Flights; `buscador`: el pedido de esa tarifa en "
+                    "las opciones de reserva del buscador; `google`: la página del vuelo en Google Flights.")
+    url: str | None
+    campos: list[tuple[str, str]]
+    vendedor: str
+    tarifa: str
+    motivo: str | None = Field(description="Por qué no se llegó por la página, si es el caso.")
 
 
 # ---------- errores ----------

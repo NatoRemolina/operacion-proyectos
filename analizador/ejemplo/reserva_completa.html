@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- Página de ejemplo con la forma de las opciones de reserva de Google Flights con varios vendedores: la aerolínea con
+     sus tarifas a la vista y, plegadas en «Other booking options», dos agencias. Las etiquetas de los botones son las de
+     la página real (13 nov 2026): «Continue to book with American, Main Cabin for 1014 US dollars» y «Show fare options
+     on …». «Continue» arma un envío POST a /travel/clk/f en otra pestaña, como Google. Marcado propio; sin red. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Round trip to Las Vegas | Google Flights</title>
+<style>.plegado { display: none; } .abierto .plegado { display: block; }</style>
+</head>
+<body>
+<main>
+  <section>
+    <h2>Itinerary summary</h2>
+    <div>Miami</div><div>Las Vegas</div>
+    <div>$619</div><div>Lowest total price</div>
+  </section>
+  <section>
+    <h2>Selected flights</h2>
+    <div><div>Tue, Dec 8</div><div>9:48 AM</div><div>–</div><div>12:24 PM</div><div>American</div>
+      <div>5 hr 36 min</div><div>MIA–LAS</div><div>Nonstop</div></div>
+    <div><div>Fri, Dec 11</div><div>1:43 PM</div><div>–</div><div>9:29 PM</div><div>American</div>
+      <div>4 hr 46 min</div><div>LAS–MIA</div><div>Nonstop</div></div>
+  </section>
+  <section>
+    <h2>Booking options</h2>
+    <div id="american" class="abierto">
+      <div>Book with American</div><div>Airline</div>
+      <button aria-label="Hide fare options on American">Hide options</button>
+      <ul class="plegado">
+        <li><div>Basic Economy</div><div>$619</div>
+          <ul><li>Seat selection for a fee</li><li>No ticket changes</li><li>No refunds</li>
+              <li>1 free carry-on</li><li>1st checked bag: $110</li></ul>
+          <button class="continuar" data-u="AA-BASIC" aria-label="Continue to book with American, Basic Economy for 619 US dollars">Continue</button></li>
+        <li><div>Main Cabin</div><div>$1,014</div>
+          <ul><li>Free seat selection</li><li>Free change, possible fare difference</li><li>No refunds</li>
+              <li>1 free carry-on</li><li>1st checked bag: $100</li></ul>
+          <button class="continuar" data-u="AA-MAIN" aria-label="Continue to book with American, Main Cabin for 1014 US dollars">Continue</button></li>
+      </ul>
+    </div>
+    <button id="otras" aria-label="Other booking options" aria-expanded="false">Other booking options</button>
+    <div id="agencias" class="plegado">
+      <div id="expedia">
+        <div>Book with Expedia</div>
+        <button class="mostrar" aria-label="Show fare options on Expedia">Show options</button>
+        <ul class="plegado"><li><div>Economy</div><div>$612</div>
+          <ul><li>Carry-on bag not included</li><li>Change fee applies</li><li>No refunds</li></ul>
+          <button class="continuar" data-u="EXP-ECO" aria-label="Continue to book with Expedia, Economy for 612 US dollars">Continue</button></li></ul>
+      </div>
+      <div id="priceline">
+        <div>Book with Priceline</div>
+        <button class="mostrar" aria-label="Show fare options on Priceline">Show options</button>
+        <ul class="plegado"><li><div>Economy</div><div>$615</div>
+          <ul><li>1 free carry-on</li><li>No ticket changes</li><li>No refunds</li></ul>
+          <button class="continuar" data-u="PCL-ECO" aria-label="Continue to book with Priceline, Economy for 615 US dollars">Continue</button></li></ul>
+      </div>
+    </div>
+  </section>
+  <p>Fare and baggage fees apply to your entire trip.</p>
+  <p>Prices include required taxes + fees for 1 adult. Optional charges and bag fees may apply.</p>
+</main>
+<script>
+  document.getElementById("otras").addEventListener("click", function () {
+    document.getElementById("agencias").classList.remove("plegado");
+    this.setAttribute("aria-expanded", "true");
+  });
+  document.querySelectorAll(".mostrar").forEach(function (b) {
+    b.addEventListener("click", function () { b.parentElement.classList.add("abierto"); });
+  });
+  document.querySelectorAll(".continuar").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var f = document.createElement("form");
+      f.method = "post"; f.target = "_blank"; f.action = "/travel/clk/f?pf=1";
+      [["u", b.dataset.u + "-UNSOLOUSO"], ["adurl", ""]].forEach(function (c) {
+        var i = document.createElement("input"); i.type = "hidden"; i.name = c[0]; i.value = c[1]; f.appendChild(i);
+      });
+      document.body.appendChild(f); f.submit();
+    });
+  });
+</script>
+</body>
+</html>

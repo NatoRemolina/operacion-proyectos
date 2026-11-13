@@ -43,6 +43,7 @@ const MENU: readonly Declaracion[] = [
   { ruta: "/kpis", texto: "KPIs", corto: "KPIs", permisos: ["admin"] },
   { ruta: "/monitoreo", texto: "Monitoreo", corto: "Monitoreo", permisos: ["admin"] },
   { ruta: "/vuelos", texto: "Vuelos", corto: "Vuelos", permisos: ["admin"] },
+  { ruta: "/compras", texto: "Compras", corto: "Compras", permisos: ["admin"] },
   { ruta: "/reglas", texto: "Reglas y supuestos", corto: "Reglas", permisos: ["admin"] },
   { ruta: "/proyectos", texto: "Proyectos", corto: "Proyectos", permisos: ["admin", "gestor"] },
   { ruta: "/usuarios", texto: "Usuarios", corto: "Usuarios", permisos: ["admin"] },

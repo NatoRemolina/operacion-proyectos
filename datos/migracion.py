@@ -27,6 +27,11 @@ INDICES = [  # nombre, tabla, columnas, único
     ("ix_opciones_solicitud", "opciones", "solicitud_id", False),
     ("ix_eventos_entidad", "eventos", "entidad, entidad_id", False),
     ("ix_miembros_usuario", "proyecto_miembros", "usuario_id", False),
+    ("ix_analisis_vuelo_opcion", "analisis_vuelo", "opcion_id, creado", False),
+    ("ix_analisis_vuelo_creado", "analisis_vuelo", "creado", False),
+    ("ix_analisis_vuelo_clave", "analisis_vuelo", "clave, creado", False),
+    ("ix_clics_fuente_viaje", "clics_fuente", "viaje_id", False),
+    ("ix_clics_fuente_solicitud", "clics_fuente", "solicitud_id", False),
 ]
 
 
@@ -238,6 +243,8 @@ def _columnas() -> dict:
 def _indices():
     for nombre, tabla, columnas, unico in INDICES:
         db.ejecutar(f"create {'unique ' if unico else ''}index if not exists {nombre} on {tabla} ({columnas})")
+    # una compra activa por viaje (SQLite y PostgreSQL aceptan el índice parcial)
+    db.ejecutar("create unique index if not exists ux_compras_viaje_activa on compras (viaje_id) where activa=1")
 
 
 def _restricciones_postgres() -> dict:
@@ -301,10 +308,12 @@ def _tablas_modelo() -> dict:
 
 
 def migrar() -> dict:
-    from app.servicios import envios, revision  # noqa: F401  (registran la tabla de envíos y las columnas de la revisión)
-    hechos = {**_roles(), **_datos(), **_columnas()}
+    from app.servicios import analizador, compras, cotizacion, envios, revision  # noqa: F401  (registran sus tablas y columnas)
+    hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas(),
+              "reglas_vendedor": cotizacion.asegurar_reglas_vendedor()}
     hechos.update(_tablas_modelo())
     _indices()
+    hechos["compras_rellenadas"] = compras.rellenar()   # después del índice único de la compra activa
     if not config.ES_SQLITE:
         hechos.update(_restricciones_postgres())
         _permisos_postgres()

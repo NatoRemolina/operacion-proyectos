@@ -61,6 +61,7 @@ describe("Marco privado", () => {
       "KPIs",
       "Monitoreo",
       "Vuelos",
+      "Compras",
       "Reglas y supuestos",
       "Proyectos",
       "Usuarios",

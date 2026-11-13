@@ -2,13 +2,17 @@ import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { esperar, exigirSesion, type SesionMemoria } from "@/shared/infrastructure/memoria";
 import {
   MOTIVO_MINIMO,
+  type AnalisisVuelo,
   type Cotizacion,
   type CotizarRepository,
   type FormularioCotizacion,
   type ListaLugares,
   type LugarSugerido,
   type PedidoCotizacion,
+  type TarifaLeida,
 } from "../domain/cotizar";
+
+import { ANALISIS_EJEMPLO } from "./ejemplo-analisis";
 
 const CARRETERA = { factor: 1.3, velocidad_kmh: 70 };
 
@@ -44,6 +48,8 @@ export function crearCotizarMemoria(opciones: {
   sesion?: SesionMemoria;
   latenciaMs?: number;
   latenciaBusquedaMs?: number;
+  /** Lo que responde la lectura de Google Flights (por omisión, la del ejemplo de Miami → Las Vegas). */
+  analisis?: AnalisisVuelo;
 }): CotizarRepository {
   const { formulario, lugares = [], lugaresGoogle = [], guardadas = [], sesion, latenciaMs = 0 } = opciones;
   const latenciaBusqueda = opciones.latenciaBusquedaMs ?? latenciaMs;
@@ -102,6 +108,7 @@ export function crearCotizarMemoria(opciones: {
       mas_barata_id: null,
       decision: null,
       viaje: null,
+      compra: null,
       fuente_url: "https://www.google.com/travel/flights",
       fuente_hoteles_url: "https://www.google.com/travel/search",
       puede_decidir: false,
@@ -113,6 +120,16 @@ export function crearCotizarMemoria(opciones: {
       proyecto: { id: pedido.proyecto_id, nombre: nombreDe(formulario.proyectos, pedido.proyecto_id) },
       viajero: { id: viajeroId, nombre: nombreDe(formulario.viajeros, viajeroId) },
     };
+  }
+
+  // En memoria no hay vendedor al que ir: «Ir a…» lleva a la página del vuelo en Google Flights
+  function conIrA(id: number, vueloId: number, tarifas: readonly TarifaLeida[]): TarifaLeida[] {
+    const vuelo = [...obtener(id).vuelos, ...obtener(id).descartados].find((v) => v.id === vueloId);
+    return tarifas.map((t) => ({ ...t, ir_url: `${vuelo?.fuente_url ?? "https://www.google.com/travel/flights"}#${encodeURIComponent(`${t.vendedor}·${t.nombre}`)}` }));
+  }
+
+  function conIrAAnalisis(id: number, vueloId: number, a: AnalisisVuelo): AnalisisVuelo {
+    return a.datos ? { ...a, datos: { ...a.datos, tarifas: conIrA(id, vueloId, a.datos.tarifas) } } : a;
   }
 
   function obtener(id: number): Cotizacion {
@@ -195,17 +212,44 @@ export function crearCotizarMemoria(opciones: {
           aviso: null,
         },
         viaje,
+        compra: c.compra ?? { id: viaje.id, estado: "solicitada", estado_texto: "Solicitud de compra enviada", motivo: null },
       };
       cotizaciones.set(id, decidida);
       return decidida;
     },
-    async registrarFuente(id, _destino, hotelId) {
+    async registrarFuente(id, _destino, objetivo) {
       await esperar(latenciaMs);
       exigirSesion(sesion);
       const c = obtener(id);
-      if (hotelId !== undefined && !c.hoteles.concat(c.hoteles_descartados).some((h) => h.id === hotelId)) {
+      if (objetivo?.hotelId !== undefined && !c.hoteles.concat(c.hoteles_descartados).some((h) => h.id === objetivo.hotelId)) {
         throw new ErrorDeAplicacion("validacion", { campos: { hotel_id: "Ese hotel no es de esta cotización." } });
       }
+      if (objetivo?.vueloId !== undefined && !c.vuelos.concat(c.descartados).some((v) => v.id === objetivo.vueloId)) {
+        throw new ErrorDeAplicacion("validacion", { campos: { vuelo_id: "Ese vuelo no es de esta cotización." } });
+      }
+    },
+    async opcionesBuscador(id, vueloId, signal) {
+      await esperar(latenciaMs, signal);
+      exigirSesion(sesion);
+      if (![...obtener(id).vuelos, ...obtener(id).descartados].some((v) => v.id === vueloId)) {
+        throw new ErrorDeAplicacion("no_encontrado");
+      }
+      const datos = ANALISIS_EJEMPLO.datos!;
+      return { estado: "listo" as const, consultado: null, tarifas: conIrA(id, vueloId, datos.tarifas), vendedores: datos.vendedores };
+    },
+    async verAnalisis(id, vueloId, signal) {
+      await esperar(latenciaMs, signal);
+      exigirSesion(sesion);
+      const vuelo = [...obtener(id).vuelos, ...obtener(id).descartados].find((v) => v.id === vueloId);
+      if (!vuelo) throw new ErrorDeAplicacion("no_encontrado");
+      return conIrAAnalisis(id, vueloId, { ...(opciones.analisis ?? ANALISIS_EJEMPLO), opcion_id: vueloId, precio_buscador_usd: vuelo.precio_usd });
+    },
+    async analizarVuelo(id, vueloId) {
+      await esperar(latenciaBusqueda);
+      exigirSesion(sesion);
+      const vuelo = [...obtener(id).vuelos, ...obtener(id).descartados].find((v) => v.id === vueloId);
+      if (!vuelo) throw new ErrorDeAplicacion("no_encontrado");
+      return conIrAAnalisis(id, vueloId, { ...(opciones.analisis ?? ANALISIS_EJEMPLO), opcion_id: vueloId, precio_buscador_usd: vuelo.precio_usd });
     },
   };
 }

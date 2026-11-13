@@ -140,6 +140,10 @@ export interface OpcionVuelo {
   readonly frente_esperado_pct: number | null;
   /** Costo del vuelo más el del hotel recomendado (una suma, no todas las combinaciones); null sin hotel. */
   readonly total_con_hotel_usd: Dinero;
+  /** Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida. null si no es de Google. */
+  readonly fuente_url: string | null;
+  /** Dirección completa que abre la página oficial del vendedor del itinerario (en otra pestaña). */
+  readonly vendedor_url: string;
 }
 
 export interface LineaHotel {
@@ -168,8 +172,8 @@ export interface OpcionHotel {
   readonly membresia_de_ejemplo: boolean;
   readonly descartado: string | null;
   readonly origen_dato: string | null;
-  /** Este hotel en Google Hotels con las fechas de la cotización, para verificar el precio. */
-  readonly fuente_url: string;
+  /** Este hotel en Google Hotels con las fechas de la cotización, para verificar el precio. null si no es de Google. */
+  readonly fuente_url: string | null;
   readonly recomendada: boolean;
   readonly mas_barata: boolean;
 }
@@ -227,16 +231,103 @@ export interface Cotizacion {
     /** Lo que aprueba administración: sin riesgo de cambio ni millas, con viáticos. */
     readonly presupuesto_usd: Dinero;
   } | null;
-  /** La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador. Siempre google.com/travel. */
-  readonly fuente_url: string;
-  /** La búsqueda de hoteles en Google Hotels con las fechas de la cotización. */
-  readonly fuente_hoteles_url: string;
+  /** La solicitud de compra del tiquete, que nace al decidir y lleva administración. */
+  readonly compra: {
+    readonly id: number;
+    readonly estado: "solicitada" | "en_analisis" | "se_comprara" | "no_se_comprara" | "comprada" | "cancelada";
+    readonly estado_texto: string;
+    readonly motivo: string | null;
+  } | null;
+  /** La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador. null si no es de Google. */
+  readonly fuente_url: string | null;
+  /** La búsqueda de hoteles en Google Hotels con las fechas de la cotización. null si no es de Google. */
+  readonly fuente_hoteles_url: string | null;
   readonly puede_decidir: boolean;
   readonly bloqueo: string | null;
 }
 
 /** Qué fuente abre la persona: la URL la arma el servidor, nunca la web. */
 export type DestinoFuente = "vuelos" | "hoteles";
+/** Con `vueloId` o `hotelId`, la página de ese vuelo u hotel; sin ellos, la búsqueda completa. */
+export interface ObjetivoFuente {
+  readonly vueloId?: number;
+  readonly hotelId?: number;
+}
+
+/** Lo leído de la página del vuelo en Google Flights (texto tal como lo muestra la página, en inglés). */
+export interface TramoLeido {
+  readonly fecha: string | null;
+  readonly sale: string | null;
+  readonly llega: string | null;
+  readonly aerolinea: string | null;
+  readonly duracion: string | null;
+  readonly ruta: string | null;
+  readonly escalas: string | null;
+  readonly detalle_escalas: readonly string[];
+  readonly emisiones: string | null;
+}
+
+export interface TarifaLeida {
+  readonly vendedor: string;
+  readonly nombre: string;
+  readonly precio: number;
+  readonly equipaje: readonly string[];
+  readonly cambios: readonly string[];
+  readonly reembolso: readonly string[];
+  readonly otras: readonly string[];
+  /** «Ir a…» de esta tarifa: dirección firmada por el servidor para esta sesión (vence en 5 minutos). */
+  readonly ir_url?: string | null;
+}
+
+export interface DetalleLeido {
+  readonly precio_total: number | null;
+  readonly tramos: readonly TramoLeido[];
+  readonly tarifas: readonly TarifaLeida[];
+  readonly vendedores: readonly { readonly vendedor: string; readonly aerolinea: boolean; readonly precio_desde: number | null }[];
+  readonly equipaje: readonly string[];
+  readonly cambios: readonly string[];
+  readonly reembolso: readonly string[];
+  readonly regreso_elegido: {
+    readonly precio: number;
+    readonly aerolinea: string | null;
+    readonly escalas: string | null;
+    readonly sale: string | null;
+    readonly llega: string | null;
+  } | null;
+  readonly notas: readonly string[];
+  readonly avisos: readonly string[];
+}
+
+/** La primera capa del desglose: lo que trajo el buscador para el itinerario (sin esperar a la página). */
+export interface OpcionesBuscador {
+  readonly estado: "listo" | "sin_datos";
+  /** Cuándo las trajo el buscador (UTC); null si vienen del respaldo. */
+  readonly consultado: string | null;
+  readonly tarifas: readonly TarifaLeida[];
+  readonly vendedores: DetalleLeido["vendedores"];
+}
+
+/** La lectura de la página del vuelo. `no_disponible`: no se leyó (apagado, topes, otra lectura); `motivo` lo dice. */
+export interface AnalisisVuelo {
+  readonly id: number | null;
+  readonly opcion_id: number;
+  readonly estado: "pendiente" | "listo" | "fallido" | "no_disponible";
+  readonly motivo: string | null;
+  readonly url: string | null;
+  /** Cuándo terminó la lectura (UTC). */
+  readonly leido: string | null;
+  readonly duracion_ms: number | null;
+  /** Lectura de menos de 60 minutos del mismo vuelo: no se abrió la página otra vez. */
+  readonly reutilizado: boolean;
+  readonly precio_buscador_usd: Dinero;
+  /** Si la página muestra otro precio que el buscador. La comparación sigue con el del buscador. */
+  readonly aviso_precio: string | null;
+  readonly datos: DetalleLeido | null;
+  /** Con `fallido`: el comienzo del texto que mostró la página. */
+  readonly extracto: string | null;
+  /** Dirección completa de la captura PNG, lista para `<img>`. También de una lectura fallida. */
+  readonly captura_url: string | null;
+}
 
 export interface CotizarRepository {
   /** Proyectos, quién puede viajar y razones de la decisión, según el permiso de la persona. */
@@ -252,7 +343,13 @@ export interface CotizarRepository {
   /** Guarda la decisión y crea el viaje, pendiente de aprobación. La clave evita decidir dos veces al reintentar. */
   decidir(id: number, decision: DecisionPedida, claveIdempotencia: string): Promise<Cotizacion>;
   /** Deja el rastro de que la persona abrió la fuente de los precios (quién, qué cotización y adónde). */
-  registrarFuente(id: number, destino: DestinoFuente, hotelId?: number): Promise<void>;
+  registrarFuente(id: number, destino: DestinoFuente, objetivo?: ObjetivoFuente): Promise<void>;
+  /** Lee la página del vuelo en Google Flights (unos segundos) o devuelve la lectura de menos de una hora. */
+  analizarVuelo(id: number, vueloId: number): Promise<AnalisisVuelo>;
+  /** La última lectura del vuelo, para seguir una que está en curso. */
+  verAnalisis(id: number, vueloId: number, signal?: AbortSignal): Promise<AnalisisVuelo>;
+  /** Las opciones de reserva del buscador ya guardadas para el itinerario (primera capa del desglose). */
+  opcionesBuscador(id: number, vueloId: number, signal?: AbortSignal): Promise<OpcionesBuscador>;
 }
 
 // ---------- reglas del campo de lugar ----------
@@ -665,4 +762,80 @@ export function duracion(minutos: number | null): string {
 export function tituloRuta(c: Pick<Cotizacion, "origen" | "destino">): string {
   const lado = (l: Cotizacion["origen"]) => l.lugar?.nombre ?? l.aeropuertos.join(" · ");
   return `${lado(c.origen)} → ${lado(c.destino)}`;
+}
+
+// ---------- todas las opciones de compra (pieza 3b) ----------
+export type OrigenTarifa = "página" | "buscador";
+
+/** Una tarifa de un vendedor, con lo que incluye ya repartido en columnas. El texto es el de la fuente (en inglés). */
+export interface FilaTarifa {
+  readonly vendedor: string;
+  readonly tarifa: string;
+  readonly precio: number;
+  readonly mano: string;
+  readonly maleta: string;
+  readonly cambios: string;
+  readonly reembolso: string;
+  readonly asiento: string;
+  readonly origen: OrigenTarifa;
+  /** La página firmada de «Ir a…»; sin ella no se ofrece el enlace. */
+  readonly ir_url: string | null;
+}
+
+export interface TablaVendedor {
+  readonly vendedor: string;
+  readonly filas: readonly FilaTarifa[];
+}
+
+const SIN_DATO = "—";
+
+function primera(lineas: readonly string[], patron: RegExp): string {
+  return lineas.find((l) => patron.test(l)) ?? SIN_DATO;
+}
+
+/** Agrupa las tarifas por vendedor, en el orden en que llegan, y reparte lo que incluye cada una. */
+export function tablasPorVendedor(tarifas: readonly TarifaLeida[], origen: OrigenTarifa): TablaVendedor[] {
+  const tablas = new Map<string, FilaTarifa[]>();
+  for (const t of tarifas) {
+    const fila: FilaTarifa = {
+      vendedor: t.vendedor,
+      tarifa: t.nombre,
+      precio: t.precio,
+      mano: primera(t.equipaje, /carry-on|personal item/i),
+      maleta: primera(t.equipaje, /checked bag/i),
+      cambios: t.cambios.join(" · ") || SIN_DATO,
+      reembolso: t.reembolso.join(" · ") || SIN_DATO,
+      asiento: primera(t.otras, /seat/i),
+      origen,
+      ir_url: t.ir_url ?? null,
+    };
+    tablas.set(t.vendedor, [...(tablas.get(t.vendedor) ?? []), fila]);
+  }
+  return [...tablas].map(([vendedor, filas]) => ({ vendedor, filas }));
+}
+
+/**
+ * Solo `https://www.google.com/travel/…` (o `google.com`), sin credenciales, puerto, `..` ni caracteres de control: el
+ * mismo criterio que el servidor. Un enlace que no cumple no se pinta.
+ */
+export function esEnlaceGoogle(url: string): boolean {
+  if (!url || /[\s\u0000-\u001f\u007f]/.test(url)) return false;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  let ruta: string;
+  try {
+    ruta = decodeURIComponent(u.pathname);
+  } catch {
+    return false;
+  }
+  return (
+    u.protocol === "https:" &&
+    (u.hostname === "www.google.com" || u.hostname === "google.com") &&
+    !u.port && !u.username && !u.password &&
+    ruta.startsWith("/travel/") && !ruta.split("/").includes("..")
+  );
 }

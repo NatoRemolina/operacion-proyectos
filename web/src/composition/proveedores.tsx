@@ -11,6 +11,7 @@ import { GastosRepositoryProvider } from "@/features/gastos/application/gastos";
 import { KpisRepositoryProvider } from "@/features/kpis/application/kpis";
 import { MonitoreoRepositoryProvider } from "@/features/monitoreo/application/monitoreo";
 import { ProyectosRepositoryProvider } from "@/features/proyectos/application/proyectos";
+import { ComprasRepositoryProvider } from "@/features/compras/application/compras";
 import { UsuariosRepositoryProvider } from "@/features/usuarios/application/usuarios";
 import { VuelosRepositoryProvider } from "@/features/vuelos/application/vuelos";
 import { ViajesRepositoryProvider } from "@/features/viajes/application/viajes";
@@ -44,10 +45,12 @@ export function Proveedores({ fuente, children }: { fuente: FuenteDatos; childre
                         <VuelosRepositoryProvider repositorio={repositorios.vuelos}>
                           <ProyectosRepositoryProvider repositorio={repositorios.proyectos}>
                             <UsuariosRepositoryProvider repositorio={repositorios.usuarios}>
+                              <ComprasRepositoryProvider repositorio={repositorios.compras}>
                               <CuentaRepositoryProvider repositorio={repositorios.cuenta}>
                                 {repositorios.demo ? <AvisoDemo /> : null}
                                 {children}
                               </CuentaRepositoryProvider>
+                              </ComprasRepositoryProvider>
                             </UsuariosRepositoryProvider>
                           </ProyectosRepositoryProvider>
                         </VuelosRepositoryProvider>

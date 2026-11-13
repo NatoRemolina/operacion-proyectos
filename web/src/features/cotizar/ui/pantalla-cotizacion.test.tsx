@@ -6,6 +6,7 @@ import { formatearDinero } from "@/shared/ui/formato";
 import { renderizarConFuente } from "@/test/renderizar";
 import type { Cotizacion, CotizarRepository, OpcionHotel } from "../domain/cotizar";
 import { crearCotizarMemoria } from "../infrastructure/cotizar-memoria";
+import { ANALISIS_EJEMPLO } from "../infrastructure/ejemplo-analisis";
 import { COTIZACION_MOAB, FORMULARIO_EJEMPLO } from "../infrastructure/ejemplo-moab";
 import { PantallaCotizacion } from "./pantalla-cotizacion";
 
@@ -125,6 +126,8 @@ describe("Comparación de una cotización", () => {
     await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
 
     const confirmacion = await screen.findByRole("heading", { name: /^Viaje V-2026-\d{4} creado, pendiente de aprobación$/ });
+    // la solicitud de compra nace con la decisión y la persona ve su estado
+    expect(screen.getByText("Compra del tiquete:").nextElementSibling).toHaveTextContent("Solicitud de compra enviada");
     expect(confirmacion).toHaveFocus();
     // el presupuesto que aprueba administración: sin riesgo de cambio ni millas
     const presupuesto = (Number(OTRA.desglose.precio_usd) + Number(OTRA.desglose.equipaje_usd) +
@@ -218,7 +221,7 @@ describe("Comparación de una cotización", () => {
     expect(guardar.className).toMatch(/se-mueve/);
     expect(guardar.className).toMatch(/active:scale-97/);
     expect(guardar.className).toMatch(/duration-100/);
-    const flecha = screen.getAllByRole("button", { name: /Ver desglose/ })[0]!.querySelector("[aria-hidden]")!;
+    const flecha = screen.getAllByRole("link", { name: /Ver desglose/ })[0]!.querySelector("[aria-hidden]")!;
     // La flecha conserva el giro (indica si está abierto); con movimiento reducido cambia sin animación
     expect(flecha.className).toMatch(/transition-\[rotate\]/);
     expect(flecha.className).toMatch(/motion-reduce:transition-none/);
@@ -365,8 +368,145 @@ describe("Comparación de una cotización", () => {
     expect(uno).toHaveAttribute("href", hotel.fuente_url);
     expect(uno).toHaveAttribute("target", "_blank");
     await usuario.pointer({ keys: "[MouseMiddle]", target: uno });   // abrir en otra pestaña con el botón central
-    expect(registrarFuente).toHaveBeenLastCalledWith(12, "hoteles", 90);
+    expect(registrarFuente).toHaveBeenLastCalledWith(12, "hoteles", { hotelId: 90 });
     // el enlace no elige el hotel
     expect(screen.getByRole("radio", { name: `Tru by Hilton Moab, costo total ${dinero("243.00")}` })).not.toBeChecked();
   });
+
+  it("al abrir el desglose abre la página oficial del vendedor con el mismo enlace y muestra lo leído de la página", async () => {
+    const usuario = userEvent.setup();
+    const registrarFuente = vi.fn<CotizarRepository["registrarFuente"]>().mockResolvedValue(undefined);
+    let responder: (a: typeof ANALISIS_EJEMPLO) => void = () => {};
+    const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>(
+      () => new Promise((r) => { responder = r; }),
+    );
+    renderizarConFuente(<PantallaCotizacion id={12} />, {
+      cotizar: repositorio(COTIZACION_MOAB, { registrarFuente, analizarVuelo }),
+    });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    const ver = within(tarjeta).getByRole("link", { name: /^Ver desglose/ });
+    expect(ver).toHaveAttribute("href", RECOMENDADA.vendedor_url);
+    expect(ver).toHaveAttribute("target", "_blank");
+    expect(ver).toHaveAttribute("rel", "noopener noreferrer");
+    await usuario.click(ver);
+    expect(registrarFuente).not.toHaveBeenCalled();   // el rastro del clic al vendedor lo deja el servidor
+    expect(analizarVuelo).toHaveBeenCalledWith(12, RECOMENDADA.id);
+    // Google Flights queda como segundo enlace del vuelo, con su propio rastro
+    const google = within(tarjeta).getByRole("link", { name: /^Ver en Google Flights \(United UA 1047/ });
+    expect(google).toHaveAttribute("href", RECOMENDADA.fuente_url);
+    expect(google).toHaveAttribute("rel", "noopener noreferrer");
+    await usuario.click(google);
+    expect(registrarFuente).toHaveBeenLastCalledWith(12, "vuelos", { vueloId: RECOMENDADA.id });
+    // el desglose del buscador se ve enseguida; la lectura llega después
+    expect(within(tarjeta).getByRole("table", { name: /Desglose del costo total esperado/ })).toBeInTheDocument();
+    expect(within(within(tarjeta).getByRole("region", { name: "Detalle de Google Flights" })).getByRole("status"))
+      .toHaveTextContent("Leyendo la página del vuelo…");
+    // primera capa: lo del buscador aparece sin esperar a la lectura de la página
+    const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+    expect(await within(capa).findByText("Opciones de reserva del buscador")).toBeInTheDocument();
+    const deBuscador = within(capa).getByRole("table", { name: "American (según el buscador)" });
+    expect(within(deBuscador).getAllByRole("row").slice(1).map((f) => within(f).getByRole("rowheader").textContent))
+      .toEqual(["Basic Economy", "Main Cabin", "Main Plus", "Main Select"]);
+    expect(within(deBuscador).getByRole("link", { name: "Ir a American, Basic Economy, se abre en otra pestaña" })).toBeInTheDocument();
+    // cada tarifa trae su «Ir a…» firmado por la API
+    const datos = { ...ANALISIS_EJEMPLO.datos!, tarifas: ANALISIS_EJEMPLO.datos!.tarifas.map((t) => ({ ...t, ir_url: `/api/v1/ir/${t.nombre}` })) };
+    responder({ ...ANALISIS_EJEMPLO, datos, opcion_id: RECOMENDADA.id, leido: "2026-11-13T15:10:00Z", captura_url: "/api/v1/captura.png" });
+    expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las \d\d:\d\d$/)).toBeInTheDocument();
+    const detalle = within(tarjeta).getByRole("region", { name: "Detalle de Google Flights" });
+    expect(within(detalle).getByText("El precio de la página no es el del buscador")).toBeInTheDocument();
+    expect(within(detalle).getByText(/La comparación sigue usando el precio del buscador/)).toBeInTheDocument();
+    expect(within(detalle).getByText("Basic Economy")).toBeInTheDocument();
+    // una tabla por vendedor, una fila por tarifa, con su «Ir a…» (en otra pestaña, sin acceso a esta)
+    const tabla = within(detalle).getByRole("table", { name: "American (según la página)" });
+    const filas = within(tabla).getAllByRole("row").slice(1);
+    expect(filas.map((f) => within(f).getByRole("rowheader").textContent)).toEqual(["Basic Economy", "Main Cabin", "Main Plus", "Main Select"]);
+    const main = filas[1]!;
+    expect(within(main).getByText("1st checked bag: $100")).toBeInTheDocument();
+    expect(within(main).getByText("Free change, possible fare difference")).toBeInTheDocument();
+    expect(within(main).getByText("Free seat selection")).toBeInTheDocument();
+    expect(within(main).getByText("página")).toBeInTheDocument();
+    const ir = within(main).getByRole("link", { name: "Ir a American, Main Cabin, se abre en otra pestaña" });
+    expect(ir).toHaveAttribute("target", "_blank");
+    expect(ir).toHaveAttribute("rel", "noopener noreferrer");
+    expect(ir).toHaveAttribute("href", "/api/v1/ir/Main Cabin");   // el enlace firmado que da la API, tal cual
+    expect(within(detalle).getAllByText(/1st checked bag: \$110/).length).toBeGreaterThan(0);
+    expect(within(detalle).getAllByText(/Full refunds/).length).toBe(1);
+    expect(within(detalle).getByText("Precio por vendedor").nextElementSibling).toHaveTextContent(/American \(aerolínea\)desde/);
+    expect(within(detalle).getByRole("img", { name: /Captura de la página de Google Flights/ })).toHaveAttribute("src", "/api/v1/captura.png");
+    // el precio del buscador no cambia en la tarjeta
+    expect(within(tarjeta).getAllByText(dinero(RECOMENDADA.precio_usd)).length).toBeGreaterThan(0);
+    // cerrar no abre otra pestaña: es un botón
+    expect(within(tarjeta).getByRole("button", { name: "Ocultar desglose" })).toBeInTheDocument();
+  });
+
+  it("si la lectura falla o no está disponible, el desglose lo dice y muestra solo lo del buscador", async () => {
+    const usuario = userEvent.setup();
+    const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>()
+      .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, estado: "fallido", motivo: "la página tardó demasiado en mostrar los precios",
+        datos: null, extracto: "Something went wrong", captura_url: "/api/v1/captura.png" })
+      .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, estado: "no_disponible", datos: null,
+        motivo: "Llegaste al tope de lecturas de Google Flights de hoy: el desglose muestra solo lo del buscador." });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo }) });
+    const [primera, segunda] = (await screen.findAllByRole("link", { name: /^Ver desglose/ })).map((a) => a.closest("[role=group]") as HTMLElement);
+    await usuario.click(within(primera!).getByRole("link", { name: /^Ver desglose/ }));
+    expect(await within(primera!).findByText("No se pudo leer: la página tardó demasiado en mostrar los precios.")).toBeInTheDocument();
+    expect(within(primera!).getByRole("link", { name: "Ver lo que mostró la página" })).toHaveAttribute("href", "/api/v1/captura.png");
+    await usuario.click(within(segunda!).getByRole("link", { name: /^Ver desglose/ }));
+    expect(await within(segunda!).findByText(/Llegaste al tope de lecturas de Google Flights de hoy/)).toBeInTheDocument();
+    expect(within(segunda!).queryByText("Tarifas y qué incluye cada una")).toBeNull();
+  });
+
+  it("si la lectura está en curso la sigue cada 3 s y, si no termina, lo dice", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const enCurso = { ...ANALISIS_EJEMPLO, estado: "pendiente" as const, datos: null, leido: null, reutilizado: true };
+      const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>().mockResolvedValue(enCurso);
+      const verAnalisis = vi.fn<CotizarRepository["verAnalisis"]>()
+        .mockResolvedValueOnce(enCurso)
+        .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, leido: "2026-11-13T15:10:00Z" });
+      renderizarConFuente(<PantallaCotizacion id={12} />, {
+        cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo, verAnalisis }),
+      });
+      const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+      await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+      expect(await within(tarjeta).findByText("Leyendo la página del vuelo…")).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(3000);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las/)).toBeInTheDocument();
+      expect(verAnalisis).toHaveBeenCalledTimes(2);
+      expect(verAnalisis).toHaveBeenCalledWith(12, RECOMENDADA.id, expect.anything());
+
+      // otra que nunca termina: tras 15 consultas deja de preguntar y lo dice
+      verAnalisis.mockReset();
+      verAnalisis.mockResolvedValue(enCurso);
+      const otra = screen.getByRole("group", { name: new RegExp(OTRA.numeros[0]!) });
+      await usuario.click(within(otra).getByRole("link", { name: /^Ver desglose/ }));
+      for (let i = 0; i < 17; i++) await vi.advanceTimersByTimeAsync(3000);
+      expect(verAnalisis).toHaveBeenCalledTimes(15);
+      expect(await within(otra).findByText("La lectura sigue en curso; vuelve a abrir el desglose en un momento.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("si el buscador todavía no trajo opciones, reintenta cada segundo y, si no llegan, lo dice", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const vacio = { estado: "sin_datos" as const, consultado: null, tarifas: [], vendedores: [] };
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue(vacio);
+      renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { opcionesBuscador }) });
+      const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+      await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+      const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+      expect(await within(capa).findByText("Buscando las opciones de reserva…")).toBeInTheDocument();
+      for (let i = 0; i < 7; i++) await vi.advanceTimersByTimeAsync(1000);
+      expect(await within(capa).findByText("El buscador no trajo opciones de reserva para este vuelo.")).toBeInTheDocument();
+      expect(opcionesBuscador).toHaveBeenCalledTimes(5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+

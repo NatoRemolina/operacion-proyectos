@@ -20,6 +20,10 @@ import { crearGastosMemoria } from "@/features/gastos/infrastructure/gastos-memo
 import type { ProyectosRepository } from "@/features/proyectos/domain/proyectos";
 import { crearProyectosHttp } from "@/features/proyectos/infrastructure/proyectos-http";
 import { crearProyectosMemoria } from "@/features/proyectos/infrastructure/proyectos-memoria";
+import type { ComprasRepository } from "@/features/compras/domain/compras";
+import { crearComprasHttp } from "@/features/compras/infrastructure/compras-http";
+import { crearComprasMemoria } from "@/features/compras/infrastructure/compras-memoria";
+import { COMPRA_EJEMPLO } from "@/features/compras/infrastructure/ejemplo-compras";
 import type { UsuariosRepository } from "@/features/usuarios/domain/usuarios";
 import { crearUsuariosHttp } from "@/features/usuarios/infrastructure/usuarios-http";
 import { crearUsuariosMemoria } from "@/features/usuarios/infrastructure/usuarios-memoria";
@@ -53,6 +57,7 @@ export interface Repositorios {
   vuelos: VuelosRepository;
   proyectos: ProyectosRepository;
   usuarios: UsuariosRepository;
+  compras: ComprasRepository;
   cuenta: CuentaRepository;
   demo: ModoDemo | null;
 }
@@ -109,6 +114,8 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
       proyectos: crearProyectosMemoria({ sesion, latenciaMs }),
       // Usuarios es solo de administración: con la cuenta de demostración responde «sin permiso», como la API.
       usuarios: crearUsuariosMemoria({ sesion, latenciaMs }),
+      // Compras es solo de administración: con la cuenta de demostración (colaboración) responde «sin permiso», como la API.
+      compras: crearComprasMemoria({ compras: [COMPRA_EJEMPLO], sesion, latenciaMs }),
       cuenta: crearCuentaMemoria({
         cuenta: {
           persona: CUENTA_DEMO.persona,
@@ -139,6 +146,7 @@ export function crearRepositorios(fuente: FuenteDatos, baseApi: string): Reposit
     vuelos: crearVuelosHttp(cliente),
     proyectos: crearProyectosHttp(cliente),
     usuarios: crearUsuariosHttp(cliente),
+    compras: crearComprasHttp(cliente),
     cuenta: crearCuentaHttp(cliente),
     demo: null,
   };

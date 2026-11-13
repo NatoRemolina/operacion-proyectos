@@ -277,6 +277,7 @@ function DecisionGuardada({
       <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
         <Dato nombre="Estado del viaje" valor={viaje.estado_texto} />
         <Dato nombre="Presupuesto para aprobar" valor={formatearDinero(viaje.presupuesto_usd)} />
+        {c.compra ? <Dato nombre="Compra del tiquete" valor={c.compra.estado_texto} /> : null}
         {vuelo ? <Dato nombre="Vuelo elegido" valor={`${nombreVuelo(vuelo)} (${hora(vuelo.sale)})`} /> : null}
         <Dato nombre="Hotel" valor={hotel?.nombre ?? "Sin hotel en esta decisión"} />
         {d.motivo ? <Dato nombre="Por qué" valor={d.motivo} /> : null}
@@ -401,6 +402,7 @@ function FormularioDecision({
               elegido={v.id === vueloId}
               onElegir={() => setVueloId(v.id)}
               nombreGrupo={nombreGrupo}
+              cotizacionId={c.id}
             />
           ))}
         </div>
@@ -691,7 +693,7 @@ function Hoteles({
       texto="Ver en Google Hotels"
       contexto={h.nombre}
       variante="texto"
-      onAbrir={() => registrarFuente("hoteles", h.id)}
+      onAbrir={() => registrarFuente("hoteles", { hotelId: h.id })}
     />
   );
   if (!c.hoteles.length) {
@@ -766,13 +768,15 @@ function EnlaceFuente({
   variante = "secundario",
   onAbrir,
 }: {
-  href: string;
+  /** null: el enlace no es de google.com/travel y no se pinta. */
+  href: string | null;
   texto: string;
   /** Para distinguir enlaces iguales al leerlos en voz alta (por ejemplo, el nombre del hotel). */
   contexto?: string;
   variante?: "secundario" | "texto";
   onAbrir: () => void;
 }) {
+  if (!href) return null;
   return (
     <a
       href={href}

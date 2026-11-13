@@ -124,7 +124,9 @@ export const COTIZACION_MOAB: Cotizacion = {
       "origen_dato": "guardado",
       "esperado_usd": "386.05",
       "frente_esperado_pct": 32,
-      "total_con_hotel_usd": null
+      "total_con_hotel_usd": null,
+      "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+      "vendedor_url": "/api/v1/cotizaciones/12/vuelos/6/vendedor"
     },
     {
       "id": 1,
@@ -202,7 +204,9 @@ export const COTIZACION_MOAB: Cotizacion = {
       "origen_dato": "guardado",
       "esperado_usd": "287.61",
       "frente_esperado_pct": 44,
-      "total_con_hotel_usd": null
+      "total_con_hotel_usd": null,
+      "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+      "vendedor_url": "/api/v1/cotizaciones/12/vuelos/1/vendedor"
     },
     {
       "id": 2,
@@ -274,7 +278,9 @@ export const COTIZACION_MOAB: Cotizacion = {
       "origen_dato": "guardado",
       "esperado_usd": "397.82",
       "frente_esperado_pct": 31,
-      "total_con_hotel_usd": null
+      "total_con_hotel_usd": null,
+      "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+      "vendedor_url": "/api/v1/cotizaciones/12/vuelos/2/vendedor"
     },
     {
       "id": 3,
@@ -338,7 +344,9 @@ export const COTIZACION_MOAB: Cotizacion = {
       "origen_dato": "guardado",
       "esperado_usd": "442.68",
       "frente_esperado_pct": 39,
-      "total_con_hotel_usd": null
+      "total_con_hotel_usd": null,
+      "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+      "vendedor_url": "/api/v1/cotizaciones/12/vuelos/3/vendedor"
     },
     {
       "id": 8,
@@ -404,7 +412,9 @@ export const COTIZACION_MOAB: Cotizacion = {
       "origen_dato": "guardado",
       "esperado_usd": "382.78",
       "frente_esperado_pct": 111,
-      "total_con_hotel_usd": null
+      "total_con_hotel_usd": null,
+      "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+      "vendedor_url": "/api/v1/cotizaciones/12/vuelos/8/vendedor"
     }
   ],
   "descartados": [
@@ -483,7 +493,9 @@ export const COTIZACION_MOAB: Cotizacion = {
       "origen_dato": "guardado",
       "esperado_usd": "314.69",
       "frente_esperado_pct": 49,
-      "total_con_hotel_usd": null
+      "total_con_hotel_usd": null,
+      "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+      "vendedor_url": "/api/v1/cotizaciones/12/vuelos/4/vendedor"
     },
     {
       "id": 5,
@@ -553,7 +565,9 @@ export const COTIZACION_MOAB: Cotizacion = {
       "origen_dato": "guardado",
       "esperado_usd": "386.94",
       "frente_esperado_pct": 30,
-      "total_con_hotel_usd": null
+      "total_con_hotel_usd": null,
+      "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+      "vendedor_url": "/api/v1/cotizaciones/12/vuelos/5/vendedor"
     },
     {
       "id": 7,
@@ -625,7 +639,9 @@ export const COTIZACION_MOAB: Cotizacion = {
       "origen_dato": "guardado",
       "esperado_usd": "405.64",
       "frente_esperado_pct": 29,
-      "total_con_hotel_usd": null
+      "total_con_hotel_usd": null,
+      "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+      "vendedor_url": "/api/v1/cotizaciones/12/vuelos/7/vendedor"
     }
   ],
   "hoteles": [],
@@ -635,6 +651,7 @@ export const COTIZACION_MOAB: Cotizacion = {
   "mas_barata_id": 1,
   "decision": null,
   "viaje": null,
+  "compra": null,
   "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
   "fuente_hoteles_url": "https://www.google.com/travel/search?q=Moab%20hotels%20from%202026-12-08%20to%202026-12-11&hl=en&gl=us",
   "puede_decidir": true,

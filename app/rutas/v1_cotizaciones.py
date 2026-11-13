@@ -4,9 +4,17 @@ La lógica es la misma de las pantallas (`app/servicios/cotizacion.py`). Ver una
 a quien viaja, al gestor del proyecto y a administración (`acceso.puede_ver`); decidirla, solo a los tres primeros
 sin el gestor (`acceso.es_propio`). Lo que no se ve responde 404.
 """
+import hashlib
+import hmac
+import html
+import re
+import secrets
+import time
 from decimal import Decimal
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Header, Path, Query, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
@@ -22,7 +30,7 @@ from ..api_v1.esquemas_cotizacion import (
     NuevaDecision,
     errores_cotizacion,
 )
-from ..servicios import acceso, agente, consultas, cotizacion, geografia, viajes
+from ..servicios import acceso, agente, compras, consultas, cotizacion, eventos, geografia, viajes
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
@@ -92,7 +100,7 @@ def _lado(nombre: str, lado: LadoPedido) -> dict:
 
 
 @router.post("/cotizaciones", status_code=201, response_model=Cotizacion, responses=errores_cotizacion(401, 403, 409, 422, 429))
-def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritura),
+def crear(datos: NuevaCotizacion, response: Response, request: Request, yo: dict = Depends(escritura),
           clave: str | None = Header(None, alias="Idempotency-Key", max_length=200,
                                      description="Un valor único por pedido, que se repite si se reintenta el mismo.")):
     """Guarda el pedido y busca vuelos y hoteles (una consulta para todos los aeropuertos marcados; lo guardado no se paga).
@@ -118,7 +126,7 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
             raise ErrorApi(409, "REQUEST_IN_PROGRESS", str(e)) from e
         if hecha:
             response.status_code = 200
-            return _cotizacion(yo, hecha)
+            return _cotizacion(yo, hecha, _sesion(request))
     try:
         sid = cotizacion.crear(yo, proyecto_id=datos.proyecto_id, viajero_id=viajero_id, para_otra_persona=para_otra,
                                ida=datos.ida.isoformat(), regreso=datos.regreso.isoformat(),
@@ -144,7 +152,7 @@ def crear(datos: NuevaCotizacion, response: Response, yo: dict = Depends(escritu
         raise
     if envio:
         cotizacion.completar_envio(envio, sid)
-    return _cotizacion(yo, sid)
+    return _cotizacion(yo, sid, _sesion(request))
 
 
 # ---------- ver ----------
@@ -156,10 +164,10 @@ IdCotizacion = Path(ge=1, le=ENTERO_MAXIMO)
 
 
 @router.get("/cotizaciones/{id}", response_model=Cotizacion, responses=errores_cotizacion(401, 404, 422))
-def detalle(id: int = IdCotizacion, yo: dict = Depends(persona)):
+def detalle(request: Request, id: int = IdCotizacion, yo: dict = Depends(persona)):
     if not acceso.puede_ver(yo, _fila(id)):
         raise _no_encontrado()
-    return _cotizacion(yo, id)
+    return _cotizacion(yo, id, _sesion(request))
 
 
 # ---------- fuente de los precios ----------
@@ -170,7 +178,7 @@ def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escr
     if not acceso.puede_ver(yo, _fila(id)):
         raise _no_encontrado()
     try:
-        url = cotizacion.abrir_fuente(yo, id, datos.destino, datos.hotel_id)
+        url = cotizacion.abrir_fuente(yo, id, datos.destino, datos.hotel_id, vuelo_id=datos.vuelo_id)
     except LookupError as e:
         raise _no_encontrado() from e
     except cotizacion.CotizacionInvalida as e:
@@ -178,9 +186,126 @@ def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escr
     return {"destino": datos.destino, "url": url}
 
 
+# ---------- página oficial del vendedor ----------
+SITIOS_PERMITIDOS = {"same-origin", "same-site", "none"}
+VIDA_ENLACE_S = 300   # 5 minutos: la web refresca la cotización antes de que venza
+
+
+def _sesion(request: Request) -> str:
+    return request.cookies.get(acceso.COOKIE) or ""
+
+
+def _firma(sesion: str, partes: tuple, vence: int) -> str:
+    mensaje = "|".join(str(p) for p in (*partes, vence)).encode()
+    return hmac.new(sesion.encode(), mensaje, hashlib.sha256).hexdigest()[:32]
+
+
+def _firmar(sesion: str, partes: tuple, ahora: float | None) -> str:
+    """`{vence}.{firma}`: HMAC con el token de la sesión como clave sobre `partes` y el vencimiento. No sirve en otra
+    sesión, para otras partes ni pasados 5 minutos; no se guarda nada."""
+    vence = int((time.time() if ahora is None else ahora) + VIDA_ENLACE_S)
+    return f"{vence}.{_firma(sesion, partes, vence)}"
+
+
+def _firmado(token: str | None, sesion: str, partes: tuple) -> bool:
+    vence, _, firma = (token or "").partition(".")
+    if not (sesion and re.fullmatch(r"[0-9]{1,12}", vence) and firma and int(vence) >= time.time()):
+        return False
+    return hmac.compare_digest(firma, _firma(sesion, partes, int(vence)))
+
+
+def token_vendedor(sesion: str, sid: int, vuelo_id: int, ahora: float | None = None) -> str:
+    return _firmar(sesion, ("vendedor-v1", sid, vuelo_id), ahora)
+
+
+def token_valido(token: str | None, sesion: str, sid: int, vuelo_id: int) -> bool:
+    return _firmado(token, sesion, ("vendedor-v1", sid, vuelo_id))
+
+
+def url_ir(sesion: str, sid: int, vuelo_id: int, vendedor: str, tarifa: str, ahora: float | None = None) -> str:
+    """La página de «Ir a…» de esa tarifa de ese vendedor, firmada: abrirla sin el token de esta sesión no hace el pedido."""
+    t = _firmar(sesion, ("ir-v1", sid, vuelo_id, vendedor, tarifa), ahora)
+    return f"{PREFIJO}/cotizaciones/{sid}/vuelos/{vuelo_id}/ir?{urlencode({'vendedor': vendedor, 'tarifa': tarifa, 't': t})}"
+
+
+def token_ir_valido(token: str | None, sesion: str, sid: int, vuelo_id: int, vendedor: str, tarifa: str) -> bool:
+    return _firmado(token, sesion, ("ir-v1", sid, vuelo_id, vendedor, tarifa))
+
+
+def url_vendedor(sesion: str, sid: int, vuelo_id: int) -> str:
+    return f"{PREFIJO}/cotizaciones/{sid}/vuelos/{vuelo_id}/vendedor?t={token_vendedor(sesion, sid, vuelo_id)}"
+
+
+def pagina_aviso(estado: int, titulo: str, texto: str) -> HTMLResponse:
+    """Lo que ve la persona en la pestaña nueva cuando no se puede seguir: una página legible, no JSON."""
+    cuerpo = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" '
+              f'content="width=device-width,initial-scale=1"><title>{html.escape(titulo)}</title></head><body>'
+              f"<main><h1>{html.escape(titulo)}</h1><p>{html.escape(texto)}</p>"
+              f"<p>Puedes cerrar esta pestaña y volver a la cotización.</p></main></body></html>")
+    return HTMLResponse(cuerpo, status_code=estado, headers={
+        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+
+
+AJENO = ("No encontramos ese vuelo", "Puede que el enlace esté incompleto o que no tengas acceso a esa cotización.")
+OTRO_SITIO = ("Enlace no válido", "Abre la página del vendedor desde la plataforma.")
+
+
+def _pagina_envio(destino: dict) -> HTMLResponse:
+    """Página mínima que envía el pedido de un solo uso del vendedor a Google, que redirige a su página oficial."""
+    nonce = secrets.token_urlsafe(16)
+    vendedor = html.escape(destino["vendedor"])
+    campos = "".join(f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in destino["campos"])
+    cuerpo = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">'
+              f"<title>Abriendo la página de {vendedor}…</title></head><body>"
+              f'<form id="envio" method="post" action="{html.escape(destino["url"])}">{campos}'
+              f'<p>Abriendo la página oficial de {vendedor}… <button type="submit">Continuar</button></p></form>'
+              f'<script nonce="{nonce}">document.getElementById("envio").submit();</script></body></html>')
+    # `form-action https:`: Chrome aplica la directiva también a las redirecciones que siguen al envío, y Google
+    # redirige a la aerolínea (otro dominio). El destino del envío ya pasó la lista blanca del servidor (solo
+    # https://www.google.com/travel/clk…) y el único script es el de esta página, con nonce.
+    return HTMLResponse(cuerpo, headers={
+        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": f"default-src 'none'; script-src 'nonce-{nonce}'; form-action https:; "
+                                   "base-uri 'none'; frame-ancestors 'none'"})
+
+
+@router.get("/cotizaciones/{id}/vuelos/{vuelo_id}/vendedor", response_class=HTMLResponse, responses={
+    **errores_cotizacion(401, 403, 404, 422),
+    200: {"description": "Página mínima que envía el pedido del vendedor a Google (redirige a su página oficial)",
+          "content": {"text/html": {}}},
+    303: {"description": "Sin página oficial disponible: la página del vuelo en Google Flights"}})
+def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1, le=ENTERO_MAXIMO),
+             t: str | None = Query(None, max_length=64, description="Token firmado del enlace (vence en 5 minutos)."),
+             yo: dict = Depends(persona)):
+    """Lo abre «Ver desglose» en otra pestaña: la página oficial del vendedor del itinerario (la aerolínea si lo vende).
+
+    El pedido de un solo uso (`booking_request`) solo viaja en esta respuesta: no se guarda en ninguna parte. Sin clave
+    del buscador, sin opciones de reserva o con el tope del día (`enlace_vendedor_persona_dia`), 303 a Google Flights.
+    Una navegación desde otro sitio (`Sec-Fetch-Site: cross-site`) recibe 403: no gasta el cupo de nadie."""
+    if request.headers.get("sec-fetch-site", "none") not in SITIOS_PERMITIDOS:
+        return pagina_aviso(403, *OTRO_SITIO)
+    if not acceso.puede_ver(yo, _fila(id)) or \
+            not db.uno("select id from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=vuelo_id, s=id):
+        return pagina_aviso(404, *AJENO)
+    if not token_valido(t, _sesion(request), id, vuelo_id):
+        # sin el token de esta sesión (enlace viejo, copiado o armado en otro sitio): Google Flights, sin buscar nada
+        sol = db.uno("select * from solicitudes where id=:i", i=id)
+        vuelo = db.de_json(db.uno("select datos from opciones where id=:o", o=vuelo_id)["datos"], {}) or {}
+        eventos.registrar("solicitud", id, "página oficial abierta", f"opción {vuelo_id}: enlace sin token válido · Google Flights",
+                          f"api v1 · {yo['nombre']}")
+        destino = cotizacion.fuente_vuelo(sol, vuelo)
+        compras.registrar_clic(yo, id, vuelo_id, "google_flights", destino)
+        return RedirectResponse(destino, status_code=303, headers={"Cache-Control": "no-store"})
+    destino = cotizacion.enlace_vendedor(yo, id, vuelo_id)
+    if destino["tipo"] == "google":
+        return RedirectResponse(destino["url"], status_code=303, headers={"Cache-Control": "no-store"})
+    return _pagina_envio(destino)
+
+
 # ---------- decidir ----------
 @router.post("/cotizaciones/{id}/decision", response_model=Cotizacion, responses=errores_cotizacion(401, 403, 404, 409, 422))
-def decidir(datos: NuevaDecision, id: int = IdCotizacion, yo: dict = Depends(escritura)):
+def decidir(datos: NuevaDecision, request: Request, id: int = IdCotizacion, yo: dict = Depends(escritura)):
     """Guarda la decisión y crea el viaje (o actualiza el que ya tiene la cotización), pendiente de aprobación.
 
     Si el vuelo no es el recomendado, `motivo` es obligatorio. El mismo envío repetido no duplica la decisión.
@@ -201,7 +326,7 @@ def decidir(datos: NuevaDecision, id: int = IdCotizacion, yo: dict = Depends(esc
         raise ErrorApi(409, "DECISION_LOCKED", str(e)) from e
     except cotizacion.DecisionInvalida as e:
         raise _invalido(e.campo, str(e)) from e
-    return _cotizacion(yo, id)
+    return _cotizacion(yo, id, _sesion(request))
 
 
 # ---------- forma del contrato ----------
@@ -216,7 +341,7 @@ def _tipo_linea(linea: dict) -> str:
     return next((tipo for inicio, tipo in _TIPO_POR_INICIO if linea["concepto"].startswith(inicio)), "otro")
 
 
-def _vuelo(o: dict, c: dict) -> dict:
+def _vuelo(o: dict, c: dict, sesion: str = "") -> dict:
     v, ev = o["v"], o["ev"]
     lineas = [{"concepto": l["concepto"], "valor_usd": consultas.dinero(l["valor"]), "origen": l.get("origen") or "supuesto",
                "tipo": _tipo_linea(l)} for l in ev["lineas"]]
@@ -235,7 +360,8 @@ def _vuelo(o: dict, c: dict) -> dict:
             "avisos": ev["avisos"], "descartada": ev["descartada"], "recomendada": recomendada,
             "mas_barata": bool(c["mas_barato"]) and c["mas_barato"]["id"] == o["id"], "origen_dato": o["origen_dato"],
             "esperado_usd": consultas.dinero(o.get("esperado")), "frente_esperado_pct": o.get("frente_esperado"),
-            "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel"))}
+            "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel")), "fuente_url": cotizacion.fuente_vuelo(c["sol"], v),
+            "vendedor_url": url_vendedor(sesion, c["sol"]["id"], o["id"])}
 
 
 def _tipo_linea_hotel(concepto: str) -> str:
@@ -264,13 +390,18 @@ def _origen_vuelos(sid: int) -> str | None:
     return fila["origen"] if fila else None
 
 
-def _cotizacion(yo: dict, sid: int) -> dict:
+def _compra(viaje: dict | None) -> dict | None:
+    c = compras.de_viaje(viaje["id"]) if viaje else None
+    return {"id": c["id"], "estado": c["estado"], "estado_texto": c["estado_texto"], "motivo": c["motivo"]} if c else None
+
+
+def _cotizacion(yo: dict, sid: int, sesion: str = "") -> dict:
     c = cotizacion.comparacion(sid)
     if not c:
         raise _no_encontrado()
     sol, d = c["sol"], c["decision"]
     viaje = viajes.de_solicitud(sid)
-    bloqueo = viajes.bloquea_decision(sid)
+    bloqueo = viajes.bloquea_decision(sid) or compras.bloqueo(sid)
     return {
         "id": sid, "estado": sol["estado"], "creado": consultas.instante(sol["creado"]), "solicitado_por": sol["solicitado_por"],
         "proyecto": {"id": sol["proyecto_id"], "nombre": sol["proyecto"]} if sol["proyecto_id"] else None,
@@ -283,7 +414,7 @@ def _cotizacion(yo: dict, sid: int) -> dict:
         "equipo": {"nivel": c["baterias"]["nivel"], "texto": c["baterias"]["texto"]},
         "origen_dato": _origen_vuelos(sid), "aviso": c["aviso"], "fallos": [f["detalle"] for f in c["fallos"]],
         "recomendacion": agente.recomendar(c, solo_determinista=True)["texto"],
-        "vuelos": [_vuelo(o, c) for o in c["vuelos"]], "descartados": [_vuelo(o, c) for o in c["descartados"]],
+        "vuelos": [_vuelo(o, c, sesion) for o in c["vuelos"]], "descartados": [_vuelo(o, c, sesion) for o in c["descartados"]],
         "hoteles": [_hotel(o) for o in c["hoteles"]], "hoteles_descartados": [_hotel(o) for o in c["hoteles_descartados"]],
         "hotel_recomendado_id": c["hotel_recomendado"]["id"] if c["hotel_recomendado"] else None,
         "recomendada_id": c["vuelos"][0]["id"] if c["vuelos"] else None,
@@ -292,6 +423,7 @@ def _cotizacion(yo: dict, sid: int) -> dict:
                      "razones": db.de_json(d["razones"], []) or [], "total_usd": consultas.dinero(d["total"]),
                      "siguio_recomendacion": bool(d["siguio_recomendacion"]), "creado": consultas.instante(d["creado"]),
                      "aviso": (db.de_json(d["desglose"], {}) or {}).get("aviso_tope")} if d else None,
+        "compra": _compra(viaje),
         "viaje": {**{k: viaje[k] for k in ("id", "codigo", "estado", "estado_texto")},
                   "presupuesto_usd": consultas.dinero(viaje["presupuesto_usd"])} if viaje else None,
         "fuente_url": c["fuente_url"], "fuente_hoteles_url": c["fuente_hoteles_url"],

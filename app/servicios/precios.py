@@ -109,6 +109,13 @@ def es_fuente_google(url) -> bool:
             and not p.password and ruta_real.startswith("/travel/") and ".." not in ruta_real.split("/"))
 
 
+def es_envio_google(url) -> bool:
+    """El envío al vendedor (el `booking_request` del buscador o el que intercepta el analizador): solo
+    `https://www.google.com/travel/clk…`, con el mismo criterio que `es_fuente_google`. Así una redirección abierta de
+    Google (`/url?q=…`) o cualquier otra ruta queda fuera."""
+    return es_fuente_google(url) and unquote(urlsplit(url).path).startswith("/travel/clk")
+
+
 def _protobuf(campo: int, datos: bytes) -> bytes:
     """Un campo de longitud variable del formato que usa Google Flights en el parámetro `tfs`."""
     largo, n = b"", len(datos)
@@ -119,17 +126,33 @@ def _protobuf(campo: int, datos: bytes) -> bytes:
             return bytes([campo << 3 | 2]) + largo + datos
 
 
-def _tramo_tfs(fecha: str, desde: list[str], hasta: list[str]) -> bytes:
+NUMERO_VUELO = re.compile(r"^([A-Z0-9]{2})\s*(\d{1,4})$")
+
+
+def _segmento_tfs(tramo: dict) -> bytes:
+    """Un vuelo elegido dentro del tramo: aeropuertos, fecha, aerolínea y número (como lo pone el buscador al fijarlo)."""
+    m = NUMERO_VUELO.match((tramo.get("numero") or "").strip().upper())
+    if not m or not tramo.get("desde") or not tramo.get("hasta") or len(tramo.get("sale") or "") < 10:
+        raise ValueError(f"tramo incompleto: {tramo}")
+    return _protobuf(4, _protobuf(1, tramo["desde"].encode()) + _protobuf(2, tramo["sale"][:10].encode())
+                     + _protobuf(3, tramo["hasta"].encode()) + _protobuf(5, m.group(1).encode()) + _protobuf(6, m.group(2).encode()))
+
+
+def _tramo_tfs(fecha: str, desde: list[str], hasta: list[str], elegidos: list[dict] | None = None) -> bytes:
     aeropuerto = lambda c: b"\x08\x01" + _protobuf(2, c.encode())  # noqa: E731
-    return _protobuf(3, _protobuf(2, fecha.encode()) + b"".join(_protobuf(13, aeropuerto(c)) for c in desde)
-                     + b"".join(_protobuf(14, aeropuerto(c)) for c in hasta))
+    return _protobuf(3, _protobuf(2, fecha.encode()) + b"".join(_segmento_tfs(t) for t in elegidos or [])
+                     + b"".join(_protobuf(13, aeropuerto(c)) for c in desde) + b"".join(_protobuf(14, aeropuerto(c)) for c in hasta))
 
 
-def construir_enlace_vuelos(origen: str | list[str], destino: str | list[str], ida: str, regreso: str) -> str:
+def construir_enlace_vuelos(origen: str | list[str], destino: str | list[str], ida: str, regreso: str,
+                            tramos_ida: list[dict] | None = None, tramos_regreso: list[dict] | None = None) -> str:
     """La búsqueda de ida y vuelta, en clase económica y para una persona, como la arma el buscador en `google_flights_url`.
-    Sirve cuando la respuesta guardada no lo trae."""
+    Sirve cuando la respuesta guardada no lo trae. Con `tramos_ida` (los `tramos` de un vuelo), la página abre con esa
+    ida elegida y muestra sus regresos; con `tramos_regreso` también, las opciones de reserva del itinerario.
+    ValueError si un tramo no trae aeropuertos, fecha o número de vuelo."""
     o, d = codigos(origen), codigos(destino)
-    tfs = b"\x08\x1c\x10\x02" + _tramo_tfs(ida, o, d) + _tramo_tfs(regreso, d, o) + b"\x40\x01\x48\x01\x70\x01\x98\x01\x01"
+    tfs = (b"\x08\x1c\x10\x02" + _tramo_tfs(ida, o, d, tramos_ida) + _tramo_tfs(regreso, d, o, tramos_regreso)
+           + b"\x40\x01\x48\x01\x70\x01\x98\x01\x01")
     return ("https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs="
             + base64.urlsafe_b64encode(tfs).decode().rstrip("=") + "&tfu=EgIIAQ")
 
@@ -366,7 +389,7 @@ def _guardada(nombre: str) -> tuple:
 
 
 def vuelo_regreso(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str, regreso: str,
-                  solicitud_id: int | None = None) -> dict | None:
+                  solicitud_id: int | None = None, tipo: str = "regreso") -> dict | None:
     """El vuelo de regreso real de una opción de ida: una consulta con su `departure_token`.
 
     Se envían los mismos códigos que la búsqueda original, para aprovechar la caché del proveedor. De los regresos se
@@ -391,10 +414,10 @@ def vuelo_regreso(vuelo_ida: dict, origenes: str | list[str], destinos: str | li
             _guardar(nombre, datos)
             origen_dato, usada = "en vivo", nombre
         except Exception as e:
-            _anotar("regreso", nombre, "fallida", solicitud_id, inicio, error=e)
+            _anotar(tipo, nombre, "fallida", solicitud_id, inicio, error=e)
             return None
     candidatos = [v for v in _vuelos(datos) if not vuelo_ida.get("hasta") or v["desde"] == vuelo_ida["hasta"]]
-    _anotar("regreso", usada, origen_dato, solicitud_id, inicio, [v["precio"] for v in candidatos])
+    _anotar(tipo, usada, origen_dato, solicitud_id, inicio, [v["precio"] for v in candidatos])
     if not candidatos:
         return None
     elegido = min(candidatos, key=lambda v: v["precio"])
@@ -428,6 +451,106 @@ def opciones_reserva(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list
     tarifas = [t for t in (_tarifa(o) for o in datos.get("booking_options", [])) if t]
     _anotar("tarifas", usada, origen_dato, solicitud_id, inicio, [t["precio"] for t in tarifas])
     return tarifas, origen_dato, datos.get("baggage_prices") or {}
+
+
+def regreso_guardado(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
+                     regreso: str) -> dict | None:
+    """El regreso que la plataforma eligiría para esta ida, solo con respuestas ya guardadas (sin consultar en vivo):
+    el más barato que sale del aeropuerto de llegada. None si no hay nada guardado."""
+    _, _, n_origen, n_destino = ruta(origenes, destinos)
+    clave = _clave_vuelo(vuelo_ida)
+    datos = _leer(f"regreso_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json")
+    if datos is None:
+        datos = (_leer(f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json") or {}).get("regreso")
+    if not isinstance(datos, dict):
+        return None
+    candidatos = [v for v in _vuelos(datos) if not vuelo_ida.get("hasta") or v["desde"] == vuelo_ida["hasta"]]
+    return min(candidatos, key=lambda v: v["precio"]) if candidatos else None
+
+
+def _textos(valor) -> list[str]:
+    """Los textos de una lista guardada; cualquier otra cosa (un texto suelto, un diccionario) no es una lista."""
+    return [x[:200] for x in valor if isinstance(x, str)] if isinstance(valor, list) else []
+
+
+def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
+                       regreso: str) -> tuple[list[dict], str | None]:
+    """Las opciones de reserva del itinerario que ya están guardadas (las trajo el enlace a la página oficial o una
+    decisión), sin consultar: [(vendedor, tarifa, precio, equipaje, cambios, reembolso, otras)], y cuándo se guardaron
+    (None si vienen de un archivo de respaldo). Lo guardado nunca trae el pedido de un solo uso."""
+    _, _, n_origen, n_destino = ruta(origenes, destinos)
+    clave = _clave_vuelo(vuelo_ida)
+    nombre = f"reserva_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
+    datos = _leer(nombre)
+    if datos is None:
+        nombre = f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
+        datos = (_leer(nombre) or {}).get("reserva")
+    if not isinstance(datos, dict):
+        return [], None
+    fila = db.uno("select creado from busquedas where clave=:c order by id desc limit 1", c=nombre)
+    salida = []
+    for o in datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []:
+        t = o.get("together") if isinstance(o, dict) else None   # billetes separados: el precio de la ida no es el del viaje
+        if not isinstance(t, dict) or not isinstance(t.get("price"), int | float):
+            continue
+        notas = _textos(t.get("extensions"))
+        cambios = [x for x in notas if "change" in x.lower()]
+        reembolso = [x for x in notas if "refund" in x.lower()]
+        salida.append({"vendedor": str(t.get("book_with") or "el vendedor")[:60], "aerolinea": bool(t.get("airline")),
+                       "nombre": str(t.get("option_title") or "Tarifa")[:60], "precio": float(t["price"]),
+                       "equipaje": _textos(t.get("baggage_prices")),
+                       "cambios": cambios, "reembolso": reembolso, "otras": [x for x in notas if x not in cambios + reembolso]})
+    return salida, fila["creado"] if fila else None
+
+
+def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
+                    regreso: str, solicitud_id: int | None = None) -> list[dict]:
+    """Opciones de reserva del itinerario consultadas ahora, con el `booking_request` de cada vendedor (`url` y
+    `post_data`): el pedido de un solo uso que lleva a su página oficial.
+
+    El `booking_request` vive solo en lo que devuelve esta función: la respuesta se guarda sin él (`_guardar`), la
+    bitácora y el registro de la consulta no lo llevan. Si el mismo pedido se repite dentro de la hora, el buscador lo
+    sirve de su caché sin cobrarlo. [] sin clave, sin `booking_token` del regreso o si la consulta falla."""
+    if not (config.SERPAPI_KEY and (vuelo_regreso_ or {}).get("booking")):
+        return []
+    origen, destino, n_origen, n_destino = ruta(origenes, destinos)
+    clave = _clave_vuelo(vuelo_ida)
+    inicio, nombre = time.perf_counter(), f"reserva_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
+    try:
+        datos = _consultar({"engine": "google_flights", "departure_id": origen, "arrival_id": destino, "outbound_date": ida,
+                            "return_date": regreso, "booking_token": vuelo_regreso_["booking"]},
+                           "solicitud", solicitud_id, f"página oficial de {clave}")
+    except Exception as e:  # noqa: BLE001 (se anota solo el tipo: el mensaje podría traer datos de la reserva)
+        _anotar("vendedor", nombre, "fallida", solicitud_id, inicio, error=type(e).__name__)
+        return []
+    if not isinstance(datos, dict):
+        _anotar("vendedor", nombre, "fallida", solicitud_id, inicio, error="respuesta que no es un objeto")
+        return []
+    # el mismo pedido dentro de la hora lo sirve el buscador de su caché (sin cobrar): no se guarda otra copia
+    hace_una_hora = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    repetida = db.uno("select id from busquedas where clave=:c and creado>=:h limit 1", c=nombre, h=hace_una_hora)
+    if not repetida:
+        _guardar(nombre, datos)
+    opciones = []
+    lista = datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []
+    for o in lista:   # cada campo se comprueba: una respuesta rara deja la opción fuera, nunca rompe
+        # con billetes separados (`departing` y `returning` sin `together`) el pedido de la ida solo compraría la ida:
+        # esa opción no sirve para la página oficial
+        t = o.get("together") if isinstance(o, dict) else None
+        if not isinstance(t, dict):
+            continue
+        pedido = t.get("booking_request") if isinstance(t.get("booking_request"), dict) else {}
+        precio = t.get("price") if isinstance(t.get("price"), int | float) and not isinstance(t.get("price"), bool) else None
+        opciones.append({"vendedor": str(t.get("book_with") or "el vendedor")[:60], "aerolinea": t.get("airline") is True,
+                         "precio": precio, "tarifa": str(t.get("option_title") or "Tarifa")[:60],
+                         "notas": [x for x in t.get("extensions") or [] if isinstance(x, str)] if isinstance(t.get("extensions"), list) else [],
+                         "equipaje": [x for x in t.get("baggage_prices") or [] if isinstance(x, str)]
+                         if isinstance(t.get("baggage_prices"), list) else [],
+                         "url": pedido.get("url") if isinstance(pedido.get("url"), str) else None,
+                         "post_data": pedido.get("post_data") if isinstance(pedido.get("post_data"), str) else None})
+    _anotar("vendedor", nombre, "caché del buscador" if repetida else "en vivo", solicitud_id, inicio,
+            [o["precio"] for o in opciones if o["precio"] is not None])
+    return opciones
 
 
 def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, vuelo: dict,

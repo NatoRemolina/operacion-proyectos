@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { Distintivo } from "@/shared/ui/distintivo";
+import { Alerta } from "@/shared/ui/estado";
 import { formatearDinero } from "@/shared/ui/formato";
 import { GIRO, PRESIONAR } from "@/shared/ui/movimiento";
 import {
@@ -11,9 +12,14 @@ import {
   hora,
   segmentosCosto,
   textoOrigenDato,
+  type AnalisisVuelo,
+  type OpcionesBuscador,
   type OpcionVuelo,
   type SegmentoCosto,
+  type TablaVendedor,
+  tablasPorVendedor,
 } from "../domain/cotizar";
+import { useAnalisisVuelo, useOpcionesBuscador, useRegistrarFuente } from "../application/cotizar";
 
 const COLOR: Record<SegmentoCosto["tipo"], string> = {
   precio: "bg-marca",
@@ -132,6 +138,7 @@ export function OpcionDeVuelo({
   elegido,
   onElegir,
   nombreGrupo,
+  cotizacionId,
 }: {
   vuelo: OpcionVuelo;
   maximo: number;
@@ -139,8 +146,19 @@ export function OpcionDeVuelo({
   elegido: boolean;
   onElegir: () => void;
   nombreGrupo: string;
+  cotizacionId: number;
 }) {
   const [abierto, setAbierto] = useState(false);
+  const registrarFuente = useRegistrarFuente(cotizacionId);
+  const analisis = useAnalisisVuelo(cotizacionId, vuelo.id);
+  const buscador = useOpcionesBuscador(cotizacionId, vuelo.id, abierto);
+  // Abrir el desglose abre también la página oficial del vendedor (el mismo enlace, en otra pestaña; el servidor deja
+  // el rastro del clic) y pide leer la página del vuelo en Google Flights. El servidor reutiliza una lectura de menos
+  // de una hora: volver a abrir no gasta otra.
+  function abrirDesglose() {
+    setAbierto(true);
+    if (!analisis.isPending) analisis.mutate();
+  }
   const titulo = useId();
   const desglose = useId();
   const origen = textoOrigenDato(vuelo.origen_dato);
@@ -231,22 +249,305 @@ export function OpcionDeVuelo({
         </ul>
       ) : null}
       <div className={sangria}>
-        <button
-          type="button"
-          aria-expanded={abierto}
-          aria-controls={desglose}
-          onClick={() => setAbierto((a) => !a)}
-          className={`-ml-1 inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
+        {abierto ? (
+          <button
+            type="button"
+            aria-expanded
+            aria-controls={desglose}
+            onClick={() => setAbierto(false)}
+            className={`-ml-1 inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
+          >
+            <span aria-hidden="true" className={`${GIRO} rotate-90`}>
+              ›
+            </span>
+            Ocultar desglose
+          </button>
+        ) : (
+          <a
+            href={vuelo.vendedor_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-expanded={false}
+            aria-controls={desglose}
+            aria-label="Ver desglose (abre también la página oficial del vendedor en otra pestaña)"
+            onClick={abrirDesglose}
+            onAuxClick={(e) => {
+              if (e.button === 1) abrirDesglose();
+            }}
+            className={`-ml-1 inline-flex min-h-11 items-center gap-1 px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
+          >
+            <span aria-hidden="true" className={GIRO}>
+              ›
+            </span>
+            Ver desglose
+            <span aria-hidden="true">↗</span>
+          </a>
+        )}
+        {vuelo.fuente_url ? (
+        <a
+          href={vuelo.fuente_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Ver en Google Flights (${nombreVuelo(vuelo)}), se abre en otra pestaña`}
+          onClick={() => registrarFuente("vuelos", { vueloId: vuelo.id })}
+          onAuxClick={(e) => {
+            if (e.button === 1) registrarFuente("vuelos", { vueloId: vuelo.id });
+          }}
+          className={`ml-3 inline-flex min-h-11 items-center gap-1 px-1 text-sm text-texto-secundario underline underline-offset-3 hover:text-texto ${PRESIONAR}`}
         >
-          <span aria-hidden="true" className={`${GIRO} ${abierto ? "rotate-90" : ""}`}>
-            ›
-          </span>
-          {abierto ? "Ocultar desglose" : "Ver desglose"}
-        </button>
-        <div id={desglose} className={abierto ? "mt-2" : ""}>
-          {abierto ? <Desglose vuelo={vuelo} /> : null}
+          Ver en Google Flights
+          <span aria-hidden="true">↗</span>
+        </a>
+        ) : null}
+        <div id={desglose} className={abierto ? "mt-2 flex flex-col gap-4" : ""}>
+          {abierto ? (
+            <>
+              <Desglose vuelo={vuelo} />
+              <CapaBuscador esperando={buscador.esperando} error={Boolean(buscador.error)} opciones={buscador.data} />
+              <DetalleGoogle
+                pendiente={analisis.isPending}
+                agotado={analisis.agotado}
+                error={analisis.error ? "No hubo conexión con el servidor." : null}
+                analisis={analisis.data ?? null}
+              />
+            </>
+          ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+/** «HH:MM» en la hora local de quien mira. */
+function horaLocal(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+const COLUMNAS: readonly { clave: "mano" | "maleta" | "cambios" | "reembolso" | "asiento"; titulo: string }[] = [
+  { clave: "mano", titulo: "Maleta de mano" },
+  { clave: "maleta", titulo: "Primera maleta" },
+  { clave: "cambios", titulo: "Cambios" },
+  { clave: "reembolso", titulo: "Reembolso" },
+  { clave: "asiento", titulo: "Asiento" },
+];
+
+/**
+ * Una tabla por vendedor y una fila por tarifa, con su «Ir a…». En el celular cada fila se apila con el nombre de
+ * cada columna delante: nada se desplaza de lado.
+ */
+function TablaDeVendedor({ tabla }: { tabla: TablaVendedor }) {
+  const celda = "flex gap-2 py-1 md:table-cell md:py-1.5 md:pr-3 md:align-top before:shrink-0 before:font-semibold " +
+    "before:text-texto-secundario before:content-[attr(data-titulo)] md:before:content-none";
+  return (
+    <table className="w-full text-sm [overflow-wrap:anywhere]">
+      <caption className="mb-1 text-left font-semibold">
+        {tabla.vendedor} <span className="font-normal text-texto-secundario">(según {tabla.filas[0]?.origen === "buscador" ? "el buscador" : "la página"})</span>
+      </caption>
+      <thead className="sr-only md:not-sr-only">
+        <tr className="text-left text-texto-secundario">
+          <th scope="col" className="py-1 pr-3 font-semibold">Tarifa</th>
+          <th scope="col" className="py-1 pr-3 text-right font-semibold">Precio</th>
+          {COLUMNAS.map((c) => (
+            <th key={c.clave} scope="col" className="py-1 pr-3 font-semibold">{c.titulo}</th>
+          ))}
+          <th scope="col" className="py-1 pr-3 font-semibold">Origen</th>
+          <th scope="col" className="py-1 font-semibold"><span className="sr-only">Comprar</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {tabla.filas.map((f) => (
+          <tr key={`${f.tarifa}-${f.precio}`} className="block border-t border-linea py-2 md:table-row md:py-0">
+            <th scope="row" data-titulo="Tarifa:" className={`${celda} text-left font-semibold`}>{f.tarifa}</th>
+            <td data-titulo="Precio:" className={`${celda} tabular-nums md:text-right md:whitespace-nowrap`}>
+              {formatearDinero(f.precio.toFixed(2))}
+            </td>
+            {COLUMNAS.map((c) => (
+              <td key={c.clave} data-titulo={`${c.titulo}:`} className={celda}>{f[c.clave]}</td>
+            ))}
+            <td data-titulo="Origen:" className={celda}>{f.origen}</td>
+            <td className="py-1 md:table-cell md:py-1.5">
+              {f.ir_url ? (
+              <a
+                href={f.ir_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Ir a ${f.vendedor}, ${f.tarifa}, se abre en otra pestaña`}
+                className={`inline-flex min-h-11 items-center gap-1 whitespace-nowrap px-1 font-semibold text-marca underline underline-offset-3 hover:text-marca-oscura ${PRESIONAR}`}
+              >
+                Ir a {f.vendedor}
+                <span aria-hidden="true">↗</span>
+              </a>
+              ) : null}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Primera capa: lo que trajo el buscador, en 2 a 5 s; no espera a la lectura de la página. */
+function CapaBuscador({
+  esperando,
+  error,
+  opciones,
+}: {
+  esperando: boolean;
+  error: boolean;
+  opciones: OpcionesBuscador | null;
+}) {
+  const listo = opciones?.estado === "listo" && opciones.tarifas.length > 0;
+  return (
+    <section aria-label="Opciones del buscador" className="flex flex-col gap-3 border-t border-linea pt-3">
+      <p role="status" className={`text-sm ${listo ? "font-semibold" : "text-texto-secundario"}`}>
+        {listo
+          ? `Opciones de reserva del buscador${opciones.consultado ? ` (consultadas a las ${horaLocal(opciones.consultado)})` : ""}`
+          : esperando
+            ? "Buscando las opciones de reserva…"
+            : error
+              ? "No se pudieron traer las opciones del buscador."
+              : "El buscador no trajo opciones de reserva para este vuelo."}
+      </p>
+      {listo
+        ? tablasPorVendedor(opciones.tarifas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} />)
+        : null}
+    </section>
+  );
+}
+
+/**
+ * Lo leído de la página del vuelo en Google Flights, como complemento del desglose: no reemplaza el precio del
+ * buscador (si difiere, lo dice). El texto de la página va tal como lo muestra Google, en inglés.
+ */
+function DetalleGoogle({
+  pendiente,
+  agotado = false,
+  error,
+  analisis,
+}: {
+  pendiente: boolean;
+  /** Se siguió una lectura en curso hasta el límite y no terminó. */
+  agotado?: boolean;
+  error: string | null;
+  analisis: AnalisisVuelo | null;
+}) {
+  if (agotado) {
+    return (
+      <section aria-label="Detalle de Google Flights" className="flex flex-col gap-3 border-t border-linea pt-3">
+        <p role="status" className="text-sm text-texto-secundario">
+          La lectura sigue en curso; vuelve a abrir el desglose en un momento.
+        </p>
+      </section>
+    );
+  }
+  const lectura = pendiente || analisis?.estado === "pendiente";
+  return (
+    <section aria-label="Detalle de Google Flights" className="flex flex-col gap-3 border-t border-linea pt-3">
+      <p role="status" className={`text-sm ${lectura ? "text-texto-secundario" : "font-semibold"}`}>
+        {lectura
+          ? "Leyendo la página del vuelo…"
+          : error
+            ? `No se pudo leer: ${error}`
+            : !analisis
+              ? ""
+              : analisis.estado === "listo"
+                ? `Detalle leído de Google Flights a las ${horaLocal(analisis.leido)}`
+                : analisis.estado === "fallido"
+                  ? `No se pudo leer: ${analisis.motivo ?? "sin motivo"}.`
+                  : analisis.motivo}
+      </p>
+      {!lectura && analisis?.estado === "listo" && analisis.datos ? <Leido a={analisis} /> : null}
+      {!lectura && analisis?.estado === "fallido" && analisis.captura_url ? (
+        <a href={analisis.captura_url} target="_blank" rel="noopener noreferrer" className="self-start text-sm underline underline-offset-3">
+          Ver lo que mostró la página
+        </a>
+      ) : null}
+    </section>
+  );
+}
+
+function Leido({ a }: { a: AnalisisVuelo }) {
+  const d = a.datos!;
+  return (
+    <>
+      {a.aviso_precio ? (
+        <Alerta tono="aviso" titulo="El precio de la página no es el del buscador">
+          <p>{a.aviso_precio}</p>
+        </Alerta>
+      ) : null}
+      {d.tarifas.length ? (
+        <div className="flex flex-col gap-3">
+          <h4 className="font-semibold">Tarifas y qué incluye cada una</h4>
+          {tablasPorVendedor(d.tarifas, "página").map((t) => (
+            <TablaDeVendedor key={t.vendedor} tabla={t} />
+          ))}
+        </div>
+      ) : null}
+      {d.vendedores.length ? (
+        <div className="flex flex-col gap-1">
+          <h4 className="font-semibold">Precio por vendedor</h4>
+          <ul className="flex flex-col gap-1 text-sm">
+            {d.vendedores.map((v) => (
+              <li key={v.vendedor} className="flex flex-wrap justify-between gap-x-3">
+                <span>
+                  {v.vendedor} <span className="text-texto-secundario">({v.aerolinea ? "aerolínea" : "agencia"})</span>
+                </span>
+                <span className="tabular-nums">
+                  {v.precio_desde === null ? "sin precio" : `desde ${formatearDinero(v.precio_desde.toFixed(2))}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {d.tramos.length ? (
+        <div className="flex flex-col gap-1">
+          <h4 className="font-semibold">Escalas</h4>
+          <ul className="flex flex-col gap-1 text-sm">
+            {d.tramos.map((t, i) => (
+              <li key={`${t.ruta}-${i}`}>
+                <span className="font-semibold">{t.ruta ?? "Tramo"}</span>
+                {t.fecha ? ` · ${t.fecha}` : ""}
+                {t.sale && t.llega ? ` · ${t.sale} – ${t.llega}` : ""}
+                {t.escalas ? ` · ${t.escalas}` : ""}
+                {t.detalle_escalas.length ? ` (${t.detalle_escalas.join(", ")})` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {d.regreso_elegido ? (
+        <p className="text-sm text-texto-secundario">
+          Para ver las opciones de reserva, la lectura eligió el regreso más barato que mostró la página
+          {d.regreso_elegido.sale ? ` (sale ${d.regreso_elegido.sale}` : " ("}
+          {d.regreso_elegido.aerolinea ? `, ${d.regreso_elegido.aerolinea}` : ""}, {formatearDinero(d.regreso_elegido.precio.toFixed(2))} ida y vuelta).
+        </p>
+      ) : null}
+      {d.avisos.map((x) => (
+        <p key={x} className="text-sm text-texto-secundario">
+          {x}
+        </p>
+      ))}
+      {a.captura_url ? (
+        <a href={a.captura_url} target="_blank" rel="noopener noreferrer" className="block self-start">
+          {/* eslint-disable-next-line @next/next/no-img-element -- la captura viene de la API con la sesión: no pasa por el optimizador */}
+          <img
+            src={a.captura_url}
+            alt="Captura de la página de Google Flights leída, como evidencia"
+            loading="lazy"
+            className="max-h-72 w-full max-w-xl rounded-tarjeta border border-linea object-cover object-top"
+          />
+        </a>
+      ) : null}
+      <p className="text-xs text-texto-secundario">
+        Lo leído no reemplaza el precio del buscador: es una verificación.{" "}
+        {a.url ? (
+          <a href={a.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-3">
+            Página leída
+          </a>
+        ) : null}
+      </p>
+    </>
   );
 }

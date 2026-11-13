@@ -1,11 +1,16 @@
 import { z } from "zod";
 import { consulta, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
+import { esEnlaceGoogle } from "../domain/cotizar";
 import type {
+  AnalisisVuelo,
   Cotizacion,
   CotizarRepository,
   FormularioCotizacion,
   ListaLugares,
 } from "../domain/cotizar";
+
+/** Un enlace a Google que no es `https://www.google.com/travel/…` no llega a la pantalla. */
+const enlaceGoogle = z.string().transform((u) => (esEnlaceGoogle(u) ? u : null));
 
 const lugarSchema = z.object({
   nombre: z.string(),
@@ -100,6 +105,8 @@ const vueloSchema = z.object({
   esperado_usd: dineroSchema,
   frente_esperado_pct: z.number().int().nullable(),
   total_con_hotel_usd: dineroSchema,
+  fuente_url: enlaceGoogle,
+  vendedor_url: z.string(),
 });
 
 const hotelSchema = z.object({
@@ -126,7 +133,7 @@ const hotelSchema = z.object({
   origen_dato: z.string().nullable(),
   recomendada: z.boolean(),
   mas_barata: z.boolean(),
-  fuente_url: z.string(),
+  fuente_url: enlaceGoogle,
 });
 
 const ladoSchema = z.object({ codigo: z.string(), aeropuertos: z.array(z.string()), lugar: lugarSchema.nullable() });
@@ -184,15 +191,115 @@ export const cotizacionSchema = z.object({
       presupuesto_usd: dineroSchema,
     })
     .nullable(),
-  fuente_url: z.string(),
-  fuente_hoteles_url: z.string(),
+  compra: z
+    .object({
+      id: z.number().int(),
+      estado: z.enum(["solicitada", "en_analisis", "se_comprara", "no_se_comprara", "comprada", "cancelada"]),
+      estado_texto: z.string(),
+      motivo: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
+  fuente_url: enlaceGoogle,
+  fuente_hoteles_url: enlaceGoogle,
   puede_decidir: z.boolean(),
   bloqueo: z.string().nullable(),
 }) satisfies z.ZodType<Cotizacion>;
 
+const lista = z.array(z.string());
+const analisisSchema = z.object({
+  id: z.number().int().nullable(),
+  opcion_id: z.number().int(),
+  estado: z.enum(["pendiente", "listo", "fallido", "no_disponible"]),
+  motivo: z.string().nullable(),
+  url: enlaceGoogle.nullable(),
+  leido: z.string().nullable(),
+  duracion_ms: z.number().int().nullable(),
+  reutilizado: z.boolean(),
+  precio_buscador_usd: dineroSchema,
+  aviso_precio: z.string().nullable(),
+  datos: z
+    .object({
+      precio_total: z.number().nullable(),
+      tramos: z.array(
+        z.object({
+          fecha: z.string().nullable(),
+          sale: z.string().nullable(),
+          llega: z.string().nullable(),
+          aerolinea: z.string().nullable(),
+          duracion: z.string().nullable(),
+          ruta: z.string().nullable(),
+          escalas: z.string().nullable(),
+          detalle_escalas: lista,
+          emisiones: z.string().nullable(),
+        }),
+      ),
+      tarifas: z.array(
+        z.object({
+          vendedor: z.string(),
+          nombre: z.string(),
+          precio: z.number(),
+          equipaje: lista,
+          cambios: lista,
+          reembolso: lista,
+          otras: lista,
+          ir_url: z.string().nullable().default(null),
+        }),
+      ),
+      vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
+      equipaje: lista,
+      cambios: lista,
+      reembolso: lista,
+      regreso_elegido: z
+        .object({
+          precio: z.number(),
+          aerolinea: z.string().nullable().default(null),
+          escalas: z.string().nullable().default(null),
+          sale: z.string().nullable().default(null),
+          llega: z.string().nullable().default(null),
+        })
+        .nullable(),
+      notas: lista,
+      avisos: lista,
+    })
+    .nullable(),
+  extracto: z.string().nullable().default(null),
+  captura_url: z.string().nullable(),
+});
+
+const tarifaSchema = z.object({
+  vendedor: z.string(),
+  nombre: z.string(),
+  precio: z.number(),
+  equipaje: lista,
+  cambios: lista,
+  reembolso: lista,
+  otras: lista,
+  ir_url: z.string().nullable().default(null),
+});
+const opcionesBuscadorSchema = z.object({
+  estado: z.enum(["listo", "sin_datos"]),
+  consultado: z.string().nullable(),
+  tarifas: z.array(tarifaSchema),
+  vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
+});
+
 const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), url: z.string() });
 
 export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
+  // La API da sus rutas con el prefijo; la web las abre contra la misma base que el resto de peticiones
+  const absoluta = (ruta: string) => cliente.url(ruta.replace(/^\/api\/v1(?=\/)/, ""));
+  const conIrA = <T extends { ir_url: string | null }>(t: T): T => ({ ...t, ir_url: t.ir_url ? absoluta(t.ir_url) : null });
+  const conCaptura = (a: AnalisisVuelo): AnalisisVuelo => ({
+    ...a,
+    captura_url: a.captura_url ? absoluta(a.captura_url) : null,
+    datos: a.datos ? { ...a.datos, tarifas: a.datos.tarifas.map((t) => conIrA({ ...t, ir_url: t.ir_url ?? null })) } : null,
+  });
+  const conRutas = (c: Cotizacion): Cotizacion => ({
+    ...c,
+    vuelos: c.vuelos.map((v) => ({ ...v, vendedor_url: absoluta(v.vendedor_url) })),
+    descartados: c.descartados.map((v) => ({ ...v, vendedor_url: absoluta(v.vendedor_url) })),
+  });
   return {
     formulario(signal) {
       return cliente.get("/cotizaciones/formulario", formularioSchema, { signal });
@@ -201,21 +308,35 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       const ruta = `/lugares${consulta({ q: texto.trim(), google: conGoogle ? 1 : null, limite: 8 })}`;
       return cliente.get(ruta, listaLugaresSchema, { signal });
     },
-    cotizar(pedido, claveIdempotencia) {
-      return cliente.postJson("/cotizaciones", pedido, cotizacionSchema, {
+    async cotizar(pedido, claveIdempotencia) {
+      return conRutas(await cliente.postJson("/cotizaciones", pedido, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
-      });
+      }));
     },
-    obtener(id, signal) {
-      return cliente.get(`/cotizaciones/${id}`, cotizacionSchema, { signal });
+    async obtener(id, signal) {
+      return conRutas(await cliente.get(`/cotizaciones/${id}`, cotizacionSchema, { signal }));
     },
-    decidir(id, decision, claveIdempotencia) {
-      return cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema, {
+    async decidir(id, decision, claveIdempotencia) {
+      return conRutas(await cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
-      });
+      }));
     },
-    async registrarFuente(id, destino, hotelId) {
-      await cliente.postJson(`/cotizaciones/${id}/fuente`, { destino, hotel_id: hotelId ?? null }, enlaceFuenteSchema);
+    async registrarFuente(id, destino, objetivo) {
+      const cuerpo = { destino, vuelo_id: objetivo?.vueloId ?? null, hotel_id: objetivo?.hotelId ?? null };
+      await cliente.postJson(`/cotizaciones/${id}/fuente`, cuerpo, enlaceFuenteSchema);
+    },
+    async analizarVuelo(id, vueloId): Promise<AnalisisVuelo> {
+      const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema);
+      // La API da las rutas con su prefijo (captura e «Ir a…» de cada tarifa); la web las pide a la misma base que el resto
+      return conCaptura(a);
+    },
+    async opcionesBuscador(id, vueloId, signal) {
+      const o = await cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/reserva`, opcionesBuscadorSchema, { signal });
+      return { ...o, tarifas: o.tarifas.map(conIrA) };
+    },
+    async verAnalisis(id, vueloId, signal): Promise<AnalisisVuelo> {
+      const a = await cliente.get(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, analisisSchema, { signal });
+      return conCaptura(a);
     },
   };
 }

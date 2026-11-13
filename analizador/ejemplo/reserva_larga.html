@@ -1,0 +1,14 @@
+<!doctype html>
+<!-- Como reserva.html, pero con 20.000 px de contenido de colores al azar debajo: la captura debe quedar acotada. -->
+<html lang="en"><head><meta charset="utf-8"><title>Round trip to Las Vegas | Google Flights</title></head>
+<body>
+<div>$619</div><div>Lowest total price</div>
+<h2>Booking options</h2><div>Book with American</div><div>Airline</div>
+<div>Basic Economy</div><div>$619</div><div>1 free carry-on</div><div>Continue</div>
+<canvas id="ruido" width="1280" height="20000"></canvas>
+<script>
+  var c = document.getElementById("ruido").getContext("2d"), img = c.createImageData(1280, 20000), s = 7;
+  for (var i = 0; i < img.data.length; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; img.data[i] = i % 4 === 3 ? 255 : s & 255; }
+  c.putImageData(img, 0, 0);
+</script>
+</body></html>

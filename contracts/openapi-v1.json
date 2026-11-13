@@ -6,6 +6,547 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/cotizaciones/{id}/vuelos/{opcion_id}/analisis": {
+      "post": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Pedir",
+        "description": "Lee la página del vuelo en Google Flights (tarda unos segundos) o devuelve la lectura de menos de 60 minutos.\n\nTarifas y qué incluye cada una, equipaje, cambios y reembolso, escalas, precio por vendedor y una captura. Con los\ntopes del día alcanzados, apagado o sin analizador: `estado: no_disponible` y el motivo, sin leer nada.",
+        "operationId": "pedir_api_v1_cotizaciones__id__vuelos__opcion_id__analisis_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalisisVuelo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Ver",
+        "description": "La última lectura del vuelo (para seguir una en curso). 404 si nunca se leyó.",
+        "operationId": "ver_api_v1_cotizaciones__id__vuelos__opcion_id__analisis_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalisisVuelo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}/analisis/{analisis_id}/captura": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Captura",
+        "operationId": "captura_api_v1_cotizaciones__id__analisis__analisis_id__captura_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "analisis_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Analisis Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "La captura de la página leída",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}/vuelos/{opcion_id}/reserva": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Opciones Buscador",
+        "description": "Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada\nvendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial.",
+        "operationId": "opciones_buscador_api_v1_cotizaciones__id__vuelos__opcion_id__reserva_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpcionesBuscador"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}/vuelos/{opcion_id}/ir": {
+      "post": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Ir",
+        "description": "Adónde enviar a la persona para comprar esa tarifa de ese vendedor: por la página (el analizador pulsa\n«Continue»), por el buscador (el pedido de esa tarifa) o, si no, la página del vuelo en Google Flights. Tope por\npersona y día `ir_a_persona_dia`. Los `campos` del envío no se guardan ni se registran.",
+        "operationId": "ir_api_v1_cotizaciones__id__vuelos__opcion_id__ir_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoIrA"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvioVendedor"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Pagina Ir",
+        "description": "La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el\nformulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. Con datos que no son\nválidos responde 422 con una página legible (no JSON): la pestaña la ve una persona.",
+        "operationId": "pagina_ir_api_v1_cotizaciones__id__vuelos__opcion_id__ir_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          },
+          {
+            "name": "vendedor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Vendedor (1 a 60 caracteres: letras, números y . , & ' ( ) + / -).",
+              "title": "Vendedor"
+            },
+            "description": "Vendedor (1 a 60 caracteres: letras, números y . , & ' ( ) + / -)."
+          },
+          {
+            "name": "tarifa",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Tarifa (mismas reglas que el vendedor).",
+              "title": "Tarifa"
+            },
+            "description": "Tarifa (mismas reglas que el vendedor)."
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Token firmado del enlace (vence en 5 minutos).",
+              "title": "T"
+            },
+            "description": "Token firmado del enlace (vence en 5 minutos)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página que prepara el envío al vendedor y lo hace",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/asistente": {
       "post": {
         "tags": [
@@ -411,6 +952,419 @@
         }
       }
     },
+    "/api/v1/compras": {
+      "get": {
+        "tags": [
+          "compras"
+        ],
+        "summary": "Lista",
+        "description": "Las compras activas, la más reciente primero (hasta 200).",
+        "operationId": "lista_api_v1_compras_get",
+        "parameters": [
+          {
+            "name": "estado",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(solicitada|en_analisis|se_comprara|no_se_comprara|comprada|cancelada)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estado"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListaCompras"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fuera de administración, sin CSRF, o la compra es del propio viaje (`SELF_APPROVAL`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/compras/{id}": {
+      "get": {
+        "tags": [
+          "compras"
+        ],
+        "summary": "Detalle",
+        "description": "La compra con su vuelo, el enlace a la página oficial, los clics a las fuentes y la última lectura de la página.",
+        "operationId": "detalle_api_v1_compras__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompraDetalle"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fuera de administración, sin CSRF, o la compra es del propio viaje (`SELF_APPROVAL`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/compras/{id}/estado": {
+      "post": {
+        "tags": [
+          "compras"
+        ],
+        "summary": "Cambiar Estado",
+        "description": "«En análisis», «Se va a comprar» (exige el viaje aprobado), «No se va a comprar» o «Cancelada» (con motivo).\nAvisa al viajero en la bitácora de su viaje.",
+        "operationId": "cambiar_estado_api_v1_compras__id__estado_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioEstadoCompra"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Compra"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fuera de administración, sin CSRF, o la compra es del propio viaje (`SELF_APPROVAL`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Versión vieja (`EDIT_CONFLICT`) o cambio no permitido (`INVALID_STATE`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/compras/{id}/registro": {
+      "post": {
+        "tags": [
+          "compras"
+        ],
+        "summary": "Registrar",
+        "description": "Registra la compra hecha: localizador, precio pagado y vendedor. Responde con la diferencia frente a lo cotizado.",
+        "operationId": "registrar_api_v1_compras__id__registro_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistroCompra"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Compra"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fuera de administración, sin CSRF, o la compra es del propio viaje (`SELF_APPROVAL`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Versión vieja (`EDIT_CONFLICT`) o cambio no permitido (`INVALID_STATE`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/compras/{id}/analisis": {
+      "post": {
+        "tags": [
+          "compras"
+        ],
+        "summary": "Analizar",
+        "description": "Pide (o reutiliza) la lectura de la página del vuelo de la compra. Misma forma que `AnalisisVuelo`.",
+        "operationId": "analizar_api_v1_compras__id__analisis_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Analizar Api V1 Compras  Id  Analisis Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fuera de administración, sin CSRF, o la compra es del propio viaje (`SELF_APPROVAL`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/lugares": {
       "get": {
         "tags": [
@@ -772,6 +1726,114 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/cotizaciones/{id}/vuelos/{vuelo_id}/vendedor": {
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Vendedor",
+        "description": "Lo abre «Ver desglose» en otra pestaña: la página oficial del vendedor del itinerario (la aerolínea si lo vende).\n\nEl pedido de un solo uso (`booking_request`) solo viaja en esta respuesta: no se guarda en ninguna parte. Sin clave\ndel buscador, sin opciones de reserva o con el tope del día (`enlace_vendedor_persona_dia`), 303 a Google Flights.\nUna navegación desde otro sitio (`Sec-Fetch-Site: cross-site`) recibe 403: no gasta el cupo de nadie.",
+        "operationId": "vendedor_api_v1_cotizaciones__id__vuelos__vuelo_id__vendedor_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "vuelo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Vuelo Id"
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Token firmado del enlace (vence en 5 minutos).",
+              "title": "T"
+            },
+            "description": "Token firmado del enlace (vence en 5 minutos)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página mínima que envía el pedido del vendedor a Google (redirige a su página oficial)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "303": {
+            "description": "Sin página oficial disponible: la página del vuelo en Google Flights"
           }
         }
       }
@@ -4461,6 +5523,161 @@
         ],
         "title": "AeropuertoSugerido"
       },
+      "AnalisisVuelo": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "opcion_id": {
+            "type": "integer",
+            "title": "Opcion Id"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "pendiente",
+              "listo",
+              "fallido",
+              "no_disponible"
+            ],
+            "title": "Estado",
+            "description": "`no_disponible`: no se leyó (apagado, sin analizador, tope del día, otra lectura en curso); el desglose muestra solo lo del buscador y `motivo` lo dice."
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "La página leída: `https://www.google.com/travel/flights?...` con la ida elegida."
+          },
+          "leido": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leido",
+            "description": "Cuándo terminó la lectura (UTC, ISO 8601)."
+          },
+          "duracion_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duracion Ms"
+          },
+          "reutilizado": {
+            "type": "boolean",
+            "title": "Reutilizado",
+            "description": "Es una lectura de menos de 60 minutos del mismo vuelo: no se volvió a abrir la página."
+          },
+          "precio_buscador_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Buscador Usd"
+          },
+          "aviso_precio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso Precio",
+            "description": "Si la página muestra otro precio que el buscador, lo dice."
+          },
+          "datos": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetalleLeido"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extracto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracto",
+            "description": "Con `fallido`: el comienzo del texto que mostró la página, para saber por qué."
+          },
+          "captura_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captura Url",
+            "description": "La captura de la página (PNG), como evidencia; también de una lectura fallida, salvo si pidió verificación."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "opcion_id",
+          "estado",
+          "motivo",
+          "url",
+          "leido",
+          "duracion_ms",
+          "reutilizado",
+          "precio_buscador_usd",
+          "aviso_precio",
+          "datos",
+          "captura_url"
+        ],
+        "title": "AnalisisVuelo",
+        "description": "La lectura de la página del vuelo en Google Flights. No reemplaza el precio del buscador."
+      },
       "AvisoVuelo": {
         "properties": {
           "momento": {
@@ -4667,6 +5884,41 @@
         "type": "object",
         "title": "CambioCargoCatalogo",
         "description": "Renombrar, activar o desactivar. Lo que no se manda no cambia. Un cargo nunca se borra."
+      },
+      "CambioEstadoCompra": {
+        "properties": {
+          "accion": {
+            "type": "string",
+            "enum": [
+              "en_analisis",
+              "se_comprara",
+              "no_se_comprara",
+              "cancelada"
+            ],
+            "title": "Accion",
+            "description": "`se_comprara` exige el viaje aprobado; `no_se_comprara` y `cancelada` exigen motivo."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "La versión que se vio: si otra persona la cambió, 409 `EDIT_CONFLICT`."
+          },
+          "motivo": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Motivo",
+            "description": "La persona que viaja lo verá.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "accion",
+          "version"
+        ],
+        "title": "CambioEstadoCompra"
       },
       "CambioEstadoCuenta": {
         "properties": {
@@ -4969,6 +6221,73 @@
         ],
         "title": "ClaveCambiada"
       },
+      "ClicFuente": {
+        "properties": {
+          "destino": {
+            "type": "string",
+            "enum": [
+              "google_flights",
+              "google_hotels",
+              "vendedor",
+              "hotel_oficial"
+            ],
+            "title": "Destino"
+          },
+          "dominio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dominio"
+          },
+          "momento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Momento"
+          },
+          "opcion_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opcion Id"
+          },
+          "usuario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usuario"
+          }
+        },
+        "type": "object",
+        "required": [
+          "destino",
+          "dominio",
+          "momento",
+          "opcion_id",
+          "usuario"
+        ],
+        "title": "ClicFuente"
+      },
       "Columna": {
         "properties": {
           "texto": {
@@ -5000,6 +6319,452 @@
           "fin"
         ],
         "title": "Columna"
+      },
+      "Compra": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "solicitada",
+              "en_analisis",
+              "se_comprara",
+              "no_se_comprara",
+              "comprada",
+              "cancelada"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "viaje": {
+            "$ref": "#/components/schemas/ViajeCompra"
+          },
+          "solicitud_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solicitud Id"
+          },
+          "solicitada_por": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solicitada Por"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "vendedor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendedor"
+          },
+          "localizador": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Localizador"
+          },
+          "precio_pagado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Pagado Usd"
+          },
+          "precio_cotizado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Cotizado Usd"
+          },
+          "anticipacion_dias": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anticipacion Dias"
+          },
+          "creado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creado"
+          },
+          "decidido": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decidido"
+          },
+          "comprada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comprada"
+          },
+          "frente_presupuesto": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FrentePresupuesto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Solo con la compra registrada."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "estado",
+          "estado_texto",
+          "version",
+          "viaje",
+          "solicitud_id",
+          "solicitada_por",
+          "motivo",
+          "vendedor",
+          "localizador",
+          "precio_pagado_usd",
+          "precio_cotizado_usd",
+          "anticipacion_dias",
+          "creado",
+          "decidido",
+          "comprada",
+          "frente_presupuesto"
+        ],
+        "title": "Compra"
+      },
+      "CompraDeCotizacion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "solicitada",
+              "en_analisis",
+              "se_comprara",
+              "no_se_comprara",
+              "comprada",
+              "cancelada"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto",
+            "description": "«Solicitud de compra enviada», «En análisis», «Se va a comprar»..."
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "estado",
+          "estado_texto",
+          "motivo"
+        ],
+        "title": "CompraDeCotizacion",
+        "description": "La solicitud de compra del tiquete, que nace al decidir. La lleva administración."
+      },
+      "CompraDetalle": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "solicitada",
+              "en_analisis",
+              "se_comprara",
+              "no_se_comprara",
+              "comprada",
+              "cancelada"
+            ],
+            "title": "Estado"
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "viaje": {
+            "$ref": "#/components/schemas/ViajeCompra"
+          },
+          "solicitud_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solicitud Id"
+          },
+          "solicitada_por": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solicitada Por"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "vendedor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendedor"
+          },
+          "localizador": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Localizador"
+          },
+          "precio_pagado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Pagado Usd"
+          },
+          "precio_cotizado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Cotizado Usd"
+          },
+          "anticipacion_dias": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anticipacion Dias"
+          },
+          "creado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creado"
+          },
+          "decidido": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decidido"
+          },
+          "comprada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comprada"
+          },
+          "frente_presupuesto": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FrentePresupuesto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Solo con la compra registrada."
+          },
+          "vuelo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VueloCompra"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clics": {
+            "items": {
+              "$ref": "#/components/schemas/ClicFuente"
+            },
+            "type": "array",
+            "title": "Clics"
+          },
+          "analisis": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analisis",
+            "description": "La última lectura de la página del vuelo (forma de `AnalisisVuelo`)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "estado",
+          "estado_texto",
+          "version",
+          "viaje",
+          "solicitud_id",
+          "solicitada_por",
+          "motivo",
+          "vendedor",
+          "localizador",
+          "precio_pagado_usd",
+          "precio_cotizado_usd",
+          "anticipacion_dias",
+          "creado",
+          "decidido",
+          "comprada",
+          "frente_presupuesto",
+          "vuelo",
+          "clics",
+          "analisis"
+        ],
+        "title": "CompraDetalle"
       },
       "CorreoDelSoporte": {
         "properties": {
@@ -5277,6 +7042,17 @@
               }
             ]
           },
+          "compra": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompraDeCotizacion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "La solicitud de compra del viaje, si ya se decidió."
+          },
           "fuente_url": {
             "type": "string",
             "title": "Fuente Url",
@@ -5339,6 +7115,7 @@
           "mas_barata_id",
           "decision",
           "viaje",
+          "compra",
           "fuente_url",
           "fuente_hoteles_url",
           "puede_decidir",
@@ -6003,6 +7780,102 @@
         ],
         "title": "DetalleGastos"
       },
+      "DetalleLeido": {
+        "properties": {
+          "precio_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Total",
+            "description": "El precio más bajo del itinerario en la página (USD)."
+          },
+          "tramos": {
+            "items": {
+              "$ref": "#/components/schemas/TramoLeido"
+            },
+            "type": "array",
+            "title": "Tramos"
+          },
+          "tarifas": {
+            "items": {
+              "$ref": "#/components/schemas/TarifaLeida"
+            },
+            "type": "array",
+            "title": "Tarifas"
+          },
+          "vendedores": {
+            "items": {
+              "$ref": "#/components/schemas/VendedorLeido"
+            },
+            "type": "array",
+            "title": "Vendedores"
+          },
+          "equipaje": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Equipaje"
+          },
+          "cambios": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cambios"
+          },
+          "reembolso": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reembolso"
+          },
+          "regreso_elegido": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegresoElegido"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notas"
+          },
+          "avisos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Avisos",
+            "description": "Lo que la página no mostró (por ejemplo, opciones de reserva)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "precio_total",
+          "tramos",
+          "tarifas",
+          "vendedores",
+          "equipaje",
+          "cambios",
+          "reembolso",
+          "notas",
+          "avisos"
+        ],
+        "title": "DetalleLeido"
+      },
       "EdicionRegla": {
         "properties": {
           "valor": {
@@ -6223,6 +8096,79 @@
           "url"
         ],
         "title": "EnlaceFuente"
+      },
+      "EnvioVendedor": {
+        "properties": {
+          "camino": {
+            "type": "string",
+            "enum": [
+              "pagina",
+              "buscador",
+              "google"
+            ],
+            "title": "Camino",
+            "description": "`pagina`: el analizador pulsó «Continue» en Google Flights; `buscador`: el pedido de esa tarifa en las opciones de reserva del buscador; `google`: la página del vuelo en Google Flights."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "campos": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Campos"
+          },
+          "vendedor": {
+            "type": "string",
+            "title": "Vendedor"
+          },
+          "tarifa": {
+            "type": "string",
+            "title": "Tarifa"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo",
+            "description": "Por qué no se llegó por la página, si es el caso."
+          }
+        },
+        "type": "object",
+        "required": [
+          "camino",
+          "url",
+          "campos",
+          "vendedor",
+          "tarifa",
+          "motivo"
+        ],
+        "title": "EnvioVendedor",
+        "description": "Adónde enviar a la persona. Con `campos`, un formulario POST a `url` (Google redirige al vendedor); sin ellos, ir a\n`url`. Los campos son de un solo uso: no se guardan."
       },
       "Equipo": {
         "properties": {
@@ -7010,6 +8956,53 @@
         ],
         "title": "FormularioCotizacion"
       },
+      "FrentePresupuesto": {
+        "properties": {
+          "presupuesto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto Usd",
+            "description": "Presupuesto aprobado del viaje completo."
+          },
+          "cotizado_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cotizado Usd",
+            "description": "Precio del tiquete que dio el buscador al decidir."
+          },
+          "diferencia_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diferencia Usd",
+            "description": "Pagado − cotizado (positivo: costó más)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "presupuesto_usd",
+          "cotizado_usd",
+          "diferencia_usd"
+        ],
+        "title": "FrentePresupuesto"
+      },
       "FuenteAbierta": {
         "properties": {
           "destino": {
@@ -7019,6 +9012,20 @@
               "hoteles"
             ],
             "title": "Destino"
+          },
+          "vuelo_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vuelo Id",
+            "description": "Con `vuelos`: un vuelo de la cotización (su página)."
           },
           "hotel_id": {
             "anyOf": [
@@ -8367,6 +10374,22 @@
         ],
         "title": "ListaCargos"
       },
+      "ListaCompras": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Compra"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ListaCompras"
+      },
       "ListaGastos": {
         "properties": {
           "items": {
@@ -9408,6 +11431,16 @@
             ],
             "title": "Total Con Hotel Usd",
             "description": "Costo total esperado del vuelo más el del hotel recomendado (una suma, no todas las combinaciones); null sin hotel o si el vuelo está descartado."
+          },
+          "fuente_url": {
+            "type": "string",
+            "title": "Fuente Url",
+            "description": "Este vuelo en Google Flights: la búsqueda de la cotización con su ida elegida (si el vuelo no trae sus tramos completos, la búsqueda sin elegir)."
+          },
+          "vendedor_url": {
+            "type": "string",
+            "title": "Vendedor Url",
+            "description": "Ruta de la API que abre la página oficial del vendedor (navegación en otra pestaña)."
           }
         },
         "type": "object",
@@ -9433,9 +11466,59 @@
           "origen_dato",
           "esperado_usd",
           "frente_esperado_pct",
-          "total_con_hotel_usd"
+          "total_con_hotel_usd",
+          "fuente_url",
+          "vendedor_url"
         ],
         "title": "OpcionVuelo"
+      },
+      "OpcionesBuscador": {
+        "properties": {
+          "estado": {
+            "type": "string",
+            "enum": [
+              "listo",
+              "sin_datos"
+            ],
+            "title": "Estado",
+            "description": "`sin_datos`: todavía no hay opciones guardadas (la web reintenta unos segundos mientras el enlace al vendedor las trae)."
+          },
+          "consultado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consultado",
+            "description": "Cuándo las trajo el buscador (UTC); null si vienen del respaldo del repositorio."
+          },
+          "tarifas": {
+            "items": {
+              "$ref": "#/components/schemas/TarifaLeida"
+            },
+            "type": "array",
+            "title": "Tarifas"
+          },
+          "vendedores": {
+            "items": {
+              "$ref": "#/components/schemas/VendedorLeido"
+            },
+            "type": "array",
+            "title": "Vendedores"
+          }
+        },
+        "type": "object",
+        "required": [
+          "estado",
+          "consultado",
+          "tarifas",
+          "vendedores"
+        ],
+        "title": "OpcionesBuscador",
+        "description": "La primera capa del desglose: las opciones de reserva del buscador para este itinerario, ya guardadas."
       },
       "Par": {
         "properties": {
@@ -9468,6 +11551,34 @@
           "valor"
         ],
         "title": "Par"
+      },
+      "PedidoIrA": {
+        "properties": {
+          "vendedor": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "pattern": "^[\\w .,&'()+/-]+$",
+            "title": "Vendedor",
+            "description": "Como lo muestra el desglose: «American», «Expedia»..."
+          },
+          "tarifa": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "pattern": "^[\\w .,&'()+/-]+$",
+            "title": "Tarifa",
+            "description": "«Main Cabin», «Economy»...; «Tarifa» si el vendedor no la nombra."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vendedor",
+          "tarifa"
+        ],
+        "title": "PedidoIrA",
+        "description": "La tarifa que la persona eligió en el desglose. Adónde se va lo decide el servidor."
       },
       "PeriodoContable": {
         "properties": {
@@ -9923,6 +12034,45 @@
         ],
         "title": "Razon"
       },
+      "RegistroCompra": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "localizador": {
+            "type": "string",
+            "maxLength": 8,
+            "minLength": 5,
+            "pattern": "^[A-Za-z0-9]+$",
+            "title": "Localizador",
+            "description": "Como lo da la aerolínea."
+          },
+          "precio_pagado": {
+            "type": "string",
+            "pattern": "^\\d{1,5}(\\.\\d{1,2})?$",
+            "title": "Precio Pagado",
+            "description": "USD, como \"461.30\"."
+          },
+          "vendedor": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Vendedor",
+            "description": "A quién se le compró: la aerolínea o la agencia."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "localizador",
+          "precio_pagado",
+          "vendedor"
+        ],
+        "title": "RegistroCompra"
+      },
       "Regla": {
         "properties": {
           "id": {
@@ -10052,6 +12202,97 @@
           "velocidad_kmh"
         ],
         "title": "ReglasCarretera"
+      },
+      "RegresoElegido": {
+        "properties": {
+          "precio": {
+            "type": "number",
+            "title": "Precio"
+          },
+          "aerolinea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aerolinea"
+          },
+          "escalas": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalas"
+          },
+          "sale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale"
+          },
+          "llega": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega"
+          },
+          "desde": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desde"
+          },
+          "hasta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hasta"
+          },
+          "duracion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duracion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "precio"
+        ],
+        "title": "RegresoElegido",
+        "description": "El regreso que eligió el analizador en la página (el más barato), para llegar a las opciones de reserva."
       },
       "RespuestaAsistente": {
         "properties": {
@@ -11180,6 +13421,76 @@
         ],
         "title": "Tarifa"
       },
+      "TarifaLeida": {
+        "properties": {
+          "vendedor": {
+            "type": "string",
+            "title": "Vendedor"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre",
+            "description": "«Basic Economy», «Main Cabin»...; «Tarifa» si el vendedor no la nombra."
+          },
+          "precio": {
+            "type": "number",
+            "title": "Precio",
+            "description": "USD, total del viaje para una persona, como lo muestra la página."
+          },
+          "equipaje": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Equipaje"
+          },
+          "cambios": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cambios"
+          },
+          "reembolso": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reembolso"
+          },
+          "otras": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Otras",
+            "description": "Lo demás que incluye: asiento, embarque, espacio para las piernas..."
+          },
+          "ir_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ir Url",
+            "description": "«Ir a…» de esta tarifa: la página de envío firmada para esta sesión (5 min)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "vendedor",
+          "nombre",
+          "precio",
+          "equipaje",
+          "cambios",
+          "reembolso",
+          "otras"
+        ],
+        "title": "TarifaLeida"
+      },
       "TelegramPropio": {
         "properties": {
           "vinculado": {
@@ -11313,6 +13624,121 @@
           "en_revision"
         ],
         "title": "TotalesPersona"
+      },
+      "TramoLeido": {
+        "properties": {
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha",
+            "description": "Como la muestra la página: \"Tue, Dec 8\"."
+          },
+          "sale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale"
+          },
+          "llega": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega"
+          },
+          "aerolinea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aerolinea"
+          },
+          "duracion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duracion"
+          },
+          "ruta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ruta",
+            "description": "\"MIA–LAS\"."
+          },
+          "escalas": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalas",
+            "description": "\"Nonstop\", \"1 stop\"..."
+          },
+          "detalle_escalas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Detalle Escalas"
+          },
+          "emisiones": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emisiones"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fecha",
+          "sale",
+          "llega",
+          "aerolinea",
+          "duracion",
+          "ruta",
+          "escalas",
+          "detalle_escalas",
+          "emisiones"
+        ],
+        "title": "TramoLeido"
       },
       "TramoVuelo": {
         "properties": {
@@ -11856,6 +14282,37 @@
         ],
         "title": "UsuarioFicha"
       },
+      "VendedorLeido": {
+        "properties": {
+          "vendedor": {
+            "type": "string",
+            "title": "Vendedor"
+          },
+          "aerolinea": {
+            "type": "boolean",
+            "title": "Aerolinea",
+            "description": "Vende la propia aerolínea (no una agencia)."
+          },
+          "precio_desde": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Desde"
+          }
+        },
+        "type": "object",
+        "required": [
+          "vendedor",
+          "aerolinea",
+          "precio_desde"
+        ],
+        "title": "VendedorLeido"
+      },
       "ViajeAsignable": {
         "properties": {
           "id": {
@@ -11973,6 +14430,41 @@
           "codigo"
         ],
         "title": "ViajeCodigo"
+      },
+      "ViajeCompra": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo"
+          },
+          "estado": {
+            "type": "string",
+            "title": "Estado"
+          },
+          "presupuesto_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presupuesto Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "codigo",
+          "estado",
+          "presupuesto_usd"
+        ],
+        "title": "ViajeCompra"
       },
       "ViajeDeCotizacion": {
         "properties": {
@@ -12635,6 +15127,107 @@
           "texto"
         ],
         "title": "VistaExportable"
+      },
+      "VueloCompra": {
+        "properties": {
+          "opcion_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opcion Id"
+          },
+          "numeros": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Numeros"
+          },
+          "aerolinea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aerolinea"
+          },
+          "sale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale"
+          },
+          "llega": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega"
+          },
+          "precio_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precio Usd"
+          },
+          "vendedor_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendedor Url",
+            "description": "El mismo enlace a la página oficial del vendedor que usa «Ver desglose»."
+          },
+          "fuente_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fuente Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "opcion_id",
+          "numeros",
+          "aerolinea",
+          "sale",
+          "llega",
+          "precio_usd",
+          "vendedor_url",
+          "fuente_url"
+        ],
+        "title": "VueloCompra"
       },
       "VuelosDelDia": {
         "properties": {

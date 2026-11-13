@@ -261,6 +261,8 @@ interface OpcionVuelo {
   origen_dato: string | null;                 // "en vivo" | "guardado" | "guardado (otras fechas)"
   esperado_usd: Dinero; frente_esperado_pct: number | null;   // modelo de precios, si hay uno utilizable
   total_con_hotel_usd: Dinero;                // vuelo + hotel recomendado (una suma, no todas las combinaciones); null sin hotel
+  fuente_url: string;                         // este vuelo en Google Flights: la búsqueda con su ida elegida
+  vendedor_url: string;                       // ruta firmada (5 min, esta sesión) que abre la página oficial: GET …/vendedor?t=…
 }
 
 interface LineaHotel {
@@ -360,11 +362,91 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 - `id`, `vuelo_id`, `hotel_id`, `proyecto_id` y `viajero_id` son enteros de 1 a 2³¹−1; fuera de ese rango, 422.
 
 ### `POST /cotizaciones/{id}/fuente`
-Cuerpo JSON `{"destino": "vuelos"}` o `{"destino": "hoteles", "hotel_id": 90}` (sin `hotel_id`, la lista de hoteles) y `X-CSRF-Token`. Deja en la bitácora de la cotización el paso `fuente abierta` con quién, adónde y la URL, y responde 200 `{"destino": "vuelos", "url": "https://www.google.com/travel/flights?..."}`. La web lo llama al hacer clic en «Ver en Google Flights» o «Ver en Google Hotels»; el enlace se abre igual aunque el registro falle.
+Cuerpo JSON `{"destino": "vuelos"}` (con `"vuelo_id": 76`, la página de ese vuelo) o `{"destino": "hoteles", "hotel_id": 90}` (sin `hotel_id`, la lista de hoteles) y `X-CSRF-Token`. Deja en la bitácora de la cotización el paso `fuente abierta` con quién, adónde y la URL, y responde 200 `{"destino": "vuelos", "url": "https://www.google.com/travel/flights?..."}`. La web lo llama al hacer clic en «Ver en Google Flights» o «Ver en Google Hotels»; el enlace se abre igual aunque el registro falle.
 
 - **Fuente de los precios.** `fuente_url` es el `search_metadata.google_flights_url` de la respuesta guardada del buscador para esa ruta y esas fechas; si falta, se construye con los aeropuertos y las fechas (la misma forma `tfs` que usa el buscador). En hoteles, el enlace guardado no trae fechas: se toma su texto de búsqueda y se le añaden («Moab hotels from 2026-12-08 to 2026-12-11»), y cada hotel lleva la búsqueda con su nombre. Solo se aceptan enlaces `https://www.google.com/travel/...` sin credenciales ni puerto; un enlace guardado que no cumpla se reemplaza por el construido. El enlace siempre lleva las fechas de la cotización: si el precio mostrado salió de una respuesta guardada de otras fechas (`origen` «guardado (otras fechas)»), Google puede mostrar otro precio. Sin ciudad guardada, los hoteles se buscan con el destino.
-- La URL siempre la arma el servidor: el cuerpo no acepta `url` (422). Un `hotel_id` que no es de la cotización: 422 con `fields.hotel_id`.
+- La URL siempre la arma el servidor: el cuerpo no acepta `url` (422). Un `vuelo_id` o `hotel_id` que no es de la cotización: 422 con `fields.vuelo_id` o `fields.hotel_id`.
 - La abre quien ve la cotización (también el gestor del proyecto); a los demás, 404.
+
+### `GET /cotizaciones/{id}/vuelos/{vuelo_id}/vendedor?t=…`
+Navegación en otra pestaña (la abre «Ver desglose»), no una llamada de datos. Se usa tal como llega en `OpcionVuelo.vendedor_url`: el parámetro `t` es un token firmado con la sesión, ligado a la cotización y al vuelo, que vence a los 5 minutos (la web vuelve a pedir la cotización cada 4). Responde 200 `text/html`: una página mínima que envía por POST el pedido de un solo uso del vendedor (`booking_request` del buscador: su dirección y el cuerpo del envío) a Google, que redirige a la página oficial del vendedor con ese itinerario. Elige la aerolínea si vende el itinerario; si no, el primer vendedor.
+
+- Para llegar al pedido: el regreso del vuelo (guardado o 1 búsqueda) y las opciones de reserva con su `booking_token` (1 búsqueda). El mismo itinerario dentro de la hora lo sirve el buscador de su caché: no se guarda otra copia y se anota como «caché del buscador».
+- El `booking_request` **solo viaja en esta respuesta**: no se guarda en la base, en el respaldo ni en los registros (la respuesta del buscador se guarda sin él). Cabeceras `no-store`, `Referrer-Policy: no-referrer` y una CSP con `default-src 'none'`, el script por `nonce` y `form-action https:` (Chrome aplica la directiva también a la redirección de Google a la aerolínea; el destino ya lo valida el servidor).
+- Lista blanca de salida: solo `https://www.google.com/travel/clk…` (también sin `www`), sin credenciales, puerto, `..` ni caracteres de control; una redirección abierta como `/url?q=` queda fuera.
+- **303 a la página del vuelo en Google Flights**, sin buscar nada, si: falta el token, es de otra sesión u otro vuelo, o venció; no hay clave del buscador; el tope del día (regla `enlace_vendedor_persona_dia`, 20 búsquedas pagas por persona desde la medianoche de Bogotá, regresos y fallidas incluidos; repetir el mismo itinerario en la hora no cuenta) se alcanzó; hay más de 6 repeticiones del mismo itinerario en la hora; la respuesta del buscador es rara, solo trae billetes separados o un vendedor fuera de la lista blanca; o cualquier fallo al prepararlo.
+- La abre **toda persona que ve la cotización** (también el gestor del proyecto). Lo ajeno: 404 y una navegación desde otro sitio (`Sec-Fetch-Site: cross-site`): 403, las dos como página legible. Sin sesión: 401 (JSON, del control de acceso general).
+- Cada apertura deja en la bitácora de la cotización el paso `página oficial abierta` (quién, opción, vendedor y dominio de salida, o por qué fue a Google Flights) y una fila en `clics_fuente`.
+
+### `GET /cotizaciones/{id}/vuelos/{opcion_id}/reserva`
+Primera capa del desglose (aparece en 2 a 5 s, sin esperar a la lectura de la página): las opciones de reserva del buscador para el itinerario, **de lo guardado**, sin consultar ni gastar cupo. Las trae el enlace a la página oficial (`…/vendedor`) que abre el mismo clic; la respuesta guardada nunca lleva el pedido de un solo uso.
+
+```json
+{"estado": "listo", "consultado": "2026-11-13T15:10:00Z",
+ "tarifas": [{"vendedor": "American", "nombre": "Basic Economy", "precio": 458, "equipaje": ["1 free carry-on", "1st checked bag: 110"],
+              "cambios": ["No ticket changes"], "reembolso": ["No refunds"], "otras": ["Seat selection for a fee"]}],
+ "vendedores": [{"vendedor": "American", "aerolinea": true, "precio_desde": 458}]}
+```
+
+`estado: sin_datos` mientras no haya nada guardado: la web reintenta cada segundo, hasta 5 veces. La ve quien ve la cotización; lo ajeno, 404.
+
+### `POST /cotizaciones/{id}/vuelos/{opcion_id}/ir`
+Cuerpo JSON `{"vendedor": "American", "tarifa": "Main Cabin"}` (los nombres como los muestra el desglose; «Tarifa» si el vendedor no la nombra) y `X-CSRF-Token`. Responde 200, `no-store`:
+
+```json
+{"camino": "pagina", "url": "https://www.google.com/travel/clk/f?...", "campos": [["u", "…"], ["adurl", ""]],
+ "vendedor": "American", "tarifa": "Main Cabin", "motivo": null}
+```
+
+- Tres caminos, en orden: **`pagina`**: el analizador abre la página del vuelo, elige el mismo regreso de la cotización (si la página lo muestra; si no, el más barato), despliega el vendedor, pulsa el «Continue» de esa tarifa e intercepta el envío que Google iba a hacer, sin que salga del servidor. **`buscador`**: el pedido de un solo uso de esa tarifa en las opciones de reserva del buscador. **`google`**: la página del vuelo en Google Flights (sin `campos`).
+- Con `campos`, el navegador de la persona hace un POST a `url` (siempre `https://www.google.com/travel/clk…`) y Google lo lleva al vendedor. Los `campos` viajan **solo en esta respuesta**: no se guardan ni se registran.
+- Topes por día: regla `ir_a_persona_dia` (20, por persona) y `ir_a_dia` (60, en total). Alcanzado uno, `camino: google` con el motivo. Comparte con las lecturas el turno del analizador (una a la vez) y el cerrojo.
+- Bitácora `ir a vendedor`: quién, opción, vendedor, tarifa, camino, dominio y duración; la captura previa al clic queda en `analisis_vuelo` (`accion: ir_a`).
+- Lo ajeno o un vuelo de otra cotización: 404. Sin CSRF: 403. Un vendedor o tarifa con caracteres raros, o un campo `url`: 422.
+
+### `GET /cotizaciones/{id}/vuelos/{opcion_id}/ir?vendedor=…&tarifa=…&t=…`
+Navegación en otra pestaña (la abre «Ir a…»), siempre con la dirección que trae cada tarifa en `ir_url` (en `…/reserva` y en `AnalisisVuelo.datos.tarifas`): el token `t` está firmado con la sesión, la cotización, el vuelo, el vendedor y la tarifa, y vence a los 5 minutos. Sin él (un enlace enviado por correo, viejo o de otra tarifa): 403 con una página legible, sin hacer el pedido ni gastar nada. Con `vendedor` o `tarifa` ausentes o fuera de forma (1 a 60 caracteres) o un `t` de más de 64: 422 con una página legible, no JSON. Con todo en regla, una página mínima que muestra «Preparando tu enlace a {vendedor} · {tarifa}…», llama a `POST …/ir` con la sesión y envía el formulario (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. CSP con `default-src 'none'`, script por `nonce`, `connect-src 'self'` y `form-action https:`; `no-store`. Abrirla no gasta el tope; desde otro sitio (`Sec-Fetch-Site: cross-site`), 403.
+
+### `POST /cotizaciones/{id}/vuelos/{opcion_id}/analisis`
+Con `X-CSRF-Token` y sin cuerpo. Lee la página del vuelo en Google Flights (la búsqueda de la cotización con la ida de ese vuelo elegida; el analizador elige el regreso más barato para llegar a las opciones de reserva) y responde 200 `AnalisisVuelo`. Tarda unos segundos (hasta 55); la web muestra «Leyendo la página del vuelo…» mientras tanto.
+
+```ts
+interface AnalisisVuelo {
+  id: number | null; opcion_id: number;
+  estado: "pendiente" | "listo" | "fallido" | "no_disponible";
+  motivo: string | null;          // «la página pidió verificación», «Llegaste al tope de lecturas…», etc.
+  url: string | null;             // https://www.google.com/travel/flights?... (la página leída)
+  leido: string | null;           // cuándo terminó la lectura (UTC)
+  duracion_ms: number | null;
+  reutilizado: boolean;           // lectura de menos de 60 minutos del mismo vuelo: no se abrió la página otra vez
+  precio_buscador_usd: Dinero;    // el precio que sigue usando la comparación
+  aviso_precio: string | null;    // si la página muestra otro precio total, lo dice
+  datos: {
+    precio_total: number | null;
+    tramos: { fecha; sale; llega; aerolinea; duracion; ruta; escalas; detalle_escalas: string[]; emisiones }[];
+    tarifas: { vendedor; nombre; precio: number; equipaje: string[]; cambios: string[]; reembolso: string[]; otras: string[] }[];
+    vendedores: { vendedor: string; aerolinea: boolean; precio_desde: number | null }[];
+    equipaje: string[]; cambios: string[]; reembolso: string[];
+    regreso_elegido: { precio: number; aerolinea; escalas; sale; llega; desde; hasta; duracion } | null;
+    notas: string[]; avisos: string[];
+  } | null;                       // solo con estado «listo»; el texto es el de la página (en inglés)
+  extracto: string | null;        // con «fallido»: el comienzo del texto que mostró la página
+  captura_url: string | null;     // GET de la captura PNG, como evidencia (también de una lectura fallida, salvo verificación)
+}
+```
+
+- Un análisis por itinerario (números de vuelo y fecha) y fechas de la cotización, **de cualquier cotización**: si hay uno `listo` de menos de 60 minutos, uno `fallido` de menos de 10 (para no repetirlo enseguida) o uno `pendiente` de menos de 2, se devuelve con `reutilizado: true` y no se abre la página. Una `pendiente` de más de 2 minutos se da por `fallido: la lectura no terminó`.
+- Si llega `pendiente` (otra persona la está leyendo), la web la sigue con `GET …/analisis` cada 3 s, hasta 15 veces.
+- `no_disponible` (no se guarda nada, no cuenta para los topes y el desglose muestra solo lo del buscador): `ANALIZADOR=apagado`, entorno sin analizador, analizador que no responde a la conexión o función inexistente, tope del día por persona (regla `analisis_persona_dia`, 10) o en total (regla `analisis_vuelo_dia`, 40), u otra lectura en curso (una a la vez; el turno se toma en una transacción con cerrojo, y en AWS la función tiene concurrencia reservada de 1).
+- `fallido` con su `motivo`: la página pidió verificación o aceptar condiciones (nunca se resuelven), llevó a otro sitio o quiso abrir otra pestaña, tardó demasiado (plazo total de 45 s), el analizador respondió algo que no se entiende o no se pudo guardar la lectura.
+- Lo leído **no reemplaza** el precio del buscador. Al decidir, la lectura vigente se copia a la decisión (`desglose.analisis_google`).
+- La pide quien ve la cotización; un vuelo de otra cotización o una cotización ajena: 404.
+
+### `GET /cotizaciones/{id}/vuelos/{opcion_id}/analisis`
+200 `AnalisisVuelo` con la última lectura del vuelo (para seguir una en curso); 404 si nunca se leyó.
+
+### `GET /cotizaciones/{id}/analisis/{analisis_id}/captura`
+200 `image/png` con la captura de la página leída (hasta 4000 px de alto), `no-store`. Se ve desde cualquier cotización que tenga ese itinerario, aunque la lectura la pidiera otra. Lo ajeno o sin captura: 404.
 
 ## Integraciones (clave de servicio)
 
@@ -639,3 +721,47 @@ Cuerpo JSON `{"nombres": ["reserva_hotel.eml"], "viaje_id": 12}` (de 1 a 20 nomb
 - Un nombre que no está en el buzón (otro formato, una ruta, uno que no existe) va a `errores` y no crea nada.
 - Leer dos veces el mismo correo crea otro gasto, que las reglas marcan como posible duplicado.
 - Un `viaje_id` que no existe: 422 con `fields.viaje_id`. Sin nombres: 422.
+
+## Compras
+
+La solicitud de compra del tiquete nace al decidir una cotización (`Cotizacion.compra`: «Solicitud de compra enviada» y su estado). La lleva **solo administración**: toda esta sección responde 403 `FORBIDDEN` a las demás personas, y nadie decide la compra de su propio viaje (403 `SELF_APPROVAL`, con rastro en la bitácora). Una compra activa por viaje: cambiar la decisión actualiza la misma solicitud mientras no se haya decidido.
+
+Estados: `solicitada` → `en_analisis` → `se_comprara` | `no_se_comprara` → `comprada` | `cancelada`. Cada cambio lleva la `version` que se vio: si otra persona la cambió, 409 `EDIT_CONFLICT`; un cambio que no corresponde al estado, 409 `INVALID_STATE`.
+
+```ts
+interface Compra {
+  id: number; estado: EstadoCompra; estado_texto: string; version: number;
+  viaje: { id: number; codigo: string; estado: string; presupuesto_usd: Dinero };
+  solicitud_id: number | null; solicitada_por: string | null; motivo: string | null;
+  vendedor: string | null; localizador: string | null;
+  precio_pagado_usd: Dinero; precio_cotizado_usd: Dinero;   // cotizado: la tarifa del buscador al decidir
+  anticipacion_dias: number | null;                          // días entre la compra y la ida
+  creado: string | null; decidido: string | null; comprada: string | null;
+  frente_presupuesto: { presupuesto_usd: Dinero; cotizado_usd: Dinero; diferencia_usd: Dinero } | null;   // con la compra registrada
+}
+interface CompraDetalle extends Compra {
+  vuelo: { opcion_id: number | null; numeros: string[]; aerolinea: string | null; sale: string | null; llega: string | null;
+           precio_usd: Dinero; vendedor_url: string | null; fuente_url: string | null } | null;
+  clics: { destino: "google_flights" | "google_hotels" | "vendedor" | "hotel_oficial"; dominio: string | null;
+           momento: string | null; opcion_id: number | null; usuario: string | null }[];
+  analisis: AnalisisVuelo | null;   // la última lectura de la página del vuelo
+}
+```
+
+### `GET /compras?estado=…`
+200 `{"items": Compra[]}`: las compras activas, la más reciente primero (hasta 200).
+
+### `GET /compras/{id}`
+200 `CompraDetalle`: el vuelo con el mismo enlace a la página oficial que usa «Ver desglose» («Comprar en {vendedor}»), los clics a las fuentes (`clics_fuente`) y la última lectura de la página.
+
+### `POST /compras/{id}/estado`
+Cuerpo `{"accion": "en_analisis" | "se_comprara" | "no_se_comprara" | "cancelada", "version": 2, "motivo": ""}` con `X-CSRF-Token`. «Se va a comprar» exige el viaje **aprobado**; «No se va a comprar» y «Cancelada» exigen motivo (5 caracteres o más; 422 con `fields.motivo`). Cada decisión avisa al viajero en la bitácora de su viaje (`aviso al viajero`). 200 `Compra` con la versión nueva.
+
+### `POST /compras/{id}/registro`
+Cuerpo `{"version": 3, "localizador": "QX7Z2P", "precio_pagado": "461.30", "vendedor": "American"}` con `X-CSRF-Token`, solo desde `se_comprara`. Guarda localizador (5 a 8 letras o números), precio pagado y vendedor, calcula `anticipacion_dias` y responde 200 `Compra` en `comprada` con `frente_presupuesto`.
+
+### `POST /compras/{id}/analisis`
+Con `X-CSRF-Token`. Pide (o reutiliza) la lectura de la página del vuelo de la compra: 200 `AnalisisVuelo`.
+
+### Rastro de los enlaces (`clics_fuente`)
+Cada «Ver en Google Flights/Hotels», cada apertura de la página oficial (`…/vendedor`) y cada «Ir a…» deja una fila: quién, cotización, vuelo, viaje y compra (si existen), destino (`google_flights`, `google_hotels`, `vendedor`) y dominio de salida.

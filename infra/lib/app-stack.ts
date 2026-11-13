@@ -75,6 +75,29 @@ export class AppStack extends Stack {
     });
     props.secreto.grantRead(web);
 
+    // Analizador de la página del vuelo en Google Flights: su propia imagen (Playwright), sin secretos ni base. Solo la
+    // API lo invoca, una lectura a la vez y con un minuto como máximo. «Una a la vez» lo garantiza la API con un cerrojo
+    // en la base: sin concurrencia reservada, que haría fallar el despliegue en una cuenta con límite bajo.
+    // `ANALIZADOR=apagado` lo desactiva sin desplegar código nuevo (variable de la función de la API o del analizador).
+    const analizador = new lambda.DockerImageFunction(this, "Analizador", {
+      code: lambda.DockerImageCode.fromImageAsset(path.join(raiz, "analizador"), {
+        platform: Platform.LINUX_ARM64,
+        target: "produccion",   // sin herramientas de prueba
+        entrypoint: ["python", "-m", "awslambdaric"],
+        cmd: ["analizador.lambda_handler.handler"],
+      }),
+      architecture: lambda.Architecture.ARM_64,
+      memorySize: 2048,   // Chromium con una página pesada; menos memoria también es menos CPU en Lambda
+      timeout: Duration.seconds(60),
+      logGroup: new logs.LogGroup(this, "RegistroAnalizador", {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
+      environment: { ANALIZADOR: "encendido", HOME: "/tmp" },
+    });
+    analizador.grantInvoke(web);
+    web.addEnvironment("ANALIZADOR_FUNCION", analizador.functionName);
+
     const caliente = this.node.tryGetContext("caliente") === "1";
     const vivo = web.addAlias("vivo", { provisionedConcurrentExecutions: caliente ? 1 : undefined });
 
@@ -107,5 +130,6 @@ export class AppStack extends Stack {
 
     new CfnOutput(this, "Url", { value: url.url });
     new CfnOutput(this, "Funcion", { value: web.functionName });
+    new CfnOutput(this, "FuncionAnalizador", { value: analizador.functionName });
   }
 }

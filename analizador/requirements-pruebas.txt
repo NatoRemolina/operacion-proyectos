@@ -1,0 +1,2 @@
+# Solo para la etapa `pruebas` de la imagen: nunca entra en la de producción.
+pytest==8.3.*
