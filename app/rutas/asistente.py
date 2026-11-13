@@ -1,4 +1,8 @@
-"""Asistente de administración: preguntas en lenguaje natural sobre lo que ha reportado cada persona."""
+"""Asistente: preguntas en lenguaje natural sobre viajes, gastos y presupuesto.
+
+Administración tiene la página completa (`/admin/asistente`) y el asistente flotante pregunta ahí. Colaborador y gestor
+usan el asistente flotante, que pregunta a `/asistente`: la misma vía con el alcance de su sesión.
+"""
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
@@ -9,6 +13,17 @@ from ..servicios import acceso, asistente, eventos, memoria, viajes
 from ..web import SOLO_ADMIN, _ctx, _yo, plantillas
 
 router = APIRouter()
+
+# Lo que el panel flotante dice y sugiere depende del permiso de la sesión
+BIENVENIDA = {
+    "admin": "Pregunta por viajes, gastos, cotizaciones o indicadores. Responde con los datos de la plataforma y cita de dónde salen.",
+    "gestor": ("Pregunta por tus viajes, tus gastos y tu presupuesto, y por los de los proyectos que gestionas: cuánto queda, "
+               "por qué un gasto quedó en revisión y qué falta. Solo ves lo tuyo y lo de los proyectos que gestionas."),
+    "colaborador": ("Pregunta por tus viajes, tus gastos y tu presupuesto: cuánto te queda, por qué un gasto quedó en revisión "
+                    "y qué te falta por justificar. Solo ves lo tuyo."),
+}
+plantillas.env.globals.update(bienvenida_asistente=lambda yo: BIENVENIDA.get((yo or {}).get("rol"), ""),
+                              preguntas_asistente=asistente.preguntas_sugeridas)
 
 MENU = [{"texto": "Asistente", "href": "/admin/asistente", "orden": 66, "rol": "admin"}]
 
@@ -57,21 +72,32 @@ def asistente_pagina(request: Request, aviso: str = ""):
     return _pagina(request, aviso=aviso[:300], pregunta="", respuesta=None)
 
 
+def _json(request: Request, respuesta: dict) -> JSONResponse:
+    """Lo que pide el asistente flotante: solo la respuesta, sin la página."""
+    texto, clase = modo_visible(respuesta["modo"])
+    return JSONResponse({
+        "texto": respuesta["texto"], "modo": respuesta["modo"], "modo_texto": texto, "modo_clase": clase,
+        "fuentes": [{"codigo": f["codigo"], "enlace": f["enlace"]} for f in _con_enlaces(request, respuesta["fuentes"])],
+        "herramientas": respuesta["herramientas"], "duracion_ms": respuesta["duracion_ms"],
+        "usadas": asistente.usadas_hoy(_yo()["id"]), "tope": asistente.tope_diario()})
+
+
 @router.post("/admin/asistente", response_class=HTMLResponse)
 def asistente_preguntar(request: Request, pregunta: str = Form("")):
     """Función normal (no asíncrona): la llamada al modelo corre en un hilo y no detiene al resto del servidor."""
     if not acceso.es_admin(_yo()):
         return SOLO_ADMIN
     respuesta = asistente.responder(pregunta, _yo())
-    respuesta["fuentes"] = _con_enlaces(request, respuesta["fuentes"])
     if request.headers.get("x-envio") == "pagina":  # el asistente flotante pide solo la respuesta, sin la página
-        texto, clase = modo_visible(respuesta["modo"])
-        return JSONResponse({
-            "texto": respuesta["texto"], "modo": respuesta["modo"], "modo_texto": texto, "modo_clase": clase,
-            "fuentes": [{"codigo": f["codigo"], "enlace": f["enlace"]} for f in respuesta["fuentes"]],
-            "herramientas": respuesta["herramientas"], "duracion_ms": respuesta["duracion_ms"],
-            "usadas": asistente.usadas_hoy(_yo()["id"]), "tope": asistente.tope_diario()})
+        return _json(request, respuesta)
+    respuesta["fuentes"] = _con_enlaces(request, respuesta["fuentes"])
     return _pagina(request, aviso="", pregunta=pregunta[:500], respuesta=respuesta)
+
+
+@router.post("/asistente")
+def asistente_preguntar_persona(request: Request, pregunta: str = Form("")):
+    """El asistente flotante de cualquier sesión. El alcance lo pone `asistente.responder` según quien pregunta."""
+    return _json(request, asistente.responder(pregunta, _yo()))
 
 
 @router.post("/admin/asistente/indice")

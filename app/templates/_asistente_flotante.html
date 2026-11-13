@@ -1,18 +1,21 @@
-{# Asistente flotante (solo administración): la misma pregunta que /admin/asistente, sin salir de la página.
-   El comportamiento está en /static/asistente_flotante.js; la conversación vive en la pestaña (sessionStorage). #}
-<div id="asistente-flotante" class="af" data-ruta="/admin/asistente">
+{# Asistente flotante para los tres permisos, sin salir de la página. Administración pregunta a /admin/asistente (que
+   tiene además su página completa); colaborador y gestor, a /asistente. El alcance de la respuesta lo pone la sesión.
+   El comportamiento está en /static/asistente_flotante.js; la conversación vive en la pestaña (sessionStorage) y es
+   de la persona de `data-persona`. #}
+<div id="asistente-flotante" class="af" data-ruta="{{ '/admin/asistente' if es_admin else '/asistente' }}"
+     data-completa="{{ '/admin/asistente' if es_admin else '' }}" data-persona="{{ yo.id }}">
   <button type="button" class="af-boton" id="af-abrir" aria-expanded="false" aria-controls="af-panel"><span class="af-icono" aria-hidden="true">✦</span> Asistente</button>
   <section class="af-panel" id="af-panel" role="dialog" aria-modal="false" aria-labelledby="af-titulo" hidden>
     <div class="af-cabeza">
       <h2 id="af-titulo">Asistente</h2>
-      <a href="/admin/asistente">Abrir completo</a>
+      {% if es_admin %}<a href="/admin/asistente">Abrir completo</a>{% endif %}
       <button type="button" class="af-cerrar" id="af-cerrar" aria-label="Cerrar el asistente">×</button>
     </div>
     <div class="af-log" id="af-log" role="log" aria-live="polite" aria-label="Conversación con el asistente">
       <div class="af-vacio" id="af-vacio">
-        <p>Pregunta por viajes, gastos, cotizaciones o indicadores. Responde con los datos de la plataforma y cita de dónde salen.</p>
+        <p>{{ bienvenida_asistente(yo) }}</p>
         <div class="af-ejemplos">
-          {% for e in ["¿Cómo van los indicadores?", "¿Quién mencionó el parqueadero?", "¿Cuál es el gasto real aprobado?"] %}
+          {% for e in preguntas_asistente(yo) %}
           <button type="button" class="sec peq" data-pregunta="{{ e }}">{{ e }}</button>{% endfor %}
         </div>
       </div>
