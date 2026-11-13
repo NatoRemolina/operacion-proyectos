@@ -100,7 +100,8 @@ def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, pagina
 def libro_contable(request: Request,
                    desde: str | None = Query(None, description="AAAA-MM-DD, por la fecha del recibo. Por omisión, el primer día del mes en curso (hora de Nueva York)."),
                    hasta: str | None = Query(None, description="AAAA-MM-DD, incluido. Por omisión, el último día del mes en curso (hora de Nueva York)."),
-                   proyecto_id: int | None = Query(None, ge=1, description="Opcional. Solo administración o quien gestiona el proyecto."),
+                   proyecto_id: int | None = Query(None, ge=1, le=contable.MAXIMO_ID,
+                                                   description="Opcional. Solo administración o quien gestiona el proyecto."),
                    yo: dict = Depends(persona)):
     """Excel contable de los gastos aprobados (`aprobado` y `aprobado_auto`) del periodo, con el alcance de la sesión:
     administración, todo; quien gestiona, sus proyectos y lo suyo; el resto, solo lo suyo. Un `proyecto_id` que la

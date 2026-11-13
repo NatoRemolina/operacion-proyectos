@@ -74,18 +74,19 @@ def gastos_cargar(request: Request):
 
 
 @router.get("/gastos/contable.xlsx")
-def gastos_contable(request: Request, desde: str = "", hasta: str = "", proyecto: int = 0):
+def gastos_contable(request: Request, desde: str = "", hasta: str = "", proyecto: str = ""):
     """Excel contable del periodo (por omisión, el mes en curso) con lo que la sesión puede ver. Va antes de
-    `/gastos/{gid}`: si no, «contable.xlsx» se leería como número de gasto."""
+    `/gastos/{gid}`: si no, «contable.xlsx» se leería como número de gasto. El proyecto llega como texto y se valida
+    aquí, para que un valor mal escrito vuelva a la página con un aviso y no con un error en JSON."""
     mes = contable.mes_en_curso()
     desde, hasta = desde or mes[0], hasta or mes[1]
     try:
-        contenido = contable.libro(_yo(), desde, hasta, proyecto or None,
-                                   enlace_base=contable.origen_publico(str(request.base_url)))
+        pid = contable.proyecto_de_texto(proyecto)
+        contenido = contable.libro(_yo(), desde, hasta, pid, enlace_base=contable.origen_publico(str(request.base_url)))
     except (ValueError, contable.SinPermiso) as e:
         return RedirectResponse(f"/gastos?aviso={quote(str(e))}", status_code=303)
-    contable.registrar_descarga(desde, hasta, proyecto or None, "web")
-    return Response(contenido, media_type=contable.TIPO_XLSX, headers=contable.cabeceras_descarga(desde, hasta, proyecto or None))
+    contable.registrar_descarga(desde, hasta, pid, "web")
+    return Response(contenido, media_type=contable.TIPO_XLSX, headers=contable.cabeceras_descarga(desde, hasta, pid))
 
 
 @router.post("/gastos/cargar")

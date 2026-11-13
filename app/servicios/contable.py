@@ -7,6 +7,7 @@ Solo lee: lo usa también el guion de consola, que corre en solo lectura.
 """
 import calendar
 import io
+import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -143,6 +144,19 @@ def periodo(desde, hasta) -> tuple[date, date]:
     if fin < inicio:
         raise FechaInvalida("hasta", "La fecha final no puede ser anterior a la inicial.")
     return inicio, fin
+
+
+MAXIMO_ID = 2_147_483_647   # los id son INTEGER: un número mayor no existe y en PostgreSQL rompería la consulta
+
+
+def proyecto_de_texto(texto: str | None) -> int | None:
+    """El proyecto tal como llega en la dirección de la página: vacío o 0 es «todos»; si no, su número."""
+    texto = (texto or "").strip()
+    if texto in ("", "0"):
+        return None
+    if not re.fullmatch(r"[0-9]{1,10}", texto) or int(texto) > MAXIMO_ID:
+        raise ValueError("El proyecto elegido no es válido: debe ser su número, por ejemplo 3.")
+    return int(texto)
 
 
 def nombre_archivo(desde, hasta, proyecto_id: int | None = None) -> str:

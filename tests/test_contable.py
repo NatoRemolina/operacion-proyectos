@@ -532,3 +532,16 @@ def test_el_guion_sin_base_no_muestra_la_conexion(tmp_path):
     for dato in ("usuario_secreto", "base_secreta", "127.0.0.1", "Traceback"):
         assert dato not in salida, dato
     assert not (tmp_path / "no.xlsx").exists()
+
+
+@pytest.mark.parametrize("proyecto", ["abc", "-3", "1.5", "9" * 40])
+def test_la_pagina_explica_un_proyecto_mal_escrito(sesiones, proyecto):
+    r = sesiones["admin"].get("/gastos/contable.xlsx", params={"desde": DESDE, "hasta": HASTA, "proyecto": proyecto},
+                              follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/gastos?aviso=")
+    assert "proyecto" in sesiones["admin"].get(r.headers["location"]).text.lower()
+
+
+def test_la_api_rechaza_un_proyecto_fuera_de_rango(sesiones):
+    error = _error_api(sesiones["admin"].get(f"{V1}/gastos/contable", params={"proyecto_id": "9" * 12}), 422, "VALIDATION_ERROR")
+    assert "proyecto_id" in error["fields"]
