@@ -66,6 +66,18 @@ export class AppStack extends Stack {
     alarma("PeticionesRechazadas", web.metricThrottles({ period: Duration.minutes(5) }), 1);
     alarma("Lentitud", web.metricDuration({ period: Duration.minutes(5), statistic: "p95" }), 20000, 2);
 
+    // Con el adaptador web, un 500 de la aplicación es una invocación correcta para Lambda: FallosDeLaFuncion no lo
+    // ve. Se cuentan los errores que la propia aplicación escribe (app/web.py) y las respuestas 5xx de la dirección.
+    const errores = new logs.MetricFilter(this, "ErroresEnElRegistro", {
+      logGroup: registro,
+      filterPattern: logs.FilterPattern.literal('"ERROR peticion="'),
+      metricNamespace: "Operacion",
+      metricName: "ErroresDeLaAplicacion",
+      metricValue: "1",
+    });
+    alarma("ErroresDeLaAplicacion", errores.metric({ period: Duration.minutes(5), statistic: "Sum" }), 1);
+    alarma("Respuestas5xx", vivo.metric("Url5xxCount", { period: Duration.minutes(5), statistic: "Sum" }), 1);
+
     new CfnOutput(this, "Url", { value: url.url });
     new CfnOutput(this, "Funcion", { value: web.functionName });
   }
