@@ -4,7 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { crearContextoRepositorio } from "@/shared/application/contexto-repositorio";
 import { usePersonaId } from "@/shared/application/identidad";
 import { comoErrorDeAplicacion, type TipoError } from "@/shared/domain/errores";
-import { esRespuestaAsistente, type AsistenteRepository, type RespuestaAsistente } from "../domain/asistente";
+import {
+  MAX_HISTORIAL,
+  esRespuestaAsistente,
+  etiquetaDeContexto,
+  type AsistenteRepository,
+  type ContextoPantalla,
+  type RespuestaAsistente,
+  type TurnoConversacion,
+} from "../domain/asistente";
 
 const contexto = crearContextoRepositorio<AsistenteRepository>("AsistenteRepository");
 export const AsistenteRepositoryProvider = contexto.Proveedor;
@@ -16,6 +24,8 @@ export type Mensaje =
       readonly rol: "persona";
       readonly texto: string;
       readonly porVoz: boolean;
+      /** Desde qué pantalla se preguntó («Gasto #123»), para mostrarlo junto a la pregunta. */
+      readonly pantalla?: string;
       /** `esperando` mientras responde; `perdida` si la página se recargó antes de la respuesta. */
       readonly estado: "esperando" | "respondida" | "perdida";
     }
@@ -79,6 +89,18 @@ const nuevoId = () => `${Date.now().toString(36)}-${(secuencia++).toString(36)}`
  * Caso de uso «conversar con el asistente». Cada pregunta se responde por separado (el servidor no guarda
  * el hilo); la conversación vive en la pestaña, ligada a la persona, para que siga al cambiar de pantalla.
  */
+/** Las últimas preguntas respondidas con su respuesta, para que el asistente entienda «¿y el anterior?». */
+export function historialDe(mensajes: readonly Mensaje[]): TurnoConversacion[] {
+  const turnos: TurnoConversacion[] = [];
+  mensajes.forEach((m, i) => {
+    const siguiente = mensajes[i + 1];
+    if (m.rol === "persona" && siguiente?.rol === "asistente") {
+      turnos.push({ pregunta: m.texto, respuesta: siguiente.respuesta.texto.slice(0, 1500) });
+    }
+  });
+  return turnos.slice(-MAX_HISTORIAL);
+}
+
 export function useConversacion() {
   const repositorio = useAsistenteRepository();
   const personaId = usePersonaId();
@@ -87,25 +109,29 @@ export function useConversacion() {
   const [mensajes, setMensajes] = useState<Mensaje[]>(() => leer(personaId));
   const [esperandoDesde, setEsperandoDesde] = useState<number | null>(null);
   const control = useRef<AbortController | null>(null);
+  const actuales = useRef(mensajes);
 
   useEffect(() => {
+    actuales.current = mensajes;
     guardar(personaId, mensajes);
   }, [personaId, mensajes]);
 
   useEffect(() => () => control.current?.abort(), []);
 
   const preguntar = useCallback(
-    async (texto: string, porVoz = false) => {
+    async (texto: string, porVoz = false, contexto: ContextoPantalla | null = null) => {
       const pregunta = texto.trim();
       if (!pregunta || control.current) return;
       const id = nuevoId();
       const abortar = new AbortController();
       control.current = abortar;
+      const historial = historialDe(actuales.current);
+      const pantalla = contexto ? etiquetaDeContexto(contexto) : undefined;
       setEsperandoDesde(Date.now());
-      setMensajes((previos) => [...previos, { id, rol: "persona", texto: pregunta, porVoz, estado: "esperando" }]);
+      setMensajes((previos) => [...previos, { id, rol: "persona", texto: pregunta, porVoz, pantalla, estado: "esperando" }]);
       let siguiente: Mensaje;
       try {
-        const respuesta = await repositorio.preguntar(pregunta, abortar.signal);
+        const respuesta = await repositorio.preguntar(pregunta, { contexto, historial }, abortar.signal);
         siguiente = { id: nuevoId(), rol: "asistente", respuesta };
       } catch (causa) {
         if (abortar.signal.aborted) return; // se empezó otra conversación: nada que mostrar

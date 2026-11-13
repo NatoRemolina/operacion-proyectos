@@ -1,6 +1,6 @@
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { esperar, exigirSesion, type SesionMemoria } from "@/shared/infrastructure/memoria";
-import type { AsistenteRepository, RespuestaAsistente } from "../domain/asistente";
+import type { AsistenteRepository, OpcionesPregunta, RespuestaAsistente } from "../domain/asistente";
 
 /** Lo que responde el modo demostración: no hay datos reales que consultar. */
 export function respuestaDeDemostracion(usadas: number): RespuestaAsistente {
@@ -23,7 +23,7 @@ export function respuestaDeDemostracion(usadas: number): RespuestaAsistente {
  */
 export function crearAsistenteMemoria(
   opciones: {
-    responder?: (pregunta: string) => RespuestaAsistente;
+    responder?: (pregunta: string, opciones: OpcionesPregunta) => RespuestaAsistente;
     /** Lo que «se entiende» de cualquier audio; sin valor, la voz no está disponible. */
     transcripcion?: string;
     sesion?: SesionMemoria;
@@ -33,11 +33,11 @@ export function crearAsistenteMemoria(
   const { sesion, latenciaMs = 0 } = opciones;
   let usadas = 0;
   return {
-    async preguntar(pregunta, signal) {
+    async preguntar(pregunta, extra = {}, signal) {
       await esperar(latenciaMs, signal);
       exigirSesion(sesion);
       if (!opciones.responder) return respuestaDeDemostracion(++usadas);
-      return opciones.responder(pregunta);
+      return opciones.responder(pregunta, extra);
     },
     async transcribir(_audio, signal) {
       await esperar(latenciaMs, signal);

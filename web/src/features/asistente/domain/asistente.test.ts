@@ -87,3 +87,28 @@ describe("según el permiso", () => {
     expect(bienvenidaDe("admin")).toContain("indicadores");
   });
 });
+
+describe("pantalla actual", () => {
+  it("convierte la ruta en pantalla e id", async () => {
+    const { contextoDeRuta } = await import("./asistente");
+    expect(contextoDeRuta("/gastos/123")).toEqual({ pantalla: "gasto", id: 123 });
+    expect(contextoDeRuta("/gastos/nuevo")).toEqual({ pantalla: "nuevo_gasto", id: null });
+    expect(contextoDeRuta("/gastos/buzon/")).toEqual({ pantalla: "buzon", id: null });
+    expect(contextoDeRuta("/cotizar/7?paso=2")).toEqual({ pantalla: "cotizacion", id: 7 });
+    expect(contextoDeRuta("/kpis/persona/2")).toEqual({ pantalla: "persona", id: 2 });
+    expect(contextoDeRuta("/viajes")).toEqual({ pantalla: "viajes", id: null });
+    expect(contextoDeRuta("/mi-cuenta")).toEqual({ pantalla: "mi_cuenta", id: null });
+    expect(contextoDeRuta("/gastos/99999999999")).toBeNull();   // fuera del rango de un id
+    expect(contextoDeRuta("/entrar")).toBeNull();
+    expect(contextoDeRuta(null)).toBeNull();
+  });
+
+  it("nombra la pantalla y propone sus preguntas", async () => {
+    const { etiquetaDeContexto, sugerenciasPara, preguntasSugeridas } = await import("./asistente");
+    expect(etiquetaDeContexto({ pantalla: "gasto", id: 123 })).toBe("Gasto #123");
+    expect(etiquetaDeContexto({ pantalla: "kpis", id: null })).toBe("KPIs");
+    expect(sugerenciasPara("colaborador", { pantalla: "gasto", id: 1 })[0]).toBe("¿Por qué está en revisión este gasto?");
+    expect(sugerenciasPara("admin", { pantalla: "mi_cuenta", id: null })).toEqual(preguntasSugeridas("admin"));
+    expect(sugerenciasPara("gestor", null)).toEqual(preguntasSugeridas("gestor"));
+  });
+});

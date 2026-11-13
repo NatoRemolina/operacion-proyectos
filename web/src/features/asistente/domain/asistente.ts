@@ -38,9 +38,34 @@ export interface RespuestaAsistente {
   readonly tope: number;
 }
 
+/** Las pantallas que el asistente reconoce; el servidor tiene la misma lista. */
+export type Pantalla =
+  | "resumen" | "viajes" | "viaje" | "gastos" | "gasto" | "buzon" | "nuevo_gasto" | "cotizar" | "cotizacion"
+  | "kpis" | "persona" | "monitoreo" | "vuelos" | "reglas" | "usuarios" | "proyectos" | "proyecto" | "mi_cuenta";
+
+/**
+ * Lo que la persona está viendo: el tipo de pantalla y, si es la de un registro, su id. Solo eso viaja al servidor;
+ * él busca los datos y solo si el registro está en el alcance de quien pregunta.
+ */
+export interface ContextoPantalla {
+  readonly pantalla: Pantalla;
+  readonly id: number | null;
+}
+
+/** Una pregunta anterior y lo que se respondió: le da memoria corta a la conversación. */
+export interface TurnoConversacion {
+  readonly pregunta: string;
+  readonly respuesta: string;
+}
+
+export interface OpcionesPregunta {
+  readonly contexto?: ContextoPantalla | null;
+  readonly historial?: readonly TurnoConversacion[];
+}
+
 export interface AsistenteRepository {
   /** Para los tres permisos, cada uno con su alcance. Con el asesor puede tardar hasta un minuto. */
-  preguntar(pregunta: string, signal?: AbortSignal): Promise<RespuestaAsistente>;
+  preguntar(pregunta: string, opciones?: OpcionesPregunta, signal?: AbortSignal): Promise<RespuestaAsistente>;
   /** Pasa a texto una pregunta grabada (WAV). Vacío si no se entendió nada. */
   transcribir(audio: Blob, signal?: AbortSignal): Promise<string>;
 }
@@ -184,4 +209,72 @@ export function bloquesDeTexto(texto: string): Bloque[] {
   }
   cerrarLista();
   return bloques;
+}
+
+// ---------- la pantalla actual ----------
+export const MAX_HISTORIAL = 3;
+export const PREGUNTA_EXPLICAR = "Explícame esta pantalla: qué muestra y qué merece mi atención.";
+
+const RUTAS: readonly (readonly [RegExp, Pantalla])[] = [
+  [/^\/resumen$/, "resumen"],
+  [/^\/viajes$/, "viajes"],
+  [/^\/viajes\/(\d+)$/, "viaje"],
+  [/^\/gastos$/, "gastos"],
+  [/^\/gastos\/buzon$/, "buzon"],
+  [/^\/gastos\/nuevo$/, "nuevo_gasto"],
+  [/^\/gastos\/(\d+)$/, "gasto"],
+  [/^\/cotizar$/, "cotizar"],
+  [/^\/cotizar\/(\d+)$/, "cotizacion"],
+  [/^\/kpis$/, "kpis"],
+  [/^\/kpis\/persona\/(\d+)$/, "persona"],
+  [/^\/monitoreo$/, "monitoreo"],
+  [/^\/vuelos$/, "vuelos"],
+  [/^\/reglas$/, "reglas"],
+  [/^\/usuarios$/, "usuarios"],
+  [/^\/proyectos$/, "proyectos"],
+  [/^\/proyectos\/(\d+)$/, "proyecto"],
+  [/^\/mi-cuenta$/, "mi_cuenta"],
+];
+
+/** La pantalla de una ruta de esta web; `null` si no es una que el asistente conozca. */
+export function contextoDeRuta(ruta: string | null | undefined): ContextoPantalla | null {
+  const limpia = (ruta ?? "").split(/[?#]/)[0]!.replace(/\/+$/, "");
+  for (const [patron, pantalla] of RUTAS) {
+    const m = patron.exec(limpia);
+    if (!m) continue;
+    const id = m[1] ? Number(m[1]) : null;
+    if (id !== null && (!Number.isSafeInteger(id) || id < 1 || id > 2 ** 31 - 1)) return null;
+    return { pantalla, id };
+  }
+  return null;
+}
+
+const NOMBRES: Record<Pantalla, string> = {
+  resumen: "Resumen", viajes: "Viajes", viaje: "Viaje", gastos: "Gastos", gasto: "Gasto", buzon: "Buzón de gastos",
+  nuevo_gasto: "Cargar recibo", cotizar: "Cotizar", cotizacion: "Cotización", kpis: "KPIs", persona: "Persona",
+  monitoreo: "Monitoreo", vuelos: "Vuelos", reglas: "Reglas", usuarios: "Usuarios", proyectos: "Proyectos",
+  proyecto: "Proyecto", mi_cuenta: "Mi cuenta",
+};
+
+/** «Gasto #123», «KPIs»…: lo que el panel muestra como «Viendo: …». */
+export function etiquetaDeContexto(contexto: ContextoPantalla): string {
+  return contexto.id ? `${NOMBRES[contexto.pantalla]} #${contexto.id}` : NOMBRES[contexto.pantalla];
+}
+
+const SUGERENCIAS_POR_PANTALLA: Partial<Record<Pantalla, readonly string[]>> = {
+  gasto: ["¿Por qué está en revisión este gasto?", "¿Este gasto cabe en el presupuesto del viaje?", "¿Qué le falta a este gasto para aprobarse?"],
+  viaje: ["¿Cómo va este viaje contra su presupuesto?", "¿Qué gastos de este viaje están en revisión?", "¿Qué falta por justificar en este viaje?"],
+  cotizacion: ["¿Qué vuelo conviene en esta cotización y por qué?", "¿Qué riesgos tiene la opción recomendada?", "¿Cuánto cambia el costo si el viaje se mueve un día?"],
+  resumen: ["¿Qué debo atender primero hoy?", "¿Qué viajes esperan aprobación?", "¿Cómo va el presupuesto de los viajes aprobados?"],
+  gastos: ["¿Qué gastos están en revisión y por qué?", "¿Hay gastos duplicados o atípicos?", "¿Cuál es el gasto real aprobado?"],
+  viajes: ["¿Qué viajes esperan aprobación?", "¿Qué viaje va más cerca de su presupuesto?", "¿Qué viajes empiezan esta semana?"],
+  kpis: ["¿Qué indicador está peor y por qué?", "¿Cómo van los indicadores?", "¿Qué indicadores no tienen datos todavía?"],
+  persona: ["¿Qué ha reportado esta persona?", "¿Qué gastos de esta persona están en revisión?", "¿Cómo van sus viajes contra el presupuesto?"],
+  proyecto: ["¿Cómo va este proyecto contra su presupuesto?", "¿Qué gastos de este proyecto están en revisión?", "¿Qué viajes tiene este proyecto?"],
+  vuelos: ["¿Algún vuelo con retraso o cambio?", "¿Qué vuelos salen esta semana?"],
+};
+
+/** Las preguntas sugeridas: las de la pantalla si la hay; si no, las del permiso. */
+export function sugerenciasPara(permiso: Permiso, contexto: ContextoPantalla | null): readonly string[] {
+  return (contexto && SUGERENCIAS_POR_PANTALLA[contexto.pantalla]) || preguntasSugeridas(permiso);
 }

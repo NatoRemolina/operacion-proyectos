@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { usePermiso, usePersonaId } from "@/shared/application/identidad";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import type { Permiso } from "@/shared/domain/navegacion";
@@ -13,13 +14,17 @@ import {
   ESPERA_LARGA_S,
   MAX_GRABACION_S,
   MAX_PREGUNTA,
+  PREGUNTA_EXPLICAR,
   bienvenidaDe,
   bloquesDeTexto,
   duracionLegible,
+  contextoDeRuta,
   esDeIa,
-  preguntasSugeridas,
+  etiquetaDeContexto,
   reloj,
   rutaDeFuente,
+  sugerenciasPara,
+  type ContextoPantalla,
   type RespuestaAsistente,
   type Segmento,
 } from "../domain/asistente";
@@ -58,15 +63,18 @@ function Asistente({ permiso }: { permiso: Permiso }) {
   const idPanel = useId();
   const idTitulo = useId();
   const idCampo = useId();
+  // La pantalla desde la que se pregunta: el asistente entiende «este gasto» o «esta cotización»
+  const ruta = usePathname();
+  const contexto = useMemo(() => contextoDeRuta(ruta), [ruta]);
 
   const enviar = useCallback(
     (pregunta: string, porVoz = false) => {
       if (!pregunta.trim()) return;
       setAvisoVoz(null);
       if (!porVoz) setTexto("");
-      void preguntar(pregunta, porVoz);
+      void preguntar(pregunta, porVoz, contexto);
     },
-    [preguntar],
+    [preguntar, contexto],
   );
 
   const grabadora = useGrabadora({
@@ -252,7 +260,7 @@ function Asistente({ permiso }: { permiso: Permiso }) {
             </h2>
             <p className="flex items-center gap-1.5 truncate text-xs text-sobre-grafito-suave">
               <span className="inline-block size-2 shrink-0 rounded-full bg-cian-claro" aria-hidden="true" />
-              Con datos de la plataforma
+              {contexto ? `Viendo: ${etiquetaDeContexto(contexto)}` : "Con datos de la plataforma"}
             </p>
           </div>
           {mensajes.length > 0 ? (
@@ -288,7 +296,7 @@ function Asistente({ permiso }: { permiso: Permiso }) {
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-fondo px-3 py-4 sm:px-4"
         >
           {mensajes.length === 0 ? (
-            <Bienvenida permiso={permiso} conVoz={conVoz} deshabilitado={ocupado} onElegir={elegir} />
+            <Bienvenida permiso={permiso} contexto={contexto} conVoz={conVoz} deshabilitado={ocupado} onElegir={elegir} />
           ) : (
             <ol className="space-y-4">
               {mensajes.map((m) => (
@@ -316,6 +324,9 @@ function Asistente({ permiso }: { permiso: Permiso }) {
             </div>
           ) : null}
 
+          {mensajes.length > 0 && contexto && !grabando && !procesandoVoz ? (
+            <Atajos contexto={contexto} permiso={permiso} deshabilitado={ocupado} onElegir={elegir} />
+          ) : null}
           {grabando ? (
             <BarraGrabacion
               pidiendo={grabadora.estado === "pidiendo"}
@@ -392,13 +403,47 @@ function Asistente({ permiso }: { permiso: Permiso }) {
   );
 }
 
+/** Durante la conversación, encima del campo: explicar la pantalla y una pregunta de esa pantalla. */
+function Atajos({
+  contexto,
+  permiso,
+  deshabilitado,
+  onElegir,
+}: {
+  contexto: ContextoPantalla;
+  permiso: Permiso;
+  deshabilitado: boolean;
+  onElegir: (p: string) => void;
+}) {
+  const atajos = [PREGUNTA_EXPLICAR, ...sugerenciasPara(permiso, contexto).slice(0, 2)];
+  return (
+    <ul className="-mx-1 mb-2 flex gap-1.5 overflow-x-auto px-1 pb-0.5" aria-label="Atajos de esta pantalla">
+      {atajos.map((p) => (
+        <li key={p} className="shrink-0">
+          <button
+            type="button"
+            onClick={() => onElegir(p)}
+            disabled={deshabilitado}
+            className={`inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full border border-linea bg-superficie px-3 text-xs font-semibold text-texto hover:border-marca hover:bg-marca-suave disabled:opacity-50 ${PRESIONAR}`}
+          >
+            {p === PREGUNTA_EXPLICAR ? <IconoChispa className="size-3.5 text-marca" /> : null}
+            {p === PREGUNTA_EXPLICAR ? "Explícame esta pantalla" : p}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Bienvenida({
   permiso,
+  contexto,
   conVoz,
   deshabilitado,
   onElegir,
 }: {
   permiso: Permiso;
+  contexto: ContextoPantalla | null;
   conVoz: boolean;
   deshabilitado: boolean;
   onElegir: (p: string) => void;
@@ -410,8 +455,20 @@ function Bienvenida({
       </span>
       <p className="mt-3 text-lg font-bold text-texto">¿En qué te ayudo?</p>
       <p className="mt-1 max-w-xs text-sm text-texto-secundario">{bienvenidaDe(permiso, conVoz)}</p>
-      <ul className="mt-4 w-full space-y-2 text-left" aria-label="Preguntas sugeridas">
-        {preguntasSugeridas(permiso).map((p) => (
+      {contexto ? (
+        <button
+          type="button"
+          onClick={() => onElegir(PREGUNTA_EXPLICAR)}
+          disabled={deshabilitado}
+          className={`fondo-ia mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-sobre-marca shadow-sm disabled:opacity-50 ${PRESIONAR}`}
+        >
+          <IconoChispa className="size-4 text-cian-claro" />
+          Explícame esta pantalla
+          <span className="sr-only">({etiquetaDeContexto(contexto)})</span>
+        </button>
+      ) : null}
+      <ul className="mt-3 w-full space-y-2 text-left" aria-label={contexto ? `Preguntas sobre ${etiquetaDeContexto(contexto)}` : "Preguntas sugeridas"}>
+        {sugerenciasPara(permiso, contexto).map((p) => (
           <li key={p}>
             <button
               type="button"
@@ -459,6 +516,7 @@ function VistaMensaje({
             </p>
           ) : null}
           <p className="whitespace-pre-line">{m.texto}</p>
+          {m.pantalla ? <p className="mt-1 text-xs opacity-90">Desde {m.pantalla}</p> : null}
           {m.estado === "perdida" ? (
             <p className="mt-1 text-xs">Sin respuesta: la página se recargó antes de que terminara.</p>
           ) : null}

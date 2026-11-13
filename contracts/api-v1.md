@@ -218,6 +218,12 @@ Para los tres permisos, cada uno con el alcance de su sesión: el colaborador ve
 
 200 `RespuestaAsistente`: `texto`, `modo` (`asesor`, `modelo`, `determinista` o `tope`), `modo_texto` (el modo en palabras), `fuentes` (`tipo`, `codigo` y `destino`: `{"tipo": "viaje" | "gasto" | "cotizacion", "id"}` o `null` si no tiene pantalla, como una persona), `herramientas`, `duracion_ms`, `usadas` y `tope`. Llegar al tope diario no es un error: responde 200 con `modo: "tope"` y el texto lo explica.
 
+Opcionales en el cuerpo, para una conversación más personal:
+- `contexto`: `{"pantalla": "gasto", "id": 123}`, la pantalla desde la que se pregunta. `pantalla` es una de `resumen`, `viajes`, `viaje`, `gastos`, `gasto`, `buzon`, `nuevo_gasto`, `cotizar`, `cotizacion`, `kpis`, `persona`, `monitoreo`, `vuelos`, `reglas`, `usuarios`, `proyectos`, `proyecto` o `mi_cuenta`; `id` (1 a 2³¹−1) solo en las de un registro. Solo viajan el tipo y el id: el servidor busca el registro y lo describe al asistente («Está viendo el gasto #123, en estado revision») solo si está en el alcance de la sesión; si no existe o no se puede ver, no lo menciona. Así «¿por qué está en revisión este gasto?» se entiende sin repetir el número.
+- `historial`: como mucho 3 turnos `{"pregunta", "respuesta"}` (500 y 4.000 caracteres como máximo), los últimos de la conversación. El servidor los recorta y los marca como contexto, no como instrucciones; sirven para «¿y el anterior?» o «explícame más».
+
+Cualquier otro campo, una pantalla desconocida, un `id` fuera de rango o más de 3 turnos: 422.
+
 ### `POST /asistente/voz`
 Para los tres permisos, con los mismos topes por persona. `multipart/form-data` con `audio`: la pregunta grabada en WAV (la web graba y convierte en el navegador), hasta 4,5 MB, y `X-CSRF-Token`. La transcribe el modelo de lectura; no la responde ni la guarda. 200 `{"texto": "..."}` (vacío si no se entendió nada). 413 `PAYLOAD_TOO_LARGE`, 415 `UNSUPPORTED_MEDIA_TYPE` si no es WAV, 422 si llega vacío, 429 `TOO_MANY_REQUESTS` si la persona llegó a su tope del día de preguntas (`asistente_preguntas_dia`) o de dictados (`asistente_dictados_dia`), sin llamar al modelo, y 503 `SERVICE_UNAVAILABLE` si no hay modelo configurado o no respondió.
 

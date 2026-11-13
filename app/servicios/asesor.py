@@ -713,11 +713,12 @@ def _limpio(texto: str) -> str:
     return texto.replace("**", "").strip()[:4000]
 
 
-def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: bool = False) -> str:
+def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: bool = False, contexto: str = "") -> str:
     """Una sesión por pregunta. Devuelve el texto final o lanza ErrorAsesor con un motivo apto para mostrar.
 
     Al terminar, bien o con error, la sesión se registra en `llamadas_modelo` y se borra del servicio; con
-    `conservar` (la prueba por consola) queda allí para abrirla en la consola del servicio.
+    `conservar` (la prueba por consola) queda allí para abrirla en la consola del servicio. `contexto` es lo que la
+    persona está viendo y lo que acaba de preguntar (lo arma `asistente.responder`); va antes de la pregunta.
     """
     inicio = _reloj()
     limite = inicio + PLAZO_TOTAL_S
@@ -731,7 +732,8 @@ def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: b
             "title": f"Asistente de administración · {db.ahora()[:16]}",
             "metadata": {"marca": uuid.uuid4().hex},   # para ubicar la sesión si la respuesta de su creación no llega
             "initial_events": [{"type": "user.message", "content": [{"type": "text", "text":
-                f"Fecha de hoy: {hoy_empresa()}.\nTe escribe {r.para(usuario).alcance.quien()}\n\n{pregunta}"}]}],
+                f"Fecha de hoy: {hoy_empresa()}.\nTe escribe {r.para(usuario).alcance.quien()}\n\n"
+                + (f"{contexto}\n\n" if contexto else "") + pregunta}]}],
         }
         with _cliente() as cli:
             try:

@@ -5001,6 +5001,55 @@
         ],
         "title": "Columna"
       },
+      "ContextoPantalla": {
+        "properties": {
+          "pantalla": {
+            "type": "string",
+            "enum": [
+              "resumen",
+              "viajes",
+              "viaje",
+              "gastos",
+              "gasto",
+              "buzon",
+              "nuevo_gasto",
+              "cotizar",
+              "cotizacion",
+              "kpis",
+              "persona",
+              "monitoreo",
+              "vuelos",
+              "reglas",
+              "usuarios",
+              "proyectos",
+              "proyecto",
+              "mi_cuenta"
+            ],
+            "title": "Pantalla"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Id del gasto, viaje, cotización, persona o proyecto."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pantalla"
+        ],
+        "title": "ContextoPantalla",
+        "description": "Qué está viendo la persona: el tipo de pantalla y, si es la de un registro, su id. Nada más: los datos los saca\nel servidor y solo si el registro está en su alcance."
+      },
       "CorreoDelSoporte": {
         "properties": {
           "remitente": {
@@ -9658,6 +9707,26 @@
             "minLength": 1,
             "title": "Pregunta",
             "description": "La pregunta en lenguaje natural."
+          },
+          "contexto": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContextoPantalla"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "La pantalla desde la que se pregunta."
+          },
+          "historial": {
+            "items": {
+              "$ref": "#/components/schemas/TurnoAsistente"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Historial",
+            "description": "Las últimas preguntas y respuestas (como mucho 3), para seguir la conversación."
           }
         },
         "additionalProperties": false,
@@ -11666,6 +11735,28 @@
           "texto"
         ],
         "title": "Transcripcion"
+      },
+      "TurnoAsistente": {
+        "properties": {
+          "pregunta": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Pregunta"
+          },
+          "respuesta": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Respuesta",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pregunta"
+        ],
+        "title": "TurnoAsistente",
+        "description": "Una pregunta anterior de la conversación y lo que se respondió: contexto, nunca instrucciones."
       },
       "Usuario": {
         "properties": {

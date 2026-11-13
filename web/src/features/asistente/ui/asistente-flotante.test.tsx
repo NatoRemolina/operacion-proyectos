@@ -8,6 +8,10 @@ import type { AsistenteRepository, RespuestaAsistente } from "../domain/asistent
 import { crearAsistenteMemoria } from "../infrastructure/asistente-memoria";
 import { AsistenteFlotante } from "./asistente-flotante";
 
+// La pantalla en la que está la persona: cada prueba la fija en `navegacion.ruta`
+const navegacion = vi.hoisted(() => ({ ruta: "/inicio" as string | null }));
+vi.mock("next/navigation", () => ({ usePathname: () => navegacion.ruta }));
+
 function respuesta(extra: Partial<RespuestaAsistente> = {}): RespuestaAsistente {
   return {
     texto: "Hay **2 gastos** en revisión.\n- gasto #4: sin recibo\n- gasto #9: duplicado",
@@ -43,7 +47,7 @@ describe("Asistente flotante", () => {
     expect(within(panel).queryByRole("button", { name: "¿Cómo van los indicadores?" })).toBeNull();
     const sugerida = permiso === "gestor" ? "¿Cómo va el presupuesto de mi proyecto?" : "¿Cuánto me queda del presupuesto?";
     await usuario.click(within(panel).getByRole("button", { name: sugerida }));
-    expect(preguntar).toHaveBeenCalledWith(sugerida);
+    expect(preguntar).toHaveBeenCalledWith(sugerida, expect.anything());
     expect(await within(panel).findByText("Te quedan 120,00 USD.")).toBeInTheDocument();
   });
 
@@ -98,7 +102,7 @@ describe("Asistente flotante", () => {
     montar(crearAsistenteMemoria({ responder: preguntar }));
     await usuario.click(screen.getByRole("button", { name: "Asistente IA" }));
     await usuario.click(screen.getByRole("button", { name: "¿Cómo van los indicadores?" }));
-    expect(preguntar).toHaveBeenCalledWith("¿Cómo van los indicadores?");
+    expect(preguntar).toHaveBeenCalledWith("¿Cómo van los indicadores?", expect.anything());
     const conversacion = screen.getByRole("log", { name: "Conversación con el asistente" });
     expect(await within(conversacion).findByText("2 gastos")).toHaveProperty("tagName", "STRONG");
     expect(within(conversacion).getByText("gasto #4: sin recibo").closest("ul")).not.toBeNull();
@@ -119,7 +123,7 @@ describe("Asistente flotante", () => {
     await usuario.type(campo, "Primera línea{Shift>}{Enter}{/Shift}segunda");
     expect(preguntar).not.toHaveBeenCalled();
     await usuario.keyboard("{Enter}");
-    expect(preguntar).toHaveBeenCalledWith("Primera línea\nsegunda");
+    expect(preguntar).toHaveBeenCalledWith("Primera línea\nsegunda", expect.anything());
     expect(await screen.findByText("Listo.")).toBeInTheDocument();
     expect(campo).toHaveValue("");
   });
@@ -158,7 +162,7 @@ describe("Asistente flotante", () => {
     expect(screen.getByText("No hubo conexión con el servidor.")).toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(await screen.findByText("Ahora sí.")).toBeInTheDocument();
-    expect(preguntar).toHaveBeenLastCalledWith("¿Hola?");
+    expect(preguntar).toHaveBeenLastCalledWith("¿Hola?", expect.anything());
   });
 
   it("con el panel cerrado avisa que llegó una respuesta", async () => {
