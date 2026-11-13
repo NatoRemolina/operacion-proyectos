@@ -214,7 +214,7 @@ function Asistente() {
         aria-modal="false"
         aria-labelledby={idTitulo}
         hidden={!abierto}
-        className="entrada-ia se-mueve fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden border-linea bg-superficie md:inset-auto md:bottom-24 md:right-6 md:h-auto md:w-asistente md:max-h-[min(42rem,calc(100dvh-8rem))] md:rounded-2xl md:border md:shadow-flotante [@media(max-height:30rem)]:overflow-y-auto"
+        className="entrada-ia se-mueve fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden border-linea bg-superficie md:inset-auto md:bottom-24 md:right-6 md:h-auto md:w-full md:max-w-asistente md:max-h-[min(42rem,calc(100dvh-8rem))] md:rounded-2xl md:border md:shadow-flotante [@media(max-height:30rem)]:overflow-y-auto"
       >
         <div className="zona-oscura fondo-ia flex shrink-0 items-center gap-3 py-2.5 pl-4 pr-2 text-sobre-grafito">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-sobre-grafito/10 ring-1 ring-sobre-grafito/25">
@@ -499,12 +499,16 @@ function VistaRespuesta({ respuesta: r, onAbrirFuente }: { respuesta: RespuestaA
         ) : null}
         <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-secundario">
           <Distintivo tono={esDeIa(r.modo) ? "marca" : r.modo === "tope" ? "aviso" : "neutro"}>{r.modo_texto}</Distintivo>
-          {r.duracion_ms > 0 ? <span>{duracionLegible(r.duracion_ms)}</span> : null}
-          {r.herramientas.length > 0 ? (
-            <span title={r.herramientas.join(" → ")}>
-              · {r.herramientas.length} {r.herramientas.length === 1 ? "consulta" : "consultas"}
-            </span>
-          ) : null}
+          {/* Tiempo y consultas van juntos y sin partirse: el «·» nunca queda solo al principio de una línea. */}
+          <span className="whitespace-nowrap">
+            {r.duracion_ms > 0 ? <span>{duracionLegible(r.duracion_ms)}</span> : null}
+            {r.duracion_ms > 0 && r.herramientas.length > 0 ? " · " : null}
+            {r.herramientas.length > 0 ? (
+              <span title={r.herramientas.join(" → ")}>
+                {r.herramientas.length} {r.herramientas.length === 1 ? "consulta" : "consultas"}
+              </span>
+            ) : null}
+          </span>
         </div>
       </div>
     </div>
@@ -606,8 +610,9 @@ function BarraGrabacion({
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-error opacity-60" />
         <span className="relative inline-flex size-3 rounded-full bg-error" />
       </span>
-      <span className="text-sm font-bold text-texto">{pidiendo ? "Activando el micrófono…" : "Escuchando"}</span>
-      <span className="flex h-8 flex-1 items-center justify-center gap-1 max-[22rem]:hidden" aria-hidden="true">
+      <span className="whitespace-nowrap text-sm font-bold text-texto">{pidiendo ? "Activando el micrófono…" : "Escuchando"}</span>
+      {/* La onda cede espacio: en un celular angosto se recorta antes de empujar los botones fuera de la barra. */}
+      <span className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden max-[22rem]:hidden" aria-hidden="true">
         {FORMA_ONDA.map((forma, i) => (
           <span
             key={i}
@@ -617,8 +622,9 @@ function BarraGrabacion({
           />
         ))}
       </span>
-      <span className="text-xs tabular-nums text-texto" aria-hidden="true">
-        {reloj(segundos)} / {reloj(MAX_GRABACION_S)}
+      <span className="whitespace-nowrap text-xs tabular-nums text-texto" aria-hidden="true">
+        {reloj(segundos)}
+        <span className="max-sm:hidden"> / {reloj(MAX_GRABACION_S)}</span>
       </span>
       <button
         type="button"
