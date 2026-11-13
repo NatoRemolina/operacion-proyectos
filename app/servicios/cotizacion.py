@@ -517,7 +517,8 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
         return google
     if not repetido:
         hechas = db.uno(f"""select count(*) n from consultas_buscador where tipo in {TIPOS_VENDEDOR} and usuario_id=:u
-                            and momento>=:h and origen in ('en vivo', 'fallida')""", u=usuario["id"], h=db.ahora()[:10])["n"]
+                            and momento>=:h and origen in ('en vivo', 'fallida')""", u=usuario["id"],
+                        h=analizador.inicio_del_dia())["n"]
         if hechas >= int(costo.supuesto(costo.catalogo(), REGLA_VENDEDOR[0], TOPE_VENDEDOR_DIA)):
             anotar("tope del día alcanzado · Google Flights")
             return google
