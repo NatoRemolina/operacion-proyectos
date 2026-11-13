@@ -15,7 +15,7 @@ export function ListaGastos({ gastos, esAdmin = false }: { gastos: readonly Gast
     >
       {gastos.map((gasto) => (
         <li key={gasto.id} className="border-b border-linea last:border-b-0">
-          <article className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 px-4 py-4 transition-colors duration-150 focus-within:bg-neutro-suave hover:bg-neutro-suave md:px-5">
+          <article className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 px-4 py-4 transition-[background-color] duration-150 hover:bg-neutro-suave focus-within:outline-3 focus-within:-outline-offset-3 focus-within:outline-marca md:px-5">
             <h2 className="text-base font-bold">
               {/* El enlace se estira sobre la fila con ::after para ampliar la zona táctil. */}
               <Link

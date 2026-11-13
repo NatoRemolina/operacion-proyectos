@@ -13,7 +13,7 @@ export function ListaViajes({ viajes, conTitular = false }: { viajes: readonly V
     >
       {viajes.map((viaje) => (
         <li key={viaje.id} className="border-b border-linea last:border-b-0">
-          <article className="relative px-4 py-4 transition-colors duration-150 focus-within:bg-neutro-suave hover:bg-neutro-suave md:px-5">
+          <article className="relative px-4 py-4 transition-[background-color] duration-150 hover:bg-neutro-suave focus-within:outline-3 focus-within:-outline-offset-3 focus-within:outline-marca md:px-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="text-base font-bold tabular-nums">
