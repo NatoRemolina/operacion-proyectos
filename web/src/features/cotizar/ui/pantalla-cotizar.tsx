@@ -17,6 +17,7 @@ import {
   borradorDeEjemplo,
   erroresDelServidor,
   pedidoDesdeBorrador,
+  hoyLocal,
   problemaDeAlcance,
   textoBusqueda,
   validarBorrador,
@@ -274,7 +275,14 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
           />
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <CampoTexto {...comun("ida")} etiqueta="Ida" type="date" value={efectivo.ida} onChange={(e) => cambiar("ida", e.target.value)} />
+          <CampoTexto
+            {...comun("ida")}
+            etiqueta="Ida"
+            type="date"
+            min={hoyLocal()}
+            value={efectivo.ida}
+            onChange={(e) => cambiar("ida", e.target.value)}
+          />
           <CampoTexto
             {...comun("regreso")}
             etiqueta="Regreso"

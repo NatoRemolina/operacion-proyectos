@@ -154,6 +154,13 @@ def codigos(sol: dict, un_lado: str) -> list[str]:
 
 
 # ---------- crear y buscar ----------
+def primer_dia_posible() -> date:
+    """La ida más temprana que se puede cotizar: hoy. El buscador rechaza fechas pasadas y la consulta se perdería.
+    Se toma «hoy» con 12 horas de margen hacia atrás sobre la hora universal, para que en América el día local siga
+    valiendo aunque en UTC ya sea mañana."""
+    return (datetime.now(UTC) - timedelta(hours=12)).date()
+
+
 def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id: int = 0, origen: str = "",
           destino: str = "", ciudad: str = "", llegar_antes: str = "", baterias_n: int = 0, baterias_wh: float = 0,
           maleta: bool = False, prob_cambio: float = 0, carro_dia: float = 0, viajero_nuevo: str = "",
@@ -173,6 +180,8 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         f_ida, f_regreso = date.fromisoformat(ida), date.fromisoformat(regreso)
     except ValueError as e:
         raise CotizacionInvalida("ida", "Las fechas no son válidas.") from e
+    if f_ida < primer_dia_posible():
+        raise CotizacionInvalida("ida", "La fecha de ida ya pasó: elige hoy o una fecha futura.")
     if f_regreso <= f_ida:
         raise CotizacionInvalida("regreso", "El regreso debe ser posterior a la ida.")
     ida, regreso = f_ida.isoformat(), f_regreso.isoformat()
