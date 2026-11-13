@@ -111,14 +111,14 @@ function GastosDelViaje({ viaje }: { viaje: ViajeDetalle }) {
       ) : (
         <ul aria-label="Gastos del viaje" className="flex flex-col">
           {consulta.gastos.map((g) => (
-            <li key={g.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-linea py-3 last:border-b-0">
-              <div className="flex flex-wrap items-center gap-2">
+            <li key={g.id} className="flex items-center justify-between gap-4 border-b border-linea py-3 last:border-b-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <Link href={`/gastos/${g.id}`} className="font-semibold">
                   {g.comercio ?? "Gasto sin comercio leído"}
                 </Link>
                 <EtiquetaEstado estado={estadoVisibleGasto(g.estado)} texto={g.estado_texto} />
               </div>
-              <span className="whitespace-nowrap tabular-nums">{formatearDinero(g.total, g.moneda)}</span>
+              <span className="shrink-0 whitespace-nowrap text-right font-semibold tabular-nums">{formatearDinero(g.total, g.moneda)}</span>
             </li>
           ))}
         </ul>

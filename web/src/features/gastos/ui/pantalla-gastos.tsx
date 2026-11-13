@@ -10,6 +10,7 @@ import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
 import { ErrorConsulta } from "@/shared/ui/error-consulta";
 import { EsqueletoLista } from "@/shared/ui/esqueleto";
 import { EstadoVacio } from "@/shared/ui/estado-vacio";
+import { PRESIONAR } from "@/shared/ui/movimiento";
 import { useGastos } from "../application/gastos";
 import type { EstadoGasto } from "../domain/gastos";
 import { ListaGastos } from "./lista-gastos";
@@ -50,7 +51,8 @@ export function PantallaGastos({ estado: estadoInicial, viajeId: viajeInicial }:
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      {/* Los estados en una fila propia y el viaje debajo: con los dos lado a lado, el último estado quedaba solo. */}
+      <div className="flex flex-col gap-3">
         <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap gap-2">
           {FILTROS.map((f) => {
             const activo = f.estado === estado;
@@ -60,8 +62,11 @@ export function PantallaGastos({ estado: estadoInicial, viajeId: viajeInicial }:
                 type="button"
                 aria-pressed={activo}
                 onClick={() => setEstado(f.estado)}
-                className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold ${
-                  activo ? "border-marca bg-marca-suave text-marca" : "border-linea bg-superficie text-texto"
+                // 44 px de alto en el celular; en escritorio, con puntero preciso, más compactos para caber en una fila.
+                className={`inline-flex min-h-11 items-center rounded-full border px-3.5 text-sm font-semibold transition-colors duration-150 md:min-h-9 ${PRESIONAR} ${
+                  activo
+                    ? "border-marca bg-marca-suave text-marca"
+                    : "border-linea bg-superficie text-texto hover:border-borde-campo"
                 }`}
               >
                 {f.texto}

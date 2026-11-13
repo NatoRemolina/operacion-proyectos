@@ -82,7 +82,8 @@ export function PantallaCotizar() {
 function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
     <fieldset className="flex min-w-0 flex-col gap-4 rounded-tarjeta border border-linea bg-superficie p-4 md:p-6">
-      <legend className="px-1 text-lg font-bold tracking-tight">{titulo}</legend>
+      {/* Flotante: la leyenda queda dentro de la tarjeta como su título, no montada sobre el borde. */}
+      <legend className="float-left w-full text-lg font-bold">{titulo}</legend>
       {children}
     </fieldset>
   );
@@ -179,9 +180,10 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
           </p>
         </Alerta>
       ) : null}
-      <p>
+      <p className="flex flex-wrap items-baseline gap-x-2">
         <Boton
           variante="texto"
+          className="-ml-1"
           onClick={() => {
             setBorrador((b) => {
               const ejemplo = borradorDeEjemplo(conOmisiones(b, datos));
@@ -191,7 +193,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
           }}
         >
           Usar el caso de ejemplo
-        </Boton>{" "}
+        </Boton>
         <span className="text-sm text-texto-secundario">(Miami → Moab, comparando CNY, GJT y SLC)</span>
       </p>
 
@@ -301,7 +303,8 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
       </Seccion>
 
       <Seccion titulo="Equipo y supuestos">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Dos columnas: con cuatro, las etiquetas largas se parten y los campos quedan a distinta altura. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <CampoTexto {...comun("bateriasN")} etiqueta="Baterías de repuesto" inputMode="numeric" value={efectivo.bateriasN}
             onChange={(e) => cambiar("bateriasN", e.target.value)} />
           <CampoTexto {...comun("bateriasWh")} etiqueta="Capacidad de cada batería (Wh)" inputMode="decimal" value={efectivo.bateriasWh}

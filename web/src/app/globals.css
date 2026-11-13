@@ -94,6 +94,10 @@
  * el cuerpo con interletrado 0 e interlineado 1,5; lo pequeño, un poco más abierto.
  */
 @theme {
+  --text-5xl--line-height: 1.05;
+  --text-5xl--letter-spacing: -0.025em;
+  --text-4xl--line-height: 1.1;
+  --text-4xl--letter-spacing: -0.025em;
   --text-3xl--line-height: 1.15;
   --text-3xl--letter-spacing: -0.02em;
   --text-2xl--line-height: 1.2;

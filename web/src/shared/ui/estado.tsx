@@ -15,7 +15,7 @@ export function InsigniaEstado({ tono, children }: { tono: Tono; children: React
   const { caja, simbolo } = ESTILO[tono];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-sm font-semibold ${caja}`}
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-sm font-semibold ${caja}`}
     >
       <span aria-hidden="true">{simbolo}</span>
       {children}

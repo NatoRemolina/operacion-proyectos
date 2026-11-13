@@ -11,6 +11,8 @@ export interface Columna<T> {
   alinear?: "inicio" | "fin";
   /** La columna que nombra la fila: lleva el enlace y es el título de la tarjeta en celular. */
   principal?: boolean;
+  /** Códigos y nombres cortos que se leen mal partidos en dos líneas (`V-2026-` / `0001`). */
+  sinCorte?: boolean;
 }
 
 /**
@@ -69,7 +71,7 @@ export function Tabla<T>({
                 <th
                   key={c.clave}
                   scope="col"
-                  className={`px-4 py-3 text-xs font-semibold uppercase tracking-wide text-texto-secundario ${
+                  className={`px-3 py-3 text-xs font-semibold uppercase tracking-wide text-texto-secundario first:pl-4 ${
                     c.alinear === "fin" ? "text-right" : ""
                   }`}
                 >
@@ -79,7 +81,7 @@ export function Tabla<T>({
               {acciones ? (
                 <th
                   scope="col"
-                  className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-texto-secundario"
+                  className="px-3 py-3 pr-4 text-xs font-semibold uppercase tracking-wide text-texto-secundario"
                 >
                   {encabezadoAcciones}
                 </th>
@@ -95,12 +97,14 @@ export function Tabla<T>({
                 {columnas.map((c) => (
                   <td
                     key={c.clave}
-                    className={`px-4 py-3 align-top ${c.alinear === "fin" ? "text-right tabular-nums whitespace-nowrap" : ""}`}
+                    className={`px-3 py-3 align-middle first:pl-4 last:pr-4 ${
+                      c.alinear === "fin" ? "text-right tabular-nums whitespace-nowrap" : ""
+                    } ${c.sinCorte ? "whitespace-nowrap tabular-nums" : ""} ${c === principal ? "min-w-40" : ""}`}
                   >
                     {c === principal ? contenidoPrincipal(fila, true) : c.celda(fila)}
                   </td>
                 ))}
-                {acciones ? <td className="relative z-10 px-4 py-3 align-top">{acciones(fila)}</td> : null}
+                {acciones ? <td className="relative z-10 whitespace-nowrap px-3 py-3 pr-4 align-middle">{acciones(fila)}</td> : null}
               </tr>
             ))}
           </tbody>
