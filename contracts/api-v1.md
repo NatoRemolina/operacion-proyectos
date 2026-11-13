@@ -1,8 +1,8 @@
 # Contrato de la API v1
 
-Lo que usa la web nueva: ingreso, cotizar y decidir, viajes, gastos y envío de recibos, y la aprobación de viajes y la revisión de gastos de administración.
+Lo que usa la web nueva: ingreso, cotizar y decidir, viajes, gastos y envío de recibos (foto, PDF, correo `.eml` o confirmación HTML), Excel contable, asistente con voz, y la aprobación de viajes y la revisión de gastos de administración.
 
-Fuente de verdad mientras se construye. Cuando la API exista, el OpenAPI que genera (`contracts/openapi-v1.json`) debe coincidir con este documento; si difieren, se corrige uno de los dos en el mismo cambio.
+El OpenAPI que genera la API (`contracts/openapi-v1.json`, `python -m datos.exportar_contrato`) debe coincidir con este documento; una prueba lo comprueba, y si difieren se corrigen los dos en el mismo cambio.
 
 Base: `/api/v1`. Mismo origen que la web (el gateway envía `/api/v1/*` a la API y el resto a la web).
 
@@ -357,4 +357,4 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 
 ## Fuera de este contrato (siguientes fases)
 
-Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Ver la sección 9 del plan fullstack.
+Reproceso de una lectura fallida, proyectos, usuarios, asignaciones y auditoría. Siguen en las pantallas de administración; la hoja de ruta está en `docs/informe-tecnico.md`.
