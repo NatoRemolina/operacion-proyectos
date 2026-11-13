@@ -376,6 +376,29 @@ class AnalisisVuelo(BaseModel):
                                                 "fallida, salvo si pidió verificación.")
 
 
+NombreVendedor = Annotated[str, Field(min_length=1, max_length=60, pattern=r"^[\w .,&'()+/-]+$")]
+
+
+class PedidoIrA(BaseModel):
+    """La tarifa que la persona eligió en el desglose. Adónde se va lo decide el servidor."""
+    model_config = ConfigDict(extra="forbid")
+    vendedor: NombreVendedor = Field(description="Como lo muestra el desglose: «American», «Expedia»...")
+    tarifa: NombreVendedor = Field(description="«Main Cabin», «Economy»...; «Tarifa» si el vendedor no la nombra.")
+
+
+class EnvioVendedor(BaseModel):
+    """Adónde enviar a la persona. Con `campos`, un formulario POST a `url` (Google redirige al vendedor); sin ellos, ir a
+    `url`. Los campos son de un solo uso: no se guardan."""
+    camino: Literal["pagina", "buscador", "google"] = Field(
+        description="`pagina`: el analizador pulsó «Continue» en Google Flights; `buscador`: el pedido de esa tarifa en "
+                    "las opciones de reserva del buscador; `google`: la página del vuelo en Google Flights.")
+    url: str | None
+    campos: list[tuple[str, str]]
+    vendedor: str
+    tarifa: str
+    motivo: str | None = Field(description="Por qué no se llegó por la página, si es el caso.")
+
+
 # ---------- errores ----------
 _DESCRIPCION = {
     401: "Sin sesión o sesión vencida", 403: "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",

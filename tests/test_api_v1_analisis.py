@@ -40,7 +40,7 @@ def doble(monkeypatch):
                  "captura_png_b64": base64.b64encode(PNG).decode()}
     monkeypatch.setenv("ANALIZADOR_URL", "http://analizador:8090")
     monkeypatch.delenv("ANALIZADOR", raising=False)
-    monkeypatch.setattr(analizador, "_llamar", lambda url: llamadas.append(url) or dict(respuesta))
+    monkeypatch.setattr(analizador, "_llamar", lambda url, *a: llamadas.append(url) or dict(respuesta))
     db.ejecutar("delete from analisis_vuelo")
     yield llamadas, respuesta
     db.ejecutar("delete from analisis_vuelo")
@@ -82,7 +82,7 @@ def test_lee_la_pagina_del_vuelo_y_la_reutiliza_una_hora(piloto, doble):
 
 def test_una_verificacion_queda_como_lectura_fallida(piloto, doble, monkeypatch):
     llamadas, _ = doble
-    monkeypatch.setattr(analizador, "_llamar", lambda url: llamadas.append(url) or
+    monkeypatch.setattr(analizador, "_llamar", lambda url, *a: llamadas.append(url) or
                         {"estado": "fallido", "motivo": lector.VERIFICACION, "duracion_ms": 900})
     c = _cotizar(piloto)
     a = _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()
@@ -94,7 +94,7 @@ def test_una_verificacion_queda_como_lectura_fallida(piloto, doble, monkeypatch)
 
 
 def test_una_lectura_sin_precios_guarda_lo_que_se_vio(piloto, doble, monkeypatch):
-    monkeypatch.setattr(analizador, "_llamar", lambda url: {"estado": "fallido", "motivo": "la página tardó demasiado en mostrar los precios",
+    monkeypatch.setattr(analizador, "_llamar", lambda url, *a: {"estado": "fallido", "motivo": "la página tardó demasiado en mostrar los precios",
                                                            "captura_png_b64": base64.b64encode(PNG).decode(),
                                                            "extracto": "Something went wrong"})
     c = _cotizar(piloto)
@@ -201,7 +201,7 @@ def test_veinte_pedidos_simultaneos_no_pasan_el_tope_ni_leen_dos_a_la_vez(piloto
     opciones = [v["id"] for v in c["vuelos"] + c["descartados"]]
     en_curso, maximo, cerrojo = [0], [0], threading.Lock()
 
-    def lento(url):
+    def lento(url, *a):
         with cerrojo:
             en_curso[0] += 1
             maximo[0] = max(maximo[0], en_curso[0])
@@ -260,7 +260,7 @@ def test_si_el_almacen_falla_la_lectura_queda_fallida_y_libera_el_turno(piloto, 
 
 @pytest.mark.parametrize("respuesta", [["no", "es", "objeto"], "texto", None, 42])
 def test_una_respuesta_que_no_es_un_objeto_queda_como_lectura_fallida(piloto, doble, monkeypatch, respuesta):
-    monkeypatch.setattr(analizador, "_llamar", lambda url: respuesta)
+    monkeypatch.setattr(analizador, "_llamar", lambda url, *a: respuesta)
     c = _cotizar(piloto)
     r = _pedir(piloto, c["id"], c["vuelos"][0]["id"])
     assert r.status_code == 200 and r.json()["estado"] == "fallido", r.text

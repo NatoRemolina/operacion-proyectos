@@ -377,6 +377,23 @@ Navegación en otra pestaña (la abre «Ver desglose»), no una llamada de datos
 - La abre **toda persona que ve la cotización** (también el gestor del proyecto); lo ajeno, 404; sin sesión, 401. Una navegación desde otro sitio (`Sec-Fetch-Site: cross-site`) recibe 403: no gasta el cupo de nadie.
 - Cada apertura deja en la bitácora de la cotización el paso `página oficial abierta`: quién, opción, vendedor (aerolínea o agencia) y dominio de salida, o por qué fue a Google Flights.
 
+### `POST /cotizaciones/{id}/vuelos/{opcion_id}/ir`
+Cuerpo JSON `{"vendedor": "American", "tarifa": "Main Cabin"}` (los nombres como los muestra el desglose; «Tarifa» si el vendedor no la nombra) y `X-CSRF-Token`. Responde 200, `no-store`:
+
+```json
+{"camino": "pagina", "url": "https://www.google.com/travel/clk/f?...", "campos": [["u", "…"], ["adurl", ""]],
+ "vendedor": "American", "tarifa": "Main Cabin", "motivo": null}
+```
+
+- Tres caminos, en orden: **`pagina`**: el analizador abre la página del vuelo, elige el mismo regreso de la cotización (si la página lo muestra; si no, el más barato), despliega el vendedor, pulsa el «Continue» de esa tarifa e intercepta el envío que Google iba a hacer, sin que salga del servidor. **`buscador`**: el pedido de un solo uso de esa tarifa en las opciones de reserva del buscador. **`google`**: la página del vuelo en Google Flights (sin `campos`).
+- Con `campos`, el navegador de la persona hace un POST a `url` (siempre `https://www.google.com/travel/clk…`) y Google lo lleva al vendedor. Los `campos` viajan **solo en esta respuesta**: no se guardan ni se registran.
+- Tope por persona y día: regla `ir_a_persona_dia` (20). Alcanzado, `camino: google` con el motivo. Comparte con las lecturas el turno del analizador (una a la vez) y el cerrojo.
+- Bitácora `ir a vendedor`: quién, opción, vendedor, tarifa, camino, dominio y duración; la captura previa al clic queda en `analisis_vuelo` (`accion: ir_a`).
+- Lo ajeno o un vuelo de otra cotización: 404. Sin CSRF: 403. Un vendedor o tarifa con caracteres raros, o un campo `url`: 422.
+
+### `GET /cotizaciones/{id}/vuelos/{opcion_id}/ir?vendedor=…&tarifa=…`
+Navegación en otra pestaña (la abre «Ir a…»): una página mínima que muestra «Preparando tu enlace a {vendedor} · {tarifa}…», llama a `POST …/ir` con la sesión y envía el formulario (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. CSP con `default-src 'none'`, script por `nonce`, `connect-src 'self'` y `form-action https:`; `no-store`. Abrirla no gasta el tope; desde otro sitio (`Sec-Fetch-Site: cross-site`), 403.
+
 ### `POST /cotizaciones/{id}/vuelos/{opcion_id}/analisis`
 Con `X-CSRF-Token` y sin cuerpo. Lee la página del vuelo en Google Flights (la búsqueda de la cotización con la ida de ese vuelo elegida; el analizador elige el regreso más barato para llegar a las opciones de reserva) y responde 200 `AnalisisVuelo`. Tarda unos segundos (hasta 55); la web muestra «Leyendo la página del vuelo…» mientras tanto.
 

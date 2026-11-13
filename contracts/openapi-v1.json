@@ -237,6 +237,210 @@
         }
       }
     },
+    "/api/v1/cotizaciones/{id}/vuelos/{opcion_id}/ir": {
+      "post": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Ir",
+        "description": "Adónde enviar a la persona para comprar esa tarifa de ese vendedor: por la página (el analizador pulsa\n«Continue»), por el buscador (el pedido de esa tarifa) o, si no, la página del vuelo en Google Flights. Tope por\npersona y día `ir_a_persona_dia`. Los `campos` del envío no se guardan ni se registran.",
+        "operationId": "ir_api_v1_cotizaciones__id__vuelos__opcion_id__ir_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoIrA"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvioVendedor"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Pagina Ir",
+        "description": "La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el\nformulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights.",
+        "operationId": "pagina_ir_api_v1_cotizaciones__id__vuelos__opcion_id__ir_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          },
+          {
+            "name": "opcion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Opcion Id"
+            }
+          },
+          {
+            "name": "vendedor",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "pattern": "^[\\w .,&'()+/-]+$",
+              "title": "Vendedor"
+            }
+          },
+          {
+            "name": "tarifa",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "pattern": "^[\\w .,&'()+/-]+$",
+              "title": "Tarifa"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página que prepara el envío al vendedor y lo hace",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/asistente": {
       "post": {
         "tags": [
@@ -6549,6 +6753,79 @@
         ],
         "title": "EnlaceFuente"
       },
+      "EnvioVendedor": {
+        "properties": {
+          "camino": {
+            "type": "string",
+            "enum": [
+              "pagina",
+              "buscador",
+              "google"
+            ],
+            "title": "Camino",
+            "description": "`pagina`: el analizador pulsó «Continue» en Google Flights; `buscador`: el pedido de esa tarifa en las opciones de reserva del buscador; `google`: la página del vuelo en Google Flights."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "campos": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Campos"
+          },
+          "vendedor": {
+            "type": "string",
+            "title": "Vendedor"
+          },
+          "tarifa": {
+            "type": "string",
+            "title": "Tarifa"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo",
+            "description": "Por qué no se llegó por la página, si es el caso."
+          }
+        },
+        "type": "object",
+        "required": [
+          "camino",
+          "url",
+          "campos",
+          "vendedor",
+          "tarifa",
+          "motivo"
+        ],
+        "title": "EnvioVendedor",
+        "description": "Adónde enviar a la persona. Con `campos`, un formulario POST a `url` (Google redirige al vendedor); sin ellos, ir a\n`url`. Los campos son de un solo uso: no se guardan."
+      },
       "Equipo": {
         "properties": {
           "nivel": {
@@ -9620,6 +9897,34 @@
           "valor"
         ],
         "title": "Par"
+      },
+      "PedidoIrA": {
+        "properties": {
+          "vendedor": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "pattern": "^[\\w .,&'()+/-]+$",
+            "title": "Vendedor",
+            "description": "Como lo muestra el desglose: «American», «Expedia»..."
+          },
+          "tarifa": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "pattern": "^[\\w .,&'()+/-]+$",
+            "title": "Tarifa",
+            "description": "«Main Cabin», «Economy»...; «Tarifa» si el vendedor no la nombra."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "vendedor",
+          "tarifa"
+        ],
+        "title": "PedidoIrA",
+        "description": "La tarifa que la persona eligió en el desglose. Adónde se va lo decide el servidor."
       },
       "PeriodoContable": {
         "properties": {

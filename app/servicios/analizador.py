@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 from sqlalchemy import Column, Integer, Text, text
@@ -33,7 +34,10 @@ analisis_vuelo = db._tabla(
     Column("estado", Text, nullable=False),     # pendiente | listo | fallido
     Column("motivo", Text), Column("datos", Text), Column("captura", Text),   # captura: ruta en el almacenamiento
     Column("duracion_ms", Integer), Column("creado", Text), Column("terminado", Text),
+    # «ir a» (pieza 3b): la misma tabla y el mismo turno; nunca guarda el envío al vendedor
+    Column("accion", Text), Column("vendedor", Text), Column("tarifa", Text), Column("camino", Text),
 )
+LEER = "coalesce(accion, 'leer')='leer'"   # las lecturas de la página; «ir a» tiene su propio tope
 
 VIGENCIA = timedelta(minutes=60)
 EN_CURSO = timedelta(minutes=2)      # una lectura que no terminó en este tiempo ya no va a terminar
@@ -45,7 +49,10 @@ REGLAS = (
                                                 "Alcanzado, el desglose muestra solo lo del buscador."),
     ("analisis_vuelo_dia", str(TOPE_TOTAL), "Lecturas de la página del vuelo en Google Flights por día, en total. "
                                             "Alcanzado, el desglose muestra solo lo del buscador."),
+    ("ir_a_persona_dia", "20", "Veces por persona y día que el analizador lleva a la tarifa elegida de un vendedor («Ir a…»). "
+                               "Alcanzado, el enlace sale del buscador o de Google Flights."),
 )
+TOPE_IR_A = 20
 APAGADO = "La lectura de Google Flights está apagada: el desglose muestra solo lo del buscador."
 SIN_ANALIZADOR = "Este entorno no tiene el analizador de Google Flights: el desglose muestra solo lo del buscador."
 TOPE_PERSONA_TEXTO = "Llegaste al tope de lecturas de Google Flights de hoy: el desglose muestra solo lo del buscador."
@@ -122,7 +129,7 @@ REUSO_FALLIDO = timedelta(minutes=10)   # una lectura fallida no se repite enseg
 def vigente(clave_lectura: str) -> dict | None:
     """La última lectura de este itinerario y fechas (de cualquier cotización) que todavía vale: `listo` de menos de 60
     minutos, `fallido` de menos de 10 o una `pendiente` en curso."""
-    f = db.uno("""select * from analisis_vuelo where clave=:k and ((estado='listo' and creado>=:v)
+    f = db.uno(f"""select * from analisis_vuelo where clave=:k and {LEER} and ((estado='listo' and creado>=:v)
                   or (estado='fallido' and creado>=:f) or (estado='pendiente' and creado>=:c)) order by id desc limit 1""",
                k=clave_lectura, v=_hace(VIGENCIA), f=_hace(REUSO_FALLIDO), c=_hace(EN_CURSO))
     return _fila(f)
@@ -135,7 +142,7 @@ def clave_de(sid: int, opcion_id: int) -> str:
 
 
 def ultimo(sid: int, opcion_id: int) -> dict | None:
-    return _fila(db.uno("select * from analisis_vuelo where clave=:k order by id desc limit 1", k=clave_de(sid, opcion_id)))
+    return _fila(db.uno(f"select * from analisis_vuelo where clave=:k and {LEER} order by id desc limit 1", k=clave_de(sid, opcion_id)))
 
 
 def de_la_cotizacion(sid: int, analisis_id: int) -> dict | None:
@@ -153,14 +160,19 @@ SIN_SERVICIO = "El analizador de Google Flights no está disponible en este mome
 NO_LLEGO = {"TooManyRequestsException": OCUPADO, "ResourceNotFoundException": SIN_SERVICIO}
 
 
-def _llamar(url: str) -> dict:
+def _llamar(url: str, regreso: dict | None = None) -> dict:
+    """Lectura de la página (con el regreso de la cotización, si se conoce)."""
+    return _invocar({"url": url, "regreso": regreso})
+
+
+def _invocar(pedido: dict) -> dict:
     """La respuesta del analizador; un fallo de la llamada se devuelve como lectura fallida, nunca como excepción.
     Si el servicio no está (conexión rechazada, función inexistente o sin turno): `{"no_disponible": motivo}`."""
     modo = _modo()
     try:
         if modo[0] == "http":
             try:
-                return httpx.post(f"{modo[1]}/analizar", json={"url": url}, timeout=ESPERA_S).json()
+                return httpx.post(f"{modo[1]}/analizar", json=pedido, timeout=ESPERA_S).json()
             except httpx.ConnectError:
                 return {"no_disponible": SIN_SERVICIO}   # docker compose sin el perfil «analizador»
         import boto3
@@ -168,7 +180,7 @@ def _llamar(url: str) -> dict:
         from botocore.exceptions import ClientError
         cliente = boto3.client("lambda", config=Config(read_timeout=ESPERA_S, retries={"max_attempts": 0}))
         try:
-            r = cliente.invoke(FunctionName=modo[1], Payload=json.dumps({"url": url}).encode())
+            r = cliente.invoke(FunctionName=modo[1], Payload=json.dumps(pedido).encode())
         except ClientError as e:
             codigo = e.response.get("Error", {}).get("Code")
             if codigo in NO_LLEGO:
@@ -234,9 +246,10 @@ def _reservar(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict) -
             return no_disponible(SIN_TRAMOS)
         hoy = db.ahora()[:10]
         por_persona, total = topes()
-        if db.uno("select count(*) n from analisis_vuelo where usuario_id=:u and creado>=:h", u=usuario["id"], h=hoy)["n"] >= por_persona:
+        if db.uno(f"select count(*) n from analisis_vuelo where usuario_id=:u and creado>=:h and {LEER}",
+                  u=usuario["id"], h=hoy)["n"] >= por_persona:
             return no_disponible(TOPE_PERSONA_TEXTO)
-        if db.uno("select count(*) n from analisis_vuelo where creado>=:h", h=hoy)["n"] >= total:
+        if db.uno(f"select count(*) n from analisis_vuelo where creado>=:h and {LEER}", h=hoy)["n"] >= total:
             return no_disponible(TOPE_TOTAL_TEXTO)
         if db.uno("select id from analisis_vuelo where estado='pendiente' limit 1"):
             return no_disponible(OCUPADO)
@@ -275,7 +288,7 @@ def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") ->
     aid, url = reserva["id"], reserva["url"]
     nombre = " + ".join(vuelo.get("numeros") or [])
     eventos.registrar("solicitud", sid, "lectura de Google Flights pedida", f"{nombre}: {url}", f"{canal} · {usuario['nombre']}")
-    r = _llamar(url)
+    r = _llamar(url, regreso_de(sol, vuelo))
     if isinstance(r, dict) and r.get("no_disponible"):
         db.ejecutar("delete from analisis_vuelo where id=:i and estado='pendiente'", i=aid)   # no fue una lectura
         return no_disponible(r["no_disponible"])
@@ -289,6 +302,123 @@ def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") ->
     eventos.registrar("solicitud", sid, "página del vuelo leída" if listo else "lectura de Google Flights fallida",
                       f"{nombre}: {'listo' if listo else cambios['motivo']}", "analizador", cambios.get("duracion_ms") or 0)
     return {**_fila(db.uno("select * from analisis_vuelo where id=:i", i=aid)), "reutilizado": False}
+
+
+def regreso_de(sol: dict, vuelo: dict) -> dict | None:
+    """El regreso de la cotización para que el analizador elija el mismo en la página: hora de salida como la muestra
+    Google («1:43 PM») y aerolínea. Solo de lo guardado: no se paga una búsqueda para esto."""
+    lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
+    r = precios.regreso_guardado(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"])
+    if not r or len(r.get("sale") or "") < 16:
+        return None
+    h, m = int(r["sale"][11:13]), int(r["sale"][14:16])
+    return {"sale": f"{h % 12 or 12}:{m:02d} {'AM' if h < 12 else 'PM'}", "aerolinea": r.get("aerolinea")}
+
+
+# ---------- «Ir a…»: la tarifa elegida, en la página del vendedor (pieza 3b) ----------
+TOPE_IR_A_TEXTO = "Llegaste al tope de «Ir a…» de hoy: el enlace sale de Google Flights."
+
+
+def _es_envio(url) -> bool:
+    """El envío al vendedor solo puede ir a `https://www.google.com/travel/clk…` (Google redirige al vendedor)."""
+    return precios.es_fuente_google(url) and urlsplit(url).path.startswith("/travel/clk")
+
+
+def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict, url: str | None,
+                 vendedor: str, tarifa: str) -> dict:
+    """El turno del analizador para «ir a», en fila con las lecturas (mismo cerrojo y una a la vez), con su tope por
+    persona. Devuelve `{"id"}` o `{"motivo", "tope"}`."""
+    with db.transaccion() as c:
+        if not config.ES_SQLITE:
+            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_TURNO})
+        db.ejecutar("update analisis_vuelo set estado='fallido', motivo=:m, terminado=:t where estado='pendiente' and creado<:c",
+                    m=NO_TERMINO, t=db.ahora(), c=_hace(EN_CURSO))
+        tope = int(costo.supuesto(costo.catalogo(), "ir_a_persona_dia", TOPE_IR_A))
+        if db.uno("select count(*) n from analisis_vuelo where accion='ir_a' and usuario_id=:u and creado>=:h",
+                  u=usuario["id"], h=db.ahora()[:10])["n"] >= tope:
+            return {"motivo": TOPE_IR_A_TEXTO, "tope": True}
+        if apagado():
+            return {"motivo": APAGADO}
+        if not _modo():
+            return {"motivo": SIN_ANALIZADOR}
+        if not url:
+            return {"motivo": SIN_TRAMOS}
+        if db.uno("select id from analisis_vuelo where estado='pendiente' limit 1"):
+            return {"motivo": OCUPADO}
+        return {"id": db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"],
+                                  clave=clave(sol, vuelo), url=url, estado="pendiente", creado=db.ahora(), accion="ir_a",
+                                  vendedor=vendedor, tarifa=tarifa)}
+
+
+def _por_buscador(sol: dict, vuelo: dict, vendedor: str, tarifa: str, sid: int) -> dict | None:
+    """El pedido de un solo uso de esa tarifa de ese vendedor, de las opciones de reserva del buscador."""
+    lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
+    regreso = precios.vuelo_regreso(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid)
+    if not regreso:
+        return None
+    for o in precios.reserva_en_vivo(vuelo, regreso, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid):
+        if (o["vendedor"].lower(), o["tarifa"].lower()) == (vendedor.lower(), tarifa.lower()) and _es_envio(o["url"]):
+            return {"url": o["url"], "campos": parse_qsl(o["post_data"] or "", keep_blank_values=True)}
+    return None
+
+
+def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, canal: str = "api v1") -> dict:
+    """Adónde enviar a la persona para comprar esa tarifa de ese vendedor. Tres caminos, en orden:
+    `pagina` (el analizador pulsa «Continue» en Google Flights y devuelve el envío que Google iba a hacer), `buscador`
+    (el pedido de un solo uso de esa tarifa) y `google` (la página del vuelo en Google Flights).
+
+    Devuelve `{"camino", "url", "campos", "vendedor", "tarifa", "motivo"}`. Los `campos` del envío viajan solo en esta
+    respuesta: no se guardan ni se registran. Quien llama comprueba antes que la persona ve la cotización.
+    LookupError si el vuelo no es de ella."""
+    sol, _, vuelo = _opcion(sid, opcion_id)   # LookupError si el vuelo no es de la cotización: solo aquí
+    inicio = datetime.now(UTC)
+    try:
+        url = enlace_itinerario(sol, vuelo)
+    except ValueError:
+        url = None
+    turno = _reservar_ir(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa)
+    destino, camino, motivo, captura, aid = None, None, turno.get("motivo"), None, turno.get("id")
+    if aid:
+        r = _invocar({"accion": "ir_a", "url": url, "vendedor": vendedor, "tarifa": tarifa, "regreso": regreso_de(sol, vuelo)})
+        if not isinstance(r, dict):
+            motivo = RESPUESTA_RARA
+        elif r.get("no_disponible"):
+            db.ejecutar("delete from analisis_vuelo where id=:i and estado='pendiente'", i=aid)
+            aid, motivo = None, r["no_disponible"]
+        elif r.get("estado") == "listo" and _es_envio(r.get("url")) and isinstance(r.get("cuerpo"), str):
+            destino, camino = {"url": r["url"], "campos": parse_qsl(r["cuerpo"], keep_blank_values=True)}, "pagina"
+            try:
+                captura = _guardar_captura(r.get("captura_previa_png_b64"))
+            except Exception:  # noqa: BLE001 (la captura es evidencia: sin ella, el envío sigue valiendo)
+                captura = None
+        else:
+            motivo = str(r.get("motivo") or "la página no devolvió el envío")[:300]
+    if not destino and not turno.get("tope") and config.SERPAPI_KEY:
+        destino = _por_buscador(sol, vuelo, vendedor, tarifa, sid)
+        camino = "buscador" if destino else None
+    if not destino:
+        try:
+            google = url or precios.enlace_vuelos(precios.codigos(sol.get("origen_aeropuertos") or sol["origen"]),
+                                                  precios.codigos(sol.get("destino_aeropuertos") or sol["destino"]),
+                                                  sol["ida"], sol["regreso"])
+        except ValueError:
+            google = None
+        destino, camino = {"url": google, "campos": []}, "google"
+    ms = int((datetime.now(UTC) - inicio).total_seconds() * 1000)
+    cambios = {"estado": "listo" if camino == "pagina" else "fallido", "terminado": db.ahora(), "duracion_ms": ms,
+               "camino": camino, "captura": captura, "motivo": None if camino == "pagina" else motivo}
+    if aid:
+        db.actualizar("analisis_vuelo", aid, **cambios)
+    elif not turno.get("tope"):   # sin turno del analizador también queda el rastro (y cuenta para el tope)
+        db.insertar("analisis_vuelo", opcion_id=opcion_id, solicitud_id=sid, usuario_id=usuario["id"], clave=clave(sol, vuelo),
+                    url=url or "", creado=db.ahora(), accion="ir_a", vendedor=vendedor, tarifa=tarifa, **cambios)
+    dominio = urlsplit(destino["url"]).hostname if destino["url"] else "sin enlace"
+    eventos.registrar("solicitud", sid, "ir a vendedor",
+                      f"{' + '.join(vuelo.get('numeros') or [])} (opción {opcion_id}): {vendedor} · {tarifa} · camino {camino} · "
+                      f"{dominio} · {ms} ms{' · ' + motivo if motivo and camino != 'pagina' else ''}"[:500],
+                      f"{canal} · {usuario['nombre']}", ms)
+    return {"camino": camino, "url": destino["url"], "campos": destino["campos"], "vendedor": vendedor, "tarifa": tarifa,
+            "motivo": None if camino == "pagina" else motivo}
 
 
 def aviso_precio(analisis: dict | None, precio_buscador) -> str | None:

@@ -217,10 +217,9 @@ def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1
         raise ErrorApi(403, "FORBIDDEN", "Abre la página del vendedor desde la plataforma.")
     if not acceso.puede_ver(yo, _fila(id)):
         raise _no_encontrado()
-    try:
-        destino = cotizacion.enlace_vendedor(yo, id, vuelo_id)
-    except LookupError as e:
-        raise _no_encontrado() from e
+    if not db.uno("select id from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=vuelo_id, s=id):
+        raise _no_encontrado()
+    destino = cotizacion.enlace_vendedor(yo, id, vuelo_id)
     if destino["tipo"] == "google":
         return RedirectResponse(destino["url"], status_code=303, headers={"Cache-Control": "no-store"})
     return _pagina_envio(destino)

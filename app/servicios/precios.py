@@ -446,6 +446,21 @@ def opciones_reserva(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list
     return tarifas, origen_dato, datos.get("baggage_prices") or {}
 
 
+def regreso_guardado(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
+                     regreso: str) -> dict | None:
+    """El regreso que la plataforma eligiría para esta ida, solo con respuestas ya guardadas (sin consultar en vivo):
+    el más barato que sale del aeropuerto de llegada. None si no hay nada guardado."""
+    _, _, n_origen, n_destino = ruta(origenes, destinos)
+    clave = _clave_vuelo(vuelo_ida)
+    datos = _leer(f"regreso_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json")
+    if datos is None:
+        datos = (_leer(f"tarifas_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json") or {}).get("regreso")
+    if not isinstance(datos, dict):
+        return None
+    candidatos = [v for v in _vuelos(datos) if not vuelo_ida.get("hasta") or v["desde"] == vuelo_ida["hasta"]]
+    return min(candidatos, key=lambda v: v["precio"]) if candidatos else None
+
+
 def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
                     regreso: str, solicitud_id: int | None = None) -> list[dict]:
     """Opciones de reserva del itinerario consultadas ahora, con el `booking_request` de cada vendedor (`url` y
@@ -472,7 +487,10 @@ def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[
         t = (o.get("together") or o.get("departing") or {}) if isinstance(o, dict) else {}
         pedido = t.get("booking_request") if isinstance(t.get("booking_request"), dict) else {}
         opciones.append({"vendedor": t.get("book_with") or "el vendedor", "aerolinea": bool(t.get("airline")),
-                         "precio": t.get("price"), "url": pedido.get("url"), "post_data": pedido.get("post_data")})
+                         "precio": t.get("price"), "tarifa": t.get("option_title") or "Tarifa",
+                         "notas": [x for x in t.get("extensions") or [] if isinstance(x, str)],
+                         "equipaje": [x for x in t.get("baggage_prices") or [] if isinstance(x, str)],
+                         "url": pedido.get("url"), "post_data": pedido.get("post_data")})
     _anotar("vendedor", nombre, "en vivo", solicitud_id, inicio, [o["precio"] for o in opciones if o["precio"]])
     return opciones
 
