@@ -56,7 +56,7 @@ def _guardado(carpeta) -> str:
     return "\n".join(partes + [p.read_text() for p in carpeta.rglob("*") if p.is_file()])
 
 
-def test_por_la_pagina_devuelve_el_envio_de_esa_tarifa_y_no_lo_guarda(piloto, entorno, capsys):
+def test_por_la_pagina_devuelve_el_envio_de_esa_tarifa_y_no_lo_guarda(piloto, entorno, capfd, caplog):
     pedidos, _, carpeta = entorno
     c = _vegas(piloto)
     vuelo = c["vuelos"][0]
@@ -69,7 +69,8 @@ def test_por_la_pagina_devuelve_el_envio_de_esa_tarifa_y_no_lo_guarda(piloto, en
     (p,) = pedidos
     assert (p["accion"], p["vendedor"], p["tarifa"]) == ("ir_a", "American", "Main Cabin")
     assert p["url"].startswith("https://www.google.com/travel/flights?")
-    assert "UNSOLOUSO-SECRETO-777" not in _guardado(carpeta) + capsys.readouterr().out
+    salida = capfd.readouterr()
+    assert "UNSOLOUSO-SECRETO-777" not in _guardado(carpeta) + salida.out + salida.err + caplog.text
     fila = db.uno("select * from analisis_vuelo where accion='ir_a'")
     assert (fila["estado"], fila["camino"], fila["vendedor"], fila["tarifa"]) == ("listo", "pagina", "American", "Main Cabin")
     assert fila["captura"]                                          # la captura previa al clic queda como evidencia
@@ -78,7 +79,7 @@ def test_por_la_pagina_devuelve_el_envio_de_esa_tarifa_y_no_lo_guarda(piloto, en
                     r"www\.google\.com · \d+ ms$", ev), ev
 
 
-def test_si_la_pagina_falla_usa_el_buscador_con_esa_tarifa(piloto, entorno, monkeypatch, capsys):
+def test_si_la_pagina_falla_usa_el_buscador_con_esa_tarifa(piloto, entorno, monkeypatch, capfd, caplog):
     pedidos, respuesta, carpeta = entorno
     respuesta.update(estado="fallido", motivo="no se encontró la tarifa", url=None, cuerpo=None)
     monkeypatch.setattr(config, "SERPAPI_KEY", "clave-de-prueba")
@@ -95,7 +96,8 @@ def test_si_la_pagina_falla_usa_el_buscador_con_esa_tarifa(piloto, entorno, monk
     assert r.status_code == 200, r.text
     e = r.json()
     assert (e["camino"], e["campos"], e["motivo"]) == ("buscador", [["u", "MAIN-SECRETA"]], "no se encontró la tarifa")
-    assert "MAIN-SECRETA" not in _guardado(carpeta) + capsys.readouterr().out
+    salida = capfd.readouterr()
+    assert "MAIN-SECRETA" not in _guardado(carpeta) + salida.out + salida.err + caplog.text
 
 
 def test_sin_pagina_ni_buscador_va_a_google_flights(piloto, entorno):
@@ -156,6 +158,8 @@ def test_la_pagina_de_envio_prepara_el_enlace_con_la_sesion(piloto, piloto2, ent
     assert r.headers["Cache-Control"] == "no-store"
     assert piloto.get(ruta, params={"vendedor": "American", "tarifa": "Main Cabin"},
                       headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
-    assert piloto2.get(ruta, params={"vendedor": "American", "tarifa": "Main Cabin"}).status_code == 404
+    ajena = piloto2.get(ruta, params={"vendedor": "American", "tarifa": "Main Cabin"})
+    assert ajena.status_code == 404 and ajena.headers["content-type"].startswith("text/html")   # legible en la pestaña
+    assert "No encontramos ese vuelo" in ajena.text
     assert piloto.get(ruta, params={"vendedor": "<b>", "tarifa": "x"}).status_code == 422
     assert db.uno("select count(*) n from analisis_vuelo")["n"] == 0                  # abrir la página no gasta el tope

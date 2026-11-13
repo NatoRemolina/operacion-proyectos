@@ -76,7 +76,7 @@ def _todo_lo_guardado(carpeta) -> str:
     return "\n".join(partes)
 
 
-def test_lleva_a_la_pagina_oficial_de_la_aerolinea_sin_guardar_el_pedido(piloto, buscador, capsys):
+def test_lleva_a_la_pagina_oficial_de_la_aerolinea_sin_guardar_el_pedido(piloto, buscador, capfd, caplog):
     llamadas, _, carpeta = buscador
     c = _vegas(piloto)
     vuelo = c["vuelos"][0]
@@ -98,7 +98,8 @@ def test_lleva_a_la_pagina_oficial_de_la_aerolinea_sin_guardar_el_pedido(piloto,
     assert f'<script nonce="{nonce}">' in pagina and "American" in pagina
     assert any("booking_token" in p for p in llamadas)
     # el pedido de un solo uso no queda en ninguna parte: ni base, ni respaldo, ni registros
-    guardado = _todo_lo_guardado(carpeta) + capsys.readouterr().out
+    salida = capfd.readouterr()   # salida estándar y de errores, también la de procesos hijos
+    guardado = _todo_lo_guardado(carpeta) + salida.out + salida.err + caplog.text
     for secreto in ("SECRETOURL123", "SECRETOCUERPO456", "SECRETOADURL789", "booking_request"):
         assert secreto not in guardado, secreto
     # el clic queda: quién, opción, vendedor y dominio
@@ -268,3 +269,15 @@ def test_repetir_dentro_de_la_hora_no_guarda_otra_vez_y_tiene_tope(piloto, busca
     assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"]
     ev = db.uno("select detalle from eventos where entidad_id=:i and paso='página oficial abierta' order by id desc", i=c["id"])
     assert ev["detalle"].endswith("demasiadas repeticiones en la hora · Google Flights")
+
+
+# ---------- ronda 1 · punto 23: en la pestaña nueva, un 403 o un 404 es una página legible ----------
+def test_en_la_pestana_nueva_lo_ajeno_es_una_pagina_legible(piloto, piloto2, buscador):
+    c = _vegas(piloto)
+    vuelo = c["vuelos"][0]["id"]
+    r = _abrir(piloto2, c["id"], vuelo)
+    assert r.status_code == 404 and r.headers["content-type"].startswith("text/html")
+    assert "No encontramos ese vuelo" in r.text and r.headers["Cache-Control"] == "no-store"
+    r = _abrir(piloto, c["id"], vuelo, sitio="cross-site")
+    assert r.status_code == 403 and "Abre la página del vendedor desde la plataforma" in r.text
+    assert "default-src 'none'" in r.headers["Content-Security-Policy"]

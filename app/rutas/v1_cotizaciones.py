@@ -185,6 +185,21 @@ def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escr
 SITIOS_PERMITIDOS = {"same-origin", "same-site", "none"}
 
 
+def pagina_aviso(estado: int, titulo: str, texto: str) -> HTMLResponse:
+    """Lo que ve la persona en la pestaña nueva cuando no se puede seguir: una página legible, no JSON."""
+    cuerpo = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" '
+              f'content="width=device-width,initial-scale=1"><title>{html.escape(titulo)}</title></head><body>'
+              f"<main><h1>{html.escape(titulo)}</h1><p>{html.escape(texto)}</p>"
+              f"<p>Puedes cerrar esta pestaña y volver a la cotización.</p></main></body></html>")
+    return HTMLResponse(cuerpo, status_code=estado, headers={
+        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+
+
+AJENO = ("No encontramos ese vuelo", "Puede que el enlace esté incompleto o que no tengas acceso a esa cotización.")
+OTRO_SITIO = ("Enlace no válido", "Abre la página del vendedor desde la plataforma.")
+
+
 def _pagina_envio(destino: dict) -> HTMLResponse:
     """Página mínima que envía el pedido de un solo uso del vendedor a Google, que redirige a su página oficial."""
     nonce = secrets.token_urlsafe(16)
@@ -216,11 +231,10 @@ def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1
     del buscador, sin opciones de reserva o con el tope del día (`enlace_vendedor_persona_dia`), 303 a Google Flights.
     Una navegación desde otro sitio (`Sec-Fetch-Site: cross-site`) recibe 403: no gasta el cupo de nadie."""
     if request.headers.get("sec-fetch-site", "none") not in SITIOS_PERMITIDOS:
-        raise ErrorApi(403, "FORBIDDEN", "Abre la página del vendedor desde la plataforma.")
-    if not acceso.puede_ver(yo, _fila(id)):
-        raise _no_encontrado()
-    if not db.uno("select id from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=vuelo_id, s=id):
-        raise _no_encontrado()
+        return pagina_aviso(403, *OTRO_SITIO)
+    if not acceso.puede_ver(yo, _fila(id)) or \
+            not db.uno("select id from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=vuelo_id, s=id):
+        return pagina_aviso(404, *AJENO)
     destino = cotizacion.enlace_vendedor(yo, id, vuelo_id)
     if destino["tipo"] == "google":
         return RedirectResponse(destino["url"], status_code=303, headers={"Cache-Control": "no-store"})

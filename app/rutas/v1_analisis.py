@@ -21,6 +21,7 @@ from ..api_v1.esquemas_cotizacion import (
     errores_cotizacion,
 )
 from ..servicios import acceso, analizador, consultas, cotizacion, precios
+from . import v1_cotizaciones
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
@@ -139,14 +140,13 @@ def pagina_ir(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict 
     """La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el
     formulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights."""
     if request.headers.get("sec-fetch-site", "none") not in SITIOS_PERMITIDOS:
-        raise ErrorApi(403, "FORBIDDEN", "Abre el enlace del vendedor desde la plataforma.")
-    _visible(yo, id)
-    try:
-        sol = db.uno("select * from solicitudes where id=:i", i=id)
-        vuelo = db.de_json(db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='vuelo'",
-                                  o=opcion_id, s=id)["datos"], {})
-    except TypeError as e:
-        raise _no_encontrado() from e
+        return v1_cotizaciones.pagina_aviso(403, *v1_cotizaciones.OTRO_SITIO)
+    fila = db.uno("select usuario_id, viajero_id, proyecto_id from solicitudes where id=:i", i=id)
+    o = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=opcion_id, s=id)
+    if not acceso.puede_ver(yo, fila) or not o:
+        return v1_cotizaciones.pagina_aviso(404, *v1_cotizaciones.AJENO)
+    sol = db.uno("select * from solicitudes where id=:i", i=id)
+    vuelo = db.de_json(o["datos"], {}) or {}
     google = cotizacion.fuente_vuelo(sol, vuelo)
     nonce = secrets.token_urlsafe(16)
     datos = json.dumps({"api": f"{PREFIJO}/cotizaciones/{id}/vuelos/{opcion_id}/ir", "vendedor": vendedor, "tarifa": tarifa,
