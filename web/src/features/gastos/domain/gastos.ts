@@ -125,6 +125,25 @@ export function problemaDeJustificacion(texto: string): string | null {
     : null;
 }
 
+/** Las categorías del servidor (`app/config.py`, CATEGORIAS) con su nombre. Una prueba del servidor comprueba que coinciden. */
+export const CATEGORIAS: Readonly<Record<string, string>> = {
+  vuelo: "Vuelo",
+  hotel: "Hotel",
+  alquiler_carro: "Alquiler de carro",
+  transporte_terrestre: "Transporte terrestre: taxi, bus, tren, aplicación",
+  combustible: "Combustible",
+  comida: "Comida",
+  parqueo_peajes: "Parqueo y peajes",
+  compras_proyecto: "Compras del proyecto",
+  otros: "Otros",
+};
+
+/** Cómo se muestra la categoría: su nombre; si ya llega con nombre (datos de demostración), tal cual. */
+export function etiquetaCategoria(categoria: string | null): string {
+  if (!categoria) return "Por confirmar";
+  return CATEGORIAS[categoria] ?? categoria;
+}
+
 /** El mismo tope que el servidor: 4,5 MB decimales (4.500.000 bytes), no 4,5 MiB. */
 export const TAMANO_MAXIMO_BYTES = 4_500_000;
 

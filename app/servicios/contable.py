@@ -33,9 +33,11 @@ CUENTAS = {
     "vuelo": "6110 Viajes: pasajes aéreos",
     "hotel": "6120 Viajes: alojamiento",
     "alquiler_carro": "6130 Viajes: alquiler de vehículos",
+    "transporte_terrestre": "6135 Viajes: transporte terrestre",
     "combustible": "6140 Viajes: combustible",
     "comida": "6150 Viajes: alimentación",
     "parqueo_peajes": "6160 Viajes: parqueaderos y peajes",
+    "compras_proyecto": "6210 Proyectos: compras y materiales",
     "otros": "6190 Viajes: otros gastos de viaje",
 }
 SIN_CUENTA = "Sin cuenta asignada"

@@ -23,7 +23,9 @@ CAMPOS = ["comercio", "fecha", "categoria", "subtotal", "impuesto", "propina", "
 INSTRUCCION = f"""Eres un asistente de contabilidad. Lee el soporte de gasto adjunto y devuelve SOLO un objeto JSON con:
 - comercio: nombre del comercio o proveedor
 - fecha: fecha del gasto en formato AAAA-MM-DD (ten en cuenta que en Europa el día va antes del mes)
-- categoria: una de {list(config.CATEGORIAS)}
+- categoria: una de {list(config.CATEGORIAS)}. Usa transporte_terrestre para taxi, bus, tren o aplicación de
+  transporte; compras_proyecto para lo que se compra para el trabajo del proyecto (por ejemplo, hélices, baterías o
+  repuestos del dron); otros solo si no encaja en ninguna
 - subtotal, impuesto, propina, total: números con punto decimal, o null si no aparecen
 - moneda: código ISO de tres letras (USD, EUR, COP...)
 - metodo_pago: texto corto o null

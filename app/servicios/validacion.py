@@ -17,7 +17,9 @@ MOTIVOS = {"importe_invalido": "Importe no válido", "fecha_invalida": "Fecha no
            "sin_puntos": "Fidelización perdida", "compra_anticipada": "Compra anticipada", "lectura_fallida": "Lectura fallida",
            "sin_viaje": "Sin viaje asignado", "viaje_no_aprobado": "Viaje sin presupuesto aprobado", "viaje_cerrado": "Viaje cerrado",
            "fuera_del_viaje": "Fecha fuera del viaje", "presupuesto_superado": "Presupuesto del viaje superado"}
-SE_COMPRAN_ANTES = ("vuelo", "hotel", "alquiler_carro")
+# Lo que se compra antes de salir: tiquetes, reservas y los insumos del proyecto (hélices, baterías). Un taxi o un bus
+# se pagan durante el viaje: fuera de sus fechas siguen yendo a revisión.
+SE_COMPRAN_ANTES = ("vuelo", "hotel", "alquiler_carro", "compras_proyecto")
 FECHA_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 

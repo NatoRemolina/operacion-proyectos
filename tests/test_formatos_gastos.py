@@ -236,3 +236,70 @@ def test_un_pdf_adjunto_a_un_correo_tambien_llega_entero(cliente, viaje_aprobado
     pdf = _pdf("Factura pagina 1", "Factura pagina 2", f"TOTAL USD 99.10 {uuid.uuid4().hex[:6]}")
     _subir_web(cliente, viaje_aprobado["id"], "tres.eml", _correo([(pdf, "application/pdf", "factura.pdf")]))
     assert _archivo_enviado(modelo["enviados"][-1]) == ("application/pdf", pdf)
+
+
+# ---------- pieza 4: categorías completas ----------
+NUEVAS = {"transporte_terrestre": "Transporte terrestre: taxi, bus, tren, aplicación",
+          "compras_proyecto": "Compras del proyecto"}
+
+
+def test_las_categorias_nuevas_existen_con_su_nombre():
+    for clave, nombre in NUEVAS.items():
+        assert config.CATEGORIAS[clave] == nombre
+    assert list(config.CATEGORIAS)[-1] == "otros"   # «Otros» sigue al final de las listas
+
+
+def test_el_modelo_recibe_las_categorias_nuevas_en_el_esquema_y_en_la_instruccion():
+    from app.servicios import extraccion
+    assert set(NUEVAS) <= set(extraccion.ESQUEMA["properties"]["categoria"]["enum"])
+    for pista in ("transporte_terrestre", "taxi", "compras_proyecto", "baterías"):
+        assert pista in extraccion.INSTRUCCION
+
+
+def test_una_lectura_de_taxi_conserva_su_categoria(cliente, viaje_aprobado, modelo):
+    modelo["respuesta"] = {"categoria": "transporte_terrestre", "total": 27.40}
+    gid = _subir_web(cliente, viaje_aprobado["id"], "taxi.png", PNG + uuid.uuid4().bytes)
+    assert db.uno("select categoria from gastos where id=:i", i=gid)["categoria"] == "transporte_terrestre"
+
+
+def test_cada_categoria_nueva_tiene_su_cuenta_contable_sembrada_como_supuesto():
+    from app.servicios import contable
+    contable.asegurar_cuentas()
+    reglas = {r["clave"]: r for r in db.todos("select clave, valor, confianza from reglas where ambito='supuesto'")}
+    for clave in NUEVAS:
+        assert contable.CUENTAS[clave]
+        assert reglas[f"cuenta_contable_{clave}"]["valor"] == contable.CUENTAS[clave]
+        assert reglas[f"cuenta_contable_{clave}"]["confianza"] == "supuesto"
+    assert len(set(contable.CUENTAS.values())) == len(contable.CUENTAS)   # ninguna cuenta repetida
+
+
+def test_una_compra_del_proyecto_hecha_antes_del_viaje_solo_avisa_y_un_taxi_no(viaje_aprobado):
+    from app.servicios import validacion
+    base = {"comercio": f"Sonda {uuid.uuid4().hex[:6]}", "fecha": "2026-10-01", "total": 12.5, "moneda": "USD", "confianza": 1}
+    compra = validacion.revisar({**base, "categoria": "compras_proyecto"}, {"id": 1}, viaje=viaje_aprobado)
+    assert "compra_anticipada" in compra["motivos"] and "fuera_del_viaje" not in compra["motivos"]
+    taxi = validacion.revisar({**base, "categoria": "transporte_terrestre"}, {"id": 1}, viaje=viaje_aprobado)
+    assert "fuera_del_viaje" in taxi["motivos"] and taxi["estado"] == "revision"
+
+
+def test_la_ficha_y_la_lista_muestran_las_categorias_nuevas(cliente, viaje_aprobado, modelo):
+    modelo["respuesta"] = {"categoria": "compras_proyecto"}
+    gid = _subir_web(cliente, viaje_aprobado["id"], "helices.png", PNG + uuid.uuid4().bytes)
+    ficha = cliente.get(f"/gastos/{gid}").text
+    assert '<option value="transporte_terrestre"' in ficha and '<option value="compras_proyecto" selected' in ficha
+    assert "Compras del proyecto" in cliente.get("/gastos").text
+
+
+def test_la_web_conoce_las_mismas_categorias_que_el_servidor():
+    from pathlib import Path
+    dominio = (Path(config.RAIZ) / "web" / "src" / "features" / "gastos" / "domain" / "gastos.ts").read_text()
+    for clave, nombre in config.CATEGORIAS.items():
+        assert f'{clave}: "{nombre}"' in dominio, clave
+
+
+def test_el_contrato_nombra_todas_las_categorias():
+    from pathlib import Path
+    contrato = (Path(config.RAIZ) / "contracts" / "api-v1.md").read_text()
+    linea = next(l for l in contrato.splitlines() if "categoria: string | null" in l and "//" in l)
+    for clave in config.CATEGORIAS:
+        assert clave in linea, clave

@@ -86,7 +86,8 @@ interface ViajeDetalle extends ViajeResumen {
 interface GastoResumen {
   id: number;
   viaje: { id: number; codigo: string } | null;
-  comercio: string | null; fecha: string | null; categoria: string | null;
+  comercio: string | null; fecha: string | null;
+  categoria: string | null;   // vuelo | hotel | alquiler_carro | transporte_terrestre | combustible | comida | parqueo_peajes | compras_proyecto | otros
   total: Dinero; moneda: string | null; total_usd: Dinero;
   estado: EstadoGasto; estado_texto: string;  // "En revisión"
   creado: string;

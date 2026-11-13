@@ -63,3 +63,10 @@ describe("Detalle de un gasto que llegó por correo", () => {
     expect(screen.queryByText("Remitente")).not.toBeInTheDocument();
   });
 });
+
+describe("Categoría en el detalle", () => {
+  it("muestra el nombre de la categoría y no su clave", () => {
+    render(<DetalleGasto gasto={gastoDePrueba({ categoria: "transporte_terrestre" })} urlOriginal={null} />);
+    expect(screen.getByText("Transporte terrestre: taxi, bus, tren, aplicación")).toBeInTheDocument();
+  });
+});

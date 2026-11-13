@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mesEnCurso, problemaDePeriodo, validarArchivo } from "./gastos";
+import { etiquetaCategoria, mesEnCurso, problemaDePeriodo, validarArchivo } from "./gastos";
 
 describe("archivo del recibo", () => {
   it("el tope es el mismo que el del servidor (4,5 MB, no 4,5 MiB)", () => {
@@ -40,5 +40,18 @@ describe("periodo del Excel contable", () => {
     expect(problemaDePeriodo({ desde: "2026-11-30", hasta: "2026-11-01" })).toMatch(/final no puede ser anterior/);
     expect(problemaDePeriodo({ desde: "", hasta: "2026-11-30" })).toMatch(/Elige/);
     expect(problemaDePeriodo({ desde: "2026-11-01", hasta: "30/11/2026" })).toMatch(/Elige/);
+  });
+});
+
+describe("categoría del gasto", () => {
+  it("muestra el nombre de la categoría, incluidas transporte terrestre y compras del proyecto", () => {
+    expect(etiquetaCategoria("transporte_terrestre")).toBe("Transporte terrestre: taxi, bus, tren, aplicación");
+    expect(etiquetaCategoria("compras_proyecto")).toBe("Compras del proyecto");
+    expect(etiquetaCategoria("comida")).toBe("Comida");
+  });
+
+  it("sin categoría dice que falta confirmarla, y un nombre ya legible se muestra tal cual", () => {
+    expect(etiquetaCategoria(null)).toBe("Por confirmar");
+    expect(etiquetaCategoria("Alimentación")).toBe("Alimentación");
   });
 });
