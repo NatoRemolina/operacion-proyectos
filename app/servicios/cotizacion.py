@@ -679,9 +679,15 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
             el_viaje = viajes.crear_desde_decision(did)
             monitoreo_vuelos.registrar_tramos(el_viaje["id"], vuelo["v"], regreso)
             compras.solicitar(did, usuario)   # la solicitud de compra del tiquete nace con la decisión
-            capturas.al_decidir(did)   # la evidencia completa del vuelo y del hotel: la hace el trabajador, sin esperar
     except IntegrityError as e:
         raise DecisionBloqueada(CHOQUE_DECISION) from e
     except compras.CompraBloqueada as e:
         raise DecisionBloqueada(str(e)) from e
+    # La evidencia completa del vuelo y del hotel (la hace el trabajador), ya fuera de la transacción y del cerrojo de
+    # la decisión: la decisión nunca depende de ella. Si no se puede encolar, queda el evento.
+    try:
+        capturas.al_decidir(did)
+    except Exception as e:  # noqa: BLE001
+        eventos.registrar("solicitud", sid, "evidencia no encolada", f"decisión #{did} · {type(e).__name__}: {str(e)[:200]}",
+                          "sistema")
     return {"repetida": False, "decision_id": did, "viaje": el_viaje}

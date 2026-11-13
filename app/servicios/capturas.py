@@ -61,8 +61,8 @@ def asegurar_reglas() -> int:
 
 
 def _encolar(**fila) -> int | None:
-    """Inserta la captura si su clave no está en la cola. Devuelve el id nuevo, o None si ya estaba. Quien llama pone
-    en fila (la decisión, con su cerrojo por cotización; el seguimiento, el único trabajador)."""
+    """Inserta la captura si su clave no está en la cola. Devuelve el id nuevo, o None si ya estaba (la clave es por
+    decisión, por día o por compra: dos pedidos a la vez chocan en la clave única y el segundo no hace nada)."""
     if db.uno("select id from capturas where clave=:c", c=fila["clave"]):
         return None
     try:
