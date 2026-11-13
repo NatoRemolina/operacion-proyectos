@@ -175,6 +175,16 @@ Administración tiene un botón «Asistente» fijo abajo a la derecha en todas s
 - **Accesible con teclado.** Enter envía y Mayúsculas+Enter salta de línea; Escape cierra y devuelve el foco al botón; la conversación es una región que anuncia las respuestas nuevas. En pantallas angostas el panel ocupa el ancho completo.
 - **Código.** `app/templates/_asistente_flotante.html` (incluido desde `base.html`), `app/static/asistente_flotante.js` y los estilos `af-` de `app/static/estilo.css`.
 
+## Asistente IA en la web nueva
+
+En la web Next, administración tiene un botón «Asistente IA» fijo abajo a la derecha en todas las pantallas. Abre una conversación sin salir de la pantalla (en celular, como hoja inferior a todo el ancho).
+
+- **Misma vía, por la API v1.** `POST /api/v1/asistente` (ver `contracts/api-v1.md`) responde con el mismo orden: asesor, modelo, consultas directas. Las fuentes llegan con un destino (`viaje`, `gasto` o `cotizacion` y su id) y la web las enlaza a sus propias pantallas.
+- **Voz.** El micrófono graba la pregunta; el navegador la convierte a WAV mono de 16 kHz y `POST /api/v1/asistente/voz` la transcribe con el modelo de lectura (el mismo que lee recibos y notas de voz). El texto se envía como pregunta y queda marcado «Dictado por voz». El asesor solo recibe texto. La grabación se detiene sola al minuto; sin modelo configurado la voz responde 503 y la web pide escribir la pregunta.
+- **Qué guarda el navegador.** Los últimos 30 mensajes, en `sessionStorage`, con una clave por persona: solo en esa pestaña, y quien entre después en la misma pestaña no ve la conversación anterior. Las respuestas se pintan como texto con viñetas y negritas, nunca como HTML.
+- **Accesible.** Escape cierra (o cancela la grabación) y devuelve el foco al botón; la conversación es una región que anuncia lo nuevo y una región de estado avisa «consultando», «grabando» o que llegó una respuesta con el panel cerrado.
+- **Código.** `web/src/features/asistente/` (dominio, casos de uso, adaptadores HTTP y en memoria, interfaz) y `app/rutas/v1_asistente.py`.
+
 ## Seguridad
 
 - **Alcance por sesión.** La ruta está bajo `/admin` (el control de acceso exige administrador) y además `asistente.responder` lo vuelve a comprobar. El modelo ni el texto de la pregunta deciden qué se ve.

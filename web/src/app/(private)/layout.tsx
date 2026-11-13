@@ -1,3 +1,4 @@
+import { AsistenteFlotante } from "@/features/asistente/ui/asistente-flotante";
 import { ZonaPrivada } from "@/features/auth/ui/zona-privada";
 import { leerBaseApi } from "@/config/configuracion";
 import { origenPantallasActuales } from "@/shared/domain/navegacion";
@@ -8,5 +9,10 @@ export default function LayoutPrivado({ children }: { children: React.ReactNode 
     process.env.NEXT_PUBLIC_PLATAFORMA_URL,
     leerBaseApi(process.env.NEXT_PUBLIC_API_BASE),
   );
-  return <ZonaPrivada plataforma={plataforma}>{children}</ZonaPrivada>;
+  return (
+    <ZonaPrivada plataforma={plataforma}>
+      {children}
+      <AsistenteFlotante />
+    </ZonaPrivada>
+  );
 }
