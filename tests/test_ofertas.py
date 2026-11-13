@@ -277,3 +277,16 @@ def test_r1_5_una_tarifa_entendida_queda_completa():
     ofertas.actualizar()
     basica = db.uno("select * from ofertas_tarifa where fuente='pagina' and tarifa='Basic Economy' order by id desc limit 1")
     assert basica["normalizacion"] == "completa" and basica["sin_reconocer"] is None
+
+
+def test_r1_6_el_crudo_nunca_lleva_el_pedido_de_reserva():
+    """Las respuestas guardadas antes del 12 nov podían traer `booking_request` (URL y post_data de la reserva)."""
+    vieja = {"together": {"book_with": "American", "airline": True, "price": 470, "option_title": "Basic Economy",
+                          "booking_request": {"url": "https://www.google.com/travel/clk/f", "post_data": "u=secreto"},
+                          "extensions": ["No refunds"], "baggage_prices": []}}
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7006.json"
+    _guardar_respuesta(clave, _respuesta(opciones=[vieja]), "2026-11-05 10:00:00")
+    ofertas.actualizar()
+    fila = db.uno("select crudo from ofertas_tarifa where busqueda_clave=:c", c=clave)
+    assert "booking_request" not in fila["crudo"] and "post_data" not in fila["crudo"]
+    assert json.loads(fila["crudo"])["price"] == 470

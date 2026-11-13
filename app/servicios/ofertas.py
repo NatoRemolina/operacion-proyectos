@@ -209,6 +209,12 @@ def _calendario(ida, regreso, momento) -> dict:
             "dia_semana": f_ida.weekday() if f_ida else None, "noches": (f_reg - f_ida).days if f_ida and f_reg else None}
 
 
+def _sin_reserva(datos):
+    """Sin `booking_request` (lo que serviría para ejecutar una reserva): la misma limpieza que al guardar una respuesta."""
+    from . import precios  # aquí y no arriba: precios lleva a kpis, que importa este módulo
+    return precios._sin_reserva(datos)
+
+
 def _fila(base: dict, nombre, precio, vendedor, es_aerolinea, lineas_equipaje, lineas_condiciones, crudo,
           ordinal: int = 0, tramo: str = "ida_vuelta") -> dict | None:
     try:
@@ -223,7 +229,7 @@ def _fila(base: dict, nombre, precio, vendedor, es_aerolinea, lineas_equipaje, l
             "es_aerolinea": es_aerolinea, "precio": precio, "tarifa_normalizada": tipo, "equipaje_mano": mano, "maleta_usd": maleta,
             "cambios": c, "reembolso": r, "asiento": asiento(lineas_condiciones),
             "sin_reconocer": json.dumps(sin, ensure_ascii=False) if sin else None,
-            "normalizacion": "parcial" if sin else "completa", "crudo": json.dumps(crudo, ensure_ascii=False)}
+            "normalizacion": "parcial" if sin else "completa", "crudo": json.dumps(_sin_reserva(crudo), ensure_ascii=False)}
 
 
 def _de_respuesta(origen_fila: str, clave: str, datos: dict, creado: str | None) -> list[dict]:
