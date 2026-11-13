@@ -8,6 +8,7 @@ import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import { Construct } from "constructs";
 import * as path from "node:path";
+import { dominioDesdeContexto } from "./dominio";
 
 export interface AppStackProps extends StackProps {
   secreto: secretsmanager.Secret;
@@ -25,6 +26,12 @@ export class AppStack extends Stack {
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
 
+    // Con dominio, el origen de la web nueva se conoce antes de desplegar y la API lo admite para escribir en /api/v1
+    // (app/servicios/acceso.py). Sin dominio la dirección de CloudFront sale al desplegar OperacionWeb y va en el
+    // secreto. Una variable de la función prevalece sobre la misma clave del secreto (app/config.py).
+    const dominio = dominioDesdeContexto(this.node);
+    const origenesWeb: Record<string, string> = dominio ? { ORIGENES_WEB: `https://${dominio.web}` } : {};
+
     const registro = new logs.LogGroup(this, "Registro", {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -37,7 +44,7 @@ export class AppStack extends Stack {
       timeout: Duration.seconds(180),
       logGroup: registro,
       // Solo el ARN: el valor del secreto se lee al arrancar, nunca queda en la plantilla.
-      environment: { SECRETO_ARN: props.secreto.secretArn, ENTORNO: "nube" },
+      environment: { SECRETO_ARN: props.secreto.secretArn, ENTORNO: "nube", ...origenesWeb },
     });
     props.secreto.grantRead(web);
 

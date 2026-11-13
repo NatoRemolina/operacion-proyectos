@@ -89,11 +89,16 @@ export class WebStack extends Stack {
       fallbackOrigin: origenWeb,
       fallbackStatusCodes: [403, 404],
     });
+    // Lo dinámico recibe todo lo del navegador salvo Host (la dirección de función exige el suyo): la cookie de
+    // sesión, Origin, Sec-Fetch-Site, X-CSRF-Token e Idempotency-Key para la API y los formularios de
+    // administración (app/servicios/acceso.py), y la consulta y las cabeceras de navegación de Next para la web.
+    // Los estáticos no llevan política: no reciben cookies ni cabeceras.
     const dinamico = (origen: cloudfront.IOrigin): cloudfront.BehaviorOptions => ({
       origin: origen,
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
       cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+      originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
     });
     const comunes = {
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,   // Norteamérica y Europa, donde opera la empresa
