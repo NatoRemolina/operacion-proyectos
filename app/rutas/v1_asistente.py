@@ -1,7 +1,8 @@
-"""API v1: asistente de administración, por escrito o dictado. Contrato en `contracts/api-v1.md`.
+"""API v1: el asistente, por escrito o dictado, para los tres permisos. Contrato en `contracts/api-v1.md`.
 
-La pregunta sigue la misma vía que la pantalla `/admin/asistente` (asesor, modelo con herramientas o consultas directas),
-con el mismo tope diario y el mismo rastro. La voz la transcribe el modelo de lectura; el asesor solo recibe texto.
+La pregunta sigue la misma vía que la plataforma (asesor, modelo con herramientas o consultas directas), con el mismo
+tope diario por persona y el mismo rastro. El alcance lo pone la sesión: el colaborador ve lo suyo, el gestor además lo
+de sus proyectos y administración todo. La voz la transcribe el modelo de lectura; el asesor solo recibe texto.
 """
 import re
 
@@ -10,10 +11,10 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from .. import config
 from ..api_v1 import PREFIJO, ErrorApi, escritura
 from ..api_v1.esquemas import PreguntaAsistente, RespuestaAsistente, Transcripcion, errores
-from ..servicios import acceso, asistente, llm
+from ..servicios import asistente, llm
 from .asistente import modo_visible
 
-router = APIRouter(prefix=PREFIJO + "/asistente", tags=["administracion"])
+router = APIRouter(prefix=PREFIJO + "/asistente", tags=["asistente"])
 
 # Las fuentes traen el enlace de la pantalla actual; aquí se traducen a un destino que cada interfaz enlaza a su manera
 _DESTINOS = ((re.compile(r"^/gastos/(\d+)$"), "gasto"), (re.compile(r"^/viaje/(\d+)$"), "viaje"),
@@ -29,15 +30,16 @@ def _destino(enlace: str | None) -> dict | None:
     return None
 
 
-def _solo_admin(yo: dict) -> None:
-    if not acceso.es_admin(yo):
-        raise ErrorApi(403, "FORBIDDEN", "El asistente es solo para administración.")
+def _con_permiso(yo: dict) -> None:
+    """Cualquiera de los tres permisos; lo que ve cada uno lo decide `asistente.Alcance`."""
+    if not asistente.Alcance(yo).valido:
+        raise ErrorApi(403, "FORBIDDEN", "El asistente necesita una sesión válida.")
 
 
 @router.post("", response_model=RespuestaAsistente, responses=errores(401, 403, 422))
 def preguntar(datos: PreguntaAsistente, yo: dict = Depends(escritura)):
-    """Solo administración. Puede tardar hasta un minuto con el asesor; si no responde, contesta la vía siguiente."""
-    _solo_admin(yo)
+    """Para los tres permisos, cada uno con su alcance. Con el asesor puede tardar hasta un minuto; si no, responde la vía siguiente."""
+    _con_permiso(yo)
     if not datos.pregunta.strip():
         raise ErrorApi(422, "VALIDATION_ERROR", "Escribe una pregunta.", {"pregunta": "Escribe una pregunta."})
     r = asistente.responder(datos.pregunta, yo)
@@ -50,8 +52,8 @@ def preguntar(datos: PreguntaAsistente, yo: dict = Depends(escritura)):
 @router.post("/voz", response_model=Transcripcion, responses=errores(401, 403, 413, 415, 422, 429, 503))
 def dictar(audio: UploadFile = File(..., description="La pregunta grabada, en WAV (la web graba y convierte en el navegador)."),
            yo: dict = Depends(escritura)):
-    """Solo administración. Devuelve la pregunta dictada en texto; no la responde ni la guarda."""
-    _solo_admin(yo)
+    """Para los tres permisos. Devuelve la pregunta dictada en texto; no la responde ni la guarda."""
+    _con_permiso(yo)
     contenido = audio.file.read(config.MAX_BYTES_SOPORTE + 1)
     if len(contenido) > config.MAX_BYTES_SOPORTE:
         raise ErrorApi(413, "PAYLOAD_TOO_LARGE", "El audio es demasiado largo: graba una pregunta más corta.")
