@@ -361,7 +361,7 @@ Reproceso de una lectura fallida, asignaciones y auditoría. Siguen en las panta
 
 ## Proyectos
 
-Lo que hacen hoy las pantallas `/admin/proyectos` y `/proyectos/{id}`, con la misma regla (`app/servicios/proyectos.py`): administración ve, crea y edita todos; quien gestiona ve el tablero de los proyectos que gestiona; el resto no ve ninguno.
+Lo que hacen hoy las pantallas `/admin/proyectos` y `/proyectos/{id}`, con la misma regla (`app/servicios/proyectos.py`): administración ve, crea y edita todos; quien gestiona ve el tablero de los proyectos que gestiona; el resto no ve ninguno. El `id` va de 1 a 2147483647; fuera de ese rango, 422.
 
 ```ts
 interface ProyectoResumen {
@@ -404,7 +404,7 @@ Los gastos del proyecto en CSV (`text/csv`, `Content-Disposition: attachment; fi
 
 ## Usuarios y cargos
 
-Solo administración: colaborador y gestor reciben 403 `FORBIDDEN` en todo. Lo que hace hoy `/admin/usuarios`, con la misma regla (`app/servicios/usuarios.py`) y los mismos eventos (`cuenta creada`, `rol cambiado`, `cuenta desactivada`/`reactivada`, `cargo asignado`, `proyectos asignados`, `contraseña restablecida`, `cargo creado`/`renombrado`/`desactivado`/`reactivado`). Las escrituras llevan `X-CSRF-Token`; un campo de más responde 422. Una cuenta o un cargo inexistente: 404.
+Solo administración: colaborador y gestor reciben 403 `FORBIDDEN` en todo. Lo que hace hoy `/admin/usuarios`, con la misma regla (`app/servicios/usuarios.py`) y los mismos eventos (`cuenta creada`, `rol cambiado`, `cuenta desactivada`/`reactivada`, `cargo asignado`, `proyectos asignados`, `contraseña restablecida`, `cargo creado`/`renombrado`/`desactivado`/`reactivado`). Las escrituras llevan `X-CSRF-Token`; un campo de más responde 422. Una cuenta o un cargo inexistente: 404. Los `id` (en la ruta, `cargo_id` y cada uno de `proyectos_ids`) van de 1 a 2147483647; fuera de ese rango, 422.
 
 ```ts
 interface Usuario {

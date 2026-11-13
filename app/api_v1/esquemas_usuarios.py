@@ -1,6 +1,9 @@
 """Modelos de la API v1 de usuarios, cargos y la cuenta propia. Contrato en `contracts/api-v1.md`."""
+from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..servicios.contable import MAXIMO_ID
 from .esquemas import Persona, Rol
 
 
@@ -12,7 +15,7 @@ class NuevaCuenta(BaseModel):
     nombre: str = Field("", max_length=200, description="Vacío usa el correo.")
     rol: str = Field(max_length=20, description="colaborador, gestor o admin.")
     clave: str = Field(max_length=200, description="10 caracteres o más.")
-    cargo_id: int | None = Field(None, ge=0, description="Un cargo activo, o null (0 también es «sin cargo»).")
+    cargo_id: int | None = Field(None, ge=0, le=MAXIMO_ID, description="Un cargo activo, o null (0 también es «sin cargo»).")
 
 
 class CambioRol(BaseModel):
@@ -22,12 +25,12 @@ class CambioRol(BaseModel):
 
 class CambioCargo(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    cargo_id: int | None = Field(ge=0, description="Un cargo activo, o null para quitarlo.")
+    cargo_id: int | None = Field(ge=0, le=MAXIMO_ID, description="Un cargo activo, o null para quitarlo.")
 
 
 class CambioProyectos(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    proyectos_ids: list[int] = Field(max_length=500, description="Los proyectos que gestiona; reemplaza los anteriores.")
+    proyectos_ids: list[Annotated[int, Field(ge=1, le=MAXIMO_ID)]] = Field(max_length=500, description="Los proyectos que gestiona; reemplaza los anteriores.")
 
 
 class CambioEstadoCuenta(BaseModel):

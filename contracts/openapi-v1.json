@@ -1683,6 +1683,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -1744,6 +1746,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -1827,6 +1831,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -2074,6 +2080,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -2167,6 +2175,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -2259,6 +2269,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -2342,6 +2354,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -2425,6 +2439,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -2609,6 +2625,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Id"
             }
           }
@@ -3169,6 +3187,7 @@
             "anyOf": [
               {
                 "type": "integer",
+                "maximum": 2147483647.0,
                 "minimum": 0.0
               },
               {
@@ -3292,7 +3311,9 @@
         "properties": {
           "proyectos_ids": {
             "items": {
-              "type": "integer"
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 1.0
             },
             "type": "array",
             "maxItems": 500,
@@ -5433,6 +5454,7 @@
             "anyOf": [
               {
                 "type": "integer",
+                "maximum": 2147483647.0,
                 "minimum": 0.0
               },
               {

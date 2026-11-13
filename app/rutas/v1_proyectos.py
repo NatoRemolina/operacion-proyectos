@@ -4,8 +4,10 @@ Contrato en `contracts/api-v1.md`, sección «Proyectos». La regla vive en `app
 las pantallas actuales: administración ve y edita todos; quien gestiona ve el tablero de los suyos; nadie más.
 """
 from decimal import Decimal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from fastapi import Path as PathParam
 from fastapi.responses import Response
 
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
@@ -13,6 +15,9 @@ from ..api_v1.esquemas import errores
 from ..api_v1.esquemas_proyectos import DatosProyecto, ListaProyectos, ProyectoResumen, TableroProyecto
 from ..servicios import acceso, consultas, contable, proyectos
 from .v1_usuarios import pagina_estricta
+
+# Los id son INTEGER: uno mayor no existe y en PostgreSQL rompería la consulta (422 antes de llegar a la base)
+Id = Annotated[int, PathParam(ge=1, le=contable.MAXIMO_ID)]
 
 router = APIRouter(prefix=PREFIJO + "/proyectos", tags=["proyectos"])
 
@@ -68,7 +73,7 @@ def crear(entrada: DatosProyecto, yo: dict = Depends(escritura)):
 
 
 @router.get("/{id}", response_model=TableroProyecto, responses=errores(401, 404, 422))
-def tablero(id: int, yo: dict = Depends(persona)):
+def tablero(id: Id, yo: dict = Depends(persona)):
     """Previsto frente a real por categoría, viajes y gastos del proyecto. Lo ajeno responde 404."""
     p = proyectos.con_conteos(id) if proyectos.visible(yo, id) else None
     if not p:
@@ -90,7 +95,7 @@ def tablero(id: int, yo: dict = Depends(persona)):
 
 
 @router.post("/{id}", response_model=ProyectoResumen, responses=errores(401, 403, 404, 422))
-def editar(id: int, entrada: DatosProyecto, yo: dict = Depends(escritura)):
+def editar(id: Id, entrada: DatosProyecto, yo: dict = Depends(escritura)):
     """Solo administración. Se mandan todos los campos. Deja el evento `proyecto editado`."""
     _solo_admin(yo)
     if not proyectos.existe(id):
@@ -101,7 +106,7 @@ def editar(id: int, entrada: DatosProyecto, yo: dict = Depends(escritura)):
 
 @router.get("/{id}/exportar.csv", response_class=Response, responses={
     **errores(401, 404, 422), 200: {"description": "Los gastos del proyecto en CSV", "content": {"text/csv": {}}}})
-def exportar(id: int, yo: dict = Depends(persona)):
+def exportar(id: Id, yo: dict = Depends(persona)):
     """El mismo CSV que la pantalla actual del proyecto. Lo ajeno responde 404."""
     if not proyectos.visible(yo, id) or not proyectos.existe(id):
         raise _no_encontrado()

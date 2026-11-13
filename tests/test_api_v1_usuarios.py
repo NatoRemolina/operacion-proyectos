@@ -391,3 +391,20 @@ def test_la_pantalla_actual_tampoco_da_proyectos_a_quien_no_gestiona(cliente):
     r = cliente.post(f"/admin/usuarios/{u['id']}", data={"accion": "proyectos", "proyectos_ids": ["1", "2"]}, follow_redirects=False)
     assert "gestor%20de%20proyecto%20gestiona%20proyectos" in r.headers["location"]
     assert not db.todos("select * from proyecto_miembros where usuario_id=:u", u=u["id"])
+
+
+def test_los_ids_fuera_del_rango_de_la_base_responden_422(cliente):
+    """Un id mayor que 2³¹−1 no existe y en PostgreSQL rompería la consulta: se rechaza antes de llegar a la base."""
+    grande = 2**31
+    for metodo, ruta, cuerpo in (("get", f"/proyectos/{grande}", None), ("post", f"/proyectos/{grande}", {}),
+                                 ("get", f"/proyectos/{grande}/exportar.csv", None),
+                                 ("post", f"/usuarios/{grande}/rol", {"rol": "gestor"}), ("post", f"/usuarios/{grande}/estado", {"activo": True}),
+                                 ("post", f"/usuarios/{grande}/cargo", {"cargo_id": None}), ("post", f"/usuarios/{grande}/clave", {"clave": "x" * 12}),
+                                 ("post", f"/usuarios/{grande}/proyectos", {"proyectos_ids": []}), ("post", f"/cargos/{grande}", {"activo": True})):
+        r = getattr(cliente, metodo)(f"{V1}{ruta}", **({"json": cuerpo, "headers": _csrf(cliente)} if metodo == "post" else {}))
+        _error(r, 422, "VALIDATION_ERROR")
+    u = _crear(cliente, rol="gestor")
+    for ruta, cuerpo in ((f"/usuarios/{u['id']}/cargo", {"cargo_id": grande}), (f"/usuarios/{u['id']}/proyectos", {"proyectos_ids": [grande]}),
+                         ("/usuarios", {"correo": _correo(), "nombre": "X", "rol": "colaborador", "clave": "clave-inicial-123", "cargo_id": grande})):
+        error = _error(cliente.post(f"{V1}{ruta}", json=cuerpo, headers=_csrf(cliente)), 422, "VALIDATION_ERROR")
+        assert error["fields"]

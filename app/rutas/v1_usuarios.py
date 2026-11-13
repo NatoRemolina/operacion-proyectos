@@ -3,8 +3,10 @@
 La regla vive en `app/servicios/usuarios.py`, la misma que usa la pantalla actual: mismas protecciones y mismos eventos.
 """
 import re
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi import Path as PathParam
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
@@ -24,7 +26,10 @@ from ..api_v1.esquemas_usuarios import (
     NuevoCargo,
     ResultadoUsuario,
 )
-from ..servicios import acceso, consultas, usuarios, viajes
+from ..servicios import acceso, consultas, contable, usuarios, viajes
+
+# Los id son INTEGER: uno mayor no existe y en PostgreSQL rompería la consulta (422 antes de llegar a la base)
+Id = Annotated[int, PathParam(ge=1, le=contable.MAXIMO_ID)]
 
 router = APIRouter(prefix=PREFIJO, tags=["usuarios"])
 
@@ -105,7 +110,7 @@ def crear(datos: NuevaCuenta, yo: dict = Depends(_admin_que_escribe)):
 
 
 @router.post("/usuarios/{id}/rol", response_model=ResultadoUsuario, responses=errores(401, 403, 404, 409, 422))
-def cambiar_rol(id: int, datos: CambioRol, yo: dict = Depends(_admin_que_escribe)):
+def cambiar_rol(id: Id, datos: CambioRol, yo: dict = Depends(_admin_que_escribe)):
     """Cierra las sesiones de la cuenta. Quien deja de ser gestor pierde sus proyectos.
     Nadie se quita su propio rol de administración ni deja la plataforma sin ella: 409 `INVALID_STATE`."""
     u = _cuenta(id)
@@ -121,7 +126,7 @@ def cambiar_rol(id: int, datos: CambioRol, yo: dict = Depends(_admin_que_escribe
 
 
 @router.post("/usuarios/{id}/estado", response_model=ResultadoUsuario, responses=errores(401, 403, 404, 409, 422))
-def cambiar_estado(id: int, datos: CambioEstadoCuenta, yo: dict = Depends(_admin_que_escribe)):
+def cambiar_estado(id: Id, datos: CambioEstadoCuenta, yo: dict = Depends(_admin_que_escribe)):
     """Desactivar cierra sus sesiones. Nadie desactiva su propia cuenta ni a la última administración: 409 `INVALID_STATE`."""
     u = _cuenta(id)
     try:
@@ -132,7 +137,7 @@ def cambiar_estado(id: int, datos: CambioEstadoCuenta, yo: dict = Depends(_admin
 
 
 @router.post("/usuarios/{id}/cargo", response_model=ResultadoUsuario, responses=errores(401, 403, 404, 422))
-def cambiar_cargo(id: int, datos: CambioCargo, yo: dict = Depends(_admin_que_escribe)):
+def cambiar_cargo(id: Id, datos: CambioCargo, yo: dict = Depends(_admin_que_escribe)):
     u = _cuenta(id)
     try:
         mensaje = usuarios.cambiar_cargo(u, datos.cargo_id or None)
@@ -142,7 +147,7 @@ def cambiar_cargo(id: int, datos: CambioCargo, yo: dict = Depends(_admin_que_esc
 
 
 @router.post("/usuarios/{id}/proyectos", response_model=ResultadoUsuario, responses=errores(401, 403, 404, 422))
-def asignar_proyectos(id: int, datos: CambioProyectos, yo: dict = Depends(_admin_que_escribe)):
+def asignar_proyectos(id: Id, datos: CambioProyectos, yo: dict = Depends(_admin_que_escribe)):
     """Reemplaza los proyectos que gestiona; los que no existen se ignoran. Solo para cuentas con permiso de gestor
     (la pantalla actual solo lo ofrece a ellas): si no, al volverla gestora heredaría acceso sin que nadie lo decida."""
     u = _cuenta(id)
@@ -154,7 +159,7 @@ def asignar_proyectos(id: int, datos: CambioProyectos, yo: dict = Depends(_admin
 
 
 @router.post("/usuarios/{id}/clave", response_model=ResultadoUsuario, responses=errores(401, 403, 404, 422))
-def restablecer_clave(id: int, datos: NuevaClave, yo: dict = Depends(_admin_que_escribe)):
+def restablecer_clave(id: Id, datos: NuevaClave, yo: dict = Depends(_admin_que_escribe)):
     """La contraseña nueva nunca se devuelve. Cierra sus sesiones, desvincula su Telegram (le avisa antes por ese chat) y
     limpia el bloqueo por intentos. La propia no se restablece aquí (409 `INVALID_STATE`): se cambia en «Mi cuenta»."""
     u = _cuenta(id)
@@ -192,7 +197,7 @@ def crear_cargo(datos: NuevoCargo, yo: dict = Depends(_admin_que_escribe)):
 
 
 @router.post("/cargos/{id}", response_model=Cargo, responses=errores(401, 403, 404, 422))
-def cambiar_cargo_catalogo(id: int, datos: CambioCargoCatalogo, yo: dict = Depends(_admin_que_escribe)):
+def cambiar_cargo_catalogo(id: Id, datos: CambioCargoCatalogo, yo: dict = Depends(_admin_que_escribe)):
     """Renombra o activa/desactiva. Quien tiene un cargo desactivado lo conserva."""
     _cargo(id)
     try:
