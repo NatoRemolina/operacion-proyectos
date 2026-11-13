@@ -140,44 +140,50 @@ export function PanelCuenta({ usuario, cargos, onCerrar }: { usuario: Usuario; c
           </Boton>
         </form>
 
-        <form
-          className={BLOQUE}
-          onSubmit={(e) => {
-            e.preventDefault();
-            asignar.mutate(proyectos, { onSuccess: listo });
-          }}
-        >
-          <fieldset className="flex flex-col gap-2">
-            <legend className="font-semibold">Proyectos que gestiona</legend>
-            {usuario.rol !== "gestor" ? (
-              <p className="text-sm text-texto-secundario">Solo cuentan con el permiso de gestor de proyecto.</p>
-            ) : null}
-            {todosLosProyectos.isPending ? (
-              <p role="status" className="text-sm text-texto-secundario">
-                Cargando los proyectos…
-              </p>
-            ) : todosLosProyectos.error ? (
-              <p className="text-sm text-error">No se pudieron cargar los proyectos.</p>
-            ) : (
-              todosLosProyectos.proyectos.map((p) => (
-                <label key={p.id} className="flex min-h-11 items-center gap-3">
-                  <input
-                    type="checkbox"
-                    className="size-5 accent-marca"
-                    checked={proyectos.includes(p.id)}
-                    onChange={(e) =>
-                      setProyectos((actual) => (e.target.checked ? [...actual, p.id] : actual.filter((x) => x !== p.id)))
-                    }
-                  />
-                  {p.nombre}
-                </label>
-              ))
-            )}
-          </fieldset>
-          <Boton type="submit" variante="secundario" className="self-start" disabled={asignar.isPending}>
-            {asignar.isPending ? "Guardando…" : "Guardar proyectos"}
-          </Boton>
-        </form>
+        {usuario.rol === "gestor" ? (
+          <form
+            className={BLOQUE}
+            onSubmit={(e) => {
+              e.preventDefault();
+              asignar.mutate(proyectos, { onSuccess: listo });
+            }}
+          >
+            <fieldset className="flex flex-col gap-2">
+              <legend className="font-semibold">Proyectos que gestiona</legend>
+              {todosLosProyectos.isPending ? (
+                <p role="status" className="text-sm text-texto-secundario">
+                  Cargando los proyectos…
+                </p>
+              ) : todosLosProyectos.error ? (
+                <p className="text-sm text-error">No se pudieron cargar los proyectos.</p>
+              ) : (
+                todosLosProyectos.proyectos.map((p) => (
+                  <label key={p.id} className="flex min-h-11 items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="size-5 accent-marca"
+                      checked={proyectos.includes(p.id)}
+                      onChange={(e) =>
+                        setProyectos((actual) => (e.target.checked ? [...actual, p.id] : actual.filter((x) => x !== p.id)))
+                      }
+                    />
+                    {p.nombre}
+                  </label>
+                ))
+              )}
+            </fieldset>
+            <Boton type="submit" variante="secundario" className="self-start" disabled={asignar.isPending}>
+              {asignar.isPending ? "Guardando…" : "Guardar proyectos"}
+            </Boton>
+          </form>
+        ) : (
+          <div className={BLOQUE}>
+            <p className="font-semibold">Proyectos que gestiona</p>
+            <p className="text-sm text-texto-secundario">
+              Solo una cuenta con permiso de gestor de proyecto gestiona proyectos. Cambia primero su permiso.
+            </p>
+          </div>
+        )}
 
         <form className={BLOQUE} onSubmit={enviarClave} noValidate>
           <CampoTexto

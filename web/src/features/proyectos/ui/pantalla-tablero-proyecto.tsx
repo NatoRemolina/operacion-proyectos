@@ -282,7 +282,7 @@ export function PantallaTableroProyecto({ id }: { id: number }) {
       <Indicadores etiqueta="Cifras del proyecto">
         <Indicador etiqueta="Previsto" cifra={formatearDinero(tablero.previsto_usd, "USD")} pie="Presupuesto de los viajes" />
         <Indicador etiqueta="Real aprobado" cifra={formatearDinero(tablero.real_usd, "USD")} pie="Gastos aprobados" />
-        <Indicador etiqueta="Diferencia" cifra={<Diferencia valor={tablero.diferencia_usd} />} pie="Real menos previsto" />
+        <Indicador etiqueta="Diferencia" cifra={<Diferencia valor={tablero.diferencia_usd} alinear="inicio" />} pie="Real menos previsto" />
         <Indicador
           etiqueta="En revisión"
           cifra={tablero.en_revision}

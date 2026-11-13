@@ -38,7 +38,9 @@ describe("Tablero del proyecto", () => {
     const indicadores = screen.getByRole("group", { name: "Cifras del proyecto" });
     expect(within(indicadores).getByText("USD 1.500,00")).toBeInTheDocument();
     expect(within(indicadores).getByText("USD 1.620,50")).toBeInTheDocument();
-    expect(within(indicadores).getByText(/USD 120,50/)).toBeInTheDocument();
+    const diferencia = within(indicadores).getByText(/USD 120,50/);
+    // En la tarjeta la cifra va alineada como las demás; a la derecha solo en las tablas.
+    expect(diferencia.parentElement).not.toHaveClass("justify-end");
     expect(within(indicadores).getByText("1")).toBeInTheDocument();
     expect(screen.getByText(/no ha llegado soporte de Hotel/)).toBeInTheDocument();
   });

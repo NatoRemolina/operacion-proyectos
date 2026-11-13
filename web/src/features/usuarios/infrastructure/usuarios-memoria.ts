@@ -128,6 +128,7 @@ export function crearUsuariosMemoria(
     async asignarProyectos(id, proyectosIds) {
       await preparar();
       const u = cuenta(id);
+      if (u.rol !== "gestor") throw invalido("proyectos_ids", "Solo una cuenta con permiso de gestor de proyecto gestiona proyectos.");
       const elegidos = [...new Set(proyectosIds)].sort((a, b) => a - b);
       return guardar(id, { proyectos: elegidos.map((p) => ({ id: p, nombre: nombresProyectos.get(p) ?? `Proyecto ${p}` })) },
         `Proyectos de ${u.nombre} guardados (${elegidos.length}).`);

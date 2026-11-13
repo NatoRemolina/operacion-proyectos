@@ -268,3 +268,14 @@ def test_la_pantalla_actual_sigue_protegiendo_igual(cliente):
     r = cliente.post(f"/admin/usuarios/{_admin_id()}", data={"accion": "estado", "activo": "0"}, follow_redirects=False)
     assert "No%20puedes%20desactivar%20tu%20propia%20cuenta" in r.headers["location"]
     assert db.uno("select activo from usuarios where id=:i", i=_admin_id())["activo"] == 1
+
+
+def test_solo_una_cuenta_gestora_recibe_proyectos(cliente):
+    """Como en la pantalla actual, que solo ofrece los proyectos a quien gestiona: si no, al volverla gestora heredaría acceso."""
+    u = _crear(cliente)
+    error = _error(cliente.post(f"{V1}/usuarios/{u['id']}/proyectos", json={"proyectos_ids": [1, 2]}, headers=_csrf(cliente)),
+                   422, "VALIDATION_ERROR")
+    assert "proyectos_ids" in error["fields"]
+    assert not db.todos("select * from proyecto_miembros where usuario_id=:u", u=u["id"])
+    r = cliente.post(f"{V1}/usuarios/{u['id']}/rol", json={"rol": "gestor"}, headers=_csrf(cliente))
+    assert r.json()["usuario"]["proyectos"] == []

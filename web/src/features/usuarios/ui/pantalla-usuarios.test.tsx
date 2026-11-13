@@ -85,6 +85,18 @@ describe("Usuarios y cargos", () => {
     expect(within(await fila("Andrés Molina")).getByText("@andres_vuela")).toBeInTheDocument();
   });
 
+  it("la tabla agrupa los datos en cuatro columnas para no partir palabras en escritorio", async () => {
+    montar();
+    const tabla = await screen.findByRole("table", { name: "Cuentas" });
+    expect(within(tabla).getAllByRole("columnheader").map((c) => c.textContent)).toEqual([
+      "Persona",
+      "Permiso y cargo",
+      "Proyectos",
+      "Estado",
+      "Acción",
+    ]);
+  });
+
   it("administración crea una cuenta con su contraseña inicial", async () => {
     const usuario = userEvent.setup();
     montar();
@@ -137,6 +149,21 @@ describe("Usuarios y cargos", () => {
     await usuario.click(within(panel).getByRole("checkbox", { name: "Apartamentos Alfama (aéreo)" }));
     await usuario.click(within(panel).getByRole("button", { name: "Guardar proyectos" }));
     expect(await within(await fila("Gestión de proyecto (demo)")).findByText("Apartamentos Alfama (aéreo)")).toBeInTheDocument();
+  });
+
+  it("solo una cuenta gestora ofrece proyectos; al dejar de serlo el bloque desaparece", async () => {
+    const usuario = userEvent.setup();
+    const repo = montar();
+    const panel = await gestionar(usuario, "Andrés Molina");
+    expect(within(panel).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(within(panel).getByText(/Solo una cuenta con permiso de gestor de proyecto/)).toBeInTheDocument();
+    await expect(repo.asignarProyectos(2, [1])).rejects.toMatchObject({ tipo: "validacion" });
+    const gestor = await gestionar(usuario, "Gestión de proyecto (demo)");
+    expect(within(gestor).getAllByRole("checkbox").length).toBeGreaterThan(0);
+    await usuario.selectOptions(within(gestor).getByLabelText("Permiso"), "colaborador");
+    await usuario.click(within(gestor).getByRole("button", { name: "Guardar permiso" }));
+    await within(await fila("Gestión de proyecto (demo)")).findByText("colaborador");
+    expect(within(screen.getByRole("region", { name: "Cuenta de Gestión de proyecto (demo)" })).queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   it("desactiva con confirmación y luego reactiva", async () => {

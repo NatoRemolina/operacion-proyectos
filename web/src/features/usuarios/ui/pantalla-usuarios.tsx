@@ -52,7 +52,8 @@ export function PantallaUsuarios() {
       ) : null}
 
       {usuarioElegido ? (
-        <PanelCuenta key={usuarioElegido.id} usuario={usuarioElegido} cargos={cargos.data ?? []} onCerrar={() => setElegida(null)} />
+        // Se rearma al cambiar el permiso: lo elegido para un gestor no sobrevive a dejar de serlo.
+        <PanelCuenta key={`${usuarioElegido.id}-${usuarioElegido.rol}`} usuario={usuarioElegido} cargos={cargos.data ?? []} onCerrar={() => setElegida(null)} />
       ) : null}
 
       {consulta.isPending ? (
@@ -74,12 +75,20 @@ export function PantallaUsuarios() {
                   <span className="flex flex-col">
                     <span className="font-semibold">{u.nombre}</span>
                     <span className="text-sm break-all text-texto-secundario">{u.correo}</span>
+                    <span className="text-sm tabular-nums text-texto-secundario">{u.codigo}</span>
                   </span>
                 ),
               },
-              { clave: "codigo", encabezado: "Código", celda: (u) => u.codigo, sinCorte: true },
-              { clave: "rol", encabezado: "Permiso", celda: (u) => u.rol_texto },
-              { clave: "cargo", encabezado: "Cargo", celda: (u) => u.cargo?.nombre ?? <span className="text-texto-secundario">Sin cargo</span> },
+              {
+                clave: "rol",
+                encabezado: "Permiso y cargo",
+                celda: (u) => (
+                  <span className="flex flex-col">
+                    <span>{u.rol_texto}</span>
+                    <span className="text-sm text-texto-secundario">{u.cargo?.nombre ?? "Sin cargo"}</span>
+                  </span>
+                ),
+              },
               {
                 clave: "proyectos",
                 encabezado: "Proyectos",
@@ -97,9 +106,16 @@ export function PantallaUsuarios() {
               {
                 clave: "estado",
                 encabezado: "Estado",
-                celda: (u) => <Distintivo tono={u.activo ? "exito" : "neutro"}>{u.activo ? "Activa" : "Desactivada"}</Distintivo>,
+                celda: (u) => (
+                  <span className="flex flex-col items-start gap-1 md:items-start">
+                    <Distintivo tono={u.activo ? "exito" : "neutro"}>{u.activo ? "Activa" : "Desactivada"}</Distintivo>
+                    <span className="text-sm whitespace-nowrap">
+                      <span className="text-texto-secundario">Telegram: </span>
+                      <Telegram usuario={u} />
+                    </span>
+                  </span>
+                ),
               },
-              { clave: "telegram", encabezado: "Telegram", celda: (u) => <Telegram usuario={u} /> },
             ]}
             encabezadoAcciones="Acción"
             acciones={(u) => (
