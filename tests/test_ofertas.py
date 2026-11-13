@@ -318,7 +318,7 @@ def test_r1_8_dos_corridas_a_la_vez_no_se_pisan():
     with db.motor.connect() as otra:   # otra corrida en curso tiene el cerrojo
         otra.execute(text("select pg_advisory_lock(:k)"), {"k": ofertas.CERROJO})
         try:
-            assert ofertas.actualizar() == {"filas": 0, "respuestas": 0, "lecturas": 0, "pendientes": 0, "ocupado": True}
+            assert ofertas.actualizar() == {"filas": 0, "respuestas": 0, "lecturas": 0, "pendientes": 0, "fallidos": 0, "ocupado": True}
         finally:
             otra.execute(text("select pg_advisory_unlock(:k)"), {"k": ofertas.CERROJO})
 
@@ -379,3 +379,35 @@ def test_r1_12_el_tablero_de_kpis_pone_al_dia_las_tarifas(monkeypatch):
     monkeypatch.setattr(ofertas, "actualizar_si_toca", lambda: llamadas.append(1))
     kpis.tablero({"proyecto_id": 10 ** 6})
     assert llamadas == [1]
+
+
+# ---------- ronda 2 ----------
+def test_r2_1_un_origen_roto_entre_dos_buenos_no_bloquea_la_extraccion(monkeypatch):
+    ofertas.actualizar()   # lo pendiente de otras pruebas queda hecho
+    claves = [f"reserva_MIA_LAS_2026-12-08_2026-12-11_AA703{i}.json" for i in range(3)]
+    ids = [_guardar_respuesta(c, _respuesta(430 + i), "2026-11-09 10:00:00") for i, c in enumerate(claves)]
+    original = ofertas._insertar
+
+    def falla_el_del_medio(filas):
+        entraron = original(filas)   # falla después de insertar: el punto de guardado debe deshacerlo
+        if filas and filas[0]["origen_fila"] == f"busqueda:{ids[1]}":
+            raise RuntimeError("respuesta dañada")
+        return entraron
+    monkeypatch.setattr(ofertas, "_insertar", falla_el_del_medio)
+    hechos = ofertas.actualizar()
+    assert hechos["respuestas"] == 2 and hechos["fallidos"] == 1
+    assert [db.uno("select count(*) n from ofertas_tarifa where busqueda_clave=:c", c=c)["n"] for c in claves] == [1, 0, 1]
+    roto = db.uno("select tarifas, motivo from ofertas_origenes where origen_fila=:o", o=f"busqueda:{ids[1]}")
+    assert roto["tarifas"] == 0 and "RuntimeError: respuesta dañada" in roto["motivo"]
+    assert ofertas.actualizar()["fallidos"] == 0          # no vuelve a aparecer en cada corrida
+
+
+def test_r2_1_opciones_mal_formadas_se_guardan_sin_romper():
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7040.json"
+    gigante = {"together": {"book_with": "Rara", "price": 10 ** 400, "option_title": "Economy"}}
+    _guardar_respuesta(clave, _respuesta(opciones=["texto", gigante]), "2026-11-09 11:00:00")
+    hechos = ofertas.actualizar()
+    assert hechos["fallidos"] == 0
+    filas = db.todos("select ordinal, precio, crudo from ofertas_tarifa where busqueda_clave=:c order by ordinal", c=clave)
+    assert [(f["ordinal"], f["precio"]) for f in filas] == [(0, None), (1, None)]
+    assert json.loads(filas[0]["crudo"]) == {"valor": "texto"}

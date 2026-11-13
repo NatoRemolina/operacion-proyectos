@@ -70,6 +70,7 @@ ofertas_origenes = db._tabla(
     Column("origen_fila", Text, nullable=False, unique=True), Column("momento", Text, nullable=False),
     Column("tarifas", Integer),          # filas que produjo
     Column("nuevas", Integer),           # de ellas, cuántas entraron (las demás ya estaban)
+    Column("motivo", Text),              # si no se pudo extraer: el error. Queda registrado y la corrida sigue
 )
 
 
@@ -230,7 +231,7 @@ def _fila(base: dict, nombre, precio, vendedor, es_aerolinea, lineas_equipaje, l
           ordinal: int = 0, tramo: str = "ida_vuelta") -> dict | None:
     try:
         precio = float(precio)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         precio = None   # se guarda igual, con su crudo: la limpieza la deja fuera al entrenar («sin precio»)
     mano, maleta = equipaje(lineas_equipaje)
     c, r = cambios(lineas_condiciones), reembolso(lineas_condiciones)
@@ -276,6 +277,8 @@ def _de_respuesta(origen_fila: str, clave: str, datos: dict, creado: str | None)
             "moneda": p.get("currency") or "USD", **_calendario(ida, regreso, momento)}
     filas = []
     for ordinal, o in enumerate(datos["booking_options"]):
+        if not isinstance(o, dict):
+            o = {"valor": o}   # una opción que no es un objeto se guarda tal cual, sin precio
         partes = [(o[k], tramo) for k, tramo in (("together", "ida_vuelta"), ("departing", "ida"), ("returning", "regreso"))
                   if isinstance(o.get(k), dict)] or [(o, "ida_vuelta")]   # una forma desconocida se guarda entera
         for t, tramo in partes:
@@ -375,11 +378,12 @@ def _filas_de(origen_fila: str, tipo: str, ref) -> list[dict]:
     return _de_respuesta(origen_fila, ref.name, datos, None) if isinstance(datos, dict) else []
 
 
-def _registrar_origen(origen_fila: str, tarifas: int, nuevas: int):
+def _registrar_origen(origen_fila: str, tarifas: int, nuevas: int, motivo: str | None = None):
     from sqlalchemy.dialects import postgresql, sqlite
     sentencia = (sqlite if config.ES_SQLITE else postgresql).insert(ofertas_origenes).on_conflict_do_nothing()
     with db.transaccion() as c:
-        c.execute(sentencia, [{"origen_fila": origen_fila, "momento": db.ahora(), "tarifas": tarifas, "nuevas": nuevas}])
+        c.execute(sentencia, [{"origen_fila": origen_fila, "momento": db.ahora(), "tarifas": tarifas, "nuevas": nuevas,
+                                "motivo": motivo}])
 
 
 TOPE_ORIGENES = 200   # respuestas o lecturas por corrida: el resto queda para la siguiente
@@ -393,7 +397,7 @@ def actualizar() -> dict:
     Todo va en una transacción. En PostgreSQL toma un cerrojo consultivo y, si otra corrida lo tiene, sale sin hacer nada
     (`ocupado`); en SQLite la transacción de escritura ya pone las corridas en fila. Así el conteo es el de las filas que
     de verdad entraron."""
-    hechos = {"filas": 0, "respuestas": 0, "lecturas": 0, "pendientes": 0, "ocupado": False}
+    hechos = {"filas": 0, "respuestas": 0, "lecturas": 0, "pendientes": 0, "fallidos": 0, "ocupado": False}
     if not _existe("ofertas_tarifa"):
         return hechos
     con_lecturas = _existe("analisis_vuelo")
@@ -403,12 +407,22 @@ def actualizar() -> dict:
         pendientes = _pendientes(_hechos(), con_lecturas)
         hechos["pendientes"] = max(len(pendientes) - TOPE_ORIGENES, 0)
         for origen_fila, tipo, ref in pendientes[:TOPE_ORIGENES]:
-            filas = _filas_de(origen_fila, tipo, ref)
-            nuevas = _insertar(filas)
-            _registrar_origen(origen_fila, len(filas), nuevas)
+            # Cada origen en su punto de guardado: uno dañado se deshace solo, queda registrado con su motivo y no
+            # bloquea a los demás ni vuelve a aparecer en cada corrida
+            try:
+                with c.begin_nested():
+                    filas = _filas_de(origen_fila, tipo, ref)
+                    nuevas = _insertar(filas)
+                    _registrar_origen(origen_fila, len(filas), nuevas)
+            except Exception as e:  # noqa: BLE001  cualquier forma rara de una respuesta guardada
+                _registrar_origen(origen_fila, 0, 0, f"{type(e).__name__}: {str(e)[:250]}")
+                hechos["fallidos"] += 1
+                continue
             if filas:
                 hechos["lecturas" if tipo == "analisis" else "respuestas"] += 1
                 hechos["filas"] += nuevas
+    if hechos["fallidos"]:
+        _evento("orígenes sin extraer", f"{hechos['fallidos']} respuestas o lecturas no se pudieron extraer: el motivo está en ofertas_origenes")
     if hechos["filas"]:
         _evento("tarifas extraídas", f"{hechos['filas']} tarifas de {hechos['respuestas']} respuestas del buscador y "
                                      f"{hechos['lecturas']} lecturas de la página" + (f"; quedan {hechos['pendientes']}" if hechos["pendientes"] else ""))
