@@ -20,6 +20,7 @@ function repositorioQueResponde(...respuestas: Array<GastoDetalle | ErrorDeAplic
     enviar,
     urlOriginal: () => null,
     justificar: () => Promise.resolve(gastoDePrueba()),
+    urlLibroContable: () => null,
   };
   return { repositorio, enviar };
 }

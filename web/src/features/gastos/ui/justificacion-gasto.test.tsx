@@ -61,6 +61,7 @@ describe("Para qué fue el gasto", () => {
       enviar: async () => gastoDePrueba(),
       urlOriginal: () => null,
       justificar: () => Promise.reject(new ErrorDeAplicacion("prohibido")),
+      urlLibroContable: () => null,
     };
     renderizarConFuente(<PantallaDetalleGasto id={7} />, { gastos: repositorio });
 

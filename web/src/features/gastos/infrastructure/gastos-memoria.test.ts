@@ -49,3 +49,9 @@ describe("adaptador en memoria de gastos", () => {
     await expect(gastos.justificar(999, "No existe este gasto")).rejects.toMatchObject({ tipo: "no_encontrado" });
   });
 });
+
+describe("Excel contable en memoria", () => {
+  it("esta fuente no genera el libro: no ofrece una dirección falsa", () => {
+    expect(crearGastosMemoria({}).urlLibroContable({ desde: "2026-11-01", hasta: "2026-11-30" })).toBeNull();
+  });
+});

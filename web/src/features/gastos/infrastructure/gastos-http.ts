@@ -89,5 +89,8 @@ export function crearGastosHttp(cliente: ClienteHttp): GastosRepository {
     urlOriginal(documentoId) {
       return cliente.url(`/documentos/${encodeURIComponent(documentoId)}/contenido`);
     },
+    urlLibroContable({ desde, hasta }) {
+      return cliente.url(`/gastos/contable${consulta({ desde, hasta })}`);
+    },
   };
 }

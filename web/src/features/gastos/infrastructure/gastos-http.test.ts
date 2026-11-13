@@ -174,6 +174,15 @@ describe("adaptador HTTP de gastos", () => {
     const { gastos } = preparar();
     expect(gastos.urlOriginal(55)).toBe("/api/v1/documentos/55/contenido");
   });
+
+  it("el Excel contable se descarga de la API con el periodo elegido", () => {
+    const { gastos, fetchFalso } = preparar();
+    expect(gastos.urlLibroContable({ desde: "2026-11-01", hasta: "2026-11-30" })).toBe(
+      "/api/v1/gastos/contable?desde=2026-11-01&hasta=2026-11-30",
+    );
+    // Es un enlace que abre el navegador con la cookie de sesión: no se pide nada por adelantado.
+    expect(fetchFalso).not.toHaveBeenCalled();
+  });
 });
 
 describe("adaptador HTTP de sesión", () => {
