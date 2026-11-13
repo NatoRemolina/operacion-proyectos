@@ -691,6 +691,91 @@
         }
       }
     },
+    "/api/v1/cotizaciones/{id}/fuente": {
+      "post": {
+        "tags": [
+          "cotizaciones"
+        ],
+        "summary": "Fuente",
+        "description": "Deja el rastro de que la persona abrió la fuente de los precios (Google Flights o Google Hotels) y devuelve el\nenlace. Lo puede abrir quien ve la cotización. La web lo llama al hacer clic en «Ver en Google Flights/Hotels».",
+        "operationId": "fuente_api_v1_cotizaciones__id__fuente_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FuenteAbierta"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnlaceFuente"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión o sesión vencida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, o sin permiso para esta acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/cotizaciones/{id}/decision": {
       "post": {
         "tags": [
@@ -4946,6 +5031,16 @@
               }
             ]
           },
+          "fuente_url": {
+            "type": "string",
+            "title": "Fuente Url",
+            "description": "La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador (`search_metadata.google_flights_url`) o, si falta, una construida con los aeropuertos y las fechas. Siempre `https://www.google.com/travel/...`."
+          },
+          "fuente_hoteles_url": {
+            "type": "string",
+            "title": "Fuente Hoteles Url",
+            "description": "La búsqueda de hoteles en Google Hotels con las fechas de la cotización."
+          },
           "puede_decidir": {
             "type": "boolean",
             "title": "Puede Decidir",
@@ -4998,6 +5093,8 @@
           "mas_barata_id",
           "decision",
           "viaje",
+          "fuente_url",
+          "fuente_hoteles_url",
           "puede_decidir",
           "bloqueo"
         ],
@@ -5858,6 +5955,29 @@
         ],
         "title": "Enlace"
       },
+      "EnlaceFuente": {
+        "properties": {
+          "destino": {
+            "type": "string",
+            "enum": [
+              "vuelos",
+              "hoteles"
+            ],
+            "title": "Destino"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "`https://www.google.com/travel/...`, armada por el servidor."
+          }
+        },
+        "type": "object",
+        "required": [
+          "destino",
+          "url"
+        ],
+        "title": "EnlaceFuente"
+      },
       "Equipo": {
         "properties": {
           "nivel": {
@@ -6444,6 +6564,39 @@
           "precios_en_vivo"
         ],
         "title": "FormularioCotizacion"
+      },
+      "FuenteAbierta": {
+        "properties": {
+          "destino": {
+            "type": "string",
+            "enum": [
+              "vuelos",
+              "hoteles"
+            ],
+            "title": "Destino"
+          },
+          "hotel_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotel Id",
+            "description": "Con `hoteles`: un hotel de la cotización."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "destino"
+        ],
+        "title": "FuenteAbierta",
+        "description": "Qué fuente abre la persona. La URL la arma el servidor: nunca se acepta una del cliente."
       },
       "FuenteAsistente": {
         "properties": {
@@ -8606,6 +8759,11 @@
             "type": "boolean",
             "title": "Mas Barata",
             "description": "El de menor tarifa entre los que sirven, si no es el recomendado."
+          },
+          "fuente_url": {
+            "type": "string",
+            "title": "Fuente Url",
+            "description": "Este hotel en Google Hotels con las fechas de la cotización, para verificar el precio."
           }
         },
         "type": "object",
@@ -8625,7 +8783,8 @@
           "descartado",
           "origen_dato",
           "recomendada",
-          "mas_barata"
+          "mas_barata",
+          "fuente_url"
         ],
         "title": "OpcionHotel"
       },

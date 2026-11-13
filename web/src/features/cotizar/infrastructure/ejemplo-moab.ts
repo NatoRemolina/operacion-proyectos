@@ -635,6 +635,8 @@ export const COTIZACION_MOAB: Cotizacion = {
   "mas_barata_id": 1,
   "decision": null,
   "viaje": null,
+  "fuente_url": "https://www.google.com/travel/flights?hl=en&gl=us&curr=USD&tfs=CBwQAhowEgoyMDI2LTEyLTA4agcIARIDTUlBcgcIARIDQ05ZcgcIARIDR0pUcgcIARIDU0xDGjASCjIwMjYtMTItMTFqBwgBEgNDTllqBwgBEgNHSlRqBwgBEgNTTENyBwgBEgNNSUFAAUgBcAGYAQE&tfu=EgIIAQ",
+  "fuente_hoteles_url": "https://www.google.com/travel/search?q=Moab%20hotels%20from%202026-12-08%20to%202026-12-11&hl=en&gl=us",
   "puede_decidir": true,
   "bloqueo": null
 };

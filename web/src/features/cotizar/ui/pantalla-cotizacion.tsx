@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { useAvisos } from "@/shared/ui/aviso-emergente";
 import { Boton, clasesBoton } from "@/shared/ui/boton";
@@ -14,7 +14,7 @@ import { Alerta } from "@/shared/ui/estado";
 import { EstadoVacio } from "@/shared/ui/estado-vacio";
 import { formatearDinero, formatearRango } from "@/shared/ui/formato";
 import { GIRO, PRESIONAR } from "@/shared/ui/movimiento";
-import { useCotizacion, useDecidir, useFormularioCotizacion } from "../application/cotizar";
+import { useCotizacion, useDecidir, useFormularioCotizacion, useRegistrarFuente } from "../application/cotizar";
 import {
   MOTIVO_MINIMO,
   barataDescartada,
@@ -323,6 +323,7 @@ function FormularioDecision({
   onDecidida: () => void;
 }) {
   const decidir = useDecidir(c.id);
+  const registrarFuente = useRegistrarFuente(c.id);
   const { avisar } = useAvisos();
   const formulario = useFormularioCotizacion();
   const clave = `${CLAVE_DECISION}${c.id}`;
@@ -382,6 +383,7 @@ function FormularioDecision({
             : "Del menor al mayor costo total: precio + equipaje + riesgo de cambio − millas + traslado."}
           {elegible ? " Ninguno viene marcado: la elección es tuya." : ""}
         </p>
+        <EnlaceFuente href={c.fuente_url} texto="Ver en Google Flights" onAbrir={() => registrarFuente("vuelos")} />
         <Leyenda />
         {errorVuelo ? (
           <p id={errorVueloId} role="alert" className="text-sm font-semibold text-error">
@@ -618,12 +620,14 @@ function OpcionDeHotel({
   nombreGrupo,
   elegido,
   onElegir,
+  fuente,
 }: {
   h: OpcionHotel;
   noches: number;
   nombreGrupo: string;
   elegido: boolean;
   onElegir: () => void;
+  fuente: ReactNode;
 }) {
   const descripcion = useId();
   return (
@@ -642,6 +646,7 @@ function OpcionDeHotel({
       </label>
       {/* alineado con el texto, no con el botón (size-5 + gap-3) */}
       <DesgloseHotel h={h} className="pl-8" />
+      <div className="pl-8">{fuente}</div>
     </li>
   );
 }
@@ -676,6 +681,19 @@ function Hoteles({
   onElegir: (id: number | null) => void;
 }) {
   const nombre = useId();
+  const registrarFuente = useRegistrarFuente(c.id);
+  const fuente = (
+    <EnlaceFuente href={c.fuente_hoteles_url} texto="Ver en Google Hotels" onAbrir={() => registrarFuente("hoteles")} />
+  );
+  const fuenteDe = (h: OpcionHotel) => (
+    <EnlaceFuente
+      href={h.fuente_url}
+      texto="Ver en Google Hotels"
+      contexto={h.nombre}
+      variante="texto"
+      onAbrir={() => registrarFuente("hoteles", h.id)}
+    />
+  );
   if (!c.hoteles.length) {
     return (
       <section className="flex flex-col gap-2">
@@ -684,6 +702,7 @@ function Hoteles({
           No hay hoteles {c.hoteles_descartados.length ? "que cumplan " : ""}para este lugar y fechas
           {c.ciudad_hotel ? ` (${c.ciudad_hotel})` : ""}. Puedes guardar la decisión solo con el vuelo.
         </p>
+        {fuente}
         <HotelesDescartados hoteles={c.hoteles_descartados} />
       </section>
     );
@@ -693,11 +712,13 @@ function Hoteles({
       <section className="flex flex-col gap-2">
         <h2 className="text-xl font-bold tracking-tight">Hoteles</h2>
         <p className="text-sm text-texto-secundario">{EXPLICACION_HOTELES}</p>
+        {fuente}
         <ul className="flex flex-col gap-2">
           {c.hoteles.map((h) => (
             <li key={h.id} className="flex flex-col gap-1.5 rounded-tarjeta border border-linea bg-superficie p-3">
               <FilaHotel h={h} noches={c.noches} />
               <DesgloseHotel h={h} />
+              <div>{fuenteDe(h)}</div>
             </li>
           ))}
         </ul>
@@ -710,6 +731,7 @@ function Hoteles({
       <fieldset className="flex min-w-0 flex-col gap-2">
         <legend className="mb-1 text-xl font-bold tracking-tight">Hotel (opcional)</legend>
         <p className="text-sm text-texto-secundario">{EXPLICACION_HOTELES}</p>
+        {fuente}
         <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-tarjeta border border-linea bg-superficie p-3">
           <input type="radio" name={nombre} className="size-5 accent-marca" checked={hotelId === null} onChange={() => onElegir(null)} />
           Sin hotel
@@ -723,12 +745,49 @@ function Hoteles({
               nombreGrupo={nombre}
               elegido={hotelId === h.id}
               onElegir={() => onElegir(h.id)}
+              fuente={fuenteDe(h)}
             />
           ))}
         </ul>
       </fieldset>
       <HotelesDescartados hoteles={c.hoteles_descartados} />
     </div>
+  );
+}
+
+/**
+ * Enlace a la búsqueda en Google para verificar el precio. Abre otra pestaña sin darle acceso a esta página
+ * (`noopener noreferrer`) y deja el rastro del clic, también con el botón central del ratón.
+ */
+function EnlaceFuente({
+  href,
+  texto,
+  contexto,
+  variante = "secundario",
+  onAbrir,
+}: {
+  href: string;
+  texto: string;
+  /** Para distinguir enlaces iguales al leerlos en voz alta (por ejemplo, el nombre del hotel). */
+  contexto?: string;
+  variante?: "secundario" | "texto";
+  onAbrir: () => void;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`${texto}${contexto ? ` (${contexto})` : ""}, se abre en otra pestaña`}
+      className={clasesBoton(variante, `self-start ${variante === "texto" ? "text-sm" : ""}`)}
+      onClick={onAbrir}
+      onAuxClick={(e) => {
+        if (e.button === 1) onAbrir();
+      }}
+    >
+      {texto}
+      <span aria-hidden="true">↗</span>
+    </a>
   );
 }
 

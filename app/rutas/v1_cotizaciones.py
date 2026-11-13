@@ -13,7 +13,9 @@ from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
 from ..api_v1.esquemas_cotizacion import (
     ENTERO_MAXIMO,
     Cotizacion,
+    EnlaceFuente,
     FormularioCotizacion,
+    FuenteAbierta,
     LadoPedido,
     ListaLugares,
     NuevaCotizacion,
@@ -160,6 +162,22 @@ def detalle(id: int = IdCotizacion, yo: dict = Depends(persona)):
     return _cotizacion(yo, id)
 
 
+# ---------- fuente de los precios ----------
+@router.post("/cotizaciones/{id}/fuente", response_model=EnlaceFuente, responses=errores_cotizacion(401, 403, 404, 422))
+def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escritura)):
+    """Deja el rastro de que la persona abrió la fuente de los precios (Google Flights o Google Hotels) y devuelve el
+    enlace. Lo puede abrir quien ve la cotización. La web lo llama al hacer clic en «Ver en Google Flights/Hotels»."""
+    if not acceso.puede_ver(yo, _fila(id)):
+        raise _no_encontrado()
+    try:
+        url = cotizacion.abrir_fuente(yo, id, datos.destino, datos.hotel_id)
+    except LookupError as e:
+        raise _no_encontrado() from e
+    except cotizacion.CotizacionInvalida as e:
+        raise _invalido(e.campo, str(e)) from e
+    return {"destino": datos.destino, "url": url}
+
+
 # ---------- decidir ----------
 @router.post("/cotizaciones/{id}/decision", response_model=Cotizacion, responses=errores_cotizacion(401, 403, 404, 409, 422))
 def decidir(datos: NuevaDecision, id: int = IdCotizacion, yo: dict = Depends(escritura)):
@@ -233,7 +251,7 @@ def _hotel(o: dict) -> dict:
             "avisos": ev["avisos"], "calificacion": h.get("calificacion"),
             "clase": int(h["clase"]) if h.get("clase") is not None else None, "programa": o["programa"],
             "socio": ev["socio"], "membresia_de_ejemplo": ev["membresia_de_ejemplo"], "descartado": ev["descartado"], "origen_dato": o["origen_dato"],
-            "recomendada": bool(o.get("recomendado")), "mas_barata": bool(o.get("mas_barato"))}
+            "recomendada": bool(o.get("recomendado")), "mas_barata": bool(o.get("mas_barato")), "fuente_url": o["fuente_url"]}
 
 
 def _lado_salida(sol: dict, nombre: str) -> dict:
@@ -276,6 +294,7 @@ def _cotizacion(yo: dict, sid: int) -> dict:
                      "aviso": (db.de_json(d["desglose"], {}) or {}).get("aviso_tope")} if d else None,
         "viaje": {**{k: viaje[k] for k in ("id", "codigo", "estado", "estado_texto")},
                   "presupuesto_usd": consultas.dinero(viaje["presupuesto_usd"])} if viaje else None,
+        "fuente_url": c["fuente_url"], "fuente_hoteles_url": c["fuente_hoteles_url"],
         "puede_decidir": cotizacion.puede_decidir(yo, sol) and not bloqueo and bool(c["vuelos"] or c["descartados"]),
         "bloqueo": bloqueo,
     }

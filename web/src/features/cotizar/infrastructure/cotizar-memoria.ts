@@ -102,6 +102,8 @@ export function crearCotizarMemoria(opciones: {
       mas_barata_id: null,
       decision: null,
       viaje: null,
+      fuente_url: "https://www.google.com/travel/flights",
+      fuente_hoteles_url: "https://www.google.com/travel/search",
       puede_decidir: false,
       bloqueo: null,
     };
@@ -196,6 +198,14 @@ export function crearCotizarMemoria(opciones: {
       };
       cotizaciones.set(id, decidida);
       return decidida;
+    },
+    async registrarFuente(id, _destino, hotelId) {
+      await esperar(latenciaMs);
+      exigirSesion(sesion);
+      const c = obtener(id);
+      if (hotelId !== undefined && !c.hoteles.concat(c.hoteles_descartados).some((h) => h.id === hotelId)) {
+        throw new ErrorDeAplicacion("validacion", { campos: { hotel_id: "Ese hotel no es de esta cotización." } });
+      }
     },
   };
 }

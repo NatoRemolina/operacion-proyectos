@@ -131,6 +131,13 @@ class NuevaDecision(BaseModel):
     razones: list[str] = Field(default_factory=list, max_length=10, description="Claves de `razones` del formulario.")
 
 
+class FuenteAbierta(BaseModel):
+    """Qué fuente abre la persona. La URL la arma el servidor: nunca se acepta una del cliente."""
+    model_config = ConfigDict(extra="forbid")
+    destino: Literal["vuelos", "hoteles"]
+    hotel_id: int | None = Field(None, ge=1, le=ENTERO_MAXIMO, description="Con `hoteles`: un hotel de la cotización.")
+
+
 # ---------- salida ----------
 class LadoCotizacion(BaseModel):
     codigo: str = Field(description="El aeropuerto principal; tras decidir, el del vuelo elegido.")
@@ -214,6 +221,7 @@ class OpcionHotel(BaseModel):
     origen_dato: str | None
     recomendada: bool = Field(description="El de menor costo total entre los que sirven.")
     mas_barata: bool = Field(description="El de menor tarifa entre los que sirven, si no es el recomendado.")
+    fuente_url: str = Field(description="Este hotel en Google Hotels con las fechas de la cotización, para verificar el precio.")
 
 
 class Equipo(BaseModel):
@@ -275,8 +283,17 @@ class Cotizacion(BaseModel):
     mas_barata_id: int | None
     decision: DecisionCotizacion | None
     viaje: ViajeDeCotizacion | None
+    fuente_url: str = Field(description="La búsqueda de vuelos en Google Flights: la misma que se le hizo al buscador "
+                                        "(`search_metadata.google_flights_url`) o, si falta, una construida con los "
+                                        "aeropuertos y las fechas. Siempre `https://www.google.com/travel/...`.")
+    fuente_hoteles_url: str = Field(description="La búsqueda de hoteles en Google Hotels con las fechas de la cotización.")
     puede_decidir: bool = Field(description="La persona puede guardar o cambiar la decisión ahora.")
     bloqueo: str | None = Field(description="Por qué la decisión ya no se puede cambiar, si es el caso.")
+
+
+class EnlaceFuente(BaseModel):
+    destino: Literal["vuelos", "hoteles"]
+    url: str = Field(description="`https://www.google.com/travel/...`, armada por el servidor.")
 
 
 # ---------- errores ----------

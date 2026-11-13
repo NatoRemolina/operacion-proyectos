@@ -283,6 +283,7 @@ interface OpcionHotel {
   origen_dato: string | null;
   recomendada: boolean;                       // menor costo total entre los que sirven
   mas_barata: boolean;                        // menor tarifa entre los que sirven, si no es la recomendada
+  fuente_url: string;                         // este hotel en Google Hotels con las fechas, para verificar el precio
 }
 
 interface Cotizacion {
@@ -314,6 +315,8 @@ interface Cotizacion {
               aviso: string | null } | null; // si se decidió sin consultar en vivo por el tope del día
   viaje: { id: number; codigo: string; estado: EstadoViaje; estado_texto: string;
            presupuesto_usd: Dinero } | null; // lo que aprueba administración: sin riesgo ni millas, con viáticos
+  fuente_url: string;                         // la búsqueda de vuelos en Google Flights (ver «Fuente de los precios»)
+  fuente_hoteles_url: string;                 // la búsqueda de hoteles en Google Hotels con las fechas
   puede_decidir: boolean;                     // la persona puede guardar o cambiar la decisión ahora
   bloqueo: string | null;                     // por qué ya no, si es el caso
 }
@@ -355,6 +358,13 @@ Cuerpo JSON `{"vuelo_id": 76, "hotel_id": null, "motivo": "", "razones": ["costo
 - Si no hay vuelos que cumplan (todos descartados), se puede elegir un descartado con `motivo`.
 - Decidir consulta el regreso y las opciones de reserva del vuelo (dos búsquedas; lo guardado no se paga). Pasado el tope del día por persona (regla `decisiones_en_vivo_dia`, 10 en la semilla), se decide con lo guardado y `decision.aviso` lo dice.
 - `id`, `vuelo_id`, `hotel_id`, `proyecto_id` y `viajero_id` son enteros de 1 a 2³¹−1; fuera de ese rango, 422.
+
+### `POST /cotizaciones/{id}/fuente`
+Cuerpo JSON `{"destino": "vuelos"}` o `{"destino": "hoteles", "hotel_id": 90}` (sin `hotel_id`, la lista de hoteles) y `X-CSRF-Token`. Deja en la bitácora de la cotización el paso `fuente abierta` con quién, adónde y la URL, y responde 200 `{"destino": "vuelos", "url": "https://www.google.com/travel/flights?..."}`. La web lo llama al hacer clic en «Ver en Google Flights» o «Ver en Google Hotels»; el enlace se abre igual aunque el registro falle.
+
+- **Fuente de los precios.** `fuente_url` es el `search_metadata.google_flights_url` de la respuesta guardada del buscador para esa ruta y esas fechas; si falta, se construye con los aeropuertos y las fechas (la misma forma `tfs` que usa el buscador). En hoteles, el enlace guardado no trae fechas: se toma su texto de búsqueda y se le añaden («Moab hotels from 2026-12-08 to 2026-12-11»), y cada hotel lleva la búsqueda con su nombre. Solo se aceptan enlaces `https://www.google.com/travel/...` sin credenciales ni puerto; un enlace guardado que no cumpla se reemplaza por el construido.
+- La URL siempre la arma el servidor: el cuerpo no acepta `url` (422). Un `hotel_id` que no es de la cotización: 422 con `fields.hotel_id`.
+- La abre quien ve la cotización (también el gestor del proyecto); a los demás, 404.
 
 ## Fuera de este contrato (siguientes fases)
 
