@@ -295,5 +295,6 @@ def test_el_openapi_versionado_coincide_con_la_api():
                  ("get", "/proyectos/{id}/exportar.csv"),
                  ("get", "/usuarios"), ("post", "/usuarios"), ("post", "/usuarios/{id}/rol"), ("post", "/usuarios/{id}/estado"),
                  ("post", "/usuarios/{id}/cargo"), ("post", "/usuarios/{id}/proyectos"), ("post", "/usuarios/{id}/clave"),
-                 ("get", "/cargos"), ("post", "/cargos"), ("post", "/cargos/{id}")}
+                 ("get", "/cargos"), ("post", "/cargos"), ("post", "/cargos/{id}"),
+                 ("get", "/cuenta"), ("post", "/cuenta/clave"), ("post", "/cuenta/telegram/vinculo"), ("post", "/cuenta/telegram/desvincular")}
     assert {(m, r.removeprefix(V1)) for r, ops in rutas.items() for m in ops} == esperadas

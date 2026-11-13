@@ -682,6 +682,193 @@
         }
       }
     },
+    "/api/v1/cuenta": {
+      "get": {
+        "tags": [
+          "cuenta"
+        ],
+        "summary": "Mi Cuenta",
+        "description": "Mis datos y el estado de Telegram. `canal_activo` dice si el bot está configurado (en producción hoy no lo está).",
+        "operationId": "mi_cuenta_api_v1_cuenta_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiCuenta"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cuenta/clave": {
+      "post": {
+        "tags": [
+          "cuenta"
+        ],
+        "summary": "Cambiar Clave",
+        "description": "Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.",
+        "operationId": "cambiar_clave_api_v1_cuenta_clave_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambioMiClave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaveCambiada"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cuenta/telegram/vinculo": {
+      "post": {
+        "tags": [
+          "cuenta"
+        ],
+        "summary": "Vincular Telegram",
+        "description": "Un código de un solo uso para vincular el chat (vale unos minutos; en la base queda solo su huella).\nCon el canal apagado: 409 `INVALID_STATE`.",
+        "operationId": "vincular_telegram_api_v1_cuenta_telegram_vinculo_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VinculoTelegram"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto: Idempotency-Key repetida con otro contenido, cambio ajeno o estado que no admite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cuenta/telegram/desvincular": {
+      "post": {
+        "tags": [
+          "cuenta"
+        ],
+        "summary": "Desvincular Telegram",
+        "operationId": "desvincular_telegram_api_v1_cuenta_telegram_desvincular_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiCuenta"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gastos": {
       "get": {
         "tags": [
@@ -3069,6 +3256,28 @@
         "title": "CambioEstadoViaje",
         "description": "Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."
       },
+      "CambioMiClave": {
+        "properties": {
+          "actual": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Actual"
+          },
+          "nueva": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Nueva",
+            "description": "10 caracteres o más y distinta de la actual."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "actual",
+          "nueva"
+        ],
+        "title": "CambioMiClave"
+      },
       "CambioProyectos": {
         "properties": {
           "proyectos_ids": {
@@ -3187,6 +3396,25 @@
           "diferencia_usd"
         ],
         "title": "CategoriaProyecto"
+      },
+      "ClaveCambiada": {
+        "properties": {
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token",
+            "description": "La sesión se renueva al cambiar la contraseña: el token CSRF anterior deja de servir."
+          },
+          "mensaje": {
+            "type": "string",
+            "title": "Mensaje"
+          }
+        },
+        "type": "object",
+        "required": [
+          "csrf_token",
+          "mensaje"
+        ],
+        "title": "ClaveCambiada"
       },
       "CorreoDelSoporte": {
         "properties": {
@@ -5020,6 +5248,27 @@
         ],
         "title": "LugarSugerido"
       },
+      "MiCuenta": {
+        "properties": {
+          "persona": {
+            "$ref": "#/components/schemas/Persona"
+          },
+          "rol_texto": {
+            "type": "string",
+            "title": "Rol Texto"
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/TelegramPropio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "persona",
+          "rol_texto",
+          "telegram"
+        ],
+        "title": "MiCuenta"
+      },
       "NuevaClave": {
         "properties": {
           "clave": {
@@ -6473,6 +6722,38 @@
         ],
         "title": "Tarifa"
       },
+      "TelegramPropio": {
+        "properties": {
+          "vinculado": {
+            "type": "boolean",
+            "title": "Vinculado"
+          },
+          "usuario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usuario",
+            "description": "Alias de Telegram del chat vinculado, si lo tiene."
+          },
+          "canal_activo": {
+            "type": "boolean",
+            "title": "Canal Activo",
+            "description": "El bot de Telegram está configurado en esta instalación. En producción hoy está apagado."
+          }
+        },
+        "type": "object",
+        "required": [
+          "vinculado",
+          "usuario",
+          "canal_activo"
+        ],
+        "title": "TelegramPropio"
+      },
       "Titular": {
         "properties": {
           "id": {
@@ -7106,6 +7387,39 @@
           "soy_yo"
         ],
         "title": "ViajeroOpcion"
+      },
+      "VinculoTelegram": {
+        "properties": {
+          "codigo": {
+            "type": "string",
+            "title": "Codigo",
+            "description": "Código de un solo uso para escribir en el chat del bot: /start <codigo>."
+          },
+          "enlace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enlace",
+            "description": "Enlace que abre el chat del bot con el código, si el bot tiene nombre configurado."
+          },
+          "minutos": {
+            "type": "integer",
+            "title": "Minutos",
+            "description": "Minutos de validez del código."
+          }
+        },
+        "type": "object",
+        "required": [
+          "codigo",
+          "enlace",
+          "minutos"
+        ],
+        "title": "VinculoTelegram"
       },
       "app__api_v1__esquemas__Referencia": {
         "properties": {

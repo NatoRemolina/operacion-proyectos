@@ -101,8 +101,7 @@ def _mi_cuenta(request: Request, aviso: str = "", vinculo: dict | None = None):
 @router.post("/mi-cuenta/telegram")
 def mi_cuenta_telegram(request: Request, accion: str = Form("vincular")):
     if accion == "desvincular":
-        telegram.desvincular(_yo()["id"])
-        eventos.registrar("usuario", _yo()["id"], "Telegram desvinculado", "", _yo()["nombre"])
+        usuarios.desvincular_telegram(_yo())
         return RedirectResponse("/mi-cuenta?aviso=Chat+desvinculado.", status_code=303)
     if not telegram.activo():
         return RedirectResponse("/mi-cuenta?aviso=El+canal+de+Telegram+no+est%C3%A1+configurado.", status_code=303)

@@ -452,3 +452,27 @@ Cuerpo `{"nombre"}`. 201 `Cargo`. Al menos 3 letras y sin repetir otro (sin impo
 
 ### `POST /cargos/{id}`
 Cuerpo `{"nombre"?, "activo"?}`: renombra o activa/desactiva; lo que no se manda no cambia. Un cargo nunca se borra: quien lo tiene lo conserva aunque se desactive. 200 `Cargo`.
+
+## Mi cuenta
+
+Para cualquier permiso. La cuenta sale siempre de la sesión: nadie lee ni cambia la de otra persona por aquí. Misma regla que la pantalla actual `/mi-cuenta` (`app/servicios/usuarios.py` y `telegram.py`).
+
+```ts
+interface MiCuenta {
+  persona: Persona;
+  rol_texto: string;                  // "gestor de proyecto"
+  telegram: { vinculado: boolean; usuario: string | null; canal_activo: boolean };   // canal_activo: el bot está configurado
+}
+```
+
+### `GET /cuenta`
+200 `MiCuenta`. En producción el bot de Telegram está apagado: `canal_activo: false`.
+
+### `POST /cuenta/clave`
+Cuerpo `{"actual", "nueva"}` y `X-CSRF-Token`. La actual que no coincide: 422 `fields.actual`; la nueva de menos de 10 caracteres o igual a la actual: 422 `fields.nueva`. Al cambiarla se cierran todas las sesiones de la persona y esta se renueva: 200 `{"csrf_token", "mensaje"}` con la cookie nueva; el token CSRF anterior deja de servir. Deja el evento `contraseña cambiada por la persona`. La contraseña nunca sale en la respuesta.
+
+### `POST /cuenta/telegram/vinculo`
+Con `X-CSRF-Token`, sin cuerpo. 200 `{"codigo", "enlace": string | null, "minutos"}`: un código de un solo uso (en la base queda solo su huella) para escribir `/start <codigo>` en el chat del bot, o el enlace que lo abre si el bot tiene nombre configurado. Con el canal apagado: 409 `INVALID_STATE` con el motivo.
+
+### `POST /cuenta/telegram/desvincular`
+Con `X-CSRF-Token`, sin cuerpo. 200 `MiCuenta` con `telegram.vinculado: false`. Deja el evento `Telegram desvinculado`.

@@ -5,7 +5,7 @@ Protecciones: nadie se quita su propio rol de administración ni desactiva su cu
 administración activa. Cambiar el permiso, desactivar o cambiar la contraseña cierra las sesiones abiertas de la cuenta.
 """
 from .. import db
-from . import acceso, eventos
+from . import acceso, eventos, telegram
 
 NO_QUITAR_ROL = "No puedes quitarte tu propio rol ni dejar la plataforma sin administradores."
 NO_DESACTIVAR = "No puedes desactivar tu propia cuenta ni al último administrador."
@@ -144,3 +144,9 @@ def cambiar_mi_clave(yo: dict, actual: str, nueva: str) -> None:
     db.actualizar("usuarios", yo["id"], clave_hash=acceso.hash_clave(nueva))
     acceso.cerrar_todas(yo["id"])
     eventos.registrar("usuario", yo["id"], "contraseña cambiada por la persona", "", yo["nombre"])
+
+
+def desvincular_telegram(yo: dict) -> None:
+    """La persona desconecta su chat: deja de recibir avisos y de cargar gastos por Telegram."""
+    telegram.desvincular(yo["id"])
+    eventos.registrar("usuario", yo["id"], "Telegram desvinculado", "", yo["nombre"])
