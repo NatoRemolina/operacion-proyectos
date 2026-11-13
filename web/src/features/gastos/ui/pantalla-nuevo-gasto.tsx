@@ -9,6 +9,7 @@ import { clasesBoton } from "@/shared/ui/boton";
 import { EncabezadoPagina } from "@/shared/ui/encabezado-pagina";
 import { formatearRango } from "@/shared/ui/formato";
 import { useEnvioRecibo } from "../application/gastos";
+import { esCorreo } from "../domain/gastos";
 import { FormularioRecibo, type ArchivoElegido, type ErrorEnvio } from "./formulario-recibo";
 import { ResultadoEnvio } from "./resultado-envio";
 
@@ -96,6 +97,7 @@ export function PantallaNuevoGasto({ viajeInicial }: { viajeInicial?: number } =
         nombre: envio.archivo.name,
         tamano: envio.archivo.size,
         esPdf: envio.archivo.type === "application/pdf",
+        esCorreo: esCorreo(envio.archivo),
         vistaPrevia: vistaPrevia.url,
       }
     : null;

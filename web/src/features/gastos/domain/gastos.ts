@@ -92,15 +92,21 @@ export function problemaDeJustificacion(texto: string): string | null {
     : null;
 }
 
-export const TAMANO_MAXIMO_BYTES = 4.5 * 1024 * 1024;
+/** El mismo tope que el servidor: 4,5 MB decimales (4.500.000 bytes), no 4,5 MiB. */
+export const TAMANO_MAXIMO_BYTES = 4_500_000;
 
-const TIPOS_ADMITIDOS = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+const TIPOS_ADMITIDOS = ["image/jpeg", "image/png", "image/webp", "application/pdf", "message/rfc822"];
 
-/** Comprobación previa en el navegador; el servidor vuelve a validar siempre. */
-export function validarArchivo(archivo: Pick<File, "size" | "type">): TipoError | null {
+/** Un correo guardado (.eml), como la confirmación de una reserva. El navegador no siempre le pone tipo. */
+export function esCorreo(archivo: Pick<File, "type" | "name">): boolean {
+  return archivo.type === "message/rfc822" || archivo.name.toLowerCase().endsWith(".eml");
+}
+
+/** Comprobación previa en el navegador; el servidor vuelve a validar siempre, mirando el contenido. */
+export function validarArchivo(archivo: Pick<File, "size" | "type" | "name">): TipoError | null {
   if (archivo.size > TAMANO_MAXIMO_BYTES) return "demasiado_grande";
-  // Algunos celulares entregan fotos HEIC o sin tipo: se dejan pasar y decide el servidor.
-  if (archivo.type && !archivo.type.startsWith("image/") && !TIPOS_ADMITIDOS.includes(archivo.type)) {
+  // Algunos celulares entregan fotos HEIC o sin tipo, y un .eml puede llegar con un tipo genérico: decide el servidor.
+  if (archivo.type && !archivo.type.startsWith("image/") && !TIPOS_ADMITIDOS.includes(archivo.type) && !esCorreo(archivo)) {
     return "tipo_no_admitido";
   }
   return null;

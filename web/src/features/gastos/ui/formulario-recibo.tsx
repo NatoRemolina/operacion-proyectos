@@ -12,6 +12,7 @@ export interface ArchivoElegido {
   nombre: string;
   tamano: number;
   esPdf: boolean;
+  esCorreo: boolean;
   vistaPrevia: string | null;
 }
 
@@ -200,7 +201,7 @@ export function FormularioRecibo({
           Agrega tu soporte
         </h2>
         <p id="ayuda-soporte" className="mt-1 text-sm text-texto-secundario">
-          Foto o PDF · Hasta 4,5 MB
+          Foto, PDF o correo (.eml) · Hasta 4,5 MB
         </p>
         <div className="mt-3 flex flex-col gap-3">
           <BotonArchivo
@@ -217,7 +218,7 @@ export function FormularioRecibo({
             id="archivo-recibo"
             texto={archivo ? "Elegir otro archivo" : "Elegir archivo"}
             variante="secundario"
-            accept="image/*,application/pdf"
+            accept="image/*,application/pdf,message/rfc822,.eml"
             disabled={enviando}
             onElegir={onElegirArchivo}
           />
@@ -238,14 +239,14 @@ export function FormularioRecibo({
                 aria-hidden="true"
                 className="flex h-24 w-20 items-center justify-center rounded-md border border-linea bg-neutro-suave font-bold text-neutro"
               >
-                {archivo.esPdf ? "PDF" : "IMG"}
+                {archivo.esPdf ? "PDF" : archivo.esCorreo ? "EML" : "IMG"}
               </div>
             )}
             <figcaption className="text-sm">
               <span className="font-semibold">{archivo.nombre}</span>
               <br />
               <span className="text-texto-secundario">
-                {archivo.esPdf ? "Documento PDF" : "Imagen"} · {formatearTamano(archivo.tamano)}
+                {archivo.esPdf ? "Documento PDF" : archivo.esCorreo ? "Correo" : "Imagen"} · {formatearTamano(archivo.tamano)}
               </span>
             </figcaption>
           </figure>

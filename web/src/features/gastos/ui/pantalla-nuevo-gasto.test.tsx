@@ -63,6 +63,23 @@ describe("Cargar un gasto", () => {
     expect(enviar.mock.calls[0]![0]).toMatchObject({ viajeId: null });
   });
 
+  it("acepta el correo de una reserva (.eml), como la API, y lo muestra como correo", async () => {
+    const usuario = userEvent.setup();
+    const { repositorio, enviar } = repositorioQueResponde(
+      gastoDePrueba({ id: 78, estado: "aprobado_auto", estado_texto: "Aprobado" }),
+    );
+    renderizarConFuente(<PantallaNuevoGasto />, { gastos: repositorio, viajes });
+    expect(await screen.findByText("BOG → MIA")).toBeInTheDocument();
+
+    const correo = new File(["From: reservas@aerolinea.example\nSubject: Tu reserva\n"], "correo_tiquete.eml", { type: "message/rfc822" });
+    await usuario.upload(screen.getByLabelText("Elegir archivo"), correo);
+    expect(screen.getByText("correo_tiquete.eml")).toBeInTheDocument();
+    expect(screen.getByText(/^Correo ·/)).toBeInTheDocument();
+
+    await usuario.click(screen.getByRole("button", { name: "Enviar recibo" }));
+    await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
+  });
+
   it("si queda en revisión lo dice y sugiere contar para qué fue", async () => {
     const usuario = userEvent.setup();
     const { repositorio } = repositorioQueResponde(
