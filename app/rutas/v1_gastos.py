@@ -13,6 +13,7 @@ from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
 from ..api_v1.esquemas import Dinero, EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, errores
 from ..servicios import acceso, consultas, contable, dinero, envios, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
+from .gastos import original_legible
 
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
 
@@ -223,8 +224,9 @@ def contenido(id: int, yo: dict = Depends(persona)):
     archivo = consultas.contenido_documento(yo, id)
     if not archivo:
         raise _no_encontrado()
-    datos, tipo = archivo
+    datos, _ = archivo
     d = db.uno("select mime, nombre from documentos where id=:i", i=id)
+    datos, tipo = original_legible(datos, d["mime"])   # un correo: su adjunto o su texto, nunca el MIME crudo
     return Response(datos, media_type=tipo, headers={
         "Content-Disposition": soportes.disposicion(d["mime"], d["nombre"]), "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",

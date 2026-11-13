@@ -227,7 +227,9 @@ def test_un_correo_se_acepta_y_se_entrega_como_texto(piloto, ejemplos, mundo):
     g = _enviar(piloto, "tiquete.eml", correo, mundo["viaje1"]["id"])
     assert g.status_code == 201, g.text
     r = piloto.get(f"{V1}/documentos/{g.json()['documento_id']}/contenido")
-    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain") and r.content == correo
+    # sin adjunto, el texto del correo (De, Asunto, Fecha y cuerpo), no el MIME crudo
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+    assert r.text.startswith("De: ") and "\nAsunto: " in r.text and "MIME-Version" not in r.text
 
 
 def test_envios_rechazados(piloto, mundo):

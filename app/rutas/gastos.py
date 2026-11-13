@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .. import config, db
-from ..servicios import acceso, almacen, contable, envios, justificaciones, revision, viajes
+from ..servicios import acceso, almacen, contable, envios, extraccion, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
 from ..web import (
     NO_ENCONTRADO,
@@ -151,6 +151,25 @@ def gasto(request: Request, gid: int, aviso: str = "", revision: str = ""):
         eventos=db.todos("select * from eventos where entidad='gasto' and entidad_id=:i order by id", i=gid)))
 
 
+TIPOS_EN_LINEA = ("image/jpeg", "image/png", "image/webp", "application/pdf")
+
+
+def original_legible(contenido: bytes, mime: str | None) -> tuple[bytes, str]:
+    """El original tal como se muestra, con su tipo. Un correo (.eml) no se entrega crudo (MIME con base64): se muestra
+    su adjunto si es un PDF o una foto (el que se leyó), y si no, el texto del correo con De, Asunto y Fecha."""
+    if mime == "message/rfc822":
+        try:
+            texto, adjunto, tipo = extraccion._correo(contenido)   # la misma lectura que el gasto
+        except Exception:   # un correo mal formado se sigue viendo, como texto
+            texto, adjunto, tipo = None, None, None
+        if adjunto and tipo in TIPOS_EN_LINEA:
+            return adjunto, tipo
+        if texto is not None:
+            return texto.encode("utf-8"), "text/plain; charset=utf-8"
+    # Solo se sirven en línea tipos inertes; el resto se muestra como texto
+    return contenido, mime if mime in TIPOS_EN_LINEA else "text/plain; charset=utf-8"
+
+
 @router.get("/gastos/{gid}/soporte")
 def gasto_soporte(gid: int):
     if not _gasto_propio(gid):
@@ -159,8 +178,8 @@ def gasto_soporte(gid: int):
     contenido = almacen.leer(d["ruta"]) if d else None
     if contenido is None:
         return Response("No disponible", status_code=404)
-    # Solo se sirven en línea tipos inertes; el resto se muestra como texto. El contenido se aísla del resto de la página.
-    mime = d["mime"] if d["mime"] in ("image/jpeg", "image/png", "image/webp", "application/pdf") else "text/plain; charset=utf-8"
+    # El contenido se aísla del resto de la página
+    contenido, mime = original_legible(contenido, d["mime"])
     return Response(contenido, media_type=mime, headers={
         "Content-Disposition": soportes.disposicion(d["mime"], d["nombre"]), "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "Cache-Control": "private, no-store"})
