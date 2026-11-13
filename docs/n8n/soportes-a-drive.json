@@ -1,0 +1,963 @@
+{
+  "name": "Inflight · Soportes de gastos a Google Drive",
+  "nodes": [
+    {
+      "id": "7cf604ec-a27f-5e70-a6c2-67e23eaffb93",
+      "name": "Aviso gasto.registrado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inflight/gasto-registrado",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "webhookId": "5b0f2f0e-6c1d-4f0a-9d3c-1f5e2a7b8c90"
+    },
+    {
+      "id": "441eda17-43ab-53f4-97a3-26712f080eff",
+      "name": "Configuración",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "include": "all",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "secreto_webhook",
+              "type": "string",
+              "value": "PEGAR_AQUI_N8N_WEBHOOK_SECRETO"
+            },
+            {
+              "id": "a2",
+              "name": "url_plataforma",
+              "type": "string",
+              "value": "https://software.nataliaremolinarodriguez.com"
+            },
+            {
+              "id": "a3",
+              "name": "carpeta_raiz",
+              "type": "string",
+              "value": "Inflight · Soportes"
+            }
+          ]
+        },
+        "options": {
+          "stripBinary": false
+        }
+      },
+      "notes": "Datos de esta instalación. Para no dejar el secreto a la vista, mejor crear la variable de n8n INFLIGHT_WEBHOOK_SECRETO (tiene prioridad)."
+    },
+    {
+      "id": "ac66a1a5-dd52-5dd2-bd93-4ae2088b5251",
+      "name": "Verificar firma",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Verifica el aviso de la plataforma antes de hacer nada con él: firma, hora, destino del enlace y repetidos.\n// El secreto sale de la variable de n8n INFLIGHT_WEBHOOK_SECRETO si existe; si no, del nodo «Configuración».\n// Nada de lo que sale de aquí lleva el secreto.\nconst crypto = require('crypto');\nconst entrada = $input.first();\nconst conf = entrada.json;\nconst salida = (estado, motivo, extra = {}) => [{ json: { estado, motivo, ...extra } }];\n\nlet secreto = '';\ntry { secreto = ($vars && $vars.INFLIGHT_WEBHOOK_SECRETO) || ''; } catch (e) { secreto = ''; }\nif (!secreto) secreto = String(conf.secreto_webhook || '');\nif (!secreto || secreto.startsWith('PEGAR_AQUI')) return salida('invalida', 'Falta configurar el secreto del aviso');\n\nconst cabeceras = conf.headers || {};\nconst partes = {};\nfor (const p of String(cabeceras['x-inflight-firma'] || '').split(',')) {\n  const i = p.indexOf('=');\n  if (i > 0) partes[p.slice(0, i).trim()] = p.slice(i + 1).trim();\n}\nconst t = Number(partes.t);\nif (!Number.isFinite(t) || !/^[0-9a-f]{64}$/.test(partes.v1 || '')) return salida('invalida', 'Falta la firma o no tiene el formato esperado');\nif (Math.abs(Date.now() / 1000 - t) > 300) return salida('invalida', 'La firma tiene más de 5 minutos');\n\n// El cuerpo tal cual llegó (opción «Raw Body» del Webhook). Si no estuviera, el JSON leído sirve: la plataforma\n// lo envía compacto, igual a JSON.stringify.\nlet crudo;\ntry { crudo = await this.helpers.getBinaryDataBuffer(0, 'data'); } catch (e) { crudo = null; }\nif (!crudo || !crudo.length) crudo = Buffer.from(JSON.stringify(conf.body), 'utf8');\n\nconst esperado = crypto.createHmac('sha256', secreto).update(Buffer.concat([Buffer.from(`${partes.t}.`, 'utf8'), crudo])).digest();\nconst recibido = Buffer.from(partes.v1, 'hex');\nif (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) return salida('invalida', 'La firma no coincide');\n\nlet datos;\ntry { datos = JSON.parse(crudo.toString('utf8')); } catch (e) { return salida('invalida', 'El cuerpo no es JSON'); }\nif (datos.evento !== 'gasto.registrado' || !datos.entrega || !datos.gasto_id) return salida('invalida', 'No es un aviso gasto.registrado');\n\n// La clave de servicio solo viaja a la plataforma: un enlace que apunte a otro sitio se rechaza\nconst base = String(conf.url_plataforma || '').replace(/\\/+$/, '');\nif (!base || !String(datos.enlace_soporte || '').startsWith(`${base}/api/v1/servicio/gastos/${datos.gasto_id}/soporte?`)) {\n  return salida('invalida', 'El enlace al soporte no apunta a la plataforma configurada');\n}\n\n// Una misma entrega no se procesa dos veces (la plataforma repite el id en sus reintentos)\nconst memoria = $getWorkflowStaticData('global');\nmemoria.entregas = Array.isArray(memoria.entregas) ? memoria.entregas : [];\nif (memoria.entregas.includes(datos.entrega)) return salida('repetida', 'Esta entrega ya se procesó', { entrega: datos.entrega });\nmemoria.entregas = [...memoria.entregas, datos.entrega].slice(-500);\n\nconst limpiar = (texto, defecto) => String(texto ?? '').replace(/[\\\\/:*?\"<>|\\u0000-\\u001f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 80) || defecto;\nconst paraConsulta = (texto) => texto.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\nconst mes = /^\\d{4}-\\d{2}/.test(datos.fecha || '') ? datos.fecha.slice(0, 7) : new Date().toISOString().slice(0, 7);\nconst carpetas = {\n  raiz: limpiar(conf.carpeta_raiz, 'Inflight · Soportes'),\n  proyecto: limpiar(datos.proyecto, 'Sin proyecto'),\n  viaje: limpiar(datos.viaje, 'Sin viaje'),\n  mes,\n};\nconst total = datos.total ? `${datos.total} ${datos.moneda || ''}`.trim() : 'sin total';\nconst nombre_base = [limpiar(datos.fecha, 'sin fecha'), limpiar(datos.comercio, 'sin comercio'), total,\n  limpiar(datos.viaje, `gasto ${datos.gasto_id}`)].join(' · ');\n\nreturn [{ json: {\n  estado: 'valida', motivo: '', entrega: datos.entrega, gasto_id: datos.gasto_id, enlace_soporte: datos.enlace_soporte,\n  carpetas, consulta: Object.fromEntries(Object.entries(carpetas).map(([k, v]) => [k, paraConsulta(v)])), nombre_base,\n} }];\n"
+      }
+    },
+    {
+      "id": "a0b66bbb-2b95-5aa7-940d-c5c0882dd402",
+      "name": "¿Aviso válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.estado }}",
+              "rightValue": "valida",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "96d1973d-263e-5a7b-a0a3-c35aa7f7521c",
+      "name": "Responder rechazo",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        480
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: $json.estado === 'repetida', motivo: $json.motivo }) }}",
+        "options": {
+          "responseCode": "={{ $json.estado === 'repetida' ? 200 : 401 }}"
+        }
+      }
+    },
+    {
+      "id": "dfba7779-229f-562a-a5d2-a4bc9a395743",
+      "name": "Responder recibido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, entrega: $json.entrega }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "id": "236395d0-a21c-5ba1-9b6a-2be577f8c170",
+      "name": "Descargar soporte",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        200
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.enlace_soporte }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notes": "Credencial «Header Auth»: Name = X-Clave-Servicio, Value = la clave isk_… creada con python -m datos.claves_servicio."
+    },
+    {
+      "id": "1fa3a4d9-e4be-5253-8c5b-a5e8bc4c01e0",
+      "name": "Buscar carpeta raíz",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1320,
+        200
+      ],
+      "parameters": {
+        "resource": "fileFolder",
+        "operation": "search",
+        "searchMethod": "query",
+        "queryString": "=name = '{{ $('Verificar firma').first().json.consulta.raiz }}' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false",
+        "returnAll": false,
+        "limit": 1,
+        "filter": {},
+        "options": {
+          "fields": [
+            "id",
+            "name"
+          ]
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "c200eede-473f-580f-9303-9197d895608c",
+      "name": "¿Existe carpeta raíz?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e0",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2c818d64-0f8b-5e5d-8d33-69ededd9de95",
+      "name": "Crear carpeta raíz",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1760,
+        380
+      ],
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Verificar firma').first().json.carpetas.raiz }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "root"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "02bba797-e7cd-500f-9bf5-22d6ea0f13d7",
+      "name": "Carpeta raíz",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1980,
+        200
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "k0",
+              "name": "id",
+              "type": "string",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3b39422f-58bf-5a08-9cba-4d7cf071eb97",
+      "name": "Buscar carpeta proyecto",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2200,
+        200
+      ],
+      "parameters": {
+        "resource": "fileFolder",
+        "operation": "search",
+        "searchMethod": "query",
+        "queryString": "=name = '{{ $('Verificar firma').first().json.consulta.proyecto }}' and mimeType = 'application/vnd.google-apps.folder' and '{{ $('Carpeta raíz').first().json.id }}' in parents and trashed = false",
+        "returnAll": false,
+        "limit": 1,
+        "filter": {},
+        "options": {
+          "fields": [
+            "id",
+            "name"
+          ]
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "884ec8c8-7441-511a-b477-e1e51b2cf579",
+      "name": "¿Existe carpeta proyecto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2420,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e1",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "eb2d8c1b-e967-528b-a280-cc1eaabc7b89",
+      "name": "Crear carpeta proyecto",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2640,
+        380
+      ],
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Verificar firma').first().json.carpetas.proyecto }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Carpeta raíz').first().json.id }}"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cfc3fa75-9b73-5777-b6a8-19f74aa0edfd",
+      "name": "Carpeta proyecto",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2860,
+        200
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "k1",
+              "name": "id",
+              "type": "string",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "77e86ffd-7fd1-5970-850e-fd4748820c0d",
+      "name": "Buscar carpeta viaje",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3080,
+        200
+      ],
+      "parameters": {
+        "resource": "fileFolder",
+        "operation": "search",
+        "searchMethod": "query",
+        "queryString": "=name = '{{ $('Verificar firma').first().json.consulta.viaje }}' and mimeType = 'application/vnd.google-apps.folder' and '{{ $('Carpeta proyecto').first().json.id }}' in parents and trashed = false",
+        "returnAll": false,
+        "limit": 1,
+        "filter": {},
+        "options": {
+          "fields": [
+            "id",
+            "name"
+          ]
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "dc18a624-2842-58f4-a7fe-998484afbe9e",
+      "name": "¿Existe carpeta viaje?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3300,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e2",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a4881570-d5dd-534a-b1b0-d78ed41dd0bf",
+      "name": "Crear carpeta viaje",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3520,
+        380
+      ],
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Verificar firma').first().json.carpetas.viaje }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Carpeta proyecto').first().json.id }}"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "8c6b3368-e9b8-5190-8796-a0b148c5f5c2",
+      "name": "Carpeta viaje",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3740,
+        200
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "k2",
+              "name": "id",
+              "type": "string",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0c9f414f-2168-5e35-8c13-2c4d955f6d4a",
+      "name": "Buscar carpeta mes",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3960,
+        200
+      ],
+      "parameters": {
+        "resource": "fileFolder",
+        "operation": "search",
+        "searchMethod": "query",
+        "queryString": "=name = '{{ $('Verificar firma').first().json.consulta.mes }}' and mimeType = 'application/vnd.google-apps.folder' and '{{ $('Carpeta viaje').first().json.id }}' in parents and trashed = false",
+        "returnAll": false,
+        "limit": 1,
+        "filter": {},
+        "options": {
+          "fields": [
+            "id",
+            "name"
+          ]
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "04a01bd4-d42c-5665-9c96-496b1b550489",
+      "name": "¿Existe carpeta mes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4180,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e3",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2080d622-b2c6-5bac-bd93-5a1c818b0509",
+      "name": "Crear carpeta mes",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        4400,
+        380
+      ],
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Verificar firma').first().json.carpetas.mes }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Carpeta viaje').first().json.id }}"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7d6eff9d-22fc-5e7a-b390-372d789e3e2a",
+      "name": "Carpeta mes",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4620,
+        200
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "k3",
+              "name": "id",
+              "type": "string",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "08165146-a362-5342-9f90-4103ef59a6d5",
+      "name": "Preparar archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4840,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Junta el archivo descargado con la carpeta del mes y le pone el nombre legible.\nconst descarga = $('Descargar soporte').first();\nconst aviso = $('Verificar firma').first().json;\nconst archivo = descarga.binary && descarga.binary.data;\nif (!archivo) throw new Error('La descarga del soporte no trajo el archivo');\nconst extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf', 'message/rfc822': 'eml' }[archivo.mimeType]\n  || archivo.fileExtension || 'bin';\nconst nombre = `${aviso.nombre_base}.${extension}`;\nreturn [{\n  json: { carpeta: $input.first().json.id, nombre, gasto_id: aviso.gasto_id, entrega: aviso.entrega },\n  binary: { data: { ...archivo, fileName: nombre } },\n}];\n"
+      }
+    },
+    {
+      "id": "454dadce-13d3-58ab-b015-bb9003e81e54",
+      "name": "Subir a Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5060,
+        200
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "={{ $json.nombre }}",
+        "inputDataFieldName": "data",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.carpeta }}"
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Aviso gasto.registrado": {
+      "main": [
+        [
+          {
+            "node": "Configuración",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuración": {
+      "main": [
+        [
+          {
+            "node": "Verificar firma",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar firma": {
+      "main": [
+        [
+          {
+            "node": "¿Aviso válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Aviso válido?": {
+      "main": [
+        [
+          {
+            "node": "Responder recibido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder recibido": {
+      "main": [
+        [
+          {
+            "node": "Descargar soporte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descargar soporte": {
+      "main": [
+        [
+          {
+            "node": "Buscar carpeta raíz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar carpeta raíz": {
+      "main": [
+        [
+          {
+            "node": "¿Existe carpeta raíz?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Existe carpeta raíz?": {
+      "main": [
+        [
+          {
+            "node": "Carpeta raíz",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear carpeta raíz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear carpeta raíz": {
+      "main": [
+        [
+          {
+            "node": "Carpeta raíz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carpeta raíz": {
+      "main": [
+        [
+          {
+            "node": "Buscar carpeta proyecto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar carpeta proyecto": {
+      "main": [
+        [
+          {
+            "node": "¿Existe carpeta proyecto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Existe carpeta proyecto?": {
+      "main": [
+        [
+          {
+            "node": "Carpeta proyecto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear carpeta proyecto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear carpeta proyecto": {
+      "main": [
+        [
+          {
+            "node": "Carpeta proyecto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carpeta proyecto": {
+      "main": [
+        [
+          {
+            "node": "Buscar carpeta viaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar carpeta viaje": {
+      "main": [
+        [
+          {
+            "node": "¿Existe carpeta viaje?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Existe carpeta viaje?": {
+      "main": [
+        [
+          {
+            "node": "Carpeta viaje",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear carpeta viaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear carpeta viaje": {
+      "main": [
+        [
+          {
+            "node": "Carpeta viaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carpeta viaje": {
+      "main": [
+        [
+          {
+            "node": "Buscar carpeta mes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar carpeta mes": {
+      "main": [
+        [
+          {
+            "node": "¿Existe carpeta mes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Existe carpeta mes?": {
+      "main": [
+        [
+          {
+            "node": "Carpeta mes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear carpeta mes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear carpeta mes": {
+      "main": [
+        [
+          {
+            "node": "Carpeta mes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carpeta mes": {
+      "main": [
+        [
+          {
+            "node": "Preparar archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar archivo": {
+      "main": [
+        [
+          {
+            "node": "Subir a Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  }
+}
