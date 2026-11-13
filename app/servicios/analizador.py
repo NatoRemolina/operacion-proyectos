@@ -146,7 +146,7 @@ def _llamar(url: str) -> dict:
 
 
 def _guardar_captura(b64: str | None) -> str | None:
-    if not b64:
+    if not isinstance(b64, str) or not b64:
         return None
     try:
         png = base64.b64decode(b64, validate=True)
@@ -208,6 +208,23 @@ def _reservar(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict) -
     return {"id": aid, "url": url}
 
 
+SIN_CAPTURA = "no se pudo guardar la lectura"
+RESPUESTA_RARA = "el analizador respondió algo que no se entiende"
+
+
+def _resultado_de(r) -> dict:
+    """Los cambios de la fila según la respuesta del analizador. Una respuesta que no es un objeto es una lectura fallida."""
+    if not isinstance(r, dict):
+        return {"estado": "fallido", "terminado": db.ahora(), "motivo": RESPUESTA_RARA, "captura": None, "datos": None}
+    listo = r.get("estado") == "listo" and isinstance(r.get("datos"), dict)
+    duracion = r.get("duracion_ms") if isinstance(r.get("duracion_ms"), int) else None
+    return {"estado": "listo" if listo else "fallido", "terminado": db.ahora(), "duracion_ms": duracion,
+            "motivo": None if listo else str(r.get("motivo") or "la lectura no devolvió datos")[:300],
+            # una lectura fallida guarda lo que se vio (si el analizador lo trae): sirve para saber por qué falló
+            "captura": _guardar_captura(r.get("captura_png_b64")),
+            "datos": r["datos"] if listo else ({"extracto": str(r["extracto"])[:500]} if r.get("extracto") else None)}
+
+
 def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") -> dict:
     """Lee la página del vuelo (o reutiliza una lectura de menos de 60 minutos) y devuelve el análisis.
 
@@ -221,16 +238,15 @@ def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") ->
     aid, url = reserva["id"], reserva["url"]
     nombre = " + ".join(vuelo.get("numeros") or [])
     eventos.registrar("solicitud", sid, "lectura de Google Flights pedida", f"{nombre}: {url}", f"{canal} · {usuario['nombre']}")
-    r = _llamar(url)
-    listo = r.get("estado") == "listo" and isinstance(r.get("datos"), dict)
-    cambios = {"estado": "listo" if listo else "fallido", "terminado": db.ahora(), "duracion_ms": r.get("duracion_ms"),
-               "motivo": None if listo else str(r.get("motivo") or "la lectura no devolvió datos")[:300],
-               # una lectura fallida guarda lo que se vio (si el analizador lo trae): sirve para saber por qué falló
-               "captura": _guardar_captura(r.get("captura_png_b64")),
-               "datos": r["datos"] if listo else ({"extracto": str(r["extracto"])[:500]} if r.get("extracto") else None)}
+    try:
+        cambios = _resultado_de(_llamar(url))
+    except Exception as e:  # noqa: BLE001 (lo que sea que falle aquí no puede dejar la lectura «pendiente»)
+        print(f"analizador: la lectura {aid} no se pudo guardar: {type(e).__name__}", flush=True)
+        cambios = {"estado": "fallido", "terminado": db.ahora(), "motivo": SIN_CAPTURA, "captura": None, "datos": None}
     db.actualizar("analisis_vuelo", aid, **cambios)
+    listo = cambios["estado"] == "listo"
     eventos.registrar("solicitud", sid, "página del vuelo leída" if listo else "lectura de Google Flights fallida",
-                      f"{nombre}: {'listo' if listo else cambios['motivo']}", "analizador", r.get("duracion_ms") or 0)
+                      f"{nombre}: {'listo' if listo else cambios['motivo']}", "analizador", cambios.get("duracion_ms") or 0)
     return {**_fila(db.uno("select * from analisis_vuelo where id=:i", i=aid)), "reutilizado": False}
 
 

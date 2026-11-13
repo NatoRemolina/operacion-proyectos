@@ -236,3 +236,28 @@ def test_una_lectura_que_no_termino_se_da_por_fallida_y_libera_el_turno(piloto, 
     assert _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()["estado"] == "listo"
     f = db.uno("select estado, motivo from analisis_vuelo where id=:i", i=vieja)
     assert (f["estado"], f["motivo"]) == ("fallido", analizador.NO_TERMINO)
+
+
+# ---------- ronda 1 · punto 9: un fallo después de tomar el turno no deja la lectura «pendiente» ----------
+def test_si_el_almacen_falla_la_lectura_queda_fallida_y_libera_el_turno(piloto, doble, monkeypatch):
+    from app.servicios import almacen
+
+    def roto(*a, **k):
+        raise RuntimeError("almacén caído")
+
+    monkeypatch.setattr(almacen, "guardar", roto)
+    c = _cotizar(piloto)
+    r = _pedir(piloto, c["id"], c["vuelos"][0]["id"])
+    assert r.status_code == 200, r.text
+    assert (r.json()["estado"], r.json()["motivo"]) == ("fallido", analizador.SIN_CAPTURA)
+    assert db.uno("select count(*) n from analisis_vuelo where estado='pendiente'")["n"] == 0
+    monkeypatch.undo()
+
+
+@pytest.mark.parametrize("respuesta", [["no", "es", "objeto"], "texto", None, 42])
+def test_una_respuesta_que_no_es_un_objeto_queda_como_lectura_fallida(piloto, doble, monkeypatch, respuesta):
+    monkeypatch.setattr(analizador, "_llamar", lambda url: respuesta)
+    c = _cotizar(piloto)
+    r = _pedir(piloto, c["id"], c["vuelos"][0]["id"])
+    assert r.status_code == 200 and r.json()["estado"] == "fallido", r.text
+    assert db.uno("select count(*) n from analisis_vuelo where estado='pendiente'")["n"] == 0
