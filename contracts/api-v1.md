@@ -391,3 +391,17 @@ Solo administración, como `/admin/monitoreo`: otra cuenta recibe 403 `FORBIDDEN
 
 ### `GET /monitoreo/exportar.csv?vista=v_h_…`
 El mismo CSV de la pantalla con los filtros, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Solo las vistas de la capa analítica (`v_h_viaje`, `v_h_gasto`, `v_h_busqueda`, `v_h_decision`, `v_h_lectura`, `v_h_evento`, `v_h_consulta`); otra: 422.
+
+## Vuelos
+
+Estado de cada tramo de los viajes aprobados, el día del viaje. Solo administración, como el tablero de `/admin/viajes`: otra cuenta (también quien viaja) recibe 403 `FORBIDDEN`. Las reglas (ventana, caché, topes y avisos al viajero) son las de `app/servicios/monitoreo_vuelos.py`.
+
+### `GET /vuelos?fecha=AAAA-MM-DD`
+200 `VuelosDelDia` con `tramos`. Sin fecha (o con una no válida): los de hoy (UTC) más los de ayer o mañana que están en su ventana.
+
+- Pensado para pedirse cada 15 s con la pestaña visible: cada tramo se consulta solo dentro de su ventana (desde 3 h antes de la salida hasta la llegada), con caché y topes por tramo, viaje y día; fuera de eso responde lo último conocido.
+- Cada tramo: estado (`estado` y `estado_texto`), `retraso` en minutos, `terminal` y `puerta`, horas locales programadas y estimadas, `no_llega` (con el retraso no llega a la hora límite de la grabación), `omitida` (por qué no se consultó la última vez) y `aviso` (el último aviso al viajero).
+- `origen`: `en vivo` o `guardado`; `origen_texto`: «En vivo» o «Estado de ejemplo» (la respuesta guardada del repositorio, que se usa sin clave del buscador o si la consulta falla). Null si el tramo nunca trajo datos.
+
+### `POST /vuelos/{tramo_id}/actualizar`
+Con `X-CSRF-Token`, sin cuerpo. «Actualizar ahora»: salta la caché (una vez por minuto), nunca la ventana ni los topes. 200 `ResultadoActualizacion` con `consultado`, `motivo` si no consultó, `mensaje` en palabras y el `tramo` actualizado. Un tramo que no existe: 404.

@@ -6,7 +6,7 @@ para que la pantalla y la API respondan exactamente lo mismo.
 import re
 
 from .. import config, db
-from . import asesor, cotizacion, eventos, exportacion, kpis, metricas, precios, viajes
+from . import asesor, cotizacion, eventos, exportacion, kpis, metricas, monitoreo_vuelos, precios, viajes
 
 _ES_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -254,3 +254,57 @@ def pestana_monitoreo(pestana: str, f: dict) -> dict:
     return {"pestana": pestana, "titulo": PESTANAS[pestana], "nota": NOTA_MONITOREO,
             "pestanas": [{"clave": k, "titulo": t} for k, t in PESTANAS.items()], "filtros": f, "proyectos": proyectos(),
             "cifras": cifras, "tablas": tablas, "exportar": exportar}
+
+
+# ---------- estado de los vuelos del día ----------
+CAMPOS_VUELO = ("id", "viaje_id", "codigo", "titular", "sentido", "orden", "aerolinea", "numero", "fecha", "desde", "hasta",
+                "sale_programada", "llega_programada", "llega_estimada", "estado", "estado_texto", "retraso", "retraso_salida",
+                "retraso_llegada", "terminal", "puerta", "consultas", "actualizado", "hace_min", "llegar_antes", "en_destino",
+                "no_llega", "omitida", "ultima_consulta", "aviso")
+ORIGENES = {"en vivo": "En vivo", "guardado": "Estado de ejemplo"}
+
+
+def origen_estado(t: dict) -> str | None:
+    """De dónde salió el último estado con datos del tramo: «en vivo» (el buscador) o «guardado» (la respuesta de ejemplo
+    del repositorio, que se usa sin clave o si la consulta falla). None si nunca trajo datos."""
+    clave = f"estado_vuelo_{(t.get('numero') or '').replace(' ', '').upper()}_{t.get('fecha')}%"
+    fila = db.uno("""select origen from consultas_buscador where tipo='estado_vuelo' and clave like :c and origen<>'fallida'
+                     and coalesce(error, '')='' order by id desc limit 1""", c=clave)
+    return fila["origen"] if fila else None
+
+
+def _salida_vuelo(t: dict) -> dict:
+    origen = origen_estado(t)
+    return {**{c: t.get(c) for c in CAMPOS_VUELO}, "origen": origen, "origen_texto": ORIGENES.get(origen)}
+
+
+def vuelos(fecha: str | None) -> list[dict]:
+    """Tramos del tablero (los de ese día; sin fecha, los de hoy y los de ayer o mañana que están en su ventana).
+    El tablero lo pide cada 15 s: cada tramo se consulta solo dentro de su ventana, con la caché y los topes."""
+    ahora, reglas = monitoreo_vuelos.momento_actual(), monitoreo_vuelos.reglas()
+    salida = []
+    for t in monitoreo_vuelos.tablero(fecha, ahora, reglas):
+        nuevo = monitoreo_vuelos.consultar(t["id"], ahora, reglas_=reglas)
+        salida.append(monitoreo_vuelos.completar({**t, **{k: v for k, v in nuevo.items() if k in t}}, ahora))
+    return salida
+
+
+def vuelos_para_mostrar(fecha: str | None) -> list[dict]:
+    return [_salida_vuelo(t) for t in vuelos(fecha)]
+
+
+def actualizar_vuelo(tramo_id: int) -> dict | None:
+    """«Actualizar ahora»: salta la caché, nunca la ventana ni los topes. None si el tramo no existe."""
+    t = db.uno("select fecha, numero from tramos_vuelo where id=:i", i=tramo_id)
+    if not t:
+        return None
+    r = monitoreo_vuelos.consultar(tramo_id, forzar=True)
+    mensaje = f"{t['numero']}: estado actualizado." if r["consultado"] else f"{t['numero']}: no se consultó ({r['motivo']})."
+    return {"consultado": r["consultado"], "motivo": r.get("motivo"), "mensaje": mensaje, "fecha": t["fecha"]}
+
+
+def tramo_para_mostrar(tramo_id: int) -> dict | None:
+    """El tramo como lo muestra el tablero, aunque su viaje ya no esté aprobado (entonces sin código ni titular)."""
+    fila = next((t for t in monitoreo_vuelos.tablero(db.uno("select fecha from tramos_vuelo where id=:i", i=tramo_id)["fecha"])
+                 if t["id"] == tramo_id), None)
+    return _salida_vuelo(fila) if fila else None

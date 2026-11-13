@@ -2113,6 +2113,148 @@
           }
         }
       }
+    },
+    "/api/v1/vuelos": {
+      "get": {
+        "tags": [
+          "vuelos"
+        ],
+        "summary": "Vuelos",
+        "description": "Tramos de los viajes aprobados. Pensado para pedirse cada 15 s con la pestaña visible: cada tramo se consulta solo\ndentro de su ventana (desde 3 h antes de salir hasta la llegada), con caché y topes.",
+        "operationId": "vuelos_api_v1_vuelos_get",
+        "parameters": [
+          {
+            "name": "fecha",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "AAAA-MM-DD. Sin fecha (o no válida): hoy y los vuelos en curso.",
+              "default": "",
+              "title": "Fecha"
+            },
+            "description": "AAAA-MM-DD. Sin fecha (o no válida): hoy y los vuelos en curso."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VuelosDelDia"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vuelos/{tramo_id}/actualizar": {
+      "post": {
+        "tags": [
+          "vuelos"
+        ],
+        "summary": "Actualizar",
+        "description": "Salta la caché (una vez por minuto), nunca la ventana ni los topes. Si no consulta, `motivo` dice por qué.",
+        "operationId": "actualizar_api_v1_vuelos__tramo_id__actualizar_post",
+        "parameters": [
+          {
+            "name": "tramo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Tramo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoActualizacion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe o no es visible para la persona",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2291,6 +2433,67 @@
           "grande"
         ],
         "title": "AeropuertoSugerido"
+      },
+      "AvisoVuelo": {
+        "properties": {
+          "momento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Momento"
+          },
+          "texto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto"
+          },
+          "enviado": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enviado"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "retraso": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retraso"
+          }
+        },
+        "type": "object",
+        "title": "AvisoVuelo"
       },
       "Body_dictar_api_v1_asistente_voz_post": {
         "properties": {
@@ -6215,6 +6418,49 @@
         ],
         "title": "RespuestaError"
       },
+      "ResultadoActualizacion": {
+        "properties": {
+          "consultado": {
+            "type": "boolean",
+            "title": "Consultado"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo",
+            "description": "Por qué no se consultó: fuera de la ventana, tope, consultado hace menos de 1 min..."
+          },
+          "mensaje": {
+            "type": "string",
+            "title": "Mensaje"
+          },
+          "tramo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TramoVuelo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "El tramo actualizado; null si su viaje ya no está aprobado."
+          }
+        },
+        "type": "object",
+        "required": [
+          "consultado",
+          "motivo",
+          "mensaje",
+          "tramo"
+        ],
+        "title": "ResultadoActualizacion"
+      },
       "ResultadoCambioEstado": {
         "properties": {
           "viaje": {
@@ -6891,6 +7137,345 @@
           "en_revision"
         ],
         "title": "TotalesPersona"
+      },
+      "TramoVuelo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "viaje_id": {
+            "type": "integer",
+            "title": "Viaje Id"
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo",
+            "description": "Código del viaje, por ejemplo V-2026-0007."
+          },
+          "titular": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titular"
+          },
+          "sentido": {
+            "type": "string",
+            "title": "Sentido",
+            "description": "`ida` o `regreso`."
+          },
+          "orden": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orden"
+          },
+          "aerolinea": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aerolinea"
+          },
+          "numero": {
+            "type": "string",
+            "title": "Numero"
+          },
+          "fecha": {
+            "type": "string",
+            "title": "Fecha"
+          },
+          "desde": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desde"
+          },
+          "hasta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hasta"
+          },
+          "sale_programada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Programada"
+          },
+          "llega_programada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega Programada"
+          },
+          "llega_estimada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llega Estimada"
+          },
+          "estado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estado",
+            "description": "programado, a tiempo, retrasado, cancelado, aterrizado, desviado o sin datos."
+          },
+          "estado_texto": {
+            "type": "string",
+            "title": "Estado Texto"
+          },
+          "retraso": {
+            "type": "integer",
+            "title": "Retraso",
+            "description": "Minutos: el mayor entre la salida y la llegada."
+          },
+          "retraso_salida": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retraso Salida"
+          },
+          "retraso_llegada": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retraso Llegada"
+          },
+          "terminal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal"
+          },
+          "puerta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Puerta"
+          },
+          "consultas": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consultas"
+          },
+          "actualizado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualizado"
+          },
+          "hace_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hace Min",
+            "description": "Minutos desde la última consulta; null si nunca se consultó."
+          },
+          "llegar_antes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llegar Antes"
+          },
+          "en_destino": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "En Destino",
+            "description": "Llegada estimada más el traslado, en el último tramo de ida."
+          },
+          "no_llega": {
+            "type": "boolean",
+            "title": "No Llega",
+            "description": "Con el retraso no llega a la hora límite de la grabación."
+          },
+          "omitida": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omitida",
+            "description": "Último motivo para no consultar (ventana, tope, caché...)."
+          },
+          "ultima_consulta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ultima Consulta"
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvisoVuelo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Último aviso al viajero."
+          },
+          "origen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen",
+            "description": "`en vivo` o `guardado`; null si nunca trajo datos."
+          },
+          "origen_texto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origen Texto",
+            "description": "«En vivo» o «Estado de ejemplo» (la respuesta guardada del repositorio)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "viaje_id",
+          "codigo",
+          "titular",
+          "sentido",
+          "orden",
+          "aerolinea",
+          "numero",
+          "fecha",
+          "desde",
+          "hasta",
+          "sale_programada",
+          "llega_programada",
+          "llega_estimada",
+          "estado",
+          "estado_texto",
+          "retraso",
+          "retraso_salida",
+          "retraso_llegada",
+          "terminal",
+          "puerta",
+          "consultas",
+          "actualizado",
+          "hace_min",
+          "llegar_antes",
+          "en_destino",
+          "no_llega",
+          "omitida",
+          "ultima_consulta",
+          "aviso",
+          "origen",
+          "origen_texto"
+        ],
+        "title": "TramoVuelo"
       },
       "Transcripcion": {
         "properties": {
@@ -7643,6 +8228,41 @@
           "texto"
         ],
         "title": "VistaExportable"
+      },
+      "VuelosDelDia": {
+        "properties": {
+          "fecha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fecha",
+            "description": "El día pedido; null es hoy más los vuelos en curso de ayer o mañana."
+          },
+          "hoy": {
+            "type": "string",
+            "title": "Hoy",
+            "description": "Hoy en UTC."
+          },
+          "tramos": {
+            "items": {
+              "$ref": "#/components/schemas/TramoVuelo"
+            },
+            "type": "array",
+            "title": "Tramos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fecha",
+          "hoy",
+          "tramos"
+        ],
+        "title": "VuelosDelDia"
       }
     }
   }

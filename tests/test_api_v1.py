@@ -293,4 +293,5 @@ def test_el_openapi_versionado_coincide_con_la_api():
                  ("get", "/documentos/{id}/contenido"), ("post", "/asistente"), ("post", "/asistente/voz")}
     esperadas |= {("get", "/kpis"), ("get", "/kpis/personas/{id}"), ("get", "/kpis/exportar.csv")}
     esperadas |= {("get", "/monitoreo"), ("get", "/monitoreo/exportar.csv")}
+    esperadas |= {("get", "/vuelos"), ("post", "/vuelos/{tramo_id}/actualizar")}
     assert {(m, r.removeprefix(V1)) for r, ops in rutas.items() for m in ops} == esperadas

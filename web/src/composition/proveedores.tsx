@@ -9,6 +9,7 @@ import { CotizarRepositoryProvider } from "@/features/cotizar/application/cotiza
 import { GastosRepositoryProvider } from "@/features/gastos/application/gastos";
 import { KpisRepositoryProvider } from "@/features/kpis/application/kpis";
 import { MonitoreoRepositoryProvider } from "@/features/monitoreo/application/monitoreo";
+import { VuelosRepositoryProvider } from "@/features/vuelos/application/vuelos";
 import { ViajesRepositoryProvider } from "@/features/viajes/application/viajes";
 import { leerBaseApi, type FuenteDatos } from "@/config/configuracion";
 import { crearQueryClient } from "@/shared/application/consultas";
@@ -37,8 +38,10 @@ export function Proveedores({ fuente, children }: { fuente: FuenteDatos; childre
                   <AsistenteRepositoryProvider repositorio={repositorios.asistente}>
                     <KpisRepositoryProvider repositorio={repositorios.kpis}>
                       <MonitoreoRepositoryProvider repositorio={repositorios.monitoreo}>
-                        {repositorios.demo ? <AvisoDemo /> : null}
-                        {children}
+                        <VuelosRepositoryProvider repositorio={repositorios.vuelos}>
+                          {repositorios.demo ? <AvisoDemo /> : null}
+                          {children}
+                        </VuelosRepositoryProvider>
                       </MonitoreoRepositoryProvider>
                     </KpisRepositoryProvider>
                   </AsistenteRepositoryProvider>

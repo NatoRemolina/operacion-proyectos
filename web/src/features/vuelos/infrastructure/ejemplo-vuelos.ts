@@ -1,0 +1,33 @@
+import type { TramoVuelo } from "../domain/vuelos";
+
+/** Un tramo de ejemplo con la forma de la API (IB 5634, Madrid → Lisboa, retrasado), para pruebas. */
+export const TRAMO_EJEMPLO: TramoVuelo = {
+  id: 41,
+  viaje_id: 7,
+  codigo: "V-2026-0007",
+  titular: "Ana Piloto",
+  sentido: "ida",
+  aerolinea: "Iberia",
+  numero: "IB 5634",
+  fecha: "2026-12-13",
+  desde: "MAD",
+  hasta: "LIS",
+  sale_programada: "2026-12-13 09:05",
+  llega_programada: "2026-12-13 09:30",
+  llega_estimada: "2026-12-13 09:50",
+  estado: "retrasado",
+  estado_texto: "Retrasado",
+  retraso: 20,
+  terminal: "4",
+  puerta: "J58",
+  consultas: 1,
+  hace_min: 3,
+  llegar_antes: "2026-12-13 10:00",
+  en_destino: "2026-12-13 10:20",
+  no_llega: true,
+  omitida: null,
+  ultima_consulta: "con datos",
+  aviso: { momento: "2026-12-13 06:00", texto: "IB 5634 sale con 20 min de retraso.", enviado: false, error: null },
+  origen: "guardado",
+  origen_texto: "Estado de ejemplo",
+};
