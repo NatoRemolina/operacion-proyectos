@@ -53,6 +53,8 @@ def buscador(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "SERPAPI_KEY", "clave-de-prueba")
     monkeypatch.setattr(config, "DIR_RESPALDO_ESCRITURA", tmp_path)
     monkeypatch.setattr(precios, "_consultar", consultar)
+    # cada prueba empieza sin aperturas previas: ni topes ni repeticiones de otras pruebas
+    db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")
     ultima = db.uno("select coalesce(max(id), 0) n from busquedas")["n"]
     yield llamadas, respuestas, tmp_path
     # lo que guardó el doble no debe servir de «respuesta guardada» a otras pruebas
@@ -247,3 +249,22 @@ def test_los_regresos_buscados_por_el_enlace_cuentan_para_el_tope(piloto, buscad
         assert db.uno("select count(*) n from consultas_buscador where tipo='vendedor_regreso'")["n"] == 1
     finally:
         db.ejecutar("update reglas set valor='20' where ambito='supuesto' and clave='enlace_vendedor_persona_dia'")
+
+
+# ---------- ronda 1 · punto 20: repetir el mismo itinerario dentro de la hora ----------
+def test_repetir_dentro_de_la_hora_no_guarda_otra_vez_y_tiene_tope(piloto, buscador, monkeypatch):
+    db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")
+    monkeypatch.setattr(cotizacion, "REPETICIONES_HORA", 3)
+    c = _vegas(piloto)
+    vuelo = c["vuelos"][0]
+    antes = db.uno("select coalesce(max(id), 0) n from busquedas")["n"]
+    for _ in range(3):
+        assert _abrir(piloto, c["id"], vuelo["id"]).status_code == 200
+    nuevas = db.todos("select clave from busquedas where id>:n and clave like 'reserva_%'", n=antes)
+    assert len(nuevas) == 1                                                       # se guardó una vez
+    origenes = [f["origen"] for f in db.todos("select origen from consultas_buscador where tipo='vendedor' order by id")]
+    assert origenes == ["en vivo", "caché del buscador", "caché del buscador"]
+    r = _abrir(piloto, c["id"], vuelo["id"])                                      # la cuarta en la hora: a Google Flights
+    assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"]
+    ev = db.uno("select detalle from eventos where entidad_id=:i and paso='página oficial abierta' order by id desc", i=c["id"])
+    assert ev["detalle"].endswith("demasiadas repeticiones en la hora · Google Flights")

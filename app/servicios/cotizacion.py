@@ -459,6 +459,7 @@ REGLA_VENDEDOR = ("enlace_vendedor_persona_dia", str(TOPE_VENDEDOR_DIA),
                   "de reserva, también las fallidas. El mismo itinerario dentro de la hora no vuelve a contar. Alcanzado, "
                   "«Ver desglose» lleva a Google Flights.")
 TIPOS_VENDEDOR = "('vendedor', 'vendedor_regreso')"
+REPETICIONES_HORA = 6   # el mismo itinerario, la misma persona, en una hora: más que esto va a Google Flights
 REUSO_VENDEDOR = timedelta(hours=1)
 
 
@@ -509,8 +510,11 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
     numeros_clave = "".join(n.replace(" ", "") for n in vuelo.get("numeros") or [])
     nombre = f"reserva_{n_origen}_{n_destino}_{sol['ida']}_{sol['regreso']}_{numeros_clave}.json"   # la clave que anota precios
     hace_una_hora = (datetime.now(UTC) - REUSO_VENDEDOR).strftime("%Y-%m-%d %H:%M:%S")
-    repetido = db.uno("""select id from consultas_buscador where tipo='vendedor' and usuario_id=:u and clave=:c
-                         and momento>=:h limit 1""", u=usuario["id"], c=nombre, h=hace_una_hora)
+    repetido = db.uno("""select count(*) n from consultas_buscador where tipo='vendedor' and usuario_id=:u and clave=:c
+                         and momento>=:h""", u=usuario["id"], c=nombre, h=hace_una_hora)["n"]
+    if repetido >= REPETICIONES_HORA:
+        anotar("demasiadas repeticiones en la hora · Google Flights")
+        return google
     if not repetido:
         hechas = db.uno(f"""select count(*) n from consultas_buscador where tipo in {TIPOS_VENDEDOR} and usuario_id=:u
                             and momento>=:h and origen in ('en vivo', 'fallida')""", u=usuario["id"], h=db.ahora()[:10])["n"]

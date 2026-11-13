@@ -521,7 +521,11 @@ def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[
     if not isinstance(datos, dict):
         _anotar("vendedor", nombre, "fallida", solicitud_id, inicio, error="respuesta que no es un objeto")
         return []
-    _guardar(nombre, datos)
+    # el mismo pedido dentro de la hora lo sirve el buscador de su caché (sin cobrar): no se guarda otra copia
+    hace_una_hora = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    repetida = db.uno("select id from busquedas where clave=:c and creado>=:h limit 1", c=nombre, h=hace_una_hora)
+    if not repetida:
+        _guardar(nombre, datos)
     opciones = []
     lista = datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []
     for o in lista:   # cada campo se comprueba: una respuesta rara deja la opción fuera, nunca rompe
@@ -539,7 +543,8 @@ def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[
                          if isinstance(t.get("baggage_prices"), list) else [],
                          "url": pedido.get("url") if isinstance(pedido.get("url"), str) else None,
                          "post_data": pedido.get("post_data") if isinstance(pedido.get("post_data"), str) else None})
-    _anotar("vendedor", nombre, "en vivo", solicitud_id, inicio, [o["precio"] for o in opciones if o["precio"] is not None])
+    _anotar("vendedor", nombre, "caché del buscador" if repetida else "en vivo", solicitud_id, inicio,
+            [o["precio"] for o in opciones if o["precio"] is not None])
     return opciones
 
 
