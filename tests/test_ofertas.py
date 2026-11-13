@@ -63,6 +63,16 @@ def test_solo_valores_conocidos():
     (["1 carry-on bag included", "1 checked bag included"], (1, 0.0)),
     (["Free checked bag"], (None, 0.0)),
     ([], (None, None)),
+    # ronda 1, punto 4: «not included» no es gratis y la segunda maleta no llena la primera
+    (["Checked bag not included"], (None, None)),
+    (["1 free carry-on", "Checked bags not included"], (1, None)),
+    (["0 checked bags included"], (None, None)),
+    (["No free checked bags"], (None, None)),
+    (["Carry-on bag not included"], (0, None)),
+    (["2nd checked bag: $45"], (None, None)),
+    (["2nd checked bag: $45", "1st checked bag: $35"], (None, 35.0)),
+    (["1st checked bag: $35", "2nd checked bag: $45"], (None, 35.0)),
+    (["Checked bag: $30"], (None, 30.0)),
 ])
 def test_equipaje(lineas, esperado):
     assert ofertas.equipaje(lineas) == esperado

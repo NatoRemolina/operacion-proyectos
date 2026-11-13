@@ -71,16 +71,35 @@ def _importe(linea: str) -> float | None:
     return float(m.group(1).replace(",", "")) if m else None
 
 
+_ORDINAL = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b")
+
+
+def _sin_incluir(t: str) -> bool:
+    return t.startswith(("no ", "0 ")) or "not included" in t
+
+
 def equipaje(lineas) -> tuple[int | None, float | None]:
-    """(equipaje de mano: 1 incluido, 0 no; primera maleta facturada en USD: 0 si va incluida). Vacío si no se dice."""
-    mano, maleta = None, None
+    """(equipaje de mano: 1 incluido, 0 no; primera maleta facturada en USD: 0 si va incluida). Vacío si no se dice o si
+    no está incluida y no se informa el precio. Solo cuenta la línea de la primera maleta («1st» o sin ordinal)."""
+    mano, maleta, primera_vista = None, None, False
     for t in _bajo(lineas):
         if "carry-on" in t:
-            mano = 0 if t.startswith("no ") or "not included" in t or (_importe(t) and "free" not in t) else 1
-        elif "checked bag" in t and maleta is None:
-            if "free" in t or "included" in t and not t.startswith("0 "):
+            if _sin_incluir(t):     # «no» y «not included» antes que «free» o «included»
+                mano = 0
+            elif "free" in t or "included" in t:
+                mano = 1
+            elif _importe(t) is not None:
+                mano = 0
+        elif "checked bag" in t and not primera_vista:
+            ordinal = _ORDINAL.search(t)
+            if ordinal and ordinal.group(1) != "1":
+                continue           # la segunda maleta no dice nada de la primera
+            primera_vista = True
+            if _sin_incluir(t):
+                maleta = None
+            elif "free" in t or "included" in t:
                 maleta = 0.0
-            elif "not included" not in t:
+            else:
                 maleta = _importe(t)
     return mano, maleta
 
