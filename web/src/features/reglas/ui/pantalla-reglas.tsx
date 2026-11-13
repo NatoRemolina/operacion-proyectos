@@ -101,7 +101,13 @@ function FilaRegla({ regla }: { regla: Regla }) {
             aria-describedby={error ? `${id}-error` : `${id}-tipo`}
             className="block min-h-11 w-full min-w-0 rounded-lg border border-borde-campo bg-superficie px-3 py-2 text-base text-texto aria-invalid:border-2 aria-invalid:border-error"
           />
-          <Boton type="submit" variante="secundario" disabled={edicion.isPending} aria-label={`Guardar ${regla.clave}`}>
+          <Boton
+            type="submit"
+            variante="secundario"
+            className="shrink-0 whitespace-nowrap"
+            disabled={edicion.isPending}
+            aria-label={`Guardar ${regla.clave}`}
+          >
             {edicion.isPending ? "Guardando…" : "Guardar"}
           </Boton>
         </div>
