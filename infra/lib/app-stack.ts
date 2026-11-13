@@ -12,13 +12,18 @@ import * as path from "node:path";
 import { dominioDesdeContexto } from "./dominio";
 
 /**
- * Archivos de app/ y datos/ que no están en git ni ignorados: entrarían en la imagen de la API (el Dockerfile copia
- * esas dos carpetas), por ejemplo una respuesta del buscador pagada y sin revisar. Fuera de git, nada que comparar.
+ * Lo que entraría en la imagen de la API sin estar en el commit: archivos nuevos de app/ y datos/ que git no ignora
+ * (por ejemplo, una respuesta del buscador pagada y sin revisar) y cambios sin guardar, preparados o no, en lo que
+ * copia el Dockerfile. Fuera de git, nada que comparar.
  */
-export function sinVersionar(raiz: string, carpetas = ["app", "datos"]): string[] {
-  const r = spawnSync("git", ["ls-files", "--others", "--exclude-standard", "--", ...carpetas], { cwd: raiz, encoding: "utf-8" });
-  if (r.error || r.status !== 0) return [];
-  return r.stdout.split("\n").filter(Boolean);
+export function sinVersionar(raiz: string): string[] {
+  const git = (...args: string[]) => {
+    const r = spawnSync("git", args, { cwd: raiz, encoding: "utf-8" });
+    return r.error || r.status !== 0 ? [] : r.stdout.split("\n").filter(Boolean);
+  };
+  const nuevos = git("ls-files", "--others", "--exclude-standard", "--", "app", "datos");
+  const cambiados = git("diff", "--name-only", "HEAD", "--", "app", "datos", "requirements.txt", "Dockerfile");
+  return [...new Set([...nuevos, ...cambiados])];
 }
 
 export interface AppStackProps extends StackProps {
@@ -52,7 +57,7 @@ export class AppStack extends Stack {
     const raiz = path.join(__dirname, "..", "..");
     const sobran = this.bundlingRequired ? sinVersionar(raiz) : [];
     if (sobran.length) {
-      throw new Error(`Hay archivos sin versionar que entrarían en la imagen de la API: ${sobran.join(", ")}. `
+      throw new Error(`Hay archivos sin versionar o con cambios sin guardar que entrarían en la imagen de la API: ${sobran.join(", ")}. `
         + "Despliega desde una carpeta de trabajo limpia (git worktree) o decide si se versionan (docs/despliegue.md).");
     }
 

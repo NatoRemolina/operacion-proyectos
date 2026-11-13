@@ -27,7 +27,7 @@ cd "$PUBLICAR"
 
 Cada paso dice dónde corre, y todos van en la misma terminal (usan estas variables). En `$PUBLICAR` no hay `.env`: la configuración de desarrollo no puede completar nada de lo que falte en los archivos indicados.
 
-- **Por qué una carpeta limpia:** a la imagen de la API solo entran `requirements.txt`, `app/` y `datos/` (`.dockerignore`), y la web sale de `web/`. Si en `app/` o `datos/` hay algo sin versionar (por ejemplo, una respuesta del buscador pagada y sin revisar), la síntesis de `OperacionApp` se detiene y lo nombra.
+- **Por qué una carpeta limpia:** a la imagen de la API solo entran `requirements.txt`, `app/` y `datos/` (`.dockerignore`), y la web sale de `web/`. Si en `app/` o `datos/` hay algo sin versionar (por ejemplo, una respuesta del buscador pagada y sin revisar), o un cambio sin guardar en un commit en `app/`, `datos/`, `requirements.txt` o `Dockerfile`, la síntesis de `OperacionApp` se detiene y lo nombra.
 - **Docker en marcha:** CDK construye en este equipo las dos imágenes y los estáticos de la web.
 - **Credenciales de AWS de la dueña**, región `us-east-1`: `export AWS_PROFILE=operacion` y `aws sts get-caller-identity` para ver la cuenta. La cuenta ya tiene el *bootstrap* de CDK de despliegues anteriores; en una cuenta nueva se hace una vez, con `(cd infra && npx cdk bootstrap aws://<cuenta>/us-east-1)`.
 - **Archivos locales, fuera de git, en `$PRINCIPAL`:**
