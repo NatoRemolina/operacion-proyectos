@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { estadoVisibleGasto, type GastoDetalle } from "@/features/gastos/domain/gastos";
+import { estadoVisibleGasto, etiquetaCategoria, type GastoDetalle } from "@/features/gastos/domain/gastos";
 import { usePlataforma } from "@/shared/application/plataforma";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { useAvisos } from "@/shared/ui/aviso-emergente";
@@ -178,6 +178,12 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
           <h2 id="titulo-recibo" className="text-lg font-bold">
             Recibo original
           </h2>
+          {gasto.correo ? (
+            <dl>
+              <Fila termino="Remitente">{gasto.correo.remitente ?? "Sin remitente leído"}</Fila>
+              <Fila termino="Asunto">{gasto.correo.asunto ?? "Sin asunto"}</Fila>
+            </dl>
+          ) : null}
           {gasto.documento_id === null ? (
             <p className="text-texto-secundario">Este gasto no tiene un archivo original guardado.</p>
           ) : (
@@ -227,7 +233,7 @@ export function RevisionGasto({ gasto, urlOriginal, migas }: { gasto: GastoDetal
             </h2>
             <dl>
               <Fila termino="Fecha">{formatearFecha(gasto.fecha)}</Fila>
-              <Fila termino="Categoría">{gasto.categoria ?? "Por confirmar"}</Fila>
+              <Fila termino="Categoría">{etiquetaCategoria(gasto.categoria)}</Fila>
               <Fila termino="Subtotal">{formatearDinero(gasto.subtotal, gasto.moneda)}</Fila>
               <Fila termino="Impuesto">{formatearDinero(gasto.impuesto, gasto.moneda)}</Fila>
               <Fila termino="Propina">{gasto.propina === null ? "Sin propina" : formatearDinero(gasto.propina, gasto.moneda)}</Fila>
