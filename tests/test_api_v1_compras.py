@@ -171,3 +171,41 @@ def test_las_elecciones_guardan_el_precio_esperado_y_el_del_buscador(piloto):
 def test_las_tablas_tienen_su_migracion():
     assert {"compras", "clics_fuente"} <= set(db.TABLAS)
     assert compras.TRANSICIONES["en_analisis"] == ("solicitada",)
+
+
+# ---------- ronda 2 · punto 11: registrar exige el viaje aprobado; reabierto, la compra vuelve a análisis ----------
+def test_si_el_viaje_se_reabre_la_compra_vuelve_a_analisis_y_no_se_registra(piloto, cliente):
+    cot = _decidir(piloto)
+    c = _compra(cot)
+    _aprobar_viaje(cliente, cot["viaje"]["id"])
+    assert _estado(cliente, c["id"], "se_comprara", 1, motivo="Se compra hoy").status_code == 200
+    r = cliente.post(f"{V1}/viajes/{cot['viaje']['id']}/estado", json={"accion": "reabrir"}, headers=_csrf(cliente))
+    assert r.status_code == 200, r.text
+    registro = {"version": 2, "localizador": "QX7Z2P", "precio_pagado": "461.30", "vendedor": "American"}
+    r = cliente.post(f"{V1}/compras/{c['id']}/registro", json=registro, headers=_csrf(cliente))
+    assert r.status_code == 409 and r.json()["error"]["code"] in ("INVALID_STATE", "EDIT_CONFLICT"), r.text
+    d = cliente.get(f"{V1}/compras/{c['id']}").json()
+    assert d["estado"] == "en_analisis" and _compra(cot)["localizador"] is None
+    assert db.uno("""select id from eventos where entidad='compra' and entidad_id=:i
+                     and paso='compra: vuelve a análisis'""", i=c["id"])
+
+
+# ---------- ronda 2 · punto 12: un tiquete comprado no desaparece en silencio ----------
+def test_con_el_tiquete_comprado_no_se_cambia_el_vuelo_sin_cancelar_la_compra(piloto, cliente):
+    cot = _decidir(piloto)
+    c = _compra(cot)
+    _aprobar_viaje(cliente, cot["viaje"]["id"])
+    assert _estado(cliente, c["id"], "se_comprara", 1, motivo="Se compra hoy").status_code == 200
+    registro = {"version": 2, "localizador": "QX7Z2P", "precio_pagado": "461.30", "vendedor": "American"}
+    assert cliente.post(f"{V1}/compras/{c['id']}/registro", json=registro, headers=_csrf(cliente)).status_code == 200
+    assert cliente.post(f"{V1}/viajes/{cot['viaje']['id']}/estado", json={"accion": "reabrir"},
+                        headers=_csrf(cliente)).status_code == 200
+    otro = next(v for v in cot["vuelos"] if v["id"] != cot["recomendada_id"])
+    r = piloto.post(f"{V1}/cotizaciones/{cot['id']}/decision", json={"vuelo_id": otro["id"], "motivo": "Mejor horario"},
+                    headers=_csrf(piloto))
+    assert r.status_code == 409 and r.json()["error"]["code"] == "DECISION_LOCKED"
+    assert "cancélala en Compras" in r.json()["error"]["message"]
+    fila = _compra(cot)
+    assert (fila["id"], fila["estado"], fila["activa"]) == (c["id"], "comprada", 1)   # sigue a la vista en la bandeja
+    vista = piloto.get(f"{V1}/cotizaciones/{cot['id']}").json()
+    assert vista["puede_decidir"] is False and "cancélala en Compras" in vista["bloqueo"]

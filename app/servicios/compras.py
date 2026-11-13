@@ -66,6 +66,10 @@ class EstadoInvalido(ValueError):
     """El cambio no se puede hacer desde el estado actual (o falta el viaje aprobado)."""
 
 
+class CompraBloqueada(ValueError):
+    """El tiquete ya está en «Se va a comprar» o comprado: cambiar la decisión exige cancelar antes la compra."""
+
+
 class CampoInvalido(ValueError):
     def __init__(self, campo: str, mensaje: str):
         super().__init__(mensaje)
@@ -87,7 +91,9 @@ def solicitar(decision_id: int, usuario: dict) -> dict:
             db.actualizar("compras", actual["id"], version=actual["version"] + 1, **datos)
             cid = actual["id"]
         else:
-            if actual:   # una compra ya decidida no se reabre: queda como historia y nace otra
+            if actual and actual["estado"] in ("se_comprara", "comprada"):
+                raise CompraBloqueada(bloqueo(d["solicitud_id"]) or "La compra del tiquete ya está decidida.")
+            if actual:   # no se va a comprar o cancelada: queda como historia y nace otra
                 db.actualizar("compras", actual["id"], activa=0)
             cid = db.insertar("compras", viaje_id=viaje["id"], solicitud_id=d["solicitud_id"], solicitada_por=usuario["id"],
                               activa=1, estado="solicitada", creado=db.ahora(), version=1, moneda="USD", **datos)
@@ -101,10 +107,37 @@ def uno(cid: int) -> dict | None:
                          v.viajero_id viaje_viajero_id, v.ida, s.ida solicitud_ida, u.nombre solicitada_por_nombre
                   from compras c join viajes v on v.id=c.viaje_id left join solicitudes s on s.id=c.solicitud_id
                   left join usuarios u on u.id=c.solicitada_por where c.id=:i""", i=cid)
+    if c and c["estado"] == "se_comprara" and c["viaje_estado"] != "aprobado" and _volver_a_analisis(c):
+        return uno(cid)
     if c:
         c["estado_texto"] = ESTADOS.get(c["estado"], c["estado"])
         c["viaje_codigo"] = viajes.codigo_viaje({"id": c["viaje_id"], "creado": c["viaje_creado"]})
     return c
+
+
+def _volver_a_analisis(c: dict) -> bool:
+    """«Se va a comprar» exige el viaje aprobado: si se reabrió o se rechazó, la compra vuelve a análisis (con su rastro).
+    Se hace al leerla, porque el cambio de estado del viaje vive en otro servicio."""
+    with db.transaccion() as conexion:
+        if not config.ES_SQLITE:
+            conexion.execute(text("select id from compras where id=:i for update"), {"i": c["id"]})
+        if (db.uno("select estado from compras where id=:i", i=c["id"]) or {}).get("estado") != "se_comprara":
+            return False   # otra petición ya la movió
+        db.ejecutar("update compras set estado='en_analisis', version=version+1, actualizado=:t where id=:i",
+                    t=db.ahora(), i=c["id"])
+    eventos.registrar("compra", c["id"], "compra: vuelve a análisis",
+                      f"el viaje quedó «{viajes.ESTADOS.get(c['viaje_estado'], c['viaje_estado'])}»", "sistema")
+    return True
+
+
+def bloqueo(solicitud_id: int) -> str | None:
+    """Con el tiquete en «Se va a comprar» o comprado, el vuelo no se cambia sin cancelar antes la compra."""
+    viaje = viajes.de_solicitud(solicitud_id)
+    c = de_viaje(viaje["id"]) if viaje else None
+    if c and c["estado"] in ("se_comprara", "comprada"):
+        return (f"La compra del tiquete de {c['viaje_codigo']} está «{c['estado_texto']}»: para cambiar el vuelo, "
+                "cancélala en Compras primero.")
+    return None
 
 
 def de_viaje(viaje_id: int) -> dict | None:
@@ -191,6 +224,8 @@ def registrar_compra(cid: int, version: int, localizador: str, precio_pagado: De
             raise ConflictoVersion("Otra persona cambió esta compra. Vuelve a cargarla y revisa antes de seguir.")
         if actual["estado"] != "se_comprara":
             raise EstadoInvalido(f"La compra está «{actual['estado_texto']}»: se registra solo cuando «Se va a comprar».")
+        if actual["viaje_estado"] != "aprobado":
+            raise EstadoInvalido(f"El viaje {actual['viaje_codigo']} ya no está aprobado: la compra vuelve a análisis.")
         hoy = db.ahora()
         ida = actual["ida"] or actual["solicitud_ida"]
         db.actualizar("compras", cid, estado="comprada", localizador=localizador, precio_pagado=float(precio_pagado),

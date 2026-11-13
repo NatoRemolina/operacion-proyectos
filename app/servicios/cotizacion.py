@@ -554,7 +554,7 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     previa = c["decision"]
     if previa and previa["vuelo_id"] == vuelo_id and (previa["hotel_id"] or 0) == hotel_id and (previa["motivo"] or "") == motivo.strip()[:300]:
         return {"repetida": True, "decision_id": previa["id"], "viaje": viajes.de_solicitud(sid)}
-    bloqueo = viajes.bloquea_decision(sid)
+    bloqueo = viajes.bloquea_decision(sid) or compras.bloqueo(sid)
     if bloqueo:
         raise DecisionBloqueada(bloqueo)
     aprobado_por = usuario["nombre"]

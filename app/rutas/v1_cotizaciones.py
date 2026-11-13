@@ -401,7 +401,7 @@ def _cotizacion(yo: dict, sid: int, sesion: str = "") -> dict:
         raise _no_encontrado()
     sol, d = c["sol"], c["decision"]
     viaje = viajes.de_solicitud(sid)
-    bloqueo = viajes.bloquea_decision(sid)
+    bloqueo = viajes.bloquea_decision(sid) or compras.bloqueo(sid)
     return {
         "id": sid, "estado": sol["estado"], "creado": consultas.instante(sol["creado"]), "solicitado_por": sol["solicitado_por"],
         "proyecto": {"id": sol["proyecto_id"], "nombre": sol["proyecto"]} if sol["proyecto_id"] else None,
