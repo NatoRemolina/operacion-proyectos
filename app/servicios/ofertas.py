@@ -9,7 +9,7 @@ import re
 import time
 from datetime import date
 
-from sqlalchemy import CheckConstraint, Column, Float, Integer, Text, inspect
+from sqlalchemy import CheckConstraint, Column, Float, Integer, Text, inspect, text
 
 from .. import config, db
 from . import eventos
@@ -353,28 +353,39 @@ def _respuestas_nuevas(hechos: set[str]) -> list[tuple[str, str, dict, str | Non
     return salida
 
 
+CERROJO = 7340001   # cerrojo consultivo de PostgreSQL: una sola extracción a la vez en toda la base
+
+
 def actualizar() -> dict:
     """Extrae a `ofertas_tarifa` lo que aún no esté: las lecturas `listo` de la página y las respuestas del buscador con
-    opciones de reserva. Incremental e idempotente: repetirlo no duplica. Sin la tabla de lecturas, las omite."""
-    hechos = {"filas": 0, "respuestas": 0, "lecturas": 0}
+    opciones de reserva. Incremental e idempotente: repetirlo no duplica. Sin la tabla de lecturas, las omite.
+
+    Todo va en una transacción. En PostgreSQL toma un cerrojo consultivo y, si otra corrida lo tiene, sale sin hacer nada
+    (`ocupado`); en SQLite la transacción de escritura ya pone las corridas en fila. Así el conteo es el de las filas que
+    de verdad entraron."""
+    hechos = {"filas": 0, "respuestas": 0, "lecturas": 0, "ocupado": False}
     if not _existe("ofertas_tarifa"):
         return hechos
-    for origen_fila, clave, datos, creado in _respuestas_nuevas(_hechos()):
-        filas = _de_respuesta(origen_fila, clave, datos, creado)
-        if filas:
-            hechos["respuestas"] += 1
-            hechos["filas"] += _insertar(filas)
-    if _existe("analisis_vuelo"):
-        for a in db.todos("""select * from analisis_vuelo a where estado='listo' and not exists
-                             (select 1 from ofertas_tarifa o where o.analisis_id=a.id) order by id"""):
-            filas = _de_lectura(a)
+    con_lecturas = _existe("analisis_vuelo")
+    with db.transaccion() as c:
+        if not config.ES_SQLITE and not c.execute(text("select pg_try_advisory_xact_lock(:k)"), {"k": CERROJO}).scalar():
+            return {**hechos, "ocupado": True}
+        for origen_fila, clave, datos, creado in _respuestas_nuevas(_hechos()):
+            filas = _de_respuesta(origen_fila, clave, datos, creado)
             if filas:
-                hechos["lecturas"] += 1
+                hechos["respuestas"] += 1
                 hechos["filas"] += _insertar(filas)
-    if hechos["filas"]:
-        eventos.registrar("ofertas_tarifa", None, "tarifas extraídas",
-                          f"{hechos['filas']} tarifas de {hechos['respuestas']} respuestas del buscador y {hechos['lecturas']} lecturas de la página",
-                          "extractor")
+        if con_lecturas:
+            for a in db.todos("""select * from analisis_vuelo a where estado='listo' and not exists
+                                 (select 1 from ofertas_tarifa o where o.analisis_id=a.id) order by id"""):
+                filas = _de_lectura(a)
+                if filas:
+                    hechos["lecturas"] += 1
+                    hechos["filas"] += _insertar(filas)
+        if hechos["filas"]:
+            eventos.registrar("ofertas_tarifa", None, "tarifas extraídas",
+                              f"{hechos['filas']} tarifas de {hechos['respuestas']} respuestas del buscador y {hechos['lecturas']} lecturas de la página",
+                              "extractor")
     return hechos
 
 

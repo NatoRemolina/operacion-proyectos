@@ -302,3 +302,22 @@ def test_r1_7_una_reconfirmacion_lleva_sus_fechas_y_su_ruta():
     fila = db.uno("select * from ofertas_tarifa where busqueda_clave=:c", c=clave)
     assert (fila["ida"], fila["regreso"], fila["origen"], fila["destino"]) == ("2026-12-08", "2026-12-11", "MIA", "LAS")
     assert fila["anticipacion_dias"] == 26 and fila["noches"] == 3 and fila["vuelos"] == "AA1851" and fila["precio"] == 612
+
+
+def test_r1_8_el_conteo_es_el_de_las_filas_que_entraron():
+    clave = "reserva_MIA_LAS_2026-12-08_2026-12-11_AA7008.json"
+    _guardar_respuesta(clave, _respuesta(455), "2026-11-06 10:00:00")
+    antes = db.uno("select count(*) n from ofertas_tarifa")["n"]
+    hechos = ofertas.actualizar()
+    assert hechos["ocupado"] is False and hechos["filas"] == db.uno("select count(*) n from ofertas_tarifa")["n"] - antes >= 1
+
+
+@pytest.mark.skipif(config.ES_SQLITE, reason="en SQLite la transacción de escritura ya serializa las corridas")
+def test_r1_8_dos_corridas_a_la_vez_no_se_pisan():
+    from sqlalchemy import text
+    with db.motor.connect() as otra:   # otra corrida en curso tiene el cerrojo
+        otra.execute(text("select pg_advisory_lock(:k)"), {"k": ofertas.CERROJO})
+        try:
+            assert ofertas.actualizar() == {"filas": 0, "respuestas": 0, "lecturas": 0, "ocupado": True}
+        finally:
+            otra.execute(text("select pg_advisory_unlock(:k)"), {"k": ofertas.CERROJO})
