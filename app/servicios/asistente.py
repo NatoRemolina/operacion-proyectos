@@ -243,7 +243,8 @@ def h_kpi(r: Rastro, nombre: str = "", filtros: dict | None = None, **_) -> dict
     f = {k: v for k, v in (filtros or {}).items() if k in ("proyecto_id", "desde", "hasta") and v not in (None, "", 0)}
     if str(nombre or "").strip().lower() in ("todos", "tablero"):   # todo el tablero en una consulta, como la pantalla de KPIs
         filas = kpis.evaluar(f)
-        return {"filtros": f, "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos")},
+        return {"filtros": f, "nota": "Al responder, nombra cada indicador por su «titulo»; «nombre» es la clave interna.",
+                "resumen": {e: sum(1 for k in filas if k["estado"] == e) for e in ("rojo", "ambar", "verde", "sin datos")},
                 "indicadores": [{"nombre": k["nombre"], "titulo": k["titulo"], "valor": k["valor"], "unidad": k["unidad"], "meta": k["meta"],
                                  "umbral_alerta": k["alerta"], "sentido": k["sentido"], "semaforo": k["estado"]} for k in filas]}
     res = metricas.valor(nombre, f)
@@ -455,6 +456,30 @@ def tope_diario() -> int:
 
 def usadas_hoy(usuario_id: int) -> int:
     return db.uno("select count(*) n from asistente_consultas where usuario_id=:u and momento>=:d", u=usuario_id, d=db.ahora()[:10])["n"]
+
+
+DICTADO = ("Transcribe literalmente la pregunta que se dice en este audio, en el idioma en que se habla. Devuelve solo "
+           "el texto dicho, sin comillas, comentarios ni respuesta a la pregunta. Si no se entiende, devuelve una cadena vacía.")
+
+
+def puede_dictar() -> bool:
+    """El dictado usa el modelo de lectura (formato `generateContent`); el asesor solo recibe texto."""
+    return llm.activo()
+
+
+def transcribir_pregunta(audio: bytes, mime: str, usuario: dict) -> str:
+    """Pasa a texto una pregunta dictada. Lanza `llm.ErrorDelModelo` si el modelo no está o no responde."""
+    if not acceso.es_admin(usuario):
+        raise PermissionError("El asistente es solo para administración.")
+    if not puede_dictar():
+        raise llm.ErrorDelModelo("No hay un modelo configurado para transcribir voz.")
+    rapido = llm.RAPIDO.set(True)   # quien dicta espera en pantalla: un intento con espera corta
+    try:
+        r = llm.generar([{"role": "user", "parts": [llm.parte_archivo(audio, mime), llm.parte_texto(DICTADO)]}],
+                        uso="dictado", entidad_id=usuario["id"], tope_salida=1024)
+    finally:
+        llm.RAPIDO.reset(rapido)
+    return " ".join(llm.texto_de(r).strip().strip("\"'«»“”").split())[:500]
 
 
 def responder(pregunta: str, usuario: dict) -> dict:

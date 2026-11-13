@@ -11,6 +11,12 @@ JSON = {"X-Envio": "pagina"}
 CLAVES = {"texto", "modo", "modo_texto", "modo_clase", "fuentes", "herramientas", "duracion_ms", "usadas", "tope"}
 
 
+@pytest.fixture(autouse=True)
+def _sin_tope(monkeypatch):
+    """Toda la suite pregunta como la misma administración: el tope diario se prueba aparte, fijándolo."""
+    monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
+
+
 def _admin() -> dict:
     return db.uno("select * from usuarios where correo='admin@demo.local'")
 
@@ -79,15 +85,11 @@ def test_sin_la_cabecera_sigue_siendo_la_pagina(cliente):
     assert "Sin modelo: consultas directas" in r.text
 
 
-def test_el_tope_diario_se_presenta_como_aviso(cliente):
-    asistente.asegurar_regla()
-    regla = db.uno("select id, valor from reglas where clave='asistente_preguntas_dia'")
-    db.actualizar("reglas", regla["id"], valor=str(asistente.usadas_hoy(_admin()["id"])))
-    try:
-        d = cliente.post("/admin/asistente", data={"pregunta": "¿Cuál es el gasto real aprobado?"}, headers=JSON).json()
-        assert d["modo"] == "tope" and d["modo_texto"] == "Tope diario alcanzado" and d["modo_clase"] == "aviso"
-    finally:
-        db.actualizar("reglas", regla["id"], valor=regla["valor"])
+def test_el_tope_diario_se_presenta_como_aviso(cliente, monkeypatch):
+    admin = db.uno("select id from usuarios where correo='admin@demo.local'")
+    monkeypatch.setattr(asistente, "tope_diario", lambda: asistente.usadas_hoy(admin["id"]))
+    d = cliente.post("/admin/asistente", data={"pregunta": "¿Cuál es el gasto real aprobado?"}, headers=JSON).json()
+    assert d["modo"] == "tope" and d["modo_texto"] == "Tope diario alcanzado" and d["modo_clase"] == "aviso"
 
 
 # ---------- bordes ----------

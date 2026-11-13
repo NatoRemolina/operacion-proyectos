@@ -463,6 +463,16 @@ def test_el_asistente_flotante_recibe_la_respuesta_del_asesor(con_asesor, client
     assert d["texto"] == "Hay gastos en revisión."
 
 
+def test_la_api_v1_del_asistente_responde_con_el_asesor(con_asesor, cliente):
+    from app import api_v1
+    from app.servicios import acceso
+    con_asesor(Servicio([corriendo(), mensaje("Hay gastos en revisión."), fin()]))
+    r = cliente.post("/api/v1/asistente", json={"pregunta": "¿Hay gastos en revisión?"},
+                     headers={"X-CSRF-Token": api_v1.token_csrf(cliente.cookies.get(acceso.COOKIE))})
+    assert r.status_code == 200, r.text
+    assert r.json()["modo"] == "asesor" and r.json()["modo_texto"] == "Asesor con herramientas"
+
+
 def test_el_asistente_flotante_sigue_respondiendo_si_el_servicio_falla(con_asesor, cliente):
     con_asesor(Servicio(crear=500))
     r = cliente.post("/admin/asistente", data={"pregunta": "¿Cuántos gastos hay en revisión?"}, headers={"X-Envio": "pagina"})

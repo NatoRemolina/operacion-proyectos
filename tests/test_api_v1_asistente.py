@@ -1,0 +1,140 @@
+"""API v1 del asistente: preguntar por escrito y dictar por voz. Solo administración, con CSRF y el formato de error común.
+
+Sin asesor ni modelo (ver conftest) responde la vía de consultas directas; el dictado se prueba con un modelo guionado.
+"""
+import io
+import struct
+
+import pytest
+from starlette.testclient import TestClient
+
+from app import api_v1, config, db
+from app.servicios import acceso, asistente, llm, viajes
+
+V1 = "/api/v1"
+
+
+@pytest.fixture(autouse=True)
+def _sin_tope(monkeypatch):
+    """Toda la suite pregunta como la misma administración: el tope diario se prueba aparte, fijándolo."""
+    monkeypatch.setattr(asistente, "tope_diario", lambda: 10_000)
+
+
+def _csrf(c: TestClient) -> dict:
+    return {"X-CSRF-Token": api_v1.token_csrf(c.cookies.get(acceso.COOKIE))}
+
+
+def _error(r, estado: int, codigo: str) -> dict:
+    assert r.status_code == estado, r.text
+    cuerpo = r.json()
+    assert cuerpo["error"]["code"] == codigo and cuerpo["error"]["message"] and cuerpo["request_id"]
+    return cuerpo["error"]
+
+
+def _wav(segundos: float = 0.2, frecuencia: int = 16000) -> bytes:
+    """WAV PCM de 16 bits, mono, en silencio: la forma que envía la web."""
+    datos = b"\x00\x00" * int(segundos * frecuencia)
+    return (b"RIFF" + struct.pack("<I", 36 + len(datos)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, frecuencia, frecuencia * 2, 2, 16)
+            + b"data" + struct.pack("<I", len(datos)) + datos)
+
+
+def _dictar(c: TestClient, contenido: bytes, tipo: str = "audio/wav", csrf: bool = True):
+    return c.post(f"{V1}/asistente/voz", files={"audio": ("pregunta.wav", io.BytesIO(contenido), tipo)},
+                  headers=_csrf(c) if csrf else {})
+
+
+@pytest.fixture(scope="module")
+def andres(nuevo_viaje):
+    v = nuevo_viaje(viajero_id=1)
+    uid = db.uno("select id from usuarios where correo='piloto@demo.local'")["id"]
+    gid = db.insertar("gastos", usuario_id=uid, viaje_id=v["id"], proyecto_id=v["proyecto_id"], viajero_id=v["viajero_id"],
+                      comercio="Café de la API", fecha="2026-12-09", categoria="comida", total=12.30, moneda="USD",
+                      total_usd=12.30, estado="revision", confianza=0.95, creado=db.ahora())
+    return {"id": uid, "viaje": v, "gasto": gid}
+
+
+# ---------- preguntar ----------
+def test_administracion_pregunta_y_recibe_fuentes_con_destino(cliente, andres):
+    r = cliente.post(f"{V1}/asistente", json={"pregunta": f"¿Qué ha reportado {viajes.codigo_persona(andres['id'])} en su viaje?"},
+                     headers=_csrf(cliente))
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["modo"] == "determinista" and d["modo_texto"] == "Sin modelo: consultas directas"
+    assert "Gasto #" in d["texto"] and "12.30 USD" in d["texto"]
+    assert {"tipo": "gasto", "codigo": f"gasto #{andres['gasto']}", "destino": {"tipo": "gasto", "id": andres["gasto"]}} in d["fuentes"]
+    assert {"tipo": "viaje", "id": andres["viaje"]["id"]} in [f["destino"] for f in d["fuentes"]]
+    assert all(f["destino"] is None for f in d["fuentes"] if f["tipo"] == "persona")
+    assert d["usadas"] >= 1 and d["tope"] == asistente.tope_diario() and isinstance(d["herramientas"], list)
+    assert r.headers["cache-control"] == "no-store"
+
+
+def test_preguntar_exige_csrf_y_administracion(cliente, piloto, gestor, anonimo):
+    _error(cliente.post(f"{V1}/asistente", json={"pregunta": "¿Hola?"}), 403, "CSRF_INVALID")
+    for c in (piloto, gestor):
+        _error(c.post(f"{V1}/asistente", json={"pregunta": "¿Qué gastos hay?"}, headers=_csrf(c)), 403, "FORBIDDEN")
+    _error(anonimo.post(f"{V1}/asistente", json={"pregunta": "¿Hola?"}), 401, "UNAUTHENTICATED")
+    _error(cliente.post(f"{V1}/asistente", json={"pregunta": "¿Hola?"}, headers={**_csrf(cliente), "Origin": "https://sitio-ajeno.example"}),
+           403, "ORIGIN_NOT_ALLOWED")
+
+
+def test_preguntar_valida_la_pregunta(cliente):
+    _error(cliente.post(f"{V1}/asistente", json={"pregunta": "   "}, headers=_csrf(cliente)), 422, "VALIDATION_ERROR")
+    _error(cliente.post(f"{V1}/asistente", json={"pregunta": "x" * 501}, headers=_csrf(cliente)), 422, "VALIDATION_ERROR")
+    _error(cliente.post(f"{V1}/asistente", json={"pregunta": "¿Hola?", "rol": "admin"}, headers=_csrf(cliente)), 422, "VALIDATION_ERROR")
+
+
+def test_el_tope_diario_responde_con_su_modo(cliente, monkeypatch):
+    admin = db.uno("select id from usuarios where correo='admin@demo.local'")
+    monkeypatch.setattr(asistente, "tope_diario", lambda: asistente.usadas_hoy(admin["id"]))
+    d = cliente.post(f"{V1}/asistente", json={"pregunta": "¿Cuál es el gasto real aprobado?"}, headers=_csrf(cliente)).json()
+    assert d["modo"] == "tope" and d["modo_texto"] == "Tope diario alcanzado" and d["fuentes"] == []
+
+
+# ---------- dictar ----------
+@pytest.fixture()
+def modelo_que_transcribe(monkeypatch):
+    llamadas = []
+
+    def generar(contenidos, **kw):
+        llamadas.append({"contenidos": contenidos, **kw})
+        return {"content": {"parts": [{"text": "  «¿Cómo van   los indicadores?»\n"}]}, "finishReason": "STOP"}
+
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(llm, "generar", generar)
+    return llamadas
+
+
+def test_dictar_devuelve_la_pregunta_en_texto(cliente, modelo_que_transcribe):
+    audio = _wav()
+    r = _dictar(cliente, audio)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"texto": "¿Cómo van los indicadores?"}
+    (llamada,) = modelo_que_transcribe
+    parte = llamada["contenidos"][0]["parts"][0]["inline_data"]
+    assert parte["mime_type"] == "audio/wav" and llamada["uso"] == "dictado"
+    assert not llm.RAPIDO.get()   # la espera corta solo vale para esa llamada
+
+
+def test_dictar_rechaza_lo_que_no_es_wav(cliente, modelo_que_transcribe):
+    _error(_dictar(cliente, b"OggS" + b"\x00" * 64, tipo="audio/ogg"), 415, "UNSUPPORTED_MEDIA_TYPE")
+    _error(_dictar(cliente, b"no es audio" * 10, tipo="audio/wav"), 415, "UNSUPPORTED_MEDIA_TYPE")
+    _error(_dictar(cliente, b""), 422, "VALIDATION_ERROR")
+    _error(_dictar(cliente, b"RIFF" + b"\x00" * (config.MAX_BYTES_SOPORTE + 1)), 413, "PAYLOAD_TOO_LARGE")
+    assert modelo_que_transcribe == []
+
+
+def test_dictar_sin_modelo_o_con_fallo_es_503(cliente, monkeypatch):
+    _error(_dictar(cliente, _wav()), 503, "SERVICE_UNAVAILABLE")   # en las pruebas no hay modelo configurado
+
+    def falla(*a, **kw):
+        raise llm.ErrorDelModelo("saturado")
+
+    monkeypatch.setattr(llm, "activo", lambda: True)
+    monkeypatch.setattr(llm, "generar", falla)
+    _error(_dictar(cliente, _wav()), 503, "SERVICE_UNAVAILABLE")
+
+
+def test_dictar_exige_csrf_y_administracion(cliente, piloto, modelo_que_transcribe):
+    _error(_dictar(cliente, _wav(), csrf=False), 403, "CSRF_INVALID")
+    _error(_dictar(piloto, _wav()), 403, "FORBIDDEN")
+    assert modelo_que_transcribe == []

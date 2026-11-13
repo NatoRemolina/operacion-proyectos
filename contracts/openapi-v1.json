@@ -6,6 +6,160 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/asistente": {
+      "post": {
+        "tags": [
+          "administracion"
+        ],
+        "summary": "Preguntar",
+        "description": "Solo administración. Puede tardar hasta un minuto con el asesor; si no responde, contesta la vía siguiente.",
+        "operationId": "preguntar_api_v1_asistente_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreguntaAsistente"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaAsistente"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/asistente/voz": {
+      "post": {
+        "tags": [
+          "administracion"
+        ],
+        "summary": "Dictar",
+        "description": "Solo administración. Devuelve la pregunta dictada en texto; no la responde ni la guarda.",
+        "operationId": "dictar_api_v1_asistente_voz_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_dictar_api_v1_asistente_voz_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transcripcion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión, sesión vencida o credenciales incorrectas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token CSRF ausente o inválido, origen no permitido, operación de otro permiso o aprobación de lo propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Archivo de más de 4,5 MB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "El contenido no es JPG, PNG, WebP, PDF ni correo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Campos inválidos; detalle por campo en `fields`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "El servicio que transcribe la voz no está configurado o no respondió",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -1518,6 +1672,21 @@
         ],
         "title": "AeropuertoSugerido"
       },
+      "Body_dictar_api_v1_asistente_voz_post": {
+        "properties": {
+          "audio": {
+            "type": "string",
+            "format": "binary",
+            "title": "Audio",
+            "description": "La pregunta grabada, en WAV (la web graba y convierte en el navegador)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "audio"
+        ],
+        "title": "Body_dictar_api_v1_asistente_voz_post"
+      },
       "Body_enviar_api_v1_gastos_post": {
         "properties": {
           "archivo": {
@@ -2027,6 +2196,30 @@
         "title": "Desglose",
         "description": "El costo total esperado por partes. Las millas restan."
       },
+      "DestinoFuente": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "viaje",
+              "gasto",
+              "cotizacion"
+            ],
+            "title": "Tipo"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "id"
+        ],
+        "title": "DestinoFuente",
+        "description": "Dónde se ve una fuente: la pantalla del viaje, del gasto o de la cotización con ese id."
+      },
       "DetalleError": {
         "properties": {
           "code": {
@@ -2134,6 +2327,38 @@
           "precios_en_vivo"
         ],
         "title": "FormularioCotizacion"
+      },
+      "FuenteAsistente": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "title": "Tipo",
+            "description": "persona, viaje, gasto, cotizacion, nota o audio."
+          },
+          "codigo": {
+            "type": "string",
+            "title": "Codigo",
+            "description": "Cómo la cita la respuesta, por ejemplo «gasto #12» o «V-2026-0003»."
+          },
+          "destino": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DestinoFuente"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null si la fuente no tiene pantalla propia (por ejemplo, una persona)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "codigo",
+          "destino"
+        ],
+        "title": "FuenteAsistente"
       },
       "GastoResumen": {
         "properties": {
@@ -3483,6 +3708,23 @@
         ],
         "title": "Persona"
       },
+      "PreguntaAsistente": {
+        "properties": {
+          "pregunta": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Pregunta",
+            "description": "La pregunta en lenguaje natural."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pregunta"
+        ],
+        "title": "PreguntaAsistente"
+      },
       "ProyectoOpcion": {
         "properties": {
           "id": {
@@ -3604,6 +3846,72 @@
           "velocidad_kmh"
         ],
         "title": "ReglasCarretera"
+      },
+      "RespuestaAsistente": {
+        "properties": {
+          "texto": {
+            "type": "string",
+            "title": "Texto"
+          },
+          "modo": {
+            "type": "string",
+            "enum": [
+              "asesor",
+              "modelo",
+              "determinista",
+              "tope"
+            ],
+            "title": "Modo",
+            "description": "Quién respondió: el asesor (agente con herramientas), el modelo con herramientas, las consultas directas sin modelo, o `tope` si se llegó al máximo de preguntas del día."
+          },
+          "modo_texto": {
+            "type": "string",
+            "title": "Modo Texto",
+            "description": "El modo en palabras, el mismo que muestra la pantalla actual."
+          },
+          "fuentes": {
+            "items": {
+              "$ref": "#/components/schemas/FuenteAsistente"
+            },
+            "type": "array",
+            "title": "Fuentes",
+            "description": "Lo que la respuesta cita, con su destino."
+          },
+          "herramientas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Herramientas",
+            "description": "Consultas hechas, en orden."
+          },
+          "duracion_ms": {
+            "type": "integer",
+            "title": "Duracion Ms"
+          },
+          "usadas": {
+            "type": "integer",
+            "title": "Usadas",
+            "description": "Preguntas de la persona hoy, incluida esta."
+          },
+          "tope": {
+            "type": "integer",
+            "title": "Tope",
+            "description": "Máximo de preguntas por persona y día (supuesto `asistente_preguntas_dia`)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "texto",
+          "modo",
+          "modo_texto",
+          "fuentes",
+          "herramientas",
+          "duracion_ms",
+          "usadas",
+          "tope"
+        ],
+        "title": "RespuestaAsistente"
       },
       "RespuestaError": {
         "properties": {
@@ -4002,6 +4310,20 @@
           "nombre"
         ],
         "title": "Titular"
+      },
+      "Transcripcion": {
+        "properties": {
+          "texto": {
+            "type": "string",
+            "title": "Texto",
+            "description": "Lo que se entendió del audio; vacío si no se entendió nada."
+          }
+        },
+        "type": "object",
+        "required": [
+          "texto"
+        ],
+        "title": "Transcripcion"
       },
       "ViajeCodigo": {
         "properties": {
