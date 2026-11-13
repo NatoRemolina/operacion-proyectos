@@ -292,3 +292,41 @@ def test_el_mismo_vuelo_en_otra_cotizacion_reutiliza_la_lectura(piloto, piloto2,
                         url="https://www.google.com/travel/flights", estado="listo", creado=db.ahora(), captura=None)
     db.ejecutar("update analisis_vuelo set captura=(select captura from analisis_vuelo where id=:a) where id=:b", a=a["id"], b=ajena)
     assert piloto.get(f"{V1}/cotizaciones/{mia['id']}/analisis/{ajena}/captura").status_code == 404
+
+
+# ---------- ronda 1 · punto 13: sin el servicio levantado, no se guarda ni cuenta ----------
+def test_sin_el_servicio_levantado_no_guarda_ni_cuenta(piloto, monkeypatch):
+    import httpx
+    monkeypatch.setenv("ANALIZADOR_URL", "http://analizador:8090")
+    monkeypatch.delenv("ANALIZADOR", raising=False)
+    db.ejecutar("delete from analisis_vuelo")
+
+    def rechazada(*a, **k):
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr(httpx, "post", rechazada)
+    c = _cotizar(piloto)
+    a = _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()
+    assert (a["estado"], a["motivo"]) == ("no_disponible", analizador.SIN_SERVICIO)
+    assert db.uno("select count(*) n from analisis_vuelo")["n"] == 0
+
+
+@pytest.mark.parametrize("codigo, motivo", [("TooManyRequestsException", "OCUPADO"),
+                                            ("ResourceNotFoundException", "SIN_SERVICIO")])
+def test_en_aws_una_invocacion_rechazada_no_guarda_ni_cuenta(piloto, monkeypatch, codigo, motivo):
+    import boto3
+    from botocore.exceptions import ClientError
+    monkeypatch.delenv("ANALIZADOR_URL", raising=False)
+    monkeypatch.delenv("ANALIZADOR", raising=False)
+    monkeypatch.setenv("ANALIZADOR_FUNCION", "operacion-analizador")
+    db.ejecutar("delete from analisis_vuelo")
+
+    class Cliente:
+        def invoke(self, **_):
+            raise ClientError({"Error": {"Code": codigo, "Message": "no"}}, "Invoke")
+
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: Cliente())
+    c = _cotizar(piloto)
+    a = _pedir(piloto, c["id"], c["vuelos"][0]["id"]).json()
+    assert (a["estado"], a["motivo"]) == ("no_disponible", getattr(analizador, motivo))
+    assert db.uno("select count(*) n from analisis_vuelo")["n"] == 0

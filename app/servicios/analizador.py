@@ -148,16 +148,32 @@ def de_la_cotizacion(sid: int, analisis_id: int) -> dict | None:
     return a if any(clave(sol, db.de_json(v["datos"], {}) or {}) == a["clave"] for v in vuelos) else None
 
 
+SIN_SERVICIO = "El analizador de Google Flights no está disponible en este momento: el desglose muestra solo lo del buscador."
+# La invocación no llegó a leer nada: no es una lectura (no se guarda ni cuenta para los topes)
+NO_LLEGO = {"TooManyRequestsException": OCUPADO, "ResourceNotFoundException": SIN_SERVICIO}
+
+
 def _llamar(url: str) -> dict:
-    """La respuesta del analizador; un fallo de la llamada se devuelve como lectura fallida, nunca como excepción."""
+    """La respuesta del analizador; un fallo de la llamada se devuelve como lectura fallida, nunca como excepción.
+    Si el servicio no está (conexión rechazada, función inexistente o sin turno): `{"no_disponible": motivo}`."""
     modo = _modo()
     try:
         if modo[0] == "http":
-            return httpx.post(f"{modo[1]}/analizar", json={"url": url}, timeout=ESPERA_S).json()
+            try:
+                return httpx.post(f"{modo[1]}/analizar", json={"url": url}, timeout=ESPERA_S).json()
+            except httpx.ConnectError:
+                return {"no_disponible": SIN_SERVICIO}   # docker compose sin el perfil «analizador»
         import boto3
         from botocore.config import Config
+        from botocore.exceptions import ClientError
         cliente = boto3.client("lambda", config=Config(read_timeout=ESPERA_S, retries={"max_attempts": 0}))
-        r = cliente.invoke(FunctionName=modo[1], Payload=json.dumps({"url": url}).encode())
+        try:
+            r = cliente.invoke(FunctionName=modo[1], Payload=json.dumps({"url": url}).encode())
+        except ClientError as e:
+            codigo = e.response.get("Error", {}).get("Code")
+            if codigo in NO_LLEGO:
+                return {"no_disponible": NO_LLEGO[codigo]}
+            raise
         cuerpo = json.loads(r["Payload"].read() or b"{}")
         if r.get("FunctionError"):
             return {"estado": "fallido", "motivo": "el analizador falló al leer la página"}
@@ -259,8 +275,12 @@ def solicitar(usuario: dict, sid: int, opcion_id: int, canal: str = "api v1") ->
     aid, url = reserva["id"], reserva["url"]
     nombre = " + ".join(vuelo.get("numeros") or [])
     eventos.registrar("solicitud", sid, "lectura de Google Flights pedida", f"{nombre}: {url}", f"{canal} · {usuario['nombre']}")
+    r = _llamar(url)
+    if isinstance(r, dict) and r.get("no_disponible"):
+        db.ejecutar("delete from analisis_vuelo where id=:i and estado='pendiente'", i=aid)   # no fue una lectura
+        return no_disponible(r["no_disponible"])
     try:
-        cambios = _resultado_de(_llamar(url))
+        cambios = _resultado_de(r)
     except Exception as e:  # noqa: BLE001 (lo que sea que falle aquí no puede dejar la lectura «pendiente»)
         print(f"analizador: la lectura {aid} no se pudo guardar: {type(e).__name__}", flush=True)
         cambios = {"estado": "fallido", "terminado": db.ahora(), "motivo": SIN_CAPTURA, "captura": None, "datos": None}
