@@ -26,7 +26,8 @@ ESCALA = re.compile(r"^(\d+ hr(?: \d+ min)?|\d+ min) ([A-Z]{3})\b")
 FIN_RESERVA = ("Fare and baggage fees", "Prices include required taxes", "Price insights", "Price history")
 DUPLICADO_ACCESIBLE = re.compile(r"^(First|Second|Third) checked bag costs ")
 SIN_INTERES = {"Hide options", "Show options", "More options", "Fewer options", "Airline", "Continue", "Book on Google",
-               "Travel agency", "Learn more", "Other booking options"}
+               "Travel agency", "Learn more", "Other booking options", "View options", "Call airline",
+               "How options are ranked", "Learn more about booking options"}
 
 
 def _ruta_segura(url) -> str | None:
@@ -96,15 +97,24 @@ def _clasificar(caracteristicas: list[str]) -> dict:
 
 def _tramos(lineas: list[str]) -> list[dict]:
     """Los vuelos elegidos: cada uno empieza con su fecha («Tue, Dec 8»)."""
-    tramos, actual = [], None
+    tramos, actual, equipaje = [], None, None
     for linea in lineas:
         if FECHA.match(linea):
             actual = {"fecha": linea, "sale": None, "llega": None, "aerolinea": None, "duracion": None, "ruta": None,
                       "escalas": None, "detalle_escalas": [], "emisiones": None,
                       # el detalle desplegado de cada tramo (pieza 5)
                       "avion": None, "aviones": [], "numeros": [], "cabina": None, "piernas": None, "wifi": None,
-                      "enchufes": None, "retrasos": None, "aeropuertos": [], "nocturna": False, "terminales": []}
+                      "enchufes": None, "retrasos": None, "aeropuertos": [], "nocturna": False, "terminales": [],
+                      "equipaje": [], "_nocturna": False}
             tramos.append(actual)
+            equipaje = None
+            continue
+        if linea in ("DEPARTING FLIGHT", "RETURNING FLIGHT"):   # el equipaje de cada tramo, debajo de los vuelos
+            i = 0 if linea == "DEPARTING FLIGHT" else 1
+            equipaje = tramos[i]["equipaje"] if i < len(tramos) else None
+            continue
+        if equipaje is not None:
+            equipaje.append(linea)
             continue
         if actual is None or linea in ("–", "-"):
             continue
@@ -126,7 +136,7 @@ def _tramos(lineas: list[str]) -> list[dict]:
             actual["aerolinea"] = linea
     for t in tramos:
         escalas = " · ".join(t["detalle_escalas"])
-        t["nocturna"] = "overnight" in escalas.lower()
+        t["nocturna"] = "overnight" in escalas.lower() or t.pop("_nocturna")
         t["terminales"] = list(dict.fromkeys(re.findall(r"\bTerminal [A-Z0-9]{1,3}\b", escalas)))
     return tramos
 
@@ -134,7 +144,9 @@ def _tramos(lineas: list[str]) -> list[dict]:
 AVION = re.compile(r"\b(Boeing|Airbus|Embraer|Bombardier|Canadair|CRJ|ATR|McDonnell Douglas|De Havilland|Saab|Fokker)\b")
 CABINAS = {"Economy", "Basic Economy", "Premium economy", "Premium Economy", "Business", "First"}
 NUMERO_VUELO = re.compile(r"^([A-Z0-9]{2}) ?(\d{1,4})$")
-AEROPUERTO = re.compile(r"^\d{1,2}:\d\d [AP]M(\+\d)? · ")
+# «9:48 AM · Miami International Airport (MIA)» o, pegado, «12:40 PMJose Maria Cordova International Airport (MDE)»
+AEROPUERTO = re.compile(r"^(\d{1,2}:\d\d [AP]M(?:\+\d)?)(?: · |(?=[A-Z]))")
+AVION_Y_NUMERO = re.compile(r"^(.*?)([A-Z0-9]{2}) ?(\d{1,4})$")   # «Boeing 737CM 687»: el avión y el número, pegados
 
 
 def _detalle(actual: dict, linea: str) -> bool:
@@ -151,8 +163,19 @@ def _detalle(actual: dict, linea: str) -> bool:
             elif parte in CABINAS:
                 actual["cabina"] = actual["cabina"] or parte
         return True
-    if AEROPUERTO.match(linea):
+    if AVION.search(linea) and (m := AVION_Y_NUMERO.match(linea)) and AVION.search(m.group(1)):
+        actual["aviones"].append(m.group(1).strip())
+        actual["avion"] = actual["avion"] or m.group(1).strip()
+        actual["numeros"].append(f"{m.group(2)} {m.group(3)}")
+        return True
+    if (m := AEROPUERTO.match(linea)):
         actual["aeropuertos"].append(linea)
+        if actual["sale"] is None:
+            actual["sale"] = m.group(1)
+        elif len(actual["aeropuertos"]) > 1:
+            actual["llega"] = m.group(1)   # la última llegada del tramo
+    elif linea in CABINAS:
+        actual["cabina"] = actual["cabina"] or linea
     elif "legroom" in bajo:
         actual["piernas"] = actual["piernas"] or linea
     elif "wi-fi" in bajo:
@@ -164,6 +187,8 @@ def _detalle(actual: dict, linea: str) -> bool:
     elif bajo.startswith("emissions estimate:"):
         actual["emisiones"] = actual["emisiones"] or linea.split(":", 1)[1].strip()
     elif bajo.startswith(("travel time:", "flight details")):
+        actual["_nocturna"] = actual["_nocturna"] or "overnight" in bajo
+    elif bajo.startswith(("contrail warming", "change flight", "avg emissions")):
         pass
     else:
         return False
@@ -201,31 +226,56 @@ TRAMO_IDA = re.compile(r"^(Departing|Departure|Outbound)( flights?)?\b", re.I)
 TRAMO_REGRESO = re.compile(r"^(Return|Returning)( flights?)?\b", re.I)
 
 
-def _reserva(lineas: list[str]) -> tuple[list[dict], list[str], bool]:
+LLAMAR = re.compile(r"^Call (?P<vendedor>.+?) to book(?:Airline)?$")
+TELEFONO = re.compile(r"^\+?[\d ()\-.]{7,20}$")
+
+
+def _reserva(lineas: list[str]) -> dict:
     """Opciones de reserva por vendedor: «Book with American» y, debajo, cada tarifa con su precio y lo que incluye.
-    Con billetes separados, cada vendedor lleva su `tramo` («ida» o «regreso»); el resumen con los vendedores juntos
-    («Book with COPA, Avianca») no es un vendedor. Devuelve (vendedores, avisos, billetes separados)."""
-    vendedores, vendedor, tarifa, tramo, avisos, separados = [], None, None, None, [], False
+
+    Dos formas que no son tarifas (producción, cotización 12, prueba 11):
+    - billetes separados: «Book with COPA, AviancaAirline» con «Separate tickets…» y el precio total; es una opción de
+      dos tiquetes (`opciones_separadas`), con los vendedores y el precio, sin tarifas;
+    - reserva por teléfono: «Call COPA to bookAirline», con su precio y su teléfono (`por_telefono`).
+    Los avisos de Google («Separate tickets…», «Price includes…») son notas, nunca nombres de tarifa."""
+    vendedores, vendedor, tarifa, tramo, notas, separados = [], None, None, None, [], False
+    opciones_separadas, por_telefono, especial = [], [], None
     for i, linea in enumerate(lineas):
         if AVISO_RESERVA.search(linea):
-            avisos.append(linea)
+            notas.append(linea)
+            if especial is not None:
+                especial["notas"].append(linea)
             separados = separados or bool(re.search(r"separate tickets|booked individually", linea, re.I))
             continue
         if TRAMO_IDA.match(linea) or TRAMO_REGRESO.match(linea):
-            tramo, vendedor, tarifa = ("ida" if TRAMO_IDA.match(linea) else "regreso"), None, None
+            tramo, vendedor, tarifa, especial = ("ida" if TRAMO_IDA.match(linea) else "regreso"), None, None, None
+            continue
+        if (m := LLAMAR.match(linea)):
+            especial = {"vendedor": m.group("vendedor"), "precio": None, "telefono": None, "notas": []}
+            por_telefono.append(especial)
+            vendedor, tarifa = None, None
             continue
         if linea.startswith("Book with "):
             nombre = linea.removeprefix("Book with ").strip()
             # `innerText` junta el nombre y la marca «Airline» cuando van en la misma fila: «AmericanAirline»
             pegado = nombre.endswith("Airline") and nombre != "Airline" and not nombre.endswith(" Airline")
             nombre = nombre.removesuffix("Airline") if pegado else nombre
-            tarifa = None
-            if ", " in nombre:   # varios vendedores juntos: el resumen de billetes separados, no se reserva ahí
+            tarifa, especial = None, None
+            if ", " in nombre:   # varios vendedores juntos: una opción de billetes separados
+                especial = {"vendedores": [v.strip() for v in nombre.split(", ") if v.strip()], "precio": None, "notas": []}
+                opciones_separadas.append(especial)
                 vendedor, separados = None, True
                 continue
             vendedor = {"vendedor": nombre, "tarifas": [], "tramo": tramo,
                         "aerolinea": pegado or (i + 1 < len(lineas) and lineas[i + 1] == "Airline")}
             vendedores.append(vendedor)
+            continue
+        if especial is not None:   # lo de una opción separada o por teléfono: su precio y su teléfono, nada más
+            if especial["precio"] is None and (precio := _precio(linea)) is not None:
+                especial["precio"] = precio
+            elif "telefono" in especial and especial["telefono"] is None and TELEFONO.match(linea) \
+                    and sum(c.isdigit() for c in linea) >= 7:
+                especial["telefono"] = linea
             continue
         if vendedor is None or linea in SIN_INTERES or DUPLICADO_ACCESIBLE.match(linea):
             if linea == "Continue":
@@ -249,7 +299,18 @@ def _reserva(lineas: list[str]) -> tuple[list[dict], list[str], bool]:
     for v in vendedores:
         for t in v["tarifas"]:
             t.update(_clasificar(t.pop("caracteristicas")))
-    return vendedores, avisos, separados
+    return {"vendedores": vendedores, "notas": notas, "separados": separados,
+            "opciones_separadas": opciones_separadas, "por_telefono": por_telefono}
+
+
+def _tramos_de_la_opcion(vendedores: list[str], tramos: list[dict]) -> list[dict]:
+    """Qué vendedor vende cada tiquete de una opción separada: el de la aerolínea de ese tramo, o en orden."""
+    salida = []
+    for i, nombre in enumerate(("ida", "regreso")[:max(len(vendedores), 0)]):
+        aerolinea = (tramos[i].get("aerolinea") or "").lower() if i < len(tramos) else ""
+        propio = next((v for v in vendedores if v.lower() == aerolinea), None)
+        salida.append({"tramo": nombre, "vendedor": propio or vendedores[i]})
+    return salida
 
 
 ETIQUETA_ITINERARIO = re.compile(
@@ -300,22 +361,26 @@ def leer(texto: str, etiquetas: list[str] | None = None) -> dict:
     fin_reserva = next((i for i, l in enumerate(lineas) if inicio_reserva is not None and i > inicio_reserva
                         and l.startswith(FIN_RESERVA)), len(lineas))
     tramos = _tramos(lineas[inicio_tramos + 1:inicio_reserva or len(lineas)]) if inicio_tramos is not None else []
-    vendedores, avisos_reserva, separados = _reserva(lineas[inicio_reserva + 1:fin_reserva]) if inicio_reserva is not None \
-        else ([], [], False)
-    avisos += avisos_reserva
+    reserva = _reserva(lineas[inicio_reserva + 1:fin_reserva]) if inicio_reserva is not None else _reserva([])
+    vendedores = reserva["vendedores"]
+    for op in reserva["opciones_separadas"]:
+        op["tramos"] = _tramos_de_la_opcion(op["vendedores"], tramos)
     lista = itinerarios(etiquetas or [])
     if inicio_reserva is None:
         avisos.append("La página no mostró opciones de reserva.")
-    elif not vendedores:
+    elif not vendedores and not reserva["opciones_separadas"] and not reserva["por_telefono"]:
         avisos.append("Hubo opciones de reserva, pero no se reconoció ningún vendedor.")
-    notas = [l for l in lineas[fin_reserva:] if l.startswith(("Fare and baggage fees", "Prices include required taxes"))]
+    notas = reserva["notas"] + [l for l in lineas[fin_reserva:] if l.startswith(("Fare and baggage fees",
+                                                                                 "Prices include required taxes"))]
     tarifas = [{**t, "vendedor": v["vendedor"], "tramo": v["tramo"]} for v in vendedores for t in v["tarifas"]]
     return {
         "precio_total": total,
         "tramos": tramos,
         "vendedores": [{"vendedor": v["vendedor"], "aerolinea": v["aerolinea"], "tramo": v["tramo"],
                         "precio_desde": min((t["precio"] for t in v["tarifas"]), default=None)} for v in vendedores],
-        "billetes_separados": separados,
+        "billetes_separados": reserva["separados"],
+        "opciones_separadas": reserva["opciones_separadas"],
+        "por_telefono": reserva["por_telefono"],
         "tarifas": tarifas,
         "equipaje": sorted({e for t in tarifas for e in t["equipaje"]}),
         "cambios": sorted({e for t in tarifas for e in t["cambios"]}),

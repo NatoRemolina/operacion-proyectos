@@ -338,8 +338,10 @@ def test_ir_a_con_billetes_separados_no_pulsa_y_lo_dice():
     assert not r.get("cuerpo") and not any("/travel/clk" in p for p in pedidos)
 
 
-def test_la_lectura_con_billetes_separados_marca_cada_tramo():
+def test_la_lectura_con_billetes_separados_marca_cada_tiquete_y_la_reserva_por_telefono():
     r = navegador.analizar(URL, servir=_servir({"https://www.google.com/travel/flights?": "billetes_separados.html"}, []))
     assert r["estado"] == "listo", r["motivo"]
-    assert r["datos"]["billetes_separados"] is True
-    assert [(t["vendedor"], t["tramo"]) for t in r["datos"]["tarifas"]] == [("COPA", "ida"), ("Avianca", "regreso")]
+    d = r["datos"]
+    assert d["billetes_separados"] is True and d["tarifas"] == []
+    assert d["opciones_separadas"][0]["tramos"] == [{"tramo": "ida", "vendedor": "COPA"}, {"tramo": "regreso", "vendedor": "Avianca"}]
+    assert d["por_telefono"][0]["telefono"] == "1 (786) 840-2672"

@@ -166,21 +166,42 @@ def test_el_hotel_solo_abre_google_hotels():
         assert not lector.url_permitida_hotel(malo), malo
 
 
-# ---------- producción, cotización 12: billetes separados («Separate tickets») ----------
-def test_billetes_separados_cada_tiquete_con_su_tramo_y_los_avisos_aparte():
-    d = _leer("billetes_separados.html")
+# ---------- producción, cotización 12: billetes separados («Separate tickets»), texto real de la prueba 11 ----------
+def _real() -> dict:
+    return lector.leer((EJEMPLO / "billetes_separados_texto_real.txt").read_text(encoding="utf-8"), [])
+
+
+@pytest.mark.parametrize("leer", [_real, lambda: _leer("billetes_separados.html")])
+def test_billetes_separados_son_una_opcion_y_la_reserva_por_telefono_no_es_tarifa(leer):
+    d = leer()
     assert d["billetes_separados"] is True
-    assert [(t["tramo"], t["vendedor"], t["nombre"], t["precio"]) for t in d["tarifas"]] == [
-        ("ida", "COPA", "Tarifa", 412.0), ("regreso", "Avianca", "Tarifa", 245.0)]
-    assert [(v["vendedor"], v["tramo"]) for v in d["vendedores"]] == [("COPA", "ida"), ("Avianca", "regreso")]
-    # ningún aviso es una tarifa ni un vendedor; los dos vendedores juntos tampoco
-    nombres = " ".join(t["nombre"] for t in d["tarifas"]) + " ".join(v["vendedor"] for v in d["vendedores"])
-    assert "Separate tickets" not in nombres and "phone service fee" not in nombres and "COPA, Avianca" not in nombres
-    assert any("must be booked individually" in a for a in d["avisos"])
-    assert any("phone service fee of $25" in a for a in d["avisos"])
-    assert d["tarifas"][0]["equipaje"] == ["1 free carry-on", "1st checked bag: $45"]
+    assert d["tarifas"] == []                                       # ninguna tarifa inventada
+    assert d["vendedores"] == []
+    (op,) = d["opciones_separadas"]
+    assert (op["vendedores"], op["precio"]) == (["COPA", "Avianca"], 657.0)
+    assert op["tramos"] == [{"tramo": "ida", "vendedor": "COPA"}, {"tramo": "regreso", "vendedor": "Avianca"}]
+    assert op["notas"] == ["Separate ticketsThe 2 tickets in your itinerary must be booked individually"]
+    (tel,) = d["por_telefono"]
+    assert (tel["vendedor"], tel["precio"], tel["telefono"]) == ("COPA", 3134.0, "1 (786) 840-2672")
+    assert tel["notas"] == ["Price includes an estimated airline phone service fee of $25"]
+    # los avisos de Google van a notas; avisos dice solo lo que no se encontró
+    assert "Separate ticketsThe 2 tickets in your itinerary must be booked individually" in d["notas"]
+    assert not any("vendedor" in a for a in d["avisos"])
 
 
-def test_una_tarifa_comun_no_lleva_tramo():
+def test_el_detalle_real_de_cada_tramo_con_palabras_pegadas():
+    ida, regreso = _real()["tramos"]
+    assert (ida["aerolinea"], ida["sale"], ida["llega"], ida["cabina"]) == ("COPA", "12:40 PM", "7:06 PM", "Economy")
+    assert (ida["numeros"], ida["aviones"]) == (["CM 687", "CM 240"], ["Boeing 737", "Boeing 737"])
+    assert ida["piernas"] == "Average legroom (31 in)" and ida["enchufes"] == "In-seat USB outlet"
+    assert ida["emisiones"] == "234 kg CO2e" and ida["detalle_escalas"] == ["1 hr 49 min layoverPanama City (PTY)"]
+    assert ida["equipaje"] == ["1 free carry-on", "1st checked bag available for a fee"]
+    assert (regreso["aerolinea"], regreso["sale"], regreso["numeros"]) == ("Avianca", "1:35 AM", ["AV 9", "AV 9332"])
+    assert regreso["nocturna"] is True and regreso["avion"] == "Airbus A320"
+    assert regreso["equipaje"][:2] == ["1 free carry-on", "First checked bag costs 95 US dollars"]
+
+
+def test_una_tarifa_comun_no_lleva_tramo_ni_opciones_especiales():
     d = _leer("reserva_completa.html")
     assert d["billetes_separados"] is False and all(t["tramo"] is None for t in d["tarifas"])
+    assert d["opciones_separadas"] == [] and d["por_telefono"] == []
