@@ -4,7 +4,7 @@ PY := .venv/bin/python
 # Con otro ejecutable: make instalar PYTHON=/ruta/a/python3.13
 PYTHON ?= python3.12
 
-.PHONY: bloquear ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo respaldar verificar-respaldo ganchos
+.PHONY: bloquear desplegar ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo respaldar verificar-respaldo ganchos
 ayuda:            ## Lista las tareas
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
 
@@ -57,6 +57,9 @@ entorno-abajo:    ## Detiene el entorno local; los datos de demostración se con
 
 demo-monitoreo:   ## Prepara en el entorno local el viaje IB 5634 del 13 dic para ver el monitoreo (fijar MONITOREO_AHORA)
 	docker compose exec app python -m datos.demo_monitoreo
+
+desplegar:        ## Despliegue único desde la punta de dev (docs/despliegue.md); ARGS=--ensayo solo comprueba y muestra el plan
+	zsh scripts/desplegar.zsh $(ARGS)
 
 respaldar:        ## Copia la base publicada y sus recibos (solo lectura) a ~/Respaldos; ver docs/respaldo.md
 	$(PY) -m datos.respaldar respaldar --env $(or $(ENV),.env.supabase-publicada)

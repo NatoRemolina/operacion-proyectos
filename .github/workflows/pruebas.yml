@@ -134,7 +134,10 @@ jobs:
       - name: Tipos
         run: npm run build
       - name: Pruebas de las pilas
-        run: npm test
+        # Incluyen las del guion de despliegue (scripts/desplegar.zsh), que corre en zsh
+        run: |
+          sudo apt-get install --yes --no-install-recommends zsh
+          npm test
       - name: Síntesis con dominio
         run: npx cdk synth --quiet -c correo=avisos@example.com -c dominio=nataliaremolinarodriguez.com -c zonaId=Z0731422246SUYEGG2Z5R
       - name: La zona es de la titular de la cuenta
