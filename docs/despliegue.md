@@ -68,7 +68,7 @@ La migración del paso 2 exige un respaldo **de esa misma base y de las últimas
 3. busca en `~/Respaldos/operacion-proyectos/` el respaldo reciente de esa base y comprueba sus huellas;
 4. pide escribir el identificador del proyecto (o `--confirmar <proyecto>` en la orden). Con cualquier otra respuesta no migra nada.
 
-`comprobar_supabase` debe terminar con código 0. La migración se puede repetir: lo que ya hizo no lo vuelve a hacer (`docs/datos.md`, «Migración»).
+`comprobar_supabase` debe terminar con código 0. La migración se puede repetir: lo que ya hizo no lo vuelve a hacer (`docs/datos.md`, «Migración»). En PostgreSQL corre en una sola transacción: si falla, no queda nada a medias y se repite. Las tablas, columnas y reglas que añade cada versión están en esa misma sección.
 
 ## 3. Secreto
 

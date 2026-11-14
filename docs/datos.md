@@ -274,6 +274,19 @@ Después, las vistas analíticas `v_h_*` se recrean y se les retiran los permiso
 
 `python -m datos.comprobar_supabase` revisa, solo en lectura, que la base tenga las tablas y columnas que espera esta versión (también `compras`, `capturas`, `ofertas_tarifa`, `ofertas_origenes`, `claves_servicio` y `avisos_salientes`), que todas tengan seguridad por filas, qué pueden hacer los roles públicos, qué vistas no corren con los permisos de quien consulta y qué concede por omisión a esos roles el rol con que se entra.
 
+**Lo que añade la estabilización del backend** (todo lo crea o lo alinea la misma migración, sin pasos a mano):
+
+| Qué | Para qué |
+|---|---|
+| Tabla `topes_reservas` (índice `ix_topes_reservas_regla`) | Cada unidad reservada de un tope por día (cotizaciones y lecturas con el modelo), en fila con `db.cerrojo` |
+| Tabla `intentos_ingreso` (índice `ix_intentos_ingreso_clave`) | Fallos de ingreso por dirección y por correo, solo huellas; se depura sola a un día |
+| Columna `asistente_consultas.respuesta` | La conversación del asistente se lee del servidor |
+| Columna `envios_cotizacion.propietario` | La cotización usa la misma concesión con dueño que los recibos (`envios.COTIZACION`) |
+| Reglas `lecturas_recibo_persona_dia` (40) y `lecturas_recibo_dia` (400) | Tope de lecturas con el modelo; las siembra la semilla si faltan y no pisa un valor editado |
+| `compras.alinear_con_el_viaje()` | Las compras que quedaron en «Se va a comprar» con el viaje sin aprobar vuelven a análisis (antes se corregían al leerlas) |
+
+La configuración nueva es `ORIGEN_SECRETO` (la cabecera que CloudFront añade al origen); va en el secreto de la nube junto con las demás claves.
+
 La trazabilidad del flujo de gastos (quién puede cambiar qué, qué queda registrado y las brechas conocidas) está en [`trazabilidad.md`](trazabilidad.md).
 
 ## Telegram

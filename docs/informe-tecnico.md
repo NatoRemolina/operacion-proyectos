@@ -152,8 +152,24 @@ Atributos de las tablas que el diagrama de `datos.md` no detalla:
 | Asesor (agente alojado) | La pregunta, la fecha, quién pregunta (código y permiso) y los resultados de las herramientas que pida, solo dentro del alcance de esa persona. Cada sesión se borra del servicio al terminar |
 | Pinecone | El texto de las fichas y sus metadatos (códigos, comercios, importes, estados, alertas, textos libres). Sin nombres, correos, contraseñas ni archivos |
 | Telegram (apagado en producción) | Los avisos al viajero: códigos, rutas, importes y motivos |
+| n8n y Google Drive (apagado sin sus variables) | Por cada gasto registrado, un aviso firmado con el viaje, el proyecto, el código de la persona (no su nombre ni su correo), la fecha, el comercio, la categoría, los importes, el estado, las alertas y la lectura de la factura (número, identificación tributaria y líneas), más un enlace al soporte que vence a los 15 minutos y exige una clave de servicio. El flujo guarda el soporte y la lectura en Drive y una fila en la hoja «Lecturas» |
 
-**Pendiente de seguridad.** La política de contenido (CSP) de las pantallas de administración permite `'unsafe-inline'` en scripts y estilos (`app/web.py`, `CABECERAS_SEGURAS`): las plantillas Jinja tienen scripts en línea. Se quita moviendo esos scripts a archivos propios o usando un *nonce* por respuesta. Otros pendientes: desplegar con un usuario propio con MFA (hoy con la cuenta raíz), topes propios para el agente de la cotización y la lectura de recibos, y que `mismo_origen` acepte el origen declarado de `admin.` para navegadores que no mandan `Sec-Fetch-Site` (ADR 0002).
+Cada servicio recibe solo lo que su tarea necesita, y lo que escriben las personas (notas, justificaciones, el texto de un recibo) puede llevar datos personales que nadie filtra antes: por eso, cuando responden al asistente, el modelo y el asesor solo reciben lo que está en el alcance de quien pregunta, y Pinecone recibe las fichas sin nombres ni correos. Las lecturas con el modelo tienen tope por persona y por día (`lecturas_recibo_persona_dia`, `lecturas_recibo_dia`), igual que las preguntas al asistente.
+
+**Cuánto se guarda**
+
+| Qué | Cuánto |
+|---|---|
+| `eventos` (la bitácora) | Sin borrado automático: es el rastro de auditoría (quién hizo qué y cuándo). Lleva códigos de persona; el detalle de un ingreso fallido lleva el correo escrito, para poder investigar un ataque. Se puede depurar por fecha sin romper nada (no tiene claves foráneas) |
+| `intentos_ingreso` | Un día; solo huellas de la dirección y del correo |
+| `asistente_consultas` | Sin borrado automático: la pregunta y la respuesta de cada consulta, la base de la conversación y de su rastro |
+| `errores` y registros de CloudWatch | Los registros, 30 días; la tabla, sin borrado automático (sin valores enviados: los errores de la base no llevan sus parámetros) |
+| Sesiones | Hasta su vencimiento; las vencidas de una persona se borran cuando abre otra |
+| Soportes (archivos) | Sin borrado automático: son el respaldo contable del gasto |
+
+Una política de borrado por antigüedad (por ejemplo, `eventos` y `asistente_consultas` de más de dos años) queda para cuando la empresa defina sus plazos legales de conservación.
+
+**Pendiente de seguridad.** La política de contenido (CSP) de las pantallas de administración permite `'unsafe-inline'` en scripts y estilos (`app/web.py`, `CABECERAS_SEGURAS`): las plantillas Jinja tienen scripts en línea. Se quita moviendo esos scripts a archivos propios o usando un *nonce* por respuesta. La lectura de recibos ya tiene su tope, el ingreso limita los intentos por dirección y por correo, y en la nube solo entra lo que llega por CloudFront con la cabecera secreta (`ORIGEN_SECRETO`). Otros pendientes: desplegar con un usuario propio con MFA (hoy con la cuenta raíz), un tope propio para el agente de la cotización, y que `mismo_origen` acepte el origen declarado de `admin.` para navegadores que no mandan `Sec-Fetch-Site` (ADR 0002).
 
 ## 5. Pruebas y calidad
 

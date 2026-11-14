@@ -101,10 +101,10 @@ Los estados del viaje y del gasto, con sus diagramas, están en la [presentació
 | Telegram | Recibos por chat, vinculados a la cuenta con un código de un solo uso (apagado si no se configura) |
 | Tablero por proyecto | Presupuesto de los viajes frente a gasto real |
 | Indicadores (KPIs) | Metas y semáforo para los dos retos, rastro de cada consulta al buscador y ficha por persona |
-| Asistente | Preguntas en lenguaje natural con cifras exactas y fuentes citadas por su código. Cada permiso pregunta solo por lo que puede ver: el colaborador, lo suyo («¿cuánto me queda del presupuesto?»); el gestor, también sus proyectos; administración, todo, con su pantalla completa. Botón flotante en la plataforma y en la web nueva (con dictado por voz); opcionalmente con un asesor (agente alojado) que también lee justificaciones y cotizaciones |
+| Asistente | Preguntas en lenguaje natural con cifras exactas y fuentes citadas por su código. Cada permiso pregunta solo por lo que puede ver: el colaborador, lo suyo («¿cuánto me queda del presupuesto?»); el gestor, también sus proyectos; administración, todo. Botón flotante en la plataforma y en la web nueva (con dictado por voz); opcionalmente con un asesor (agente alojado) que también lee justificaciones y cotizaciones |
 | Monitoreo | Catálogo único de métricas, auditoría, errores con identificador, calidad de los datos |
 | API JSON v1 | Contrato para la web nueva (`contracts/api-v1.md`) |
-| Web nueva (Next.js) | Sobre la API v1 (`web/`): cotizar desde y hacia cualquier lugar, comparar vuelos y hoteles con desglose y decidir; mis viajes y mis gastos, con carga de recibos, justificación y el Excel contable; el asistente; y, para administración, resumen, viajes por aprobar (con la reconfirmación del precio), revisión completa de gastos (corregir, reasignar, aprobar con excepción, rechazar), Reglas y supuestos, KPIs, Monitoreo y estado de los vuelos |
+| Web nueva (Next.js) | Sobre la API v1 (`web/`): cotizar desde y hacia cualquier lugar, comparar vuelos y hoteles con desglose y decidir; mis viajes y mis gastos, con carga de recibos, justificación y el Excel contable; el asistente; y, para administración, resumen, viajes por aprobar (con la reconfirmación del precio), revisión completa de gastos (corregir, reasignar, aprobar con excepción, rechazar), Compras, Buzón de gastos por correo, Proyectos y su tablero, Usuarios y cargos, Reglas y supuestos, KPIs, Monitoreo y estado de los vuelos; y Mi cuenta para todos |
 
 ## Cómo responde a cada reto
 
