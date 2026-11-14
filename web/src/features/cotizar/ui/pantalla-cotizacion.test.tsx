@@ -463,6 +463,29 @@ describe("Comparación de una cotización", () => {
     expect(within(aerolinea).getByRole("link", { name: /^Ir a Avianca · regreso/ })).toHaveAttribute("href", "/api/v1/ir/Avianca/regreso");
   });
 
+  it("con billetes separados en el buscador hay un botón por tiquete con su vendedor y su precio (pieza 6)", async () => {
+    const usuario = userEvent.setup();
+    const tiquete = (vendedor: string, nombre: string, precio: number) => ({ vendedor, nombre, precio,
+      equipaje: ["1 free carry-on"], cambios: [], reembolso: [], otras: [], ir_url: `/api/v1/ir/${vendedor}/${nombre}` });
+    const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue({
+      estado: "listo", consultado: "2026-11-14T15:00:00Z", tarifas: [tiquete("COPA", "ida", 334), tiquete("eDreams", "regreso", 316)],
+      vendedores: [{ vendedor: "COPA", aerolinea: true, precio_desde: 334 }, { vendedor: "eDreams", aerolinea: false, precio_desde: 316 }],
+    });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { opcionesBuscador }) });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+    const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+    expect(await within(capa).findByText("Billetes separados: un tiquete por tramo, cada uno con su vendedor.")).toBeInTheDocument();
+    const ida = within(capa).getByRole("link", { name: `Ir a COPA · ida ${dinero("334.00")}, se abre en otra pestaña` });
+    expect(ida).toHaveAttribute("href", "/api/v1/ir/COPA/ida");
+    expect(ida).toHaveAttribute("target", "_blank");
+    expect(ida).toHaveAttribute("rel", "noopener noreferrer");
+    expect(within(capa).getByRole("link", { name: `Ir a eDreams · regreso ${dinero("316.00")}, se abre en otra pestaña` }))
+      .toHaveAttribute("href", "/api/v1/ir/eDreams/regreso");
+    // los tiquetes no se pintan como tarifas de una tabla por vendedor
+    expect(within(capa).queryByRole("table")).toBeNull();
+  });
+
   it("si la lectura falla o no está disponible, el desglose lo dice y muestra solo lo del buscador", async () => {
     const usuario = userEvent.setup();
     const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>()

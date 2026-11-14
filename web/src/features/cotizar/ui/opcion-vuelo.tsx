@@ -399,6 +399,8 @@ function CapaBuscador({
   opciones: OpcionesBuscador | null;
 }) {
   const listo = opciones?.estado === "listo" && opciones.tarifas.length > 0;
+  const tiquetes = listo ? opciones.tarifas.filter(esTiquete) : [];
+  const juntas = listo ? opciones.tarifas.filter((t) => !esTiquete(t)) : [];
   return (
     <section aria-label="Opciones del buscador" className="flex flex-col gap-3 border-t border-linea pt-3">
       <p role="status" className={`text-sm ${listo ? "font-semibold" : "text-texto-secundario"}`}>
@@ -410,10 +412,44 @@ function CapaBuscador({
               ? "No se pudieron traer las opciones del buscador."
               : "El buscador no trajo opciones de reserva para este vuelo."}
       </p>
-      {listo
-        ? tablasPorVendedor(opciones.tarifas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} />)
+      {listo && tiquetes.length ? (
+        <>
+          <p className="text-sm">Billetes separados: un tiquete por tramo, cada uno con su vendedor.</p>
+          <BotonesIrA tarifas={tiquetes} />
+        </>
+      ) : null}
+      {listo && juntas.length
+        ? tablasPorVendedor(juntas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} />)
         : null}
     </section>
+  );
+}
+
+/** Con billetes separados el buscador trae un tiquete por tramo («ida», «regreso»), cada uno con su vendedor. */
+function esTiquete(t: { nombre: string }): boolean {
+  return t.nombre === "ida" || t.nombre === "regreso";
+}
+
+/** Un botón por tarifa con «Ir a…» firmado: vendedor, tarifa (o tramo) y precio; se abre en otra pestaña. */
+function BotonesIrA({ tarifas }: { tarifas: readonly { vendedor: string; nombre: string; precio: number; ir_url?: string | null }[] }) {
+  return (
+    <ul className="flex flex-wrap gap-2">
+      {tarifas.filter((t) => t.ir_url).map((t) => (
+        <li key={`${t.vendedor}-${t.nombre}-${t.precio}`}>
+          <a
+            href={t.ir_url!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${clasesBoton("secundario")} ${PRESIONAR}`}
+          >
+            Ir a {t.vendedor} · {t.nombre}{" "}
+            <span className="font-normal tabular-nums">{formatearDinero(t.precio.toFixed(2))}</span>
+            <span aria-hidden="true"> ↗</span>
+            <span className="sr-only">, se abre en otra pestaña</span>
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -467,25 +503,7 @@ function DetalleGoogle({
           <p>{analisis.aviso_precio}</p>
         </Alerta>
       ) : null}
-      {tarifas.length ? (
-        <ul className="flex flex-wrap gap-2">
-          {tarifas.map((t) => (
-            <li key={`${t.vendedor}-${t.nombre}-${t.precio}`}>
-              <a
-                href={t.ir_url!}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`${clasesBoton("secundario")} ${PRESIONAR}`}
-              >
-                Ir a {t.vendedor} · {t.nombre}
-                <span className="font-normal tabular-nums"> {formatearDinero(t.precio.toFixed(2))}</span>
-                <span aria-hidden="true"> ↗</span>
-                <span className="sr-only">, se abre en otra pestaña</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {tarifas.length ? <BotonesIrA tarifas={tarifas} /> : null}
     </section>
   );
 }
