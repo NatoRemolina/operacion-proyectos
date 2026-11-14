@@ -143,10 +143,10 @@ def test_el_gestor_no_ve_un_proyecto_que_no_gestiona(proyectos_con_revision):
 def test_el_anio_en_curso_va_del_primero_de_enero_al_31_de_diciembre(monkeypatch):
     from datetime import UTC, date, datetime
 
-    from app.servicios import contable
+    from app.servicios import contable, tiempo
     assert contable.anio_en_curso(date(2026, 2, 14)) == ("2026-01-01", "2026-12-31")
-    # a las 22:00 de Nueva York del 31 de diciembre, en UTC ya es el año siguiente: manda la zona de la empresa
-    monkeypatch.setattr(contable, "_ahora", lambda: datetime(2027, 1, 1, 3, 0, tzinfo=UTC))
+    # a las 22:00 de Bogotá del 31 de diciembre, en UTC ya es el año siguiente: manda la zona de la empresa
+    monkeypatch.setattr(tiempo, "ahora", lambda: datetime(2027, 1, 1, 3, 0, tzinfo=UTC))
     assert contable.anio_en_curso() == ("2026-01-01", "2026-12-31")
 
 

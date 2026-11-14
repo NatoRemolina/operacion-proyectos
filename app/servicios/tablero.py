@@ -6,7 +6,7 @@ para que la pantalla y la API respondan exactamente lo mismo.
 import re
 
 from .. import config, db
-from . import asesor, cotizacion, eventos, exportacion, kpis, metricas, monitoreo_vuelos, precios, viajes
+from . import asesor, cotizacion, eventos, exportacion, kpis, metricas, monitoreo_vuelos, precios, tiempo, viajes
 
 _ES_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -64,7 +64,7 @@ def datos_pestana(pestana: str, f: dict) -> dict:
     if pestana == "modelo":
         return {**metricas.uso_modelo(f), "asistente": asistente_por_via(f)}
     if pestana == "cupos":
-        hoy = db.ahora()[:10]
+        hoy = tiempo.inicio_del_dia()
         return {"buscador": precios.cupo(), "busquedas": metricas.busquedas(f),
                 "modelo_hoy": db.uno("select count(*) n from llamadas_modelo where momento>=:h", h=hoy)["n"],
                 "filas": [(t, db.uno(f"select count(*) n from {t}")["n"]) for t in TABLAS_CONTADAS]}

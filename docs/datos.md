@@ -239,6 +239,7 @@ Se calculan a partir de la clave primaria, así que no pueden repetirse ni queda
 | Un gasto atascado en «procesando» pasa a revisión | — | `envios.recuperar_si_atascado` (5 min) |
 | Los tramos del vuelo se registran al decidir, sin duplicarse si se decide de nuevo | `tramos_vuelo.viaje_id` | `monitoreo_vuelos.registrar_tramos` |
 | El estado del vuelo se consulta solo en su ventana y bajo topes por tramo, por sentido del viaje y por día | — | `monitoreo_vuelos.consultar` (reglas `monitoreo_*`) |
+| Un solo «día»: los topes por día, la fecha de hoy, el viaje en curso y los periodos del Excel contable se cuentan en la zona de la empresa (America/Bogota), no en UTC | — | `config.ZONA_EMPRESA`, `tiempo.inicio_del_dia()`, `tiempo.hoy()` |
 | Cada hora del vuelo se interpreta en la zona de su aeropuerto | `lugares.zona` (GeoNames) | `geografia.zona_horaria`, `monitoreo_vuelos.zona` |
 | Un aviso al viajero no se repite por la misma información | `tramos_vuelo.ultimo_aviso` | `monitoreo_vuelos.aviso`, `_avisar` |
 | Al aprobar se reconfirma el precio; si sube más que `tolerancia_precio_aprobacion` administración lo confirma | — | `viajes.cambiar_estado`, `precios.reconfirmar` |

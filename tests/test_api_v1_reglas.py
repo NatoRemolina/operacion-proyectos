@@ -9,7 +9,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from app import api_v1, db
-from app.servicios import acceso, reglas
+from app.servicios import acceso, tiempo
 
 V1 = "/api/v1"
 
@@ -113,7 +113,7 @@ def test_las_membresias_van_en_solo_lectura_con_el_dato_de_ejemplo(cliente):
 def test_una_regla_numerica_acepta_coma_decimal_y_deja_el_evento(cliente, numerica):
     r = _editar(cliente, numerica["id"], " 0,25 ")
     assert r.status_code == 200, r.text
-    assert r.json()["valor"] == "0.25" and r.json()["verificado"] == reglas.hoy_empresa()
+    assert r.json()["valor"] == "0.25" and r.json()["verificado"] == tiempo.hoy().isoformat()
     assert _regla("supuesto", "tolerancia_presupuesto")["valor"] == "0.25"
     evento = db.uno("select * from eventos where entidad='regla' and entidad_id=:i order by id desc limit 1", i=numerica["id"])
     assert evento["paso"] == "regla editada" and evento["detalle"] == f"tolerancia_presupuesto: {numerica['valor']} → 0.25"
@@ -177,6 +177,9 @@ def test_los_numeros_claros_se_guardan(cliente, numerica, valor, guardado):
     (datetime(2026, 11, 14, 5, 0, tzinfo=UTC), "2026-11-14"),    # medianoche en Bogotá
     (datetime(2026, 11, 13, 4, 59, tzinfo=UTC), "2026-11-12"),
 ])
-def test_la_fecha_de_verificacion_es_la_del_dia_de_la_empresa(ahora, esperado):
+def test_la_fecha_de_verificacion_es_la_del_dia_de_la_empresa(cliente, monkeypatch, ahora, esperado):
     """La fecha «verificado» de una regla es la del día en la zona de la empresa, no la del día en UTC."""
-    assert reglas.hoy_empresa(ahora) == esperado
+    monkeypatch.setattr(tiempo, "ahora", lambda: ahora)
+    regla = db.uno("select id, valor from reglas where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
+    r = _editar(cliente, regla["id"], regla["valor"])
+    assert r.status_code == 200 and r.json()["verificado"] == esperado, r.text

@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from app import config, db
-from app.servicios import acceso, asesor, asistente, llm, metricas, viajes
+from app.servicios import acceso, asesor, asistente, llm, metricas, tiempo, viajes
 
 CLAVE = "clave-secreta-de-prueba"
 _ids = itertools.count(1)
@@ -464,11 +464,11 @@ def test_si_la_creacion_vence_se_ubica_la_sesion_y_se_corta(con_asesor):
 
 
 def test_la_fecha_del_agente_es_la_de_la_empresa(con_asesor, monkeypatch):
-    monkeypatch.setattr(asesor, "_ahora_utc", lambda: datetime(2026, 11, 13, 3, 0, tzinfo=UTC))   # 12 de noviembre, 22:00 en Bogotá
+    monkeypatch.setattr(tiempo, "ahora", lambda: datetime(2026, 11, 13, 3, 0, tzinfo=UTC))   # 12 de noviembre, 22:00 en Bogotá
     s = con_asesor(Servicio([corriendo(), mensaje("Hoy es 12 de noviembre."), fin()]))
     asistente.responder("¿Qué día es hoy?", _admin())
     assert s.enviados[0]["initial_events"][0]["content"][0]["text"].startswith("Fecha de hoy: 2026-11-12.")
-    assert asesor.inicio_del_dia() == "2026-11-12 05:00:00"   # el día de la empresa empieza a las 5:00 UTC
+    assert tiempo.inicio_del_dia() == "2026-11-12 05:00:00"   # el día de la empresa empieza a las 5:00 UTC
 
 
 def test_respeta_el_tope_de_herramientas_por_pregunta(con_asesor, piloto_con_gastos):

@@ -17,7 +17,7 @@ from sqlalchemy import Column, Integer, Text, text
 from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
-from . import almacen, analizador, costo, eventos, precios
+from . import almacen, analizador, costo, eventos, precios, tiempo
 
 capturas = db._tabla(
     "capturas",
@@ -123,7 +123,7 @@ def seguimiento_encendido() -> bool:
 def encolar_seguimiento(hoy: str | None = None) -> int:
     """Una captura del día por cada vuelo decidido cuya compra sigue abierta (ni comprada, ni descartada, ni cancelada)
     y cuya ida no pasó. Idempotente en el día. Devuelve cuántas encoló."""
-    hoy = hoy or datetime.now(UTC).astimezone(analizador.ZONA_EMPRESA).date().isoformat()
+    hoy = hoy or tiempo.hoy().isoformat()
     if not seguimiento_encendido():
         return 0
     hechas = 0
@@ -164,7 +164,7 @@ def tomar() -> dict | None:
                           fallo=NO_TERMINO, terminado=db.ahora())
         if analizador._ocupado():
             return None
-        if db.uno("select count(*) n from capturas where empezado>=:h", h=analizador.inicio_del_dia())["n"] >= tope_dia():
+        if db.uno("select count(*) n from capturas where empezado>=:h", h=tiempo.inicio_del_dia())["n"] >= tope_dia():
             return None
         f = db.uno("""select * from capturas where estado='pendiente' and (proximo is null or proximo<=:a)
                       order by id limit 1""", a=db.ahora())

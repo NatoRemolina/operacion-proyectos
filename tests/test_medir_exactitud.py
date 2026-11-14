@@ -1,12 +1,11 @@
 """Exactitud de la lectura: el guion compara la lectura real con `esperados.json`. Aquí el modelo es un doble que
 responde la lectura esperada con errores puestos a propósito; nunca se llama a un servicio externo."""
 import json
-from datetime import UTC, datetime
 
 import pytest
 
 from app import config, db
-from app.servicios import llm
+from app.servicios import llm, tiempo
 from datos import medir_exactitud as medir
 
 ESPERADOS = json.loads((config.DIR_EJEMPLOS / "esperados.json").read_text())
@@ -71,7 +70,7 @@ def test_con_un_doble_mide_cada_soporte_y_escribe_el_informe(doble, tmp_path):
 
     texto = destino.read_text()
     assert "pendiente de corrida" not in texto
-    assert "modelo-de-prueba" in texto and datetime.now(UTC).date().isoformat() in texto
+    assert "modelo-de-prueba" in texto and tiempo.hoy().isoformat() in texto   # la fecha de la empresa, no la de UTC
     medidos = sum(5 + (ESPERADOS[n]["impuesto"] is not None) for n in ORDEN)
     assert f"{medidos - 2} de {medidos} campos" in texto
     assert f"{(medidos - 2) / medidos:.1%}".replace(".", ",") in texto

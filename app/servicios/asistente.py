@@ -21,12 +21,11 @@ import inspect
 import json
 import re
 import time
-from datetime import date
 
 from sqlalchemy import Column, Integer, Text, text
 
 from .. import config, db
-from . import acceso, costo, eventos, kpis, llm, memoria, metricas, validacion, viajes
+from . import acceso, costo, eventos, kpis, llm, memoria, metricas, tiempo, validacion, viajes
 
 MAX_VUELTAS = 6
 PLAZO_TOTAL_S = 60       # toda la conversación con el modelo, no cada llamada (y nunca más allá del presupuesto)
@@ -988,7 +987,7 @@ def asegurar_regla():
     for clave, valor, nota in SUPUESTOS:
         if not db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
             db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=valor,
-                        nota=nota, fuente="Supuesto editable", confianza="supuesto", verificado=date.today().isoformat())
+                        nota=nota, fuente="Supuesto editable", confianza="supuesto", verificado=tiempo.hoy().isoformat())
 
 
 def tope_diario() -> int:
@@ -1005,7 +1004,7 @@ def tope_dictados() -> int:
 
 def dictados_hoy(usuario_id: int) -> int:
     """Dictados reservados hoy: cada uno se reserva antes de transcribir y cuenta aunque la transcripción falle."""
-    return db.uno("select count(*) n from asistente_dictados where usuario_id=:u and momento>=:d", u=usuario_id, d=db.ahora()[:10])["n"]
+    return db.uno("select count(*) n from asistente_dictados where usuario_id=:u and momento>=:d", u=usuario_id, d=tiempo.inicio_del_dia())["n"]
 
 
 def _bloquear_persona(c, usuario_id: int):
@@ -1026,7 +1025,7 @@ def _reservar_dictado(usuario: dict):
 
 
 def usadas_hoy(usuario_id: int) -> int:
-    return db.uno("select count(*) n from asistente_consultas where usuario_id=:u and momento>=:d", u=usuario_id, d=db.ahora()[:10])["n"]
+    return db.uno("select count(*) n from asistente_consultas where usuario_id=:u and momento>=:d", u=usuario_id, d=tiempo.inicio_del_dia())["n"]
 
 
 DICTADO = ("Transcribe literalmente la pregunta que se dice en este audio, en el idioma en que se habla. Devuelve solo "

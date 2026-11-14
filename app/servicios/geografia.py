@@ -14,14 +14,13 @@ import os
 import re
 import time
 import unicodedata
-from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import Column, Float, Index, Integer, Text
 from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
-from . import eventos
+from . import eventos, tiempo
 
 aeropuertos_mundo = db._tabla(
     "aeropuertos_mundo",  # solo con código IATA y servicio regular; `grande` marca los que suelen tener más vuelos
@@ -342,7 +341,7 @@ def proveedor() -> str:
 
 def uso_autocompletado() -> dict:
     """Consultas de autocompletado que gastaron búsquedas este mes, frente a los topes."""
-    mes = datetime.now(UTC).strftime("%Y-%m-01")
+    mes = tiempo.inicio_del_mes()
     n = db.uno("select count(*) n from consultas_buscador where tipo='autocompletado' and origen in ('en vivo', 'fallida') "
                "and momento>=:m", m=mes)["n"]
     return {"mes": n, "tope_mes": int(_regla("tope_autocompletado_mes", 60)),
@@ -351,11 +350,11 @@ def uso_autocompletado() -> dict:
 
 def _tope_alcanzado(usuario: dict | None) -> bool:
     gastadas = "tipo='autocompletado' and origen in ('en vivo', 'fallida')"
-    mes = datetime.now(UTC).strftime("%Y-%m-01")
+    mes = tiempo.inicio_del_mes()
     if db.uno(f"select count(*) n from consultas_buscador where {gastadas} and momento>=:m", m=mes)["n"] >= _regla("tope_autocompletado_mes", 60):  # noqa: S608
         return True
     if usuario and usuario.get("id"):
-        hoy = datetime.now(UTC).strftime("%Y-%m-%d")
+        hoy = tiempo.inicio_del_dia()
         n = db.uno(f"select count(*) n from consultas_buscador where {gastadas} and momento>=:h and usuario_id=:u", h=hoy, u=usuario["id"])["n"]  # noqa: S608
         return n >= _regla("tope_autocompletado_persona_dia", 15)
     return False

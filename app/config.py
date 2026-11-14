@@ -1,8 +1,10 @@
 """Configuración leída del entorno. Ninguna clave es obligatoria."""
 import json
 import os
+from datetime import timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
@@ -104,6 +106,12 @@ if not LOCAL:
                               ("SUPABASE_SERVICE_KEY", SUPABASE_SERVICE_KEY)) if not v]
     if _faltan:
         raise RuntimeError("Configuración incompleta para un despliegue: faltan " + ", ".join(_faltan))
+
+# La zona de la empresa: el «día» de todos los topes, la fecha de hoy y los periodos (app/servicios/tiempo.py)
+try:
+    ZONA_EMPRESA = ZoneInfo("America/Bogota")
+except ZoneInfoNotFoundError:   # sin base de zonas: Bogotá no tiene horario de verano, UTC−5 todo el año
+    ZONA_EMPRESA = timezone(timedelta(hours=-5), "America/Bogota")
 
 # Topes de una subida
 MAX_BYTES_SOPORTE = 4_500_000

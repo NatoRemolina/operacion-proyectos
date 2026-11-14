@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
-from . import acceso, costo, eventos
+from . import acceso, costo, eventos, tiempo
 
 ESTADOS = {"pendiente_aprobacion": "Pendiente de aprobación", "aprobado": "Aprobado", "rechazado": "Rechazado", "cerrado": "Cerrado"}
 APROBADOS = ("aprobado", "aprobado_auto")
@@ -71,7 +71,8 @@ def lista(donde: str = "1=1", **parametros) -> list[dict]:
 
 
 def en_curso(v: dict, hoy: date | None = None) -> bool:
-    hoy = hoy or date.today()
+    """Aprobado y dentro de sus fechas (con margen), contando hoy en la zona de la empresa."""
+    hoy = hoy or tiempo.hoy()
     try:
         return v["estado"] == "aprobado" and \
             date.fromisoformat(v["ida"]) - timedelta(days=MARGEN_ANTES) <= hoy <= date.fromisoformat(v["regreso"]) + timedelta(days=MARGEN_DESPUES)
@@ -281,8 +282,9 @@ def resolver_para_gasto(usuario: dict, viaje_id: int | None = None, hoy: date | 
 
     Orden: el que la persona indica; el que fijó como activo; el aprobado que está en curso hoy;
     el próximo aprobado (los tiquetes se compran antes); y si no hay ninguno aprobado, el único pendiente.
+    «Hoy» es el de la zona de la empresa.
     """
-    hoy = hoy or date.today()
+    hoy = hoy or tiempo.hoy()
     if viaje_id:
         v = uno(viaje_id)   # cargar un gasto a un viaje es escribir en él: ver no basta
         return (v, []) if v and acceso.es_propio(usuario, v) else (None, [])

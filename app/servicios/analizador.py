@@ -16,16 +16,15 @@ import base64
 import hashlib
 import json
 import os
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import parse_qsl, urlsplit
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from sqlalchemy import Column, Integer, Text, text
 
 from .. import config, db
-from . import almacen, compras, costo, eventos, precios
+from . import almacen, compras, costo, eventos, precios, tiempo
 
 analisis_vuelo = db._tabla(
     "analisis_vuelo",   # una fila por lectura de la página de un vuelo; solo la usa el servidor
@@ -75,18 +74,6 @@ OCUPADO = "Se está leyendo la página de otro vuelo. Intenta de nuevo en un min
 SIN_TRAMOS = "Este vuelo no trae sus tramos completos: no se puede abrir su página en Google Flights."
 
 
-try:
-    ZONA_EMPRESA = ZoneInfo("America/Bogota")
-except ZoneInfoNotFoundError:   # sin base de zonas: Bogotá no cambia de hora (UTC−5 todo el año)
-    ZONA_EMPRESA = timezone(timedelta(hours=-5), "America/Bogota")
-
-
-def inicio_del_dia(ahora: datetime | None = None) -> str:
-    """Desde cuándo cuentan los topes «por día»: la medianoche de hoy en Bogotá, en UTC (como se guardan los momentos)."""
-    local = (ahora or datetime.now(UTC)).astimezone(ZONA_EMPRESA)
-    return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
-
-
 def tope_enlace_vendedor() -> int:
     return int(costo.supuesto(costo.catalogo(), "enlace_vendedor_persona_dia", TOPE_ENLACE_VENDEDOR))
 
@@ -98,7 +85,7 @@ def reservar_cupo(usuario: dict, clave_busqueda: str, unidades: int) -> bool:
         if not config.ES_SQLITE:
             c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_CUPO})
         usadas = db.uno("""select coalesce(sum(unidades), 0) n from cupos_buscador where tipo='enlace_vendedor'
-                           and usuario_id=:u and creado>=:h""", u=usuario["id"], h=inicio_del_dia())["n"]
+                           and usuario_id=:u and creado>=:h""", u=usuario["id"], h=tiempo.inicio_del_dia())["n"]
         if usadas + unidades > tope_enlace_vendedor():
             return False
         db.insertar("cupos_buscador", usuario_id=usuario["id"], tipo="enlace_vendedor", clave=clave_busqueda,
@@ -297,7 +284,7 @@ def _reservar(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict) -
             return no_disponible(SIN_ANALIZADOR)
         if not url:
             return no_disponible(SIN_TRAMOS)
-        hoy = inicio_del_dia()
+        hoy = tiempo.inicio_del_dia()
         por_persona, total = topes()
         if db.uno(f"select count(*) n from analisis_vuelo where usuario_id=:u and creado>=:h and {LEER}",
                   u=usuario["id"], h=hoy)["n"] >= por_persona:
@@ -413,7 +400,7 @@ def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict
             c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_TURNO})
         db.ejecutar("update analisis_vuelo set estado='fallido', motivo=:m, terminado=:t where estado='pendiente' and creado<:c",
                     m=NO_TERMINO, t=db.ahora(), c=_hace(EN_CURSO))
-        cat, hoy = costo.catalogo(), inicio_del_dia()
+        cat, hoy = costo.catalogo(), tiempo.inicio_del_dia()
         if db.uno("select count(*) n from analisis_vuelo where accion='ir_a' and usuario_id=:u and creado>=:h",
                   u=usuario["id"], h=hoy)["n"] >= int(costo.supuesto(cat, "ir_a_persona_dia", TOPE_IR_A)):
             return {"motivo": TOPE_IR_A_TEXTO, "tope": True}

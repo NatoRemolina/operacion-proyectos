@@ -174,7 +174,7 @@ Parámetros: `viaje_id`, `estado` (opcionales), `limite`, `cursor`. Mismo alcanc
 ### `GET /gastos/contable`
 El Excel contable: un `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) con `Content-Disposition: attachment; filename="libro_contable_<desde>_<hasta>[_proyecto_<id>].xlsx"`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. Lo genera `app/servicios/contable.py`.
 
-- Parámetros: `desde` y `hasta` (`AAAA-MM-DD`, por la fecha del recibo, ambos incluidos; por omisión, el año en curso, del 1 de enero al 31 de diciembre, en la hora de Nueva York, `America/New_York`: es un supuesto, la zona de la empresa, para que la nube, que corre en UTC, no proponga el año siguiente desde las 19:00 o 20:00 del 31 de diciembre) y `proyecto_id` (opcional, de 1 a 2147483647; fuera de ese rango, 422).
+- Parámetros: `desde` y `hasta` (`AAAA-MM-DD`, por la fecha del recibo, ambos incluidos; por omisión, el año en curso, del 1 de enero al 31 de diciembre, en la zona de la empresa, `America/Bogota`, la misma de todos los topes y fechas de la plataforma y declarada en la hoja «Resumen»: así la nube, que corre en UTC, no propone el año siguiente desde las 19:00 del 31 de diciembre) y `proyecto_id` (opcional, de 1 a 2147483647; fuera de ese rango, 422).
 - Entran los gastos `aprobado` y `aprobado_auto` que la persona puede ver: administración, todos; quien gestiona, los de sus proyectos y los suyos; el resto, solo los suyos.
 - Hoja «Gastos», una fila por gasto: n.º, fecha, viaje, proyecto, código y nombre de la persona, proveedor, categoría, cuenta contable, base, impuesto (vacío si la lectura no lo trae), propina, total, moneda, tasa a USD, total USD, estado, quién aprobó y cuándo (UTC), alertas o excepción y el enlace al gasto en la plataforma. Hoja «Resumen»: totales por proyecto, por cuenta y por moneda, y los parámetros del libro (fechas, filtros, quién lo generó y cuándo).
 - La cuenta contable sale de un mapa categoría → cuenta editable en «Reglas y supuestos» (claves `cuenta_contable_<categoría>`, ámbito `supuesto`).
@@ -633,7 +633,7 @@ interface TableroProyecto {
   faltantes: string[];               // categorías con previsto y sin gasto aprobado
   viajes: ViajeResumen[];            // los que no se rechazaron
   gastos: (GastoResumen & { viajero: string | null })[];   // todos, por fecha del recibo
-  periodo_contable: { desde: string; hasta: string };    // el año en curso (1 ene–31 dic, hora de Nueva York) que propone el Excel contable
+  periodo_contable: { desde: string; hasta: string };    // el año en curso (1 ene–31 dic, zona de la empresa, America/Bogota) que propone el Excel contable
 }
 ```
 

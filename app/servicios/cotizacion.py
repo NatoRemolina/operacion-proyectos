@@ -15,7 +15,7 @@ from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint, text
 from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
-from . import acceso, analizador, capturas, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
+from . import acceso, analizador, capturas, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, tiempo, viajes
 
 # Un pedido de cotización con `Idempotency-Key` por la API: la misma clave de la misma persona da la misma cotización
 envios_cotizacion = db._tabla(
@@ -79,7 +79,7 @@ def tope_cotizaciones_dia() -> int:
 
 
 def cotizaciones_de_hoy(usuario: dict) -> int:
-    return db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=usuario["id"], h=db.ahora()[:10])["n"]
+    return db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=usuario["id"], h=tiempo.inicio_del_dia())["n"]
 
 
 # ---------- quién cotiza y decide para otra persona (la misma regla en las pantallas y en la API) ----------
@@ -538,13 +538,16 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
 
 
 # ---------- decidir ----------
+def decisiones_en_vivo_hoy(usuario: dict) -> int:
+    """Decisiones de hoy de la persona que consultaron el regreso en vivo (o lo intentaron)."""
+    return db.uno("""select count(*) n from consultas_buscador where tipo='regreso' and origen in ('en vivo', 'fallida')
+                     and usuario_id=:u and momento>=:h""", u=usuario["id"], h=tiempo.inicio_del_dia())["n"]
+
+
 def _tope_decisiones_alcanzado(usuario: dict) -> bool:
-    """Decisiones de hoy de la persona que consultaron el regreso en vivo (o lo intentaron), frente a la regla."""
     if not config.SERPAPI_KEY:
         return False
-    hechas = db.uno("""select count(*) n from consultas_buscador where tipo='regreso' and origen in ('en vivo', 'fallida')
-                       and usuario_id=:u and momento>=:h""", u=usuario["id"], h=db.ahora()[:10])["n"]
-    return hechas >= int(costo.supuesto(costo.catalogo(), "decisiones_en_vivo_dia", DECISIONES_EN_VIVO_DIA))
+    return decisiones_en_vivo_hoy(usuario) >= int(costo.supuesto(costo.catalogo(), "decisiones_en_vivo_dia", DECISIONES_EN_VIVO_DIA))
 
 
 def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: str = "", razones=()) -> dict:

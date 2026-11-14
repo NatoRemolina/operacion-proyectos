@@ -382,9 +382,11 @@ def test_aviso_de_precio_con_decimales_exactos(leido, buscador, aviso):
 # ---------- ronda 1 · punto 23: el día de los topes es el de la empresa (America/Bogota) ----------
 def test_el_dia_de_los_topes_empieza_a_medianoche_de_bogota():
     from datetime import UTC, datetime
+
     # 14 nov 03:00 UTC son las 22:00 del 13 nov en Bogotá: el día empezó el 13 a las 05:00 UTC
-    assert analizador.inicio_del_dia(datetime(2026, 11, 14, 3, 0, tzinfo=UTC)) == "2026-11-13 05:00:00"
-    assert analizador.inicio_del_dia(datetime(2026, 11, 14, 6, 0, tzinfo=UTC)) == "2026-11-14 05:00:00"
+    from app.servicios import tiempo
+    assert tiempo.inicio_del_dia(datetime(2026, 11, 14, 3, 0, tzinfo=UTC)) == "2026-11-13 05:00:00"
+    assert tiempo.inicio_del_dia(datetime(2026, 11, 14, 6, 0, tzinfo=UTC)) == "2026-11-14 05:00:00"
 
 
 # ---------- ronda 2 · punto 7: una llamada sin respuesta retiene el turno lo que puede durar la función ----------

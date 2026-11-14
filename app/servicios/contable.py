@@ -8,9 +8,8 @@ Solo lee: lo usa también el guion de consola, que corre en solo lectura.
 import calendar
 import io
 import re
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
@@ -18,12 +17,12 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .. import config, db
-from . import acceso, consultas, eventos, exportacion, viajes
+from . import acceso, consultas, eventos, exportacion, tiempo, viajes
 
 ESTADOS_LIBRO = ("aprobado", "aprobado_auto")
-# Supuesto: el mes y el año en curso se cuentan en la hora del este de EE. UU. (la de Miami). En UTC, la hora de la nube,
-# desde las 19:00 o 20:00 de Miami del último día del mes ya sería el mes siguiente.
-ZONA_EMPRESA = ZoneInfo("America/New_York")
+# El mes y el año en curso se cuentan en la zona de la empresa (`config.ZONA_EMPRESA`), la misma de todos los topes y
+# fechas de la plataforma; el libro la declara en «Resumen». En UTC, la hora de la nube, desde las 19:00 de Bogotá del
+# último día del mes ya sería el mes siguiente.
 TIPO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 # Mapa categoría → cuenta. Es un supuesto: se edita en «Reglas y supuestos» (claves `cuenta_contable_<categoría>`)
@@ -109,7 +108,7 @@ def asegurar_cuentas():
             db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave=clave, valor=cuenta,
                         nota=f"Cuenta contable de la categoría «{config.CATEGORIAS[categoria]}» en el Excel contable. "
                              "Supuesto: confirmar con contabilidad.",
-                        fuente="Supuesto editable", confianza="supuesto", verificado=date.today().isoformat())
+                        fuente="Supuesto editable", confianza="supuesto", verificado=tiempo.hoy().isoformat())
 
 
 def cuentas() -> dict[str, str]:
@@ -121,13 +120,9 @@ def cuentas() -> dict[str, str]:
 
 
 # ---------- parámetros ----------
-def _ahora() -> datetime:
-    return datetime.now(UTC)
-
-
 def mes_en_curso(hoy: date | None = None) -> tuple[str, str]:
     """Del primero al último día del mes de `hoy`; sin él, el mes en curso en la zona de la empresa."""
-    hoy = hoy or _ahora().astimezone(ZONA_EMPRESA).date()
+    hoy = hoy or tiempo.hoy()
     ultimo = calendar.monthrange(hoy.year, hoy.month)[1]
     return date(hoy.year, hoy.month, 1).isoformat(), date(hoy.year, hoy.month, ultimo).isoformat()
 
@@ -135,7 +130,7 @@ def mes_en_curso(hoy: date | None = None) -> tuple[str, str]:
 def anio_en_curso(hoy: date | None = None) -> tuple[str, str]:
     """Del 1 de enero al 31 de diciembre del año de `hoy`; sin él, el año en curso en la zona de la empresa. Es el
     periodo por omisión del libro: con un mes, los recibos del mes siguiente (un viaje próximo) quedaban fuera."""
-    hoy = hoy or _ahora().astimezone(ZONA_EMPRESA).date()
+    hoy = hoy or tiempo.hoy()
     return date(hoy.year, 1, 1).isoformat(), date(hoy.year, 12, 31).isoformat()
 
 
@@ -367,7 +362,7 @@ def _hoja_resumen(hoja, usuario: dict, datos: list[dict], mapa: dict[str, str], 
     hoja.cell(3, 1, "Parámetros").font = Font(bold=True, size=12)
     quien = (f"{viajes.codigo_persona(usuario['id'])} · {usuario['nombre']}" if usuario.get("id") else usuario.get("nombre", ""))
     parametros = [
-        ("Desde", inicio, FECHA), ("Hasta", fin, FECHA),
+        ("Desde", inicio, FECHA), ("Hasta", fin, FECHA), ("Zona de las fechas", f"{config.ZONA_EMPRESA} (zona de la empresa)", None),
         ("Proyecto", proyecto["nombre"] if proyecto else "Todos los proyectos a su alcance", None),
         ("Estados incluidos", ", ".join(consultas.ESTADO_GASTO[e] for e in estados), None),
         ("Alcance", ALCANCE.get(usuario.get("rol"), ""), None),
