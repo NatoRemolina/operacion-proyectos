@@ -12,7 +12,7 @@ from starlette.testclient import TestClient
 from app import api_v1, db
 from app.api_v1.esquemas_cotizacion import NuevaCotizacion
 from app.main import app
-from app.servicios import acceso, consultas, costo, cotizacion, viajes
+from app.servicios import acceso, consultas, costo, cotizacion, envios, viajes
 
 MOAB = {"nombre": "Moab", "region": "Utah", "pais": "Estados Unidos", "lat": 38.57332, "lon": -109.54984}
 
@@ -280,16 +280,40 @@ def test_la_misma_clave_devuelve_la_misma_cotizacion(piloto, piloto2):
     assert _cotizar(piloto, otra).status_code == 201
 
 
+def _huella_de(pedido: dict) -> str:
+    return envios.huella(b"", NuevaCotizacion.model_validate(pedido).model_dump(mode="json"))
+
+
 def test_una_clave_en_curso_pide_reintentar(piloto):
     yo = _cuenta("piloto@demo.local")
     clave = "cotizacion-en-curso-1"
-    huella = cotizacion.huella_pedido(NuevaCotizacion.model_validate(_pedido()).model_dump(mode="json"))
-    envio, sid = cotizacion.reclamar_envio(yo["id"], clave, huella)
-    assert sid is None
+    envio, repetido = envios.reclamar(yo["id"], clave, _huella_de(_pedido()), envios.COTIZACION)
+    assert not repetido
     _contrato(_cotizar(piloto, {"Idempotency-Key": clave}), 409, "REQUEST_IN_PROGRESS")
     # si quien la tenía se cayó, al vencer la concesión otro intento la retoma
     db.actualizar("envios_cotizacion", envio["id"], expira="2000-01-01 00:00:00")
     assert _cotizar(piloto, {"Idempotency-Key": clave}).status_code == 201
+
+
+def test_la_cotizacion_usa_la_idempotencia_comun_y_quien_perdio_la_concesion_no_escribe(piloto):
+    """Una sola forma de idempotencia (`envios`, con token de dueño). Antes la cotización tenía su copia sin dueño: el
+    primer pedido, si volvía tarde, pisaba la cotización que había completado el reintento."""
+    assert not hasattr(cotizacion, "reclamar_envio") and not hasattr(cotizacion, "huella_pedido")
+    yo = _cuenta("piloto@demo.local")
+    clave = "cotizacion-con-dueno-1"
+    primero, _ = envios.reclamar(yo["id"], clave, _huella_de(_pedido()), envios.COTIZACION)
+    db.actualizar("envios_cotizacion", primero["id"], expira="2000-01-01 00:00:00")   # el primero se quedó colgado
+    r = _cotizar(piloto, {"Idempotency-Key": clave})
+    assert r.status_code == 201
+    tardia = db.insertar("solicitudes", usuario_id=yo["id"], estado="comparando", creado=db.ahora())
+    try:
+        envios.completar(primero, tardia)   # el primero vuelve tarde: ya no es el dueño
+        envios.soltar(primero)
+    finally:
+        db.ejecutar("delete from solicitudes where id=:i", i=tardia)   # incompleta: no debe llegar a otras pruebas
+    fila = db.uno("select solicitud_id, estado from envios_cotizacion where id=:i", i=primero["id"])
+    assert fila == {"solicitud_id": r.json()["id"], "estado": "completado"}
+    assert _cotizar(piloto, {"Idempotency-Key": clave}).json()["id"] == r.json()["id"]
 
 
 def test_decidir_por_la_api_crea_el_viaje(piloto, cliente):

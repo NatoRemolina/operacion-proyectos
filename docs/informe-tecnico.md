@@ -99,7 +99,7 @@ Atributos de las tablas que el diagrama de `datos.md` no detalla:
 | `elecciones` | Una fila por opción mostrada al decidir: conjunto etiquetado para un modelo de decisión futuro | `decision_id`, `opcion_id`, `posicion`, `elegida`, `recomendada`, `descartada`, `precio`, `costo_esperado`, `rasgos` |
 | `reglas` | Reglas de aerolíneas y hoteles, supuestos, metas de KPIs y cuentas contables | `ambito`, `entidad`, `tarifa`, `clave`, `valor`, `nota`, `fuente`, `confianza`, `verificado` |
 | `busquedas` | Respuestas del buscador, compartidas entre instancias | `clave`, `cuerpo`, `creado` |
-| `envios_cotizacion` | Idempotencia de las cotizaciones de la API | `usuario_id` + `clave` (únicos), `huella`, `estado`, `solicitud_id`, `expira` |
+| `envios_cotizacion` | Idempotencia de las cotizaciones de la API, con la misma concesión con dueño que los recibos (`envios.COTIZACION`) | `usuario_id` + `clave` (únicos), `huella`, `estado`, `solicitud_id`, `propietario`, `expira` |
 | `asistente_consultas` | Rastro del asistente | `usuario_id`, `pregunta`, `herramientas`, `fuentes`, `modo`, `duracion_ms`, `momento` |
 | `fichas_rag` | Índice local del asistente y copia de lo enviado a Pinecone | `ficha_id`, `tipo`, `entidad`, `entidad_id`, `persona_id`, `viaje_id`, `proyecto_id`, `fecha`, `canal`, `texto`, `normalizado` |
 | `indice_rag` | Qué versión de cada ficha tiene cada destino | `destino` (`local` o `pinecone`), `entidad`, `entidad_id`, `ficha_id`, `huella`, `indexado_en` |

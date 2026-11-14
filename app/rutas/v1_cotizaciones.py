@@ -30,7 +30,7 @@ from ..api_v1.esquemas_cotizacion import (
     NuevaDecision,
     errores_cotizacion,
 )
-from ..servicios import acceso, agente, compras, consultas, cotizacion, eventos, geografia, viajes
+from ..servicios import acceso, agente, compras, consultas, cotizacion, envios, eventos, geografia, viajes
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
@@ -119,14 +119,14 @@ def crear(datos: NuevaCotizacion, response: Response, request: Request, yo: dict
     envio = None
     if clave:
         try:
-            envio, hecha = cotizacion.reclamar_envio(yo["id"], clave, cotizacion.huella_pedido(datos.model_dump(mode="json")))
-        except cotizacion.ConflictoEnvio as e:
+            envio, repetido = envios.reclamar(yo["id"], clave, envios.huella(b"", datos.model_dump(mode="json")), envios.COTIZACION)
+        except envios.ConflictoEnvio as e:
             raise ErrorApi(409, "IDEMPOTENCY_CONFLICT", str(e)) from e
-        except cotizacion.EnvioEnCurso as e:
+        except envios.EnvioEnCurso as e:
             raise ErrorApi(409, "REQUEST_IN_PROGRESS", str(e)) from e
-        if hecha:
+        if repetido:
             response.status_code = 200
-            return _cotizacion(yo, hecha, _sesion(request))
+            return _cotizacion(yo, envio["solicitud_id"], _sesion(request))
     try:
         sid = cotizacion.crear(yo, proyecto_id=datos.proyecto_id, viajero_id=viajero_id, para_otra_persona=para_otra,
                                ida=datos.ida.isoformat(), regreso=datos.regreso.isoformat(),
@@ -136,22 +136,22 @@ def crear(datos: NuevaCotizacion, response: Response, request: Request, yo: dict
                                canal="api v1", **campos)
     except cotizacion.CotizacionInvalida as e:
         if envio:
-            cotizacion.soltar_envio(envio)
+            envios.soltar(envio)
         raise _invalido(e.campo, str(e)) from e
     except cotizacion.FueraDeAlcance as e:
         if envio:
-            cotizacion.soltar_envio(envio)
+            envios.soltar(envio)
         raise ErrorApi(403, "FORBIDDEN", str(e)) from e
     except cotizacion.TopeAlcanzado as e:   # el tope lo aplica el servicio, igual que en el formulario
         if envio:
-            cotizacion.soltar_envio(envio)
+            envios.soltar(envio)
         raise ErrorApi(429, "TOO_MANY_REQUESTS", str(e)) from e
     except Exception:
         if envio:
-            cotizacion.soltar_envio(envio)
+            envios.soltar(envio)
         raise
     if envio:
-        cotizacion.completar_envio(envio, sid)
+        envios.completar(envio, sid)
     return _cotizacion(yo, sid, _sesion(request))
 
 
