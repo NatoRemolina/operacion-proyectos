@@ -205,3 +205,17 @@ def test_una_tarifa_comun_no_lleva_tramo_ni_opciones_especiales():
     d = _leer("reserva_completa.html")
     assert d["billetes_separados"] is False and all(t["tramo"] is None for t in d["tarifas"])
     assert d["opciones_separadas"] == [] and d["por_telefono"] == []
+
+
+# ---------- prueba 12: el diálogo «Purchase separate tickets» trae un tiquete por tramo, cada uno con su «Continue» ----------
+def test_los_tiquetes_del_dialogo_son_tarifas_de_su_aerolinea_por_tramo():
+    d = lector.leer((EJEMPLO / "billetes_separados_dialogo_texto_real.txt").read_text(encoding="utf-8"), [])
+    assert [(t["vendedor"], t["nombre"], t["precio"], t["tramo"]) for t in d["tarifas"]] == [
+        ("COPA", "ida", 334.0, "ida"), ("Avianca", "regreso", 323.0, "regreso")]
+    assert [(v["vendedor"], v["aerolinea"], v["tramo"]) for v in d["vendedores"]] == [("COPA", True, "ida"), ("Avianca", True, "regreso")]
+    (op,) = d["opciones_separadas"]
+    assert op["tiquetes"] == [{"tramo": "ida", "vendedor": "COPA", "precio": 334.0},
+                              {"tramo": "regreso", "vendedor": "Avianca", "precio": 323.0}]
+    assert op["precio"] == 657.0                                    # el total, no una tarifa
+    assert d["por_telefono"][0]["precio"] == 3134.0 and len(d["tarifas"]) == 2
+    assert "Confirm the price on each booking website" in d["notas"]

@@ -3,7 +3,9 @@
      COPA CM 687 + CM 240 por PTY y regreso Avianca AV 9 + AV 9332 por BOG, que sale a la 1:35 AM. Una línea por bloque,
      tal como la entregó `innerText` (con sus palabras pegadas: «Book with COPA, AviancaAirline»). En «Booking options»
      hay una sola opción de dos tiquetes y una reserva por teléfono («Call COPA to book»). Las etiquetas de los botones
-     son provisionales hasta la prueba 12. Sin red. -->
+     y el diálogo «Purchase separate tickets» que abre su «Continue» son los de la prueba 12: un tiquete por tramo, cada
+     uno con su «Continue» («Continue to book with COPA airline for 334 US dollars…»), que arma el envío POST a
+     /travel/clk como Google. Sin red. -->
 <html lang="en">
 <head><meta charset="utf-8"><title>Round trip to Miami | Google Flights</title></head>
 <body><main>
@@ -91,7 +93,7 @@
 <div>Book with COPA, AviancaAirline</div>
 <div>Separate ticketsThe 2 tickets in your itinerary must be booked individually</div>
 <div>$657</div>
-<button class="continuar" aria-label="Continue to book with COPA, Avianca for 657 US dollars">Continue</button>
+<button id="separados" aria-label="Continue to book with COPA, Avianca airline for 657 US dollars. The 2 tickets in your itinerary must be booked individually">Continue</button>
 <button class="ver" aria-label="View options">View options</button>
 <div>Call COPA to bookAirline</div>
 <div>Price includes an estimated airline phone service fee of $25</div>
@@ -118,4 +120,36 @@
 <div>Help Center</div>
 <div>Displayed currencies may differ from the currencies used to purchase flights. Learn more</div>
 <div>Page loaded.</div>
+
+<div id="dialogo" role="dialog" hidden>
+<div>Purchase separate tickets</div>
+<div>1</div><div>Confirm the price on each booking website</div>
+<div>2</div><div>Book each ticket separately, but one right after the other</div>
+<div>Departing flight</div>
+<div>Book with COPAAirline</div>
+<div>$334</div>
+<div>COP 1,102,610</div>
+<button class="tiquete" data-u="COPA-IDA" aria-label="Continue to book with COPA airline for 334 US dollars (Equivalent to 1102610 Colombian pesos on COPA)">Continue</button>
+<div>Returning flight</div>
+<div>Book with AviancaAirline</div>
+<div>$323</div>
+<button class="tiquete" data-u="AVIANCA-REGRESO" aria-label="Continue to book with Avianca airline for 323 US dollars">Continue</button>
+<div>Total price, incl. taxes &amp; fees</div>
+<div>$657</div>
+<div>Hide separate &amp; self-transfer tickets</div>
+<div>Close dialog</div>
+</div>
+<script>
+  document.getElementById("separados").addEventListener("click", function () { document.getElementById("dialogo").hidden = false; });
+  document.querySelectorAll(".tiquete").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var f = document.createElement("form");
+      f.method = "post"; f.target = "_blank"; f.action = "/travel/clk/f?pf=1";
+      [["u", b.dataset.u + "-UNSOLOUSO"], ["adurl", ""]].forEach(function (c) {
+        var i = document.createElement("input"); i.type = "hidden"; i.name = c[0]; i.value = c[1]; f.appendChild(i);
+      });
+      document.body.appendChild(f); f.submit();
+    });
+  });
+</script>
 </main></body></html>

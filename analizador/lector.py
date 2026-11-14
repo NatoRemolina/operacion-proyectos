@@ -230,7 +230,7 @@ LLAMAR = re.compile(r"^Call (?P<vendedor>.+?) to book(?:Airline)?$")
 TELEFONO = re.compile(r"^\+?[\d ()\-.]{7,20}$")
 
 
-def _reserva(lineas: list[str]) -> dict:
+def _reserva(lineas: list[str], separados_ya: bool = False) -> dict:
     """Opciones de reserva por vendedor: «Book with American» y, debajo, cada tarifa con su precio y lo que incluye.
 
     Dos formas que no son tarifas (producción, cotización 12, prueba 11):
@@ -238,7 +238,7 @@ def _reserva(lineas: list[str]) -> dict:
       dos tiquetes (`opciones_separadas`), con los vendedores y el precio, sin tarifas;
     - reserva por teléfono: «Call COPA to bookAirline», con su precio y su teléfono (`por_telefono`).
     Los avisos de Google («Separate tickets…», «Price includes…») son notas, nunca nombres de tarifa."""
-    vendedores, vendedor, tarifa, tramo, notas, separados = [], None, None, None, [], False
+    vendedores, vendedor, tarifa, tramo, notas, separados = [], None, None, None, [], separados_ya
     opciones_separadas, por_telefono, especial = [], [], None
     for i, linea in enumerate(lineas):
         if AVISO_RESERVA.search(linea):
@@ -303,6 +303,28 @@ def _reserva(lineas: list[str]) -> dict:
             "opciones_separadas": opciones_separadas, "por_telefono": por_telefono}
 
 
+DIALOGO_SEPARADOS = "Purchase separate tickets"
+FIN_DIALOGO = ("Total price", "Hide separate", "Close dialog")
+
+
+def _dialogo_separados(lineas: list[str]) -> tuple[list[dict], list[str]]:
+    """El diálogo que abre «Continue» en una opción de billetes separados (prueba 12): un bloque por tiquete
+    («Departing flight» / «Returning flight», «Book with COPAAirline», su precio y su «Continue»). Cada tiquete es la
+    tarifa de su aerolínea para ese tramo, con nombre «ida» o «regreso». Devuelve (vendedores, notas)."""
+    if DIALOGO_SEPARADOS not in lineas:
+        return [], []
+    i = lineas.index(DIALOGO_SEPARADOS) + 1
+    fin = next((j for j in range(i, len(lineas)) if lineas[j].startswith(FIN_DIALOGO)), len(lineas))
+    bloque = lineas[i:fin]
+    primero = next((j for j, l in enumerate(bloque) if TRAMO_IDA.match(l) or TRAMO_REGRESO.match(l)), len(bloque))
+    notas = [l for l in bloque[:primero] if not l.isdigit()]   # «1», «2»: la numeración de los pasos
+    r = _reserva(bloque[primero:], separados_ya=True)
+    for v in r["vendedores"]:
+        for t in v["tarifas"]:
+            t["nombre"] = v["tramo"] or t["nombre"]   # «Ir a COPA · ida»
+    return r["vendedores"], notas
+
+
 def _tramos_de_la_opcion(vendedores: list[str], tramos: list[dict]) -> list[dict]:
     """Qué vendedor vende cada tiquete de una opción separada: el de la aerolínea de ese tramo, o en orden."""
     salida = []
@@ -362,9 +384,13 @@ def leer(texto: str, etiquetas: list[str] | None = None) -> dict:
                         and l.startswith(FIN_RESERVA)), len(lineas))
     tramos = _tramos(lineas[inicio_tramos + 1:inicio_reserva or len(lineas)]) if inicio_tramos is not None else []
     reserva = _reserva(lineas[inicio_reserva + 1:fin_reserva]) if inicio_reserva is not None else _reserva([])
-    vendedores = reserva["vendedores"]
+    tiquetes, notas_dialogo = _dialogo_separados(lineas)
+    vendedores = reserva["vendedores"] + tiquetes
+    reserva["notas"] += notas_dialogo
     for op in reserva["opciones_separadas"]:
         op["tramos"] = _tramos_de_la_opcion(op["vendedores"], tramos)
+        op["tiquetes"] = [{"tramo": v["tramo"], "vendedor": v["vendedor"], "precio": t["precio"]}
+                          for v in tiquetes for t in v["tarifas"][:1]]
     lista = itinerarios(etiquetas or [])
     if inicio_reserva is None:
         avisos.append("La página no mostró opciones de reserva.")
@@ -505,12 +531,20 @@ _BLOQUES = {"p", "div", "li", "ul", "ol", "section", "h1", "h2", "h3", "h4", "sp
 class _Texto(HTMLParser):
     """Aproxima `innerText`: un salto de línea por bloque, sin scripts ni estilos, y junta las `aria-label` de las listas."""
 
+    VACIOS = {"input", "br", "img", "meta", "link", "hr", "source", "wbr"}
+
     def __init__(self):
         super().__init__()
         self.partes, self.etiquetas, self._oculto = [], [], 0
+        self._pila, self._escondido = [], None   # un elemento con `hidden` (y lo de dentro) no se ve
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
+        if tag not in self.VACIOS:
+            self._pila.append(tag)
+            if "hidden" in a and self._escondido is None:
+                self._escondido = len(self._pila)
+                self._oculto += 1
         if tag in ("script", "style", "template", "title"):   # como `innerText` del cuerpo: sin el título
             self._oculto += 1
         if a.get("aria-label") and tag in ("li", "div"):
@@ -521,6 +555,11 @@ class _Texto(HTMLParser):
     def handle_endtag(self, tag):
         if tag in ("script", "style", "template", "title") and self._oculto:
             self._oculto -= 1
+        if tag not in self.VACIOS and self._pila:
+            if self._escondido is not None and len(self._pila) == self._escondido:
+                self._escondido = None
+                self._oculto -= 1
+            self._pila.pop()
         if tag in _BLOQUES:
             self.partes.append("\n")
 
