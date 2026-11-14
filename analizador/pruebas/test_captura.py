@@ -3,6 +3,8 @@ aerolínea). Corre en la etapa `pruebas` de la imagen del analizador, como test_
 import base64
 from pathlib import Path
 
+import pytest
+
 from analizador import navegador
 from analizador.pruebas.test_navegador import URL, _servir
 
@@ -36,7 +38,7 @@ def test_sin_la_tarifa_la_captura_de_google_vale_igual():
     assert r["datos"]["tramos"] and r["capturas_png_b64"]
 
 
-def _servir_aerolinea(enviados: list, destino: str = AA):
+def _servir_aerolinea(enviados: list, destino: str = AA, pagina_aerolinea: str = "aerolinea.html"):
     """Google recibe el POST y manda a la aerolínea (con una navegación de la página, que Playwright sí intercepta)."""
     def registrar(pagina):
         def atender(ruta):
@@ -47,7 +49,7 @@ def _servir_aerolinea(enviados: list, destino: str = AA):
                                     body=f"<script>location.href = {destino!r};</script>")
             if pedido.url.startswith(AA):
                 return ruta.fulfill(status=200, content_type="text/html; charset=utf-8",
-                                    body=(EJEMPLO / "aerolinea.html").read_text(encoding="utf-8"))
+                                    body=(EJEMPLO / pagina_aerolinea).read_text(encoding="utf-8"))
             return ruta.fallback() if pedido.is_navigation_request() else ruta.abort()
         pagina.route("**/*", atender)
     return registrar
@@ -63,6 +65,16 @@ def test_captura_de_la_aerolinea_con_impuestos_sin_tocar_el_formulario():
     assert d["numeros"] == ["AA 1851", "AA 1597"] and d["pagina"] == AA
     assert d["titulo"] != "ENVIADO" and "Taxes and carrier-imposed fees" in r["texto"]  # el formulario no se envió
     assert _png(r["capturas_png_b64"][0])
+
+
+@pytest.mark.parametrize("pagina", ["aerolinea_bloqueo.html", "aerolinea_verificacion.html"])
+def test_la_pagina_de_bloqueo_de_la_aerolinea_no_es_una_captura_lista(pagina):
+    """Pieza 6: COPA respondió «Access is temporarily restricted» (prueba 13) y un deslizador «Verificación requerida»
+    (Chrome real). Nunca se resuelve: la captura queda fallida, sin precios y sin fotografiar la verificación."""
+    r = navegador.captura_aerolinea(CLK, "u=1", servir=_servir_aerolinea([], pagina_aerolinea=pagina))
+    assert (r["estado"], r["motivo"]) == ("fallido", "la aerolínea pidió verificación")
+    assert not r.get("capturas_png_b64") and not r.get("datos")
+    assert r["duracion_ms"] < 10_000   # no espera los precios que nunca llegan
 
 
 def test_la_aerolinea_solo_acepta_un_envio_de_google():

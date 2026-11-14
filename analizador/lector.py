@@ -14,6 +14,10 @@ DOMINIOS = frozenset({"www.google.com", "google.com"})
 SENALES_VERIFICACION = ("unusual traffic", "not a robot", "recaptcha", "/sorry/", "captcha")
 SENALES_CONSENTIMIENTO = ("before you continue to google", "consent.google.com")
 VERIFICACION = "la página pidió verificación"
+# páginas de bloqueo de las aerolíneas (COPA en la prueba 13 y en Chrome real, 13 y 14 nov 2026)
+SENALES_AEROLINEA = ("access is temporarily restricted", "unusual activity", "verificación requerida",
+                     "verification required", "access denied", "are you a human", "press & hold")
+VERIFICACION_AEROLINEA = "la aerolínea pidió verificación"
 CONSENTIMIENTO = "la página pidió aceptar condiciones de uso"
 
 PRECIO = re.compile(r"^\$([\d,]+(?:\.\d\d)?)$")
@@ -72,9 +76,12 @@ def url_envio(url) -> bool:
     return ruta is not None and ruta.startswith("/travel/clk")
 
 
-def bloqueo(url_final: str, texto: str) -> str | None:
-    """Por qué no se puede leer la página: una verificación o un aviso de condiciones. Nunca se resuelven."""
+def bloqueo(url_final: str, texto: str, aerolinea: bool = False) -> str | None:
+    """Por qué no se puede leer la página: una verificación o un aviso de condiciones. Nunca se resuelven. Con
+    `aerolinea`, la página a la que llevó el envío: solo cuentan sus verificaciones y bloqueos (no es de Google)."""
     bajo = f"{url_final}\n{texto[:4000]}".lower()
+    if aerolinea:
+        return VERIFICACION_AEROLINEA if any(s in bajo for s in SENALES_VERIFICACION + SENALES_AEROLINEA) else None
     if any(s in bajo for s in SENALES_VERIFICACION):
         return VERIFICACION
     if any(s in bajo for s in SENALES_CONSENTIMIENTO) or urlsplit(url_final or "").hostname not in DOMINIOS:

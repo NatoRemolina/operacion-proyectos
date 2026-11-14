@@ -444,6 +444,10 @@ def captura_aerolinea(url: str, cuerpo: str, *, servir=None, presupuesto_ms: int
         _turno.release()
 
 
+PRECIO_O_BLOQUEO = re.compile(r"\$\d|" + "|".join(re.escape(x) for x in lector.SENALES_AEROLINEA + lector.SENALES_VERIFICACION),
+                              re.I)
+
+
 def _aerolinea(url: str, cuerpo: str, servir, presupuesto_ms: int, inicio: float) -> dict:
     import html as html_
     from urllib.parse import parse_qsl as campos_de
@@ -501,7 +505,10 @@ def _aerolinea(url: str, cuerpo: str, servir, presupuesto_ms: int, inicio: float
                 pagina.wait_for_timeout(250)
             if not destino:
                 return _resultado("fallido", inicio, SIN_AEROLINEA, **_evidencia(pagina))
-            _esperar(pagina, re.compile(r"\$\d"), max(min(15_000, restante() - 8_000), 1))
+            texto = _esperar(pagina, PRECIO_O_BLOQUEO, max(min(15_000, restante() - 8_000), 1)) or _texto(pagina)
+            if lector.bloqueo(pagina.url, texto, aerolinea=True):
+                # una verificación no se resuelve ni se fotografía: la captura de Google vale igual
+                return _resultado("fallido", inicio, lector.VERIFICACION_AEROLINEA, url_final=f"https://{destino['host']}/")
             # un clic que solo despliega el precio y los impuestos: un enlace o botón con ese nombre, fuera de formularios
             try:
                 for el in pagina.get_by_role("button", name=PRECIO_E_IMPUESTOS).all() + \
