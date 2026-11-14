@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { crearClienteHttp } from "@/shared/infrastructure/cliente-http";
-import { gastoDePrueba, resumenDePrueba } from "@/test/fabricas";
+import { gastoDePrueba, resumenDePrueba, viajeDePrueba } from "@/test/fabricas";
 import { crearAdministracionHttp } from "./administracion-http";
 
 function respuestaJson(cuerpo: unknown, estado = 200) {
@@ -136,4 +136,17 @@ describe("adaptador HTTP del buzón simulado", () => {
     expect(JSON.parse(String(fetchFalso.mock.calls[0]![1]?.body))).toEqual({ nombres: ["x.png"] });
     expect(resultado.errores[0]?.mensaje).toMatch(/No está/);
   });
+
+  it("reabrir manda la versión del viaje que se vio, si la API la da; sin ella no la manda (B7)", async () => {
+    const viaje = { ...viajeDePrueba({ id: 7 }), presupuesto_detalle: [], motivo: null, aprobado_en: null };
+    const { fetchFalso, administracion } = preparar(
+      respuestaJson({ viaje, mensaje: "Viaje reabierto." }),
+      respuestaJson({ viaje, mensaje: "Viaje reabierto." }),
+    );
+    await administracion.cambiarEstadoViaje(7, { accion: "reabrir", version: 3 });
+    expect(JSON.parse(String(fetchFalso.mock.calls[0]![1]?.body))).toEqual({ accion: "reabrir", motivo: "", confirmar_precio: false, version: 3 });
+    await administracion.cambiarEstadoViaje(7, { accion: "reabrir" });
+    expect(JSON.parse(String(fetchFalso.mock.calls[1]![1]?.body))).not.toHaveProperty("version");
+  });
 });
+
