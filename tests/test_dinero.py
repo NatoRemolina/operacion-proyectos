@@ -43,7 +43,7 @@ def test_un_centavo_de_diferencia_no_es_duplicado_exacto():
 
 def _viaje_con_compra(rasgos: dict | None = None, **compra) -> None:
     if not db.uno("select id from proyectos where id=:i", i=PROYECTO):
-        db.insertar("proyectos", id=PROYECTO, nombre="Proyecto de lo pagado", moneda="USD")
+        db.insertar("proyectos", id=PROYECTO, nombre="Proyecto de lo pagado", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
     sid = db.insertar("solicitudes", proyecto_id=PROYECTO, origen="ZPA", destino="ZPB", ida="2031-06-01", regreso="2031-06-04",
                       estado="decidido", creado="2031-05-01 10:00:00")
     did = db.insertar("decisiones", solicitud_id=sid, proyecto_id=PROYECTO, total=400, creado="2031-05-01 10:00:00")

@@ -157,7 +157,7 @@ def primer_dia_posible() -> date:
     """La ida más temprana que se puede cotizar: hoy. El buscador rechaza fechas pasadas y la consulta se perdería.
     Se toma «hoy» con 12 horas de margen hacia atrás sobre la hora universal, para que en América el día local siga
     valiendo aunque en UTC ya sea mañana."""
-    return (datetime.now(UTC) - timedelta(hours=12)).date()
+    return (tiempo.ahora() - timedelta(hours=12)).date()
 
 
 def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id: int = 0, origen: str = "",

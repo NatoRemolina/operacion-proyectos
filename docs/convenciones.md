@@ -43,6 +43,9 @@ Cómo se escribe, se prueba y se integra el código de este repositorio. Vale pa
   - `make probar-postgres` (PostgreSQL de Docker, con `make entorno` arriba)
   - el proyecto de Supabase de pruebas cuando el cambio toca la base o las transacciones.
 - Una prueba que solo vale en SQLite lo declara con `skipif(not config.ES_SQLITE)`.
+- **La suite no depende del orden.** `pytest --orden-aleatorio SEMILLA` (opción propia de `tests/conftest.py`, sin dependencias nuevas) baraja los módulos y, dentro de cada uno, sus pruebas, como pytest-randomly. Cada prueba crea lo que necesita (cuentas, proyectos con sus fechas, viajes con titular y presupuesto) y deja la base como la encontró si cambia algo compartido; lo que un módulo prepara una vez va en un fixture de módulo, no en la primera prueba.
+- **La suite no caduca.** Su «hoy» está fijo en el 13 de noviembre de 2026 a través del reloj único (`tiempo.ahora`, fijado en `tests/conftest.py`): las cotizaciones y recibos de ejemplo son de diciembre de 2026 y las respuestas guardadas del buscador van atadas a esas fechas. Una prueba que necesita otro reloj lo fija con `monkeypatch`.
+- Las dos pruebas de concurrencia en PostgreSQL de `tests/test_integridad.py` corren solo con `PRUEBAS_PG_INTEGRIDAD` (un PostgreSQL desechable); ya no usan cualquier base que responda en el puerto 5433.
 - En `web/`: `npm run typecheck`, `npm run lint -- .` y `npm test`.
 
 ## Ramas, commits e integración

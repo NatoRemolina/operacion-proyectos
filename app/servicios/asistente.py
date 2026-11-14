@@ -1284,7 +1284,7 @@ def _responder(pregunta: str, usuario: dict, cid: int, contexto: dict | None = N
     if modo in ("modelo", "asesor"):   # se muestran las que la respuesta cita; si no cita ninguna, todas las consultadas
         fuentes = citadas(texto, fuentes) or fuentes
     db.actualizar("asistente_consultas", cid, herramientas=r.pasos, fuentes=[{k: f[k] for k in ("tipo", "id", "codigo")} for f in fuentes],
-                  modo=modo, duracion_ms=t(), respuesta=texto[:4000])
+                  modo=modo, duracion_ms=t(), respuesta=texto)
     sesion = (f" · sesión {r.sesion['id']} · tokens {r.sesion.get('entrada', 0)}/{r.sesion.get('salida', 0)}"
               + (f" · {r.sesion['costo_usd']:.2f} USD" if r.sesion.get("costo_usd") is not None else "")
               if modo == "asesor" and r.sesion.get("id") else "")

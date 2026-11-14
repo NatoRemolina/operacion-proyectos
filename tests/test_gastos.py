@@ -27,9 +27,14 @@ def _gasto(gid):
 
 
 def test_ejemplo_legible_se_aprueba_solo(cliente, ejemplos):
-    r = _subir(cliente, "recibo.png", (ejemplos / "recibo_gasolina.png").read_bytes(), "image/png")
+    # Otras pruebas (Telegram) suben este mismo recibo: aquí se mira su primera carga, no un duplicado
+    import hashlib
+    foto = (ejemplos / "recibo_gasolina.png").read_bytes()
+    db.ejecutar("update gastos set estado='rechazado' where documento_id in (select id from documentos where huella=:h)",
+                h=hashlib.sha256(foto).hexdigest())
+    r = _subir(cliente, "recibo.png", foto, "image/png")
     g = _gasto(r.json()["gastos"][0])
-    assert g["estado"] == "aprobado_auto" and g["total"] == 38.40 and g["extraido"]
+    assert g["estado"] == "aprobado_auto" and g["total"] == 38.40 and g["extraido"], g["alertas"]
 
 
 def test_ejemplo_ilegible_va_a_revision(cliente, ejemplos):

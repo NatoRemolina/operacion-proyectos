@@ -113,7 +113,7 @@ def test_lo_que_administracion_sube_a_nombre_de_otra_persona_lo_revisa_otra(clie
     assert db.uno("select count(*) n from eventos where entidad='gasto' and entidad_id=:i and paso='autoaprobación impedida'",
                   i=gid)["n"] == 1
     # Otra persona de administración sí lo revisa
-    acceso.crear_usuario("admin3-cuatro-ojos@demo.local", "Tercera administración", "admin", "clave-admin-tres-2026")
+    acceso.crear_usuario("admin3-cuatro-ojos@demo.local", "Tomasa Ibarra", "admin", "clave-admin-tres-2026")
     try:
         otra = _cuenta("admin3-cuatro-ojos@demo.local")
         assert not viajes.gasto_propio_de(g, otra)

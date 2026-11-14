@@ -62,7 +62,8 @@ def test_solo_administracion_mueve_el_estado(cliente, piloto, nuevo_viaje):
 
 
 def test_cada_gasto_responde_al_estado_de_su_viaje(cliente, revisor, ejemplos, nuevo_viaje):
-    v = nuevo_viaje(aprobar=False)
+    # Proyecto 2: esta prueba cambia el presupuesto a mano, y el tablero del proyecto 1 se compara con su detalle
+    v = nuevo_viaje(aprobar=False, proyecto_id=2)
     g = _subir(cliente, ejemplos, "factura_alquiler_carro.pdf", viaje_id=v["id"])   # soporte que no usa ninguna otra prueba
     assert g["estado"] == "revision" and "viaje_no_aprobado" in _motivos(g) and g["viaje_id"] == v["id"]
     assert g["proyecto_id"] == v["proyecto_id"] and g["viajero_id"] == v["viajero_id"]   # el viaje define proyecto y persona

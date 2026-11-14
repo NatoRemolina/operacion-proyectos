@@ -731,11 +731,14 @@ def test_el_asesor_responde_al_colaborador_solo_con_lo_suyo(con_asesor, piloto_c
     inicial = s.enviados[0]["initial_events"][0]["content"][0]["text"]
     assert f"Te escribe {piloto_con_gastos['codigo']}, colaborador" in inicial
     resultados = [json.loads(e["content"][0]["text"]) for e in s.resultados()]
-    assert resultados[0] == {"error": f"No existe el gasto #{ajeno}."}
-    assert resultados[1] == {"error": "Ese viaje no existe o no nació de una cotización."}
-    assert resultados[2] == {"error": f"No existe la cotización #{vl['solicitud_id']}."}
-    assert "error" in resultados[3]
-    assert {f"#{g}" for g in piloto_con_gastos["gastos"]} <= {g["gasto"] for g in resultados[4]["gastos"]}   # sin nombrar a nadie, lo suyo
+    # el orden en que llegan las respuestas de las herramientas no está garantizado: se miran todas
+    errores = [x["error"] for x in resultados if "error" in x]
+    assert f"No existe el gasto #{ajeno}." in errores
+    assert "Ese viaje no existe o no nació de una cotización." in errores
+    assert f"No existe la cotización #{vl['solicitud_id']}." in errores
+    assert len(errores) == 4                                                       # también el de los indicadores
+    suyos = next(x for x in resultados if "gastos" in x)
+    assert {f"#{g}" for g in piloto_con_gastos["gastos"]} <= {g["gasto"] for g in suyos["gastos"]}   # sin nombrar a nadie, lo suyo
     enviado = json.dumps(resultados, ensure_ascii=False)
     assert "Hotel Ajeno" not in enviado and "444.44" not in enviado and "secreta" not in enviado
     (cg, pg), (cv, pv) = acceso.alcance(piloto, "g"), acceso.alcance(piloto, "v")

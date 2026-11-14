@@ -396,7 +396,9 @@ def test_el_gestor_cotiza_para_otra_persona_solo_en_sus_proyectos(gestor):
     assert not db.uno("select id from decisiones where solicitud_id=:s", s=sid)
     # el formulario dice en qué proyectos puede cotizar para otra persona
     f = gestor.get(f"{V1}/cotizaciones/formulario").json()
-    assert {p["id"]: p["para_otra_persona"] for p in f["proyectos"]} == {1: True, 2: False} and f["elige_viajero"]
+    marcas = {p["id"]: p["para_otra_persona"] for p in f["proyectos"]}
+    assert {k: marcas[k] for k in (1, 2)} == {1: True, 2: False} and f["elige_viajero"]   # otras pruebas crean más proyectos
+    assert not any(v for k, v in marcas.items() if k != 1)
 
 
 def test_un_gestor_sin_proyectos_solo_cotiza_para_si():

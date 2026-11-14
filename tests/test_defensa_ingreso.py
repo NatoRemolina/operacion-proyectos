@@ -23,7 +23,7 @@ def _cliente(direccion: str | None = None) -> TestClient:
 
 def _cuenta() -> tuple[str, str]:
     correo, clave = f"ingreso-{uuid.uuid4().hex[:8]}@demo.local", "clave-de-ingreso-2026"
-    acceso.crear_usuario(correo, "Persona del ingreso", "colaborador", clave)
+    acceso.crear_usuario(correo, "Iginio Zipaquirá", "colaborador", clave)
     return correo, clave
 
 

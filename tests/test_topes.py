@@ -22,7 +22,7 @@ def _fijar(clave: str, valor: int):
 
 
 def _persona() -> dict:
-    uid = acceso.crear_usuario(f"topes-{uuid.uuid4().hex[:8]}@demo.local", "Persona de los topes", "colaborador",
+    uid = acceso.crear_usuario(f"topes-{uuid.uuid4().hex[:8]}@demo.local", "Telésforo Ibagué", "colaborador",
                                "clave-de-los-topes-2026")
     return db.uno("select * from usuarios where id=:i", i=uid)
 

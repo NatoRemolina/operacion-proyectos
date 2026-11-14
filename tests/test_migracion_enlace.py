@@ -13,10 +13,12 @@ _n = itertools.count(1)
 def _viaje(ida="2026-12-08", regreso="2026-12-11") -> dict:
     """Un viajero y un proyecto propios con un único viaje: así el enlace no depende de lo que dejen otras pruebas."""
     n = next(_n)
-    proyecto = db.insertar("proyectos", nombre=f"Proyecto de la migración {n}")
+    proyecto = db.insertar("proyectos", nombre=f"Proyecto de la migración {n}", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
     viajero = db.insertar("viajeros", nombre=f"Viajero de la migración {n}")
-    viaje = db.insertar("viajes", proyecto_id=proyecto, viajero_id=viajero, ida=ida, regreso=regreso, estado="aprobado",
-                        creado=db.ahora())
+    # un viaje válido, como los que crea la plataforma (con titular y presupuesto): la calidad de datos no lo marca
+    titular = db.uno("select id from usuarios where correo='admin@demo.local'")["id"]
+    viaje = db.insertar("viajes", proyecto_id=proyecto, viajero_id=viajero, usuario_id=titular, presupuesto_usd=1000,
+                        ida=ida, regreso=regreso, estado="aprobado", creado=db.ahora())
     return {"id": viaje, "proyecto_id": proyecto, "viajero_id": viajero}
 
 

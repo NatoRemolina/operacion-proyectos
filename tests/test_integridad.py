@@ -1,4 +1,5 @@
 """Integridad del flujo de gastos: importes, duplicados, transacciones, envíos repetidos y revisión versionada."""
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -136,8 +137,8 @@ def test_la_api_no_publica_importes_no_finitos():
 def test_transaccion_revierte_todas_las_escrituras():
     ids = []
     with pytest.raises(RuntimeError), db.transaccion():
-        ids.append(db.insertar("proyectos", nombre="No debe quedar"))
-        ids.append(db.insertar("proyectos", nombre="Tampoco"))
+        ids.append(db.insertar("proyectos", nombre="No debe quedar", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31"))
+        ids.append(db.insertar("proyectos", nombre="Tampoco", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31"))
         db.actualizar("proyectos", ids[0], ciudad="Ninguna")
         raise RuntimeError("caída controlada")
     assert ids and all(db.uno("select id from proyectos where id=:i", i=i) is None for i in ids)
@@ -145,7 +146,7 @@ def test_transaccion_revierte_todas_las_escrituras():
 
 def test_transaccion_confirma_y_la_anidada_participa_en_la_exterior():
     with db.transaccion() as c:
-        pid = db.insertar("proyectos", nombre="Confirmado en transacción")
+        pid = db.insertar("proyectos", nombre="Confirmado en transacción", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
         with db.transaccion() as interna:
             assert interna is c
             db.actualizar("proyectos", pid, ciudad="Bogotá")
@@ -163,7 +164,7 @@ def test_transaccion_confirma_y_la_anidada_participa_en_la_exterior():
 def test_un_error_atrapado_dentro_usa_punto_de_guardado():
     from sqlalchemy.exc import IntegrityError
     with db.transaccion() as c:
-        pid = db.insertar("proyectos", nombre="Sigue tras el error")
+        pid = db.insertar("proyectos", nombre="Sigue tras el error", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
         with pytest.raises(IntegrityError), c.begin_nested():
             db.insertar("cargos", nombre="Pilotaje de dron")   # nombre único que ya existe
         db.actualizar("proyectos", pid, ciudad="Lisboa")
@@ -187,7 +188,7 @@ def test_una_segunda_transaccion_espera_a_la_primera():
 
     def primera():
         with db.transaccion():
-            pid = db.insertar("proyectos", nombre="Primera transacción")
+            pid = db.insertar("proyectos", nombre="Primera transacción", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
             dentro.set()
             time.sleep(0.3)
             db.actualizar("proyectos", pid, ciudad="Confirmada")
@@ -619,16 +620,13 @@ def test_la_tabla_de_envios_existe_con_sus_restricciones():
 
 
 # ---------- comprobación de la base (solo lectura) ----------
-PG_LOCAL = "postgresql://operacion:operacion-local@127.0.0.1:5433/operacion"
+# Un PostgreSQL desechable para estas dos pruebas, solo si se pide (PRUEBAS_PG_INTEGRIDAD): antes se usaba cualquiera que
+# respondiera en el puerto 5433, que puede ser la base de otra persona o de otra sesión, y la suite dependía de eso.
+PG_LOCAL = os.getenv("PRUEBAS_PG_INTEGRIDAD", "")
 
 
 def _pg_local_responde() -> bool:
-    import socket
-    try:
-        with socket.create_connection(("127.0.0.1", 5433), timeout=1):
-            return True
-    except OSError:
-        return False
+    return bool(PG_LOCAL)
 
 
 def _comprobar(capsys, url: str | None) -> tuple[int, str]:
@@ -650,7 +648,7 @@ def test_comprobar_no_imprime_la_conexion_si_falla(capsys):
     assert '"conexion": "no verificada"' in salida
 
 
-@pytest.mark.skipif(not _pg_local_responde(), reason="PostgreSQL local (127.0.0.1:5433) no responde")
+@pytest.mark.skipif(not _pg_local_responde(), reason="Sin PRUEBAS_PG_INTEGRIDAD: un PostgreSQL desechable para estas pruebas")
 def test_comprobar_contra_el_postgres_local(capsys):
     import json
     codigo, salida = _comprobar(capsys, PG_LOCAL)
@@ -672,7 +670,7 @@ from app.servicios import envios, revision, viajes
 assert not config.ES_SQLITE
 db.crear_tablas()
 ahora = db.ahora()
-proyecto = db.insertar("proyectos", nombre="Prueba concurrente")
+proyecto = db.insertar("proyectos", nombre="Prueba concurrente", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
 viajero = db.insertar("viajeros", nombre="Viajera de prueba")
 colaboradora = db.insertar("usuarios", correo="colaboradora@prueba.local", nombre="Colaboradora", rol="colaborador",
                            activo=1, viajero_id=viajero, creado=ahora)
@@ -714,7 +712,7 @@ with ThreadPoolExecutor(max_workers=2) as ejecutor:
 
 try:
     with db.transaccion():
-        revertido = db.insertar("proyectos", nombre="No debe quedar")
+        revertido = db.insertar("proyectos", nombre="No debe quedar", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
         raise RuntimeError
 except RuntimeError:
     pass
@@ -723,7 +721,7 @@ print(json.dumps({"respuestas": respuestas, "guardados": guardados, "reclamos": 
 '''
 
 
-@pytest.mark.skipif(not _pg_local_responde(), reason="PostgreSQL local (127.0.0.1:5433) no responde")
+@pytest.mark.skipif(not _pg_local_responde(), reason="Sin PRUEBAS_PG_INTEGRIDAD: un PostgreSQL desechable para estas pruebas")
 def test_concurrencia_de_presupuesto_y_envios_en_postgres():
     """Dos aprobaciones a la vez contra un saldo que alcanza para una, en PostgreSQL y en un esquema propio que se borra."""
     import json

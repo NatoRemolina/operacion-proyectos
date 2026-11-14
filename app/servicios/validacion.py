@@ -1,11 +1,11 @@
 """Reglas que deciden si un gasto entra solo o va a revisión humana."""
 import re
 import unicodedata
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from .. import config, db
-from . import costo, dinero
+from . import costo, dinero, tiempo
 
 AGENCIAS = ("booking", "expedia", "hotels.com", "travelnow", "agoda", "priceline", "kayak", "trip.com")
 
@@ -68,7 +68,7 @@ def a_usd(total, moneda, cat: dict):
 
 def _hoy_en_algun_lugar() -> date:
     """La fecha más adelantada del planeta (UTC+14): un recibo de hoy en Asia no se toma por futuro."""
-    return (datetime.now(UTC) + timedelta(hours=14)).date()
+    return (tiempo.ahora() + timedelta(hours=14)).date()
 
 
 def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict, alertas: "_Alertas") -> bool:

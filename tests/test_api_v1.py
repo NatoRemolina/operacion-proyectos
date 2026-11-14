@@ -188,7 +188,7 @@ def test_viaje_con_la_forma_del_contrato(piloto, mundo):
     assert DINERO.match(v["presupuesto_usd"]) and DINERO.match(v["gastado_usd"]) and DINERO.match(v["en_revision_usd"])
     assert v["presupuesto_detalle"] and all(DINERO.match(l["valor"]) for l in v["presupuesto_detalle"])
     assert INSTANTE.match(v["aprobado_en"]) and isinstance(v["en_curso"], bool) and isinstance(v["gastos"], int)
-    resumen = next(i for i in piloto.get(f"{V1}/viajes", params={"limite": 100}).json()["items"] if i["id"] == v["id"])
+    resumen = next(i for i in _todos(piloto, f"{V1}/viajes") if i["id"] == v["id"])   # puede haber más de una página
     assert "presupuesto_detalle" not in resumen and resumen["gastado_usd"] == v["gastado_usd"]
     pendientes = piloto.get(f"{V1}/viajes", params={"estado": "pendiente_aprobacion", "limite": 100}).json()["items"]
     assert all(i["estado"] == "pendiente_aprobacion" for i in pendientes)
@@ -258,7 +258,7 @@ def test_el_documento_se_entrega_con_su_tipo_y_aislado(piloto, mundo):
 
 # ---------- paginación ----------
 def test_el_cursor_lleva_al_siguiente_y_el_ultimo_cierra(piloto, mundo):
-    completos = [g["id"] for g in piloto.get(f"{V1}/gastos", params={"limite": 100}).json()["items"]]
+    completos = [g["id"] for g in _todos(piloto, f"{V1}/gastos")]   # puede haber más de una página de 100
     assert len(completos) >= 2 and completos == sorted(completos, reverse=True)    # más reciente primero
     vistos, cursor = [], None
     while True:
@@ -270,8 +270,7 @@ def test_el_cursor_lleva_al_siguiente_y_el_ultimo_cierra(piloto, mundo):
         assert r["siguiente"] == str(r["items"][0]["id"])                          # el cursor es el último id entregado
         cursor = r["siguiente"]
     assert vistos == completos
-    assert [v["id"] for v in _todos(piloto, f"{V1}/viajes", limite=1)] == \
-        [v["id"] for v in piloto.get(f"{V1}/viajes", params={"limite": 100}).json()["items"]]
+    assert [v["id"] for v in _todos(piloto, f"{V1}/viajes", limite=1)] == [v["id"] for v in _todos(piloto, f"{V1}/viajes")]
 
 
 def test_limites_y_cursor_invalidos(piloto):

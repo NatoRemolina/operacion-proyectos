@@ -2,6 +2,8 @@
 momento y, cuando exista, frente a lo pagado. Proyecto propio para que nada de otras pruebas cambie las cifras."""
 import json
 
+import pytest
+
 from app import db
 from app.servicios import kpis, metricas, modelo
 
@@ -10,7 +12,7 @@ PROYECTO = 903
 
 def _eleccion(precio, rasgos, origen="ZEA", destino="ZEB", creado="2027-01-15 10:00:00", elegida=1) -> int:
     if not db.uno("select id from proyectos where id=:i", i=PROYECTO):
-        db.insertar("proyectos", id=PROYECTO, nombre="Proyecto de exactitud", moneda="USD")
+        db.insertar("proyectos", id=PROYECTO, nombre="Proyecto de exactitud", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
     sid = db.insertar("solicitudes", proyecto_id=PROYECTO, origen=origen, destino=destino, ida="2027-02-01", regreso="2027-02-04",
                       estado="decidido", creado=creado)
     db.insertar("elecciones", solicitud_id=sid, tipo="vuelo", posicion=1, elegida=elegida, precio=precio,
@@ -23,11 +25,16 @@ def test_sin_datos_todavia():
     assert vacio["mae"] is None and vacio["mensaje"] == "sin datos todavía"
 
 
-def test_mae_y_mape_por_ruta_y_mes():
+@pytest.fixture(scope="module", autouse=True)
+def _elecciones():
+    """Las mismas elecciones para todas las pruebas del módulo, en cualquier orden."""
     _eleccion(330, {"frente_esperado": 10})                  # esperado 300: el modelo se quedó corto en 30
     _eleccion(180, {"esperado": 200})                        # esperado 200: se pasó en 20
     _eleccion(500, {"tarifa": "Basic"})                      # sin precio esperado: no cuenta
     _eleccion(120, {"esperado": 100}, origen="ZEC", destino="ZED", creado="2027-02-03 09:00:00")
+
+
+def test_mae_y_mape_por_ruta_y_mes():
     e = modelo.exactitud({"proyecto_id": PROYECTO})
     assert e["filas"] == 3 and e["mae"] == 23.33 and e["mape"] == 12.3 and e["mensaje"] is None
     rutas = {r["ruta"]: r for r in e["por_ruta"]}

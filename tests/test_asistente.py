@@ -3,6 +3,7 @@
 Ninguna prueba sale a internet: Pinecone se prueba con un transporte simulado de httpx y el modelo, con respuestas guionadas.
 """
 import json
+import re
 
 import httpx
 import pytest
@@ -48,12 +49,18 @@ def test_que_ha_reportado_una_persona_trae_sus_gastos_exactos_y_los_cita(dos_pil
     esperados = db.todos("""select id, total, moneda from gastos where usuario_id=:u
                             or viaje_id in (select id from viajes where usuario_id=:u)""", u=a["id"])
     citados = {(f["tipo"], f["id"]) for f in r["fuentes"]}
+    if len(esperados) > asistente.MAX_GASTOS:
+        # Otras pruebas le cargan muchos gastos a esta cuenta: se listan los primeros y se dice; los totales siguen exactos
+        assert f"Se muestran los primeros {asistente.MAX_GASTOS}" in r["texto"]
+        listados = {int(n) for n in re.findall(r"Gasto #(\d+)\b", r["texto"])}
+        esperados = [g for g in esperados if g["id"] in listados]
+        assert len(esperados) == asistente.MAX_GASTOS
     for g in esperados:
         assert f"Gasto #{g['id']}" in r["texto"]
         assert ("gasto", g["id"]) in citados
     for gid in a["gastos"]:   # el importe que dice es el de la base, con dos decimales
         g = db.uno("select total, moneda from gastos where id=:i", i=gid)
-        assert f"{g['total']:.2f} {g['moneda']}" in r["texto"]
+        assert not re.search(rf"Gasto #{gid}\b", r["texto"]) or f"{g['total']:.2f} {g['moneda']}" in r["texto"]
     assert ("viaje", a["viaje"]["id"]) in citados and a["viaje"]["codigo"] in r["texto"]
     aprobado = db.uno("""select coalesce(sum(total_usd),0) t from gastos where estado='aprobado_auto'
                          and (usuario_id=:u or viaje_id in (select id from viajes where usuario_id=:u))""", u=a["id"])["t"]

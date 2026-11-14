@@ -30,7 +30,7 @@ def reloj(monkeypatch):
 @pytest.fixture
 def persona():
     """Una cuenta nueva, para contar solo lo suyo; al final se borra todo lo que quedó a su nombre."""
-    uid = acceso.crear_usuario(f"dia-{uuid.uuid4().hex[:8]}@demo.local", "Persona del día", "colaborador", "clave-del-dia-2031")
+    uid = acceso.crear_usuario(f"dia-{uuid.uuid4().hex[:8]}@demo.local", "Dalila Fuquene", "colaborador", "clave-del-dia-2031")
     yield db.uno("select * from usuarios where id=:i", i=uid)
     for tabla in ("topes_reservas", "consultas_buscador", "asistente_dictados", "asistente_consultas", "cupos_buscador", "viajes"):
         db.ejecutar(f"delete from {tabla} where usuario_id=:u", u=uid)  # noqa: S608
@@ -121,3 +121,22 @@ def test_nadie_calcula_hoy_por_su_cuenta():
                 if p not in propios for n, linea in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
                 if OTRA_FORMA.search(linea)]
     assert hallados == []
+
+
+# ---------- pruebas que no caducan ----------
+def test_la_suite_vive_en_el_dia_de_los_datos_de_ejemplo():
+    """Las cotizaciones y recibos de ejemplo son de diciembre de 2026 y sus respuestas guardadas del buscador van atadas a
+    esas fechas: la suite fija su «hoy» en el 13 de noviembre de 2026 (tests/conftest.py), así nunca caducan."""
+    assert tiempo.hoy() == date(2026, 11, 13)
+
+
+def test_la_ida_minima_y_la_fecha_futura_salen_del_reloj_comun(monkeypatch):
+    from app.servicios import validacion
+    monkeypatch.setattr(tiempo, "ahora", lambda: datetime(2027, 6, 1, 15, 0, tzinfo=UTC))
+    assert cotizacion.primer_dia_posible() == date(2027, 6, 1)
+    r = validacion.revisar({"comercio": "Diner", "fecha": "2027-05-20", "total": 10, "moneda": "USD", "categoria": "comida",
+                            "confianza": 0.99, "dudas": []}, None, 0, None)
+    assert "fecha_futura" not in r["motivos"]   # el 20 de mayo ya pasó para ese reloj
+    r = validacion.revisar({"comercio": "Diner", "fecha": "2027-06-20", "total": 10, "moneda": "USD", "categoria": "comida",
+                            "confianza": 0.99, "dudas": []}, None, 0, None)
+    assert "fecha_futura" in r["motivos"]

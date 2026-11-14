@@ -55,7 +55,7 @@ def topes_de_lectura():
 
 def _cuenta(rol: str = "colaborador") -> tuple[dict, TestClient]:
     correo, clave = f"lecturas-{uuid.uuid4().hex[:8]}@demo.local", "clave-de-lecturas-2026"
-    acceso.crear_usuario(correo, "Persona de las lecturas", rol, clave)
+    acceso.crear_usuario(correo, "Leocadia Ubaté", rol, clave)
     c = TestClient(app)
     c.post("/entrar", data={"correo": correo, "clave": clave})
     return db.uno("select * from usuarios where correo=:c", c=correo), c
