@@ -236,3 +236,29 @@ def test_sin_buscador_ni_pagina_va_a_google_flights_con_el_motivo_de_la_pagina(p
     vuelo = c["vuelos"][0]
     e = _ir(piloto, c["id"], vuelo["id"], "COPA", "ida").json()
     assert (e["camino"], e["url"], e["motivo"]) == ("google", vuelo["fuente_url"], "la página pidió verificación")
+
+
+# ---------- punto 4: la página propia de envío dice qué vuelo elegir en el vendedor ----------
+def test_la_guia_del_tiquete():
+    from app.rutas import v1_cotizaciones
+    guia = v1_cotizaciones.guia_tiquete({"vendedor": "COPA", "tramo": "ida", "numeros": ["CM 687", "CM 240"],
+                                         "sale": "2026-11-20 12:40", "tarifa": "Economy", "precio": 334})
+    assert guia == "En COPA, elige CM 687 · CM 240, sale 12:40 pm, Economy desde 334 USD."
+    guia = v1_cotizaciones.guia_tiquete({"vendedor": "eDreams", "tramo": "regreso", "numeros": ["AV 9"],
+                                         "sale": "2026-11-29 01:35", "tarifa": "Tarifa", "precio": 316})
+    assert guia == "En eDreams, elige el regreso AV 9, sale 1:35 am, desde 316 USD."
+    assert v1_cotizaciones.guia_tiquete(None) is None
+
+
+def test_la_pagina_de_envio_muestra_la_guia_el_aviso_y_un_solo_boton():
+    from app.rutas import v1_cotizaciones
+    r = v1_cotizaciones._pagina_envio({"url": CLK, "campos": [("u", "IDA-COPA-SECRETA")], "vendedor": "eDreams",
+                                       "aviso": "Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD",
+                                       "tiquete": {"vendedor": "eDreams", "tramo": "regreso", "numeros": ["AV 9"],
+                                                   "sale": "2026-11-29 01:35", "tarifa": "Tarifa", "precio": 316}})
+    pagina = r.body.decode()
+    assert "En eDreams, elige el regreso AV 9, sale 1:35 am, desde 316 USD." in pagina
+    assert "Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD" in pagina
+    assert "puede pedir una verificación" in pagina and pagina.count("<button") == 1
+    assert '<button type="submit">Ir a eDreams</button>' in pagina and "<script" not in pagina
+    assert r.headers["Cache-Control"] == "no-store" and "form-action https:" in r.headers["Content-Security-Policy"]

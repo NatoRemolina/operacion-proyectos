@@ -8,7 +8,6 @@ import hashlib
 import hmac
 import html
 import re
-import secrets
 import time
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -251,23 +250,55 @@ AJENO = ("No encontramos ese vuelo", "Puede que el enlace esté incompleto o que
 OTRO_SITIO = ("Enlace no válido", "Abre la página del vendedor desde la plataforma.")
 
 
+VERIFICACION_AEROLINEA = ("La página del vendedor puede pedir una verificación (por ejemplo, deslizar una barra o "
+                          "marcar «No soy un robot»): resuélvela tú en esa página. La plataforma no la resuelve.")
+
+
+def _hora(sale) -> str | None:
+    """«12:40 pm» de «2026-11-20 12:40»; None si no tiene esa forma."""
+    m = re.fullmatch(r"\d{4}-\d\d-\d\d[ T](\d\d):(\d\d).*", str(sale or ""))
+    if not m:
+        return None
+    h = int(m[1])
+    return f"{h % 12 or 12}:{m[2]} {'am' if h < 12 else 'pm'}"
+
+
+def guia_tiquete(tiquete: dict | None) -> str | None:
+    """Qué vuelo elegir en el vendedor: «En COPA, elige CM 687 · CM 240, sale 12:40 pm, Economy desde 334 USD.»
+    COPA, por ejemplo, abre la lista del día sin el vuelo preseleccionado. None sin vuelos."""
+    if not isinstance(tiquete, dict) or not tiquete.get("numeros"):
+        return None
+    partes = [f"En {tiquete.get('vendedor') or 'el vendedor'}, elige "
+              f"{'el regreso ' if tiquete.get('tramo') == 'regreso' else ''}{' · '.join(tiquete['numeros'])}"]
+    if _hora(tiquete.get("sale")):
+        partes.append(f"sale {_hora(tiquete['sale'])}")
+    precio = tiquete.get("precio")
+    if isinstance(precio, int | float) and not isinstance(precio, bool):
+        tarifa = tiquete.get("tarifa") if tiquete.get("tarifa") not in (None, "", "Tarifa") else None
+        partes.append(f"{tarifa + ' ' if tarifa else ''}desde {precio:,.0f} USD")
+    return ", ".join(partes) + "."
+
+
 def _pagina_envio(destino: dict) -> HTMLResponse:
-    """Página mínima que envía el pedido de un solo uso del vendedor a Google, que redirige a su página oficial."""
-    nonce = secrets.token_urlsafe(16)
+    """Página mínima con el pedido de un solo uso del vendedor: antes de enviarlo dice qué vuelo elegir allí, el aviso
+    si cambió el vendedor y que una verificación la resuelve la persona. Un clic en «Ir a {vendedor}» lo envía a
+    Google, que redirige a su página oficial. Sin scripts: el envío lo hace el botón."""
     vendedor = html.escape(destino["vendedor"])
     campos = "".join(f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in destino["campos"])
+    guia = guia_tiquete(destino.get("tiquete"))
+    avisos = "".join(f"<p>{html.escape(t)}</p>" for t in (destino.get("aviso"), guia, VERIFICACION_AEROLINEA) if t)
     cuerpo = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">'
-              f"<title>Abriendo la página de {vendedor}…</title></head><body>"
-              f'<form id="envio" method="post" action="{html.escape(destino["url"])}">{campos}'
-              f'<p>Abriendo la página oficial de {vendedor}… <button type="submit">Continuar</button></p></form>'
-              f'<script nonce="{nonce}">document.getElementById("envio").submit();</script></body></html>')
+              f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+              f"<title>Ir a {vendedor}</title></head><body><main>"
+              f"<h1>Ir a la página oficial de {vendedor}</h1>{avisos}"
+              f'<form method="post" action="{html.escape(destino["url"])}">{campos}'
+              f'<button type="submit">Ir a {vendedor}</button></form></main></body></html>')
     # `form-action https:`: Chrome aplica la directiva también a las redirecciones que siguen al envío, y Google
     # redirige a la aerolínea (otro dominio). El destino del envío ya pasó la lista blanca del servidor (solo
-    # https://www.google.com/travel/clk…) y el único script es el de esta página, con nonce.
+    # https://www.google.com/travel/clk…). Sin scripts: el envío lo hace el clic de la persona.
     return HTMLResponse(cuerpo, headers={
         "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": f"default-src 'none'; script-src 'nonce-{nonce}'; form-action https:; "
-                                   "base-uri 'none'; frame-ancestors 'none'"})
+        "Content-Security-Policy": "default-src 'none'; form-action https:; base-uri 'none'; frame-ancestors 'none'"})
 
 
 @router.get("/cotizaciones/{id}/vuelos/{vuelo_id}/vendedor", response_class=HTMLResponse, responses={

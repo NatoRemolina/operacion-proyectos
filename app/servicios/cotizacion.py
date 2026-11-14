@@ -545,7 +545,7 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
            + (f" · {aviso}" if aviso else ""))
     campos = parse_qsl(elegida["post_data"] or "", keep_blank_values=True)
     return {"tipo": "envio", "url": elegida["url"], "campos": campos, "vendedor": elegida["vendedor"], "aviso": aviso,
-            "tiquete": precios.tiquete(elegida, vuelo)}
+            "tiquete": precios.tiquete(elegida, vuelo, regreso)}
 
 
 

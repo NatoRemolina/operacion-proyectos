@@ -607,11 +607,14 @@ def elegir_tiquete(opciones: list[dict], vendedor: str, tarifa: str) -> tuple[di
     return actual, vendedor_cambio(vendedor.strip(), actual["vendedor"], actual["precio"])
 
 
-def tiquete(opcion: dict, vuelo: dict) -> dict:
-    """Lo que la persona debe elegir en la página del vendedor: tramo, vuelos, tarifa y precio (nunca el pedido)."""
-    numeros = opcion.get("numeros") or (vuelo.get("numeros") if opcion.get("tramo") != "regreso" else []) or []
-    return {"tramo": opcion.get("tramo") or "ambos", "numeros": list(numeros)[:6], "tarifa": opcion.get("tarifa"),
-            "precio": opcion.get("precio"), "vendedor": opcion.get("vendedor")}
+def tiquete(opcion: dict, vuelo: dict, regreso: dict | None = None) -> dict:
+    """Lo que la persona debe elegir en la página del vendedor: tramo, vuelos, hora de salida, tarifa y precio (nunca
+    el pedido). Algunos vendedores abren el vuelo ya elegido; otros, la lista del día (COPA), donde hay que buscarlo."""
+    tramo = opcion.get("tramo") or "ambos"
+    de = regreso if tramo == "regreso" else vuelo
+    numeros = opcion.get("numeros") or (de or {}).get("numeros") or []
+    return {"tramo": tramo, "numeros": [str(x)[:12] for x in numeros][:6], "tarifa": opcion.get("tarifa"),
+            "precio": opcion.get("precio"), "vendedor": opcion.get("vendedor"), "sale": (de or {}).get("sale")}
 
 
 def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, vuelo: dict,

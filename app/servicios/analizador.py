@@ -442,7 +442,7 @@ def _por_buscador(sol: dict, vuelo: dict, vendedor: str, tarifa: str, sid: int) 
     if not o:
         return None
     return {"url": o["url"], "campos": parse_qsl(o["post_data"] or "", keep_blank_values=True), "vendedor": o["vendedor"],
-            "aviso": aviso, "tiquete": precios.tiquete(o, vuelo)}
+            "aviso": aviso, "tiquete": precios.tiquete(o, vuelo, regreso)}
 
 
 def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, canal: str = "api v1") -> dict:

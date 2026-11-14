@@ -95,13 +95,17 @@ def test_lleva_a_la_pagina_oficial_de_la_aerolinea_sin_guardar_el_pedido(piloto,
     # Chrome aplica form-action también a las redirecciones que siguen al envío: con solo google.com cortaría el salto de
     # Google a la aerolínea. El destino del envío ya lo valida el servidor (lista blanca) y el script va con nonce.
     assert re.search(r"form-action https:(;|$)", csp) and "default-src 'none'" in csp
-    nonce = re.search(r"'nonce-([^']+)'", csp).group(1)
+    assert "script-src" not in csp   # pieza 6: la página no envía sola; un clic de la persona en «Ir a American»
     pagina = r.text
     # el envío va a la dirección del vendedor oficial (la aerolínea, aunque una agencia sea más barata), con su cuerpo
     assert f'action="{SECRETO_URL}"' in pagina.replace("&amp;", "&") and 'method="post"' in pagina
     assert '<input type="hidden" name="u" value="SECRETOCUERPO456">' in pagina
     assert '<input type="hidden" name="adurl" value="SECRETOADURL789">' in pagina
-    assert f'<script nonce="{nonce}">' in pagina and "American" in pagina
+    assert "<script" not in pagina
+    assert re.search(r'<button type="submit"[^>]*>Ir a American</button>', pagina)
+    # antes de enviar, qué vuelo elegir en el vendedor y que una verificación la resuelve la persona
+    assert f"En American, elige {' · '.join(vuelo['numeros'])}, sale " in pagina and "Main Cabin desde 458 USD" in pagina
+    assert "puede pedir una verificación" in pagina
     assert any("booking_token" in p for p in llamadas)
     # el pedido de un solo uso no queda en ninguna parte: ni base, ni respaldo, ni registros
     salida = capfd.readouterr()   # salida estándar y de errores, también la de procesos hijos
