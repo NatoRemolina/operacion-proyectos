@@ -383,3 +383,32 @@ def test_la_pagina_de_error_de_google_falla_enseguida_con_su_motivo():
     assert "Oops, something went wrong" in r["extracto"]
     r = navegador.ir_a(URL, "COPA", "ida", servir=_servir({"https://www.google.com/travel/flights?": "sin_resultados.html"}, []))
     assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+
+
+def _servir_con_error(veces_error: int, cargas: list):
+    """Google responde la página de error las primeras `veces_error` cargas y después la reserva completa."""
+    def registrar(pagina):
+        def atender(ruta):
+            url = ruta.request.url
+            if url.startswith("https://www.google.com/travel/flights?") and ruta.request.is_navigation_request():
+                cargas.append(url)
+                archivo = "sin_resultados.html" if len(cargas) <= veces_error else "reserva_completa.html"
+                return ruta.fulfill(status=200, content_type="text/html; charset=utf-8",
+                                    body=(EJEMPLO / archivo).read_text(encoding="utf-8"))
+            return ruta.fallback() if ruta.request.is_navigation_request() else ruta.abort()
+        pagina.route("**/*", atender)
+    return registrar
+
+
+def test_con_la_pagina_de_error_reintenta_una_vez_con_reload_y_lee():
+    cargas = []
+    r = navegador.analizar(URL, servir=_servir_con_error(1, cargas))
+    assert r["estado"] == "listo", r["motivo"]
+    assert len(cargas) == 2 and r["datos"]["tarifas"]
+
+
+def test_nunca_mas_de_un_reintento():
+    cargas = []
+    r = navegador.analizar(URL, servir=_servir_con_error(5, cargas))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+    assert len(cargas) == 2                                          # la carga y un solo «Reload»

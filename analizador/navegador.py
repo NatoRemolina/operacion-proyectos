@@ -219,6 +219,10 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
             if texto is None:
                 return _resultado("fallido", inicio, "la página tardó demasiado en mostrar los precios", url_final=pagina.url,
                                   **_evidencia(pagina))
+            if ERROR_GOOGLE.search(texto) and restante() > reserva + 5000:
+                texto = _recargar(pagina, restante, reserva) or texto   # un solo reintento, con el «Reload» de Google
+            if salida():
+                return _resultado("fallido", inicio, salida())
             if ERROR_GOOGLE.search(texto):
                 return _resultado("fallido", inicio, SIN_RESULTADOS, url_final=pagina.url, **_evidencia(pagina))
             motivo = lector.bloqueo(pagina.url, texto)
@@ -643,6 +647,29 @@ def _captura(pagina, restante, alto_max: int = ALTO_CAPTURA) -> bytes:
 
 def _primera_linea(error: Exception) -> str:
     return (str(error).strip().splitlines() or ["error del navegador"])[0][:160]
+
+
+def _recargar(pagina, restante, reserva: int) -> str | None:
+    """Un clic en el botón «Reload» de la página de error de Google (no es un formulario) y la espera de los precios
+    otra vez. Devuelve el texto nuevo, o None si no hubo botón o no llegó nada. Se llama una sola vez por lectura."""
+    from playwright.sync_api import Error
+
+    try:
+        boton = pagina.get_by_role("button", name="Reload", exact=True).first
+        if (boton.inner_text(timeout=min(2000, restante())) or "").strip() != "Reload":
+            return None
+        boton.click(timeout=min(3000, restante()))
+    except Error:
+        return None
+    fin = time.monotonic() + 3   # que la página deje el aviso de error antes de volver a esperar los precios
+    while time.monotonic() < fin:
+        try:
+            if not ERROR_GOOGLE.search(pagina.inner_text("body", timeout=1000)):
+                break
+        except Error:
+            break   # está recargando
+        pagina.wait_for_timeout(200)
+    return _esperar(pagina, LISTO, max(restante() - reserva, 1))
 
 
 def _esperar(pagina, patron: re.Pattern, plazo_ms: int = ESPERA_MS) -> str | None:
