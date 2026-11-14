@@ -42,7 +42,27 @@ REGLAS = [
 ]
 
 
+def _atomica() -> bool:
+    """En PostgreSQL la siembra completa va en una transacción. SQLite rehace tablas con su propio procedimiento (otra
+    conexión), que no cabe en una transacción abierta: ahí son pasos que comprueban antes de actuar."""
+    from app import config
+    return not config.ES_SQLITE
+
+
 def sembrar():
+    """Crea lo que falte, siembra, migra y recrea las vistas. En PostgreSQL todo junto, con el cerrojo de la migración y
+    los privilegios por omisión de los roles públicos retirados antes de crear nada: si un paso falla no queda ninguna
+    tabla nueva ni ningún permiso, y se repite desde el principio."""
+    if not _atomica():
+        return _sembrar()
+    from datos import migracion
+    with db.transaccion():
+        db.cerrojo("migración")
+        migracion.privilegios_por_omision()
+        return _sembrar()
+
+
+def _sembrar():
     db.crear_tablas()
     if not db.uno("select id from proyectos limit 1"):
         db.insertar("proyectos", nombre="Residencial Summerlin (aéreo)", cliente="Inmobiliaria Ejemplo Oeste",

@@ -214,3 +214,65 @@ def test_comprobar_supabase_informa_tablas_de_hoy_vistas_y_privilegios_por_omisi
         db.ejecutar("drop view if exists v_h_zz_sin_invoker")
         db.ejecutar("revoke all on claves_servicio from anon")
         db.ejecutar("alter table avisos_salientes enable row level security")
+
+
+# ---------- 6. la siembra completa es atómica (el punto de entrada real: `python -m datos.semilla`) ----------
+def _sonda_de_siembra():
+    return Table("zz_sonda_siembra", db.meta, Column("id", Integer, primary_key=True))
+
+
+def _sin_sonda():
+    db.meta.remove(db.meta.tables["zz_sonda_siembra"])
+    db.ejecutar("drop table if exists zz_sonda_siembra")
+
+
+def _falla():
+    raise RuntimeError("un paso que falla después de crear las tablas")
+
+
+def test_la_siembra_atomica_retira_los_privilegios_antes_de_crear_y_revierte_entera(monkeypatch):
+    """El orden y la reversión, también comprobables en SQLite (que hace transaccional el DDL): se fuerza el camino de
+    PostgreSQL y se registra qué pasa dentro de la transacción."""
+    from app.servicios import precios
+    from datos import migracion, semilla
+    orden = []
+    crear = db.crear_tablas
+    monkeypatch.setattr(semilla, "_atomica", lambda: True)
+    monkeypatch.setattr(migracion, "privilegios_por_omision", lambda: orden.append(("privilegios", db._en_transaccion.get() is not None)))
+    monkeypatch.setattr(db, "crear_tablas", lambda: orden.append(("tablas", db._en_transaccion.get() is not None)) or crear())
+    monkeypatch.setattr(precios, "cargar_respaldos", _falla)
+    _sonda_de_siembra()
+    try:
+        with pytest.raises(RuntimeError, match="después de crear"):
+            semilla.sembrar()
+        assert orden == [("privilegios", True), ("tablas", True)]   # primero se retiran los privilegios, todo en la transacción
+        assert "zz_sonda_siembra" not in inspect(db.motor).get_table_names()   # la tabla nueva no quedó
+    finally:
+        _sin_sonda()
+
+
+def test_en_sqlite_la_siembra_sigue_en_pasos():
+    from datos import semilla
+    assert semilla._atomica() is (not config.ES_SQLITE)
+
+
+@SOLO_PG
+def test_en_postgresql_un_fallo_en_la_siembra_no_deja_tablas_ni_permisos_publicos(roles_publicos, monkeypatch):
+    from app.servicios import precios
+    from datos import semilla
+    for clase in ("tables", "sequences", "functions"):   # como deja Supabase el esquema `public`
+        db.ejecutar(f"alter default privileges in schema public grant all on {clase} to anon, authenticated")
+    monkeypatch.setattr(precios, "cargar_respaldos", _falla)
+    _sonda_de_siembra()
+    try:
+        with pytest.raises(RuntimeError, match="después de crear"):
+            semilla.sembrar()
+        assert not _existe("zz_sonda_siembra")                   # ninguna tabla nueva
+        monkeypatch.undo()
+        semilla.sembrar()                                         # se repite y termina
+        assert _existe("zz_sonda_siembra") and _privilegios_por_omision() == []
+        for rol in ROLES:   # lo creado en la siembra nació sin permisos públicos: se retiraron antes de crearlo
+            for p in ("select", "insert", "update", "delete"):
+                assert db.uno("select has_table_privilege(:r, 'zz_sonda_siembra', :p) v", r=rol, p=p)["v"] is False, (rol, p)
+    finally:
+        _sin_sonda()

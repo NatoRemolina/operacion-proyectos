@@ -280,7 +280,7 @@ def roles_publicos() -> list[str]:
     return [r["rolname"] for r in db.todos("select rolname from pg_roles where rolname in ('anon','authenticated') order by 1")]
 
 
-def _privilegios_por_omision_postgres():
+def privilegios_por_omision():
     """Supabase concede por omisión a los roles públicos todo lo que se cree en `public`. Se retira para lo que cree el
     rol de la aplicación desde ahora (tablas, vistas, secuencias y funciones), y de las secuencias que ya existen."""
     publicos = ", ".join(roles_publicos())
@@ -352,5 +352,5 @@ def migrar() -> dict:
         return _pasos()
     with db.transaccion():
         db.cerrojo("migración")
-        _privilegios_por_omision_postgres()   # antes de crear nada: lo que nazca aquí ya no da permisos a los roles públicos
+        privilegios_por_omision()   # antes de crear nada: lo que nazca aquí ya no da permisos a los roles públicos
         return _pasos()
