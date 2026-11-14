@@ -176,4 +176,25 @@ describe("guion de despliegue: solo desde la punta de dev (B5)", { skip: !hayZsh
     assert.ok(pausa >= 0 && pausa < respaldo, "la pausa va antes del respaldo");
     assert.ok(web >= 0 && devuelta > web, "la concurrencia se devuelve después de desplegar la web");
   });
+
+  test("si falla una orden con la API en pausa, avisa cómo quitar la pausa y sale con error", () => {
+    git(raiz, "checkout", "-q", "--detach", "dev");
+    const r = desplegar(raiz, [], "si\nsi\nsi\nsi\n", { npx: 'case "$*" in *"cdk deploy OperacionBase"*) exit 1 ;; esac' });
+    assert.notEqual(r.codigo, 0);
+    assert.match(r.salida, /siguen en pausa/);
+    assert.match(r.salida, /put-function-concurrency --function-name OperacionApp-Web --reserved-concurrent-executions 20/);
+    assert.match(r.salida, /enable-alarm-actions --alarm-names OperacionApp-RechazosAnalizador/);
+  });
+
+  test("si falla la pausa de Tareas, también avisa", () => {
+    git(raiz, "checkout", "-q", "--detach", "dev");
+    const { env } = entorno();
+    const bin = env.PATH!.split(":")[0]!;
+    const aws = fs.readFileSync(path.join(bin, "aws"), "utf-8").replace(
+      'case "$1 $2" in', 'case "$*" in *"put-function-concurrency"*OperacionApp-Tareas*) exit 1 ;; esac\ncase "$1 $2" in');
+    fs.writeFileSync(path.join(bin, "aws"), aws, { mode: 0o755 });
+    const r = spawnSync("zsh", [GUION], { cwd: raiz, env, encoding: "utf-8", input: "si\nsi\nsi\nsi\n" });
+    assert.notEqual(r.status, 0);
+    assert.match(`${r.stdout}${r.stderr}`, /siguen en pausa/);
+  });
 });

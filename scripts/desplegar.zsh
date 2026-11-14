@@ -41,10 +41,11 @@ typeset -a ALARMAS_RECHAZOS=()
 fallar() { print -u2 "\n✗ $*"; exit 1 }
 paso() { print "\n== $* ==" }
 # Una orden que escribe algo: en ensayo solo se muestra
+# En zsh, un errexit dentro de una función no ejecuta el trap EXIT: por eso el fallo pasa por fallar (exit explícito)
 correr() {
   local orden="$*"
   orden=${orden/#en_infra /(en infra\/) }
-  if (( ENSAYO )); then print "[ensayo] $orden"; else print "+ $orden"; "$@"; fi
+  if (( ENSAYO )); then print "[ensayo] $orden"; else print "+ $orden"; "$@" || fallar "falló: $orden"; fi
 }
 en_infra() { (cd infra && "$@") }
 confirmar() {
@@ -145,10 +146,11 @@ else
     --query "MetricAlarms[?MetricName=='Throttles'].AlarmName" --output text 2>/dev/null || true)})
   ALARMAS_RECHAZOS=(${ALARMAS_RECHAZOS:#None})
   confirmar "Se pausan $FUNCION y $TAREAS: la plataforma responde «ocupado» hasta el final del despliegue."
+  # Antes de la primera orden: si alguna falla a medias, el aviso de «siguen en pausa» sale igual
+  (( ENSAYO )) || PAUSADA=1
   (( ${#ALARMAS_RECHAZOS} )) && correr aws cloudwatch disable-alarm-actions --alarm-names $ALARMAS_RECHAZOS
   correr aws lambda put-function-concurrency --function-name "$FUNCION" --reserved-concurrent-executions 0
   [[ -n $TAREAS ]] && correr aws lambda put-function-concurrency --function-name "$TAREAS" --reserved-concurrent-executions 0
-  (( ENSAYO )) || PAUSADA=1
 fi
 
 # ---------- 3. respaldo, migración, comprobación y secreto ----------
