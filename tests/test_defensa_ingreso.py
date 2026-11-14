@@ -39,14 +39,46 @@ def _ventana_limpia():
 
 
 # ---------- límite de intentos ----------
-def test_demasiados_fallos_con_un_correo_responden_429_aunque_no_exista_la_cuenta():
-    """El bloqueo de cada cuenta no cubre los correos que no existen; este límite sí."""
-    correo = f"no-existe-{uuid.uuid4().hex[:8]}@demo.local"
-    for _ in range(intentos.MAX_POR_CORREO):
-        assert _login(_cliente(), correo, "equivocada-123").status_code == 401   # desde direcciones distintas
-    r = _login(_cliente(), correo, "equivocada-123")
+def test_el_mismo_correo_desde_la_misma_direccion_se_limita_aunque_no_exista_la_cuenta():
+    """El bloqueo de cada cuenta no cubre los correos que no existen; este límite sí: 10 fallos del correo y la dirección
+    juntos en la ventana."""
+    assert (intentos.MAX_POR_PAR, intentos.MAX_POR_CORREO) == (10, 50)
+    correo, c = f"no-existe-{uuid.uuid4().hex[:8]}@demo.local", _cliente()
+    for _ in range(intentos.MAX_POR_PAR):
+        assert _login(c, correo, "equivocada-123").status_code == 401
+    r = _login(c, correo, "equivocada-123")
     assert r.status_code == 429 and r.json()["error"]["code"] == "TOO_MANY_ATTEMPTS", r.text
     assert r.json()["error"]["message"] == intentos.DEMASIADOS
+
+
+def test_quien_falla_desde_otra_direccion_no_deja_por_fuera_a_la_duena_de_la_cuenta():
+    """Diez fallos con su correo desde otra dirección ya no la bloquean: el umbral solo por correo es más holgado (50)."""
+    correo, clave = _cuenta()
+    for _ in range(intentos.MAX_POR_PAR):
+        intentos.anotar_fallo("203.0.113.90", correo)
+    assert _login(_cliente("203.0.113.90"), correo, clave).status_code == 429   # desde esa dirección, no
+    assert _login(_cliente("203.0.113.91"), correo, clave).status_code == 200   # desde la suya, sí
+
+
+def test_con_muchos_fallos_desde_muchas_direcciones_el_correo_se_limita():
+    correo, clave = _cuenta()
+    for i in range(intentos.MAX_POR_CORREO - 1):
+        intentos.anotar_fallo(f"198.51.{i // 250}.{i % 250 + 1}", correo)
+    assert _login(_cliente("203.0.113.92"), correo, clave).status_code == 200
+    for i in range(intentos.MAX_POR_CORREO):
+        intentos.anotar_fallo(f"198.51.{i // 250}.{i % 250 + 1}", correo)
+    assert _login(_cliente("203.0.113.93"), correo, clave).status_code == 429
+
+
+def test_el_ingreso_limitado_queda_una_vez_por_ventana():
+    correo, c = f"limitado-{uuid.uuid4().hex[:8]}@demo.local", _cliente("203.0.113.94")
+    for _ in range(intentos.MAX_POR_PAR):
+        intentos.anotar_fallo("203.0.113.94", correo)
+    for _ in range(4):
+        assert _login(c, correo, "equivocada-123").status_code == 429
+    for _ in range(2):
+        assert c.post("/entrar", data={"correo": correo, "clave": "x"}, follow_redirects=False).status_code == 429
+    assert db.uno("select count(*) n from eventos where paso='ingreso limitado' and detalle=:c", c=correo)["n"] == 1
 
 
 def test_con_el_correo_limitado_ni_la_clave_buena_entra_y_no_se_mira():
@@ -79,10 +111,12 @@ def test_los_fallos_viejos_salen_de_la_ventana():
 
 def test_un_ingreso_bueno_borra_los_fallos_de_su_correo():
     correo, clave = _cuenta()
-    for i in range(intentos.MAX_POR_CORREO - 1):
-        intentos.anotar_fallo(f"198.51.100.{i}", correo)
-    assert _login(_cliente(), correo, clave).status_code == 200
+    for _ in range(intentos.MAX_POR_PAR - 1):
+        intentos.anotar_fallo("198.51.100.7", correo)
+    assert _login(_cliente("198.51.100.7"), correo, clave).status_code == 200
     assert db.uno("select count(*) n from intentos_ingreso where clave=:c", c=intentos.clave_correo(correo))["n"] == 0
+    assert db.uno("select count(*) n from intentos_ingreso where clave=:c",
+                  c=intentos.clave_par("198.51.100.7", correo))["n"] == 0
 
 
 def test_el_formulario_de_ingreso_tambien_limita():
@@ -97,7 +131,7 @@ def test_el_formulario_de_ingreso_tambien_limita():
 def test_la_tabla_no_guarda_ni_el_correo_ni_la_direccion():
     _login(_cliente("203.0.113.77"), "alguien@demo.local", "equivocada-123")
     filas = db.todos("select clave from intentos_ingreso")
-    assert len(filas) == 2 and all("alguien" not in f["clave"] and "203.0.113" not in f["clave"] for f in filas)
+    assert len(filas) == 3 and all("alguien" not in f["clave"] and "203.0.113" not in f["clave"] for f in filas)
 
 
 # ---------- la cabecera secreta de CloudFront ----------

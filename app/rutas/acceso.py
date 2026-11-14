@@ -44,7 +44,8 @@ def _destino_seguro(siguiente: str) -> str:
 @router.post("/entrar")
 def entrar_enviar(request: Request, correo: str = Form(""), clave: str = Form(""), siguiente: str = Form("")):
     if intentos.limitado(request.state.direccion, correo):
-        eventos.registrar("acceso", None, "ingreso limitado", correo.strip().lower()[:80], "formulario")
+        if intentos.avisar_limite(request.state.direccion, correo):   # una vez por ventana
+            eventos.registrar("acceso", None, "ingreso limitado", correo.strip().lower()[:80], "formulario")
         return plantillas.TemplateResponse(request, "entrar.html", {"error": intentos.DEMASIADOS, "siguiente": _destino_seguro(siguiente),
                                                                     "demo": False}, status_code=429)
     usuario, mensaje = acceso.autenticar(correo, clave)
@@ -53,7 +54,7 @@ def entrar_enviar(request: Request, correo: str = Form(""), clave: str = Form(""
         intentos.anotar_fallo(request.state.direccion, correo)
         eventos.registrar("acceso", None, "ingreso fallido", correo.strip().lower()[:80], "formulario")
         return RedirectResponse(f"/entrar?error={quote(mensaje)}" + (f"&siguiente={quote(destino)}" if destino != interfaz.inicio() else ""), status_code=303)
-    intentos.anotar_exito(correo)
+    intentos.anotar_exito(request.state.direccion, correo)
     acceso.fijar(usuario)
     eventos.registrar("acceso", usuario["id"], "ingreso", usuario["correo"], "formulario")
     return acceso.abrir_sesion(RedirectResponse(destino, status_code=303), usuario["id"])
