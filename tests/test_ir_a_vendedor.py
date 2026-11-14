@@ -1,4 +1,4 @@
-"""«Ir a…» (pieza 3b): la tarifa elegida, en la página del vendedor. Tres caminos: página, buscador y Google Flights.
+"""«Ir a…» (pieza 3b): la tarifa elegida, en la página del vendedor. Tres caminos: buscador, página y Google Flights.
 El analizador y el buscador son dobles: nunca se sale a internet."""
 import base64
 import json
@@ -79,9 +79,9 @@ def test_por_la_pagina_devuelve_el_envio_de_esa_tarifa_y_no_lo_guarda(piloto, en
                     r"www\.google\.com · \d+ ms$", ev), ev
 
 
-def test_si_la_pagina_falla_usa_el_buscador_con_esa_tarifa(piloto, entorno, monkeypatch, capfd, caplog):
+def test_el_buscador_va_primero_con_esa_tarifa(piloto, entorno, monkeypatch, capfd, caplog):
+    """Pieza 6: buscador → página → Google Flights. Con el pedido de esa tarifa en el buscador, la página no se usa."""
     pedidos, respuesta, carpeta = entorno
-    respuesta.update(estado="fallido", motivo="no se encontró la tarifa", url=None, cuerpo=None)
     monkeypatch.setattr(config, "SERPAPI_KEY", "clave-de-prueba")
     monkeypatch.setattr(precios, "vuelo_regreso", lambda *a, **k: {"booking": "TOKEN"})
 
@@ -95,7 +95,7 @@ def test_si_la_pagina_falla_usa_el_buscador_con_esa_tarifa(piloto, entorno, monk
     r = _ir(piloto, c["id"], c["vuelos"][0]["id"])
     assert r.status_code == 200, r.text
     e = r.json()
-    assert (e["camino"], e["campos"], e["motivo"]) == ("buscador", [["u", "MAIN-SECRETA"]], "no se encontró la tarifa")
+    assert (e["camino"], e["campos"], e["motivo"]) == ("buscador", [["u", "MAIN-SECRETA"]], None) and pedidos == []
     salida = capfd.readouterr()
     assert "MAIN-SECRETA" not in _guardado(carpeta) + salida.out + salida.err + caplog.text
 

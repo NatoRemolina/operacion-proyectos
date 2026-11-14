@@ -202,3 +202,37 @@ def test_ir_a_un_tiquete_que_ahora_vende_otro_lleva_al_actual_y_lo_dice(piloto, 
     assert (fila["camino"], fila["vendedor"]) == ("buscador", "Avianca")   # lo que pidió la persona
     ev = db.uno("select detalle from eventos where paso='ir a vendedor' order by id desc limit 1")["detalle"]
     assert "camino buscador" in ev and "ahora lo vende eDreams" in ev and "REGRESO-SECRETA" not in ev
+
+
+# ---------- punto 3: el orden de caminos es buscador → página → Google Flights ----------
+def test_el_buscador_va_primero_y_no_ocupa_al_analizador(piloto, con_regreso, analizador_doble):
+    pedidos, _ = analizador_doble
+    c = _cotizacion(piloto)
+    e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "COPA", "ida").json()
+    assert (e["camino"], e["vendedor"], e["campos"], e["motivo"]) == ("buscador", "COPA", [["u", "IDA-COPA-SECRETA"]], None)
+    assert pedidos == []                                           # el analizador no se usó
+    fila = db.uno("select * from analisis_vuelo where accion='ir_a' order by id desc limit 1")
+    assert (fila["estado"], fila["camino"]) == ("listo", "buscador")
+    clic = db.uno("select * from clics_fuente order by id desc limit 1")
+    assert clic["destino"] == "vendedor"
+
+
+def test_sin_el_tiquete_en_el_buscador_va_la_pagina(piloto, con_regreso, analizador_doble):
+    respuesta_buscador, _ = con_regreso
+    respuesta_buscador["datos"] = {"booking_options": []}
+    pedidos, respuesta = analizador_doble
+    respuesta.update(estado="listo", url=CLK, cuerpo="u=DE-LA-PAGINA")
+    c = _cotizacion(piloto)
+    e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "COPA", "ida").json()
+    assert (e["camino"], e["campos"]) == ("pagina", [["u", "DE-LA-PAGINA"]]) and len(pedidos) == 1
+
+
+def test_sin_buscador_ni_pagina_va_a_google_flights_con_el_motivo_de_la_pagina(piloto, con_regreso, analizador_doble):
+    respuesta_buscador, _ = con_regreso
+    respuesta_buscador["datos"] = {"booking_options": []}
+    _, respuesta = analizador_doble
+    respuesta.update(estado="fallido", motivo="la página pidió verificación")
+    c = _cotizacion(piloto)
+    vuelo = c["vuelos"][0]
+    e = _ir(piloto, c["id"], vuelo["id"], "COPA", "ida").json()
+    assert (e["camino"], e["url"], e["motivo"]) == ("google", vuelo["fuente_url"], "la página pidió verificación")
