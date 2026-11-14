@@ -47,8 +47,9 @@ SIN_REGRESO = "no se pudo elegir el regreso"
 RESERVA_IR_MS = 20_000
 RESERVA_LEER_MS = 10_000
 SIN_ENVIO = "Google no respondió al elegir la tarifa"
-# Con billetes separados cada tiquete se compra aparte: «Ir a…» no elige uno, lleva a Google Flights (ronda, punto 19)
-BILLETES_SEPARADOS = "el itinerario son billetes separados: se compran en Google Flights"
+# Con billetes separados («Separate tickets») cada tiquete se compra aparte: «Continue» de la opción abre un diálogo
+# con un tiquete por tramo, cada uno con su «Continue» (prueba 12). «Ir a {aerolínea} · ida|regreso» pulsa ese.
+TRAMOS_TIQUETE = ("ida", "regreso")
 CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for [\d,.]+ US dollars")
 VENDEDOR_O_TARIFA = re.compile(r"^[\w .,&'()+/-]{1,60}$")
 OTRA_PESTANA = "la página quiso abrir otra pestaña"
@@ -229,12 +230,15 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 texto = pagina.inner_text("body")
             if salida():
                 return _resultado("fallido", inicio, salida())
+            if RESERVA.search(texto) and lector.DIALOGO_SEPARADOS not in texto and lector.leer(texto)["billetes_separados"] \
+                    and _abrir_separados(pagina, restante):
+                texto = pagina.inner_text("body")   # el diálogo con un tiquete por tramo (no envía nada)
+            if salida():
+                return _resultado("fallido", inicio, salida())
             if pedido_ir:
                 if not RESERVA.search(texto):   # sin opciones de reserva no hay «Continue» que pulsar
                     return _resultado("fallido", inicio, SIN_REGRESO, url_final=pagina.url, regreso_elegido=regreso,
                                       **_evidencia(pagina))
-                if not completa and lector.leer(texto)["billetes_separados"]:
-                    return _resultado("fallido", inicio, BILLETES_SEPARADOS, url_final=pagina.url, regreso_elegido=regreso)
                 if completa:
                     return _completa(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
                 return _ir(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
@@ -301,7 +305,15 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     def sin_tarifa():
         return _resultado("fallido", inicio, SIN_TARIFA, url_final=pagina.url, regreso_elegido=regreso, **_evidencia(pagina))
 
-    etiqueta = next((e for e in _etiquetas(pagina) if _es_continuar(e, pedido["vendedor"], pedido["tarifa"])), None)
+    if pedido["tarifa"].strip().lower() in TRAMOS_TIQUETE:   # billetes separados: el «Continue» del tiquete de ese tramo
+        def es_el(e):
+            return _es_tiquete(e, pedido["vendedor"])
+        candidatas = [e for e in _etiquetas(pagina) if es_el(e)]
+        etiqueta = (candidatas[-1] if pedido["tarifa"].strip().lower() == "regreso" else candidatas[0]) if candidatas else None
+    else:
+        def es_el(e):
+            return _es_continuar(e, pedido["vendedor"], pedido["tarifa"])
+        etiqueta = next((e for e in _etiquetas(pagina) if es_el(e)), None)
     if etiqueta is None:
         return sin_tarifa()
     previa = _captura(pagina, restante)
@@ -309,8 +321,7 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     # antes de pulsar: el clic solo va al «Continue» de esa tarifa
     boton = pagina.locator(_selector_etiqueta(etiqueta)).first
     try:
-        if not _es_continuar(boton.get_attribute("aria-label", timeout=min(3000, restante())), pedido["vendedor"],
-                             pedido["tarifa"]):
+        if not es_el(boton.get_attribute("aria-label", timeout=min(3000, restante()))):
             return sin_tarifa()
     except Error:
         return sin_tarifa()
@@ -569,13 +580,46 @@ def _selector_etiqueta(etiqueta: str) -> str:
     return '[aria-label="' + etiqueta.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\a ") + '"]'
 
 
+def _sin_marca(nombre: str | None) -> str:
+    """«COPA airline» → «COPA»: Google añade la marca a la etiqueta cuando vende la aerolínea (prueba 12)."""
+    nombre = (nombre or "").strip()
+    return nombre[:-len(" airline")].strip() if nombre.lower().endswith(" airline") else nombre
+
+
 def _es_continuar(etiqueta, vendedor: str, tarifa: str) -> bool:
-    """«Continue to book with American, Main Cabin for 1014 US dollars»; sin nombre de tarifa, vale «Tarifa»."""
-    m = CONTINUAR.match(lector.normal(etiqueta or ""))
-    if not m:
+    """«Continue to book with American, Main Cabin for 1014 US dollars»; sin nombre de tarifa, vale «Tarifa». La opción
+    de dos tiquetes («…COPA, Avianca airline… must be booked individually») nunca es una tarifa."""
+    texto = lector.normal(etiqueta or "")
+    m = CONTINUAR.match(texto)
+    if not m or "booked individually" in texto:
         return False
-    return (m["vendedor"].strip().lower() == vendedor.strip().lower()
-            and (m["tarifa"] or "Tarifa").strip().lower() == tarifa.strip().lower())
+    return (_sin_marca(m["vendedor"]).lower() == vendedor.strip().lower()
+            and (_sin_marca(m["tarifa"]) or "Tarifa").lower() == tarifa.strip().lower())
+
+
+def _es_tiquete(etiqueta, vendedor: str) -> bool:
+    """El «Continue» de un tiquete del diálogo de billetes separados: «Continue to book with COPA airline for 334 US
+    dollars…» (un vendedor, sin tarifa)."""
+    texto = lector.normal(etiqueta or "")
+    m = CONTINUAR.match(texto)
+    return bool(m) and "booked individually" not in texto and not m["tarifa"] \
+        and _sin_marca(m["vendedor"]).lower() == vendedor.strip().lower()
+
+
+def _abrir_separados(pagina, restante) -> bool:
+    """Pulsa el «Continue» de la opción de billetes separados, que solo abre el diálogo con un tiquete por tramo (no
+    envía nada: prueba 12), y espera ese diálogo. False si no se pudo."""
+    from playwright.sync_api import Error
+
+    etiqueta = next((e for e in _etiquetas(pagina) if e and e.startswith("Continue to book with ")
+                     and "booked individually" in lector.normal(e)), None)
+    if not etiqueta:
+        return False
+    try:
+        pagina.locator(_selector_etiqueta(etiqueta)).first.click(timeout=min(3000, restante()))
+    except Error:
+        return False
+    return _esperar(pagina, re.compile(re.escape(lector.DIALOGO_SEPARADOS)), min(5000, restante())) is not None
 
 
 def _captura(pagina, restante, alto_max: int = ALTO_CAPTURA) -> bytes:

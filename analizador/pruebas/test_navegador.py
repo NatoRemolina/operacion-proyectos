@@ -329,19 +329,46 @@ def test_la_etiqueta_con_comillas_se_busca_tal_cual():
     assert navegador._selector_etiqueta("a\\b") == '[aria-label="a\\\\b"]'
 
 
-# ---------- producción, cotización 12: con billetes separados, «Ir a…» no pulsa nada ----------
-def test_ir_a_con_billetes_separados_no_pulsa_y_lo_dice():
-    pedidos = []
-    r = navegador.ir_a(URL, "COPA", "Tarifa",
-                       servir=_servir({"https://www.google.com/travel/flights?": "billetes_separados.html"}, pedidos))
-    assert (r["estado"], r["motivo"]) == ("fallido", navegador.BILLETES_SEPARADOS)
-    assert not r.get("cuerpo") and not any("/travel/clk" in p for p in pedidos)
+# ---------- producción, cotización 12 y prueba 12: billetes separados, un «Ir a…» por tiquete ----------
+SEPARADOS = {"https://www.google.com/travel/flights?": "billetes_separados.html"}
 
 
-def test_la_lectura_con_billetes_separados_marca_cada_tiquete_y_la_reserva_por_telefono():
-    r = navegador.analizar(URL, servir=_servir({"https://www.google.com/travel/flights?": "billetes_separados.html"}, []))
+def test_la_lectura_con_billetes_separados_abre_el_dialogo_y_lee_cada_tiquete():
+    r = navegador.analizar(URL, servir=_servir(dict(SEPARADOS), []))
     assert r["estado"] == "listo", r["motivo"]
     d = r["datos"]
-    assert d["billetes_separados"] is True and d["tarifas"] == []
-    assert d["opciones_separadas"][0]["tramos"] == [{"tramo": "ida", "vendedor": "COPA"}, {"tramo": "regreso", "vendedor": "Avianca"}]
+    assert d["billetes_separados"] is True
+    assert [(t["vendedor"], t["nombre"], t["precio"]) for t in d["tarifas"]] == [("COPA", "ida", 334.0), ("Avianca", "regreso", 323.0)]
     assert d["por_telefono"][0]["telefono"] == "1 (786) 840-2672"
+
+
+@pytest.mark.parametrize("vendedor, tramo, cuerpo", [("COPA", "ida", "u=COPA-IDA-UNSOLOUSO"),
+                                                     ("Avianca", "regreso", "u=AVIANCA-REGRESO-UNSOLOUSO")])
+def test_ir_a_cada_aerolinea_por_su_tiquete_sin_mandarlo(vendedor, tramo, cuerpo):
+    pedidos = []
+    r = navegador.ir_a(URL, vendedor, tramo, servir=_servir(dict(SEPARADOS), pedidos))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["url"].startswith("https://www.google.com/travel/clk/f") and r["cuerpo"].startswith(cuerpo)
+    assert (r["vendedor"], r["tarifa"]) == (vendedor, tramo)
+    assert not any("/travel/clk" in p for p in pedidos)          # el envío no salió del navegador del servidor
+
+
+def test_ir_a_con_billetes_separados_sin_tramo_no_pulsa():
+    pedidos = []
+    r = navegador.ir_a(URL, "COPA", "Main Cabin", servir=_servir(dict(SEPARADOS), pedidos))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_TARIFA)
+    assert not any("/travel/clk" in p for p in pedidos)
+
+
+def test_la_captura_completa_del_tiquete_trae_el_envio():
+    r = navegador.captura_vuelo(URL, "Avianca", "regreso", servir=_servir(dict(SEPARADOS), []))
+    assert r["estado"] == "listo" and r["envio"]["cuerpo"].startswith("u=AVIANCA-REGRESO"), r.get("motivo_envio")
+    assert "Purchase separate tickets" in r["texto"]
+
+
+def test_continuar_reconoce_la_marca_airline_y_no_confunde_la_opcion_de_dos_tiquetes():
+    assert navegador._es_continuar("Continue to book with COPA airline for 334 US dollars (Equivalent to 1102610 Colombian pesos)",
+                                   "COPA", "Tarifa")
+    assert not navegador._es_continuar("Continue to book with COPA, Avianca airline for 657 US dollars. The 2 tickets…",
+                                       "COPA", "Avianca airline")
+    assert navegador._es_continuar("Continue to book with American, Main Cabin for 1014 US dollars", "American", "Main Cabin")
