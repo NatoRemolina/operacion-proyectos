@@ -4,13 +4,24 @@ PY := .venv/bin/python
 # Con otro ejecutable: make instalar PYTHON=/ruta/a/python3.13
 PYTHON ?= python3.12
 
-.PHONY: ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo respaldar verificar-respaldo ganchos
+.PHONY: bloquear ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo respaldar verificar-respaldo ganchos
 ayuda:            ## Lista las tareas
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
 
 instalar:         ## Crea el entorno e instala dependencias de desarrollo (requiere Python 3.12)
 	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else "Hace falta Python 3.12 o posterior (este es " + sys.version.split()[0] + "): make instalar PYTHON=python3.12")'
-	$(PYTHON) -m venv .venv && $(PY) -m pip install -r requirements-dev.txt
+	$(PYTHON) -m venv .venv && $(PY) -m pip install --require-hashes -r requirements-dev.lock
+
+bloquear:         ## Regenera los archivos .lock (versiones y hashes) tras cambiar un requirements*.txt; requiere uv
+	@# origen:destino:Python de la imagen (la del analizador es la de Playwright, con el Python 3.10 de Ubuntu)
+	@for par in requirements.txt:requirements.lock:3.12 requirements-dev.txt:requirements-dev.lock:3.12 \
+	    analizador/requirements.txt:analizador/requirements.lock:3.10 \
+	    analizador/requirements-pruebas.txt:analizador/requirements-pruebas.lock:3.10; do \
+	  origen=$${par%%:*}; resto=$${par#*:}; destino=$${resto%%:*}; version=$${resto##*:}; \
+	  uv pip compile "$$origen" --universal --python-version "$$version" --generate-hashes --no-header --no-annotate --quiet -o "$$destino" \
+	  && { printf '# Generado desde %s con `make bloquear` (uv pip compile --universal --generate-hashes). No se edita a mano.\n# Lo instala pip con --require-hashes: un paquete cambiado o sin hash detiene la instalación.\n' "$${origen##*/}"; \
+	       cat "$$destino"; } > "$$destino.nuevo" && mv "$$destino.nuevo" "$$destino" && echo "$$destino al día" || exit 1; done
+	@# uv parte de las versiones que ya están en cada .lock: solo cambia lo que exige el requirements nuevo
 
 ejecutar:         ## Arranca la plataforma en http://localhost:8000
 	$(PY) -m uvicorn app.main:app --reload

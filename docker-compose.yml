@@ -14,7 +14,7 @@ name: operacion-proyectos
 
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:d3244e8ce3f165ee3c93d9c4a4b1d0fe48b3a89e2287b717fdcbbde92d405065   # por digest, como las imágenes de la nube
     environment:
       POSTGRES_DB: operacion
       POSTGRES_USER: operacion
@@ -93,7 +93,7 @@ services:
 
   gateway:
     profiles: [web]
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     depends_on: [app, web]
     ports: ["127.0.0.1:8088:80"]
     volumes: [./gateway/Caddyfile:/etc/caddy/Caddyfile:ro]

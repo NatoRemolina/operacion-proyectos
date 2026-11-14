@@ -12,6 +12,7 @@ function carpeta(git: boolean) {
   fs.writeFileSync(path.join(raiz, "app", "main.py"), "");
   fs.writeFileSync(path.join(raiz, "datos", "respaldo", "versionado.json"), "{}");
   fs.writeFileSync(path.join(raiz, "requirements.txt"), "fastapi\n");
+  fs.writeFileSync(path.join(raiz, "requirements.lock"), "fastapi==0.115.14\n");
   fs.writeFileSync(path.join(raiz, "Dockerfile"), "FROM python\n");
   if (git) {
     spawnSync("git", ["init", "-q"], { cwd: raiz });
@@ -39,6 +40,12 @@ describe("lo que entraría en la imagen de la API sin estar versionado (H-71)", 
     spawnSync("git", ["add", "Dockerfile"], { cwd: raiz });
     fs.writeFileSync(path.join(raiz, "web", "borrador.ts"), "");
     assert.deepEqual(sinVersionar(raiz).sort(), ["Dockerfile", "app/main.py"]);
+  });
+
+  test("el bloqueo de dependencias también: es lo que instala la imagen (B3)", () => {
+    const raiz = carpeta(true);
+    fs.writeFileSync(path.join(raiz, "requirements.lock"), "fastapi==0.116.0\n");
+    assert.deepEqual(sinVersionar(raiz), ["requirements.lock"]);
   });
 
   test("un archivo versionado que se borró también cuenta", () => {

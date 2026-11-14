@@ -35,4 +35,4 @@ export class EstaticosDeLaWeb implements ILocalBundling {
 }
 
 /** Imagen exigida por CDK si el empaquetado local no corriera; nunca se usa porque `tryBundle` siempre responde. */
-export const IMAGEN_DE_RESERVA = DockerImage.fromRegistry("public.ecr.aws/docker/library/alpine:3.20");
+export const IMAGEN_DE_RESERVA = DockerImage.fromRegistry("public.ecr.aws/docker/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc");

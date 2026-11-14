@@ -24,7 +24,7 @@ export function sinVersionar(raiz: string): string[] {
     return r.error || r.status !== 0 ? [] : r.stdout.split("\n").filter(Boolean);
   };
   const nuevos = git("ls-files", "--others", "--exclude-standard", "--", "app", "datos");
-  const cambiados = git("diff", "--name-only", "HEAD", "--", "app", "datos", "requirements.txt", "Dockerfile");
+  const cambiados = git("diff", "--name-only", "HEAD", "--", "app", "datos", "requirements.txt", "requirements.lock", "Dockerfile");
   return [...new Set([...nuevos, ...cambiados])];
 }
 

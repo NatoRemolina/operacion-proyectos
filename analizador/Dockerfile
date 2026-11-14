@@ -9,14 +9,16 @@
 FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy@sha256:6bbd515848db4042068571135979b6ee6d330a794b28e037e3a6ccd7f2abfa26 AS base
 
 WORKDIR /srv
-COPY requirements.txt analizador/requirements.txt
-RUN pip install --no-cache-dir -r analizador/requirements.txt
+# Versiones y hashes del bloqueo (make bloquear): la de playwright coincide con la de la imagen base
+COPY requirements.lock analizador/requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r analizador/requirements.lock
 COPY . analizador/
 # Chromium escribe su perfil en HOME: en Lambda solo /tmp se puede escribir
 ENV PYTHONUNBUFFERED=1 HOME=/tmp PUERTO=8090
 
 FROM base AS pruebas
-RUN pip install --no-cache-dir -r analizador/requirements-pruebas.txt
+COPY requirements-pruebas.lock analizador/requirements-pruebas.lock
+RUN pip install --no-cache-dir --require-hashes -r analizador/requirements-pruebas.lock
 USER pwuser
 
 FROM base AS produccion

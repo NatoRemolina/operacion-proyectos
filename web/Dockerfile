@@ -1,6 +1,7 @@
 # Imagen de producción de la web: compilación con next build y salida standalone.
 # Node 26 es la LTS vigente (activa desde octubre de 2026); coincide con .nvmrc.
-ARG NODE_IMAGE=node:26-alpine
+# Por digest (B3): la etiqueta 26-alpine cambia de contenido sin aviso. Para actualizarla, docs/despliegue.md.
+ARG NODE_IMAGE=node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 
 FROM ${NODE_IMAGE} AS dependencias
 WORKDIR /app
@@ -25,7 +26,7 @@ FROM ${NODE_IMAGE} AS ejecucion
 WORKDIR /app
 # Adaptador que ejecuta este mismo servidor dentro de una función Lambda (infra/lib/web-stack.ts), igual que la API.
 # Fuera de Lambda no hace nada: la imagen sirve igual en Docker Compose.
-COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0@sha256:17cfd08eff1dfea3f6a9a1e9c65fdac80aa4919b6085e746615530f43f57d2f1 /lambda-adapter /opt/extensions/lambda-adapter
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
