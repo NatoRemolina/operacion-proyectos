@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { borrarBorrador, guardarBorrador, leerBorrador } from "@/shared/application/borradores";
 import type { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { Boton } from "@/shared/ui/boton";
 import { CampoSelector, CampoTexto } from "@/shared/ui/campo";
@@ -29,7 +30,7 @@ import {
 } from "../domain/cotizar";
 import { CampoLugar } from "./campo-lugar";
 
-const CLAVE_BORRADOR = "cotizar-borrador";
+const BORRADOR = "cotizar";
 const ORDEN: readonly CampoCotizacion[] = [
   "proyectoId", "viajeroId", "origen", "destino", "ida", "regreso", "horaLimite",
   "bateriasN", "bateriasWh", "probCambio", "carroDia",
@@ -39,15 +40,9 @@ function idCampo(campo: CampoCotizacion): string {
   return `cotizar-${campo}`;
 }
 
-/** Lo escrito se conserva en la pestaña: un error o una sesión vencida no lo borran. */
-function leerBorrador(): BorradorCotizacion {
-  if (typeof window === "undefined") return BORRADOR_VACIO;
-  try {
-    const guardado = window.sessionStorage.getItem(CLAVE_BORRADOR);
-    return guardado ? { ...BORRADOR_VACIO, ...(JSON.parse(guardado) as Partial<BorradorCotizacion>) } : BORRADOR_VACIO;
-  } catch {
-    return BORRADOR_VACIO;
-  }
+/** Lo escrito se conserva en la pestaña: un error o una sesión vencida no lo borran. Se borra al enviarlo y al salir. */
+function borradorGuardado(): BorradorCotizacion {
+  return { ...BORRADOR_VACIO, ...leerBorrador<BorradorCotizacion>(BORRADOR) };
 }
 
 /** Valores por omisión que dependen del formulario: viaja quien cotiza; si hay un solo proyecto, ese. */
@@ -93,7 +88,7 @@ function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) 
 function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
   const router = useRouter();
   const cotizar = useCotizar();
-  const [borrador, setBorrador] = useState<BorradorCotizacion>(leerBorrador);
+  const [borrador, setBorrador] = useState<BorradorCotizacion>(borradorGuardado);
   const [tocados, setTocados] = useState<ReadonlySet<CampoCotizacion>>(new Set());
   const [intentado, setIntentado] = useState(false);
   const [delServidor, setDelServidor] = useState<ErroresBorrador>({});
@@ -101,13 +96,7 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
   const origenRef = useRef<HTMLInputElement>(null);
   const destinoRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    try {
-      window.sessionStorage.setItem(CLAVE_BORRADOR, JSON.stringify(borrador));
-    } catch {
-      // Sin almacenamiento disponible, lo escrito dura lo que la pantalla.
-    }
-  }, [borrador]);
+  useEffect(() => guardarBorrador(BORRADOR, borrador), [borrador]);
 
   const efectivo = conOmisiones(borrador, datos);
   const alcance = problemaDeAlcance(efectivo, datos);
@@ -153,7 +142,10 @@ function FormularioCotizar({ datos }: { datos: FormularioCotizacion }) {
     setPedido(nuevo);
     setDelServidor({});
     cotizar.mutate(nuevo, {
-      onSuccess: (c) => router.push(`/cotizar/${c.id}`),
+      onSuccess: (c) => {
+        borrarBorrador(BORRADOR);
+        router.push(`/cotizar/${c.id}`);
+      },
       onError: (error) => {
         if (error.tipo !== "validacion") return;
         const campos = erroresDelServidor(error.campos);

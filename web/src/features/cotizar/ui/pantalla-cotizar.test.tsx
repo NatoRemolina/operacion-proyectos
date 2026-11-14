@@ -149,6 +149,8 @@ describe("Cotizar un viaje", () => {
     });
     terminar(COTIZACION_MOAB);
     await waitFor(() => expect(navegar).toHaveBeenCalledWith(`/cotizar/${COTIZACION_MOAB.id}`));
+    // Enviada la cotización, su borrador no queda en la pestaña: volver a cotizar empieza de cero (B7)
+    expect(Object.keys(window.sessionStorage).filter((k) => k.includes("borrador"))).toEqual([]);
   });
 
   it("un dato que el servidor no reconoce queda en su campo y lo escrito se conserva", async () => {

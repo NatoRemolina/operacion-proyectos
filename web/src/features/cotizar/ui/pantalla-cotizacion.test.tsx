@@ -211,7 +211,7 @@ describe("Comparación de una cotización", () => {
     expect(await screen.findByRole("checkbox", { name: "Mejor horario" })).toBeChecked();
     await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
     await screen.findByRole("heading", { name: /creado, pendiente de aprobación$/ });
-    expect(Object.keys(window.sessionStorage).filter((k) => k.startsWith("cotizar-decision-"))).toEqual([]);
+    expect(Object.keys(window.sessionStorage).filter((k) => k.startsWith("borrador:decision:"))).toEqual([]);
   });
 
   it("si la decisión se tomó sin consultar en vivo por el tope del día, lo dice", async () => {
