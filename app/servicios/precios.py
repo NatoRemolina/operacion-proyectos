@@ -642,6 +642,13 @@ def guia_tiquete(tiquete: dict | None) -> str | None:
     return ", ".join(partes) + "."
 
 
+def guia(aviso: str | None, tiquete: dict | None) -> str | None:
+    """Lo que la persona lee antes del envío: el aviso si cambió el vendedor y, después, qué vuelo elegir. «Avianca ya
+    no vende este tramo; ahora lo vende eDreams a 316 USD. En eDreams, elige el regreso AV 9, desde 316 USD.»"""
+    partes = [t.rstrip(".") + "." for t in (aviso, guia_tiquete(tiquete)) if t]
+    return " ".join(partes) or None
+
+
 def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, vuelo: dict,
                      solicitud_id: int | None = None, permitir_en_vivo: bool = False):
     """Familias tarifarias de un vuelo. Devuelve (tarifas, origen del dato).

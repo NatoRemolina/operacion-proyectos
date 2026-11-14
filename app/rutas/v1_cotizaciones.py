@@ -260,8 +260,8 @@ def _pagina_envio(destino: dict) -> HTMLResponse:
     Google, que redirige a su página oficial. Sin scripts: el envío lo hace el botón."""
     vendedor = html.escape(destino["vendedor"])
     campos = "".join(f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in destino["campos"])
-    guia = precios.guia_tiquete(destino.get("tiquete"))
-    avisos = "".join(f"<p>{html.escape(t)}</p>" for t in (destino.get("aviso"), guia, VERIFICACION_AEROLINEA) if t)
+    guia = precios.guia(destino.get("aviso"), destino.get("tiquete"))
+    avisos = "".join(f"<p>{html.escape(t)}</p>" for t in (guia, VERIFICACION_AEROLINEA) if t)
     cuerpo = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">'
               f'<meta name="viewport" content="width=device-width,initial-scale=1">'
               f"<title>Ir a {vendedor}</title></head><body><main>"

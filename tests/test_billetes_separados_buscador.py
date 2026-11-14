@@ -331,3 +331,13 @@ def test_el_cambio_de_vendedor_que_ve_la_pagina_llega_al_motivo(piloto, con_regr
     c = _cotizacion(piloto)
     e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "Avianca", "regreso").json()
     assert e["camino"] == "google" and e["motivo"].startswith("Avianca ya no vende"), e
+
+
+def test_la_guia_empieza_con_el_aviso_si_cambio_el_vendedor(piloto, con_regreso, analizador_doble):
+    """Mientras la página de «Ir a…» no pinte el `motivo`, el cambio de vendedor tiene que verse en la guía."""
+    respuesta, _ = con_regreso
+    respuesta["datos"] = separados("eDreams", 316, regreso_aerolinea=False)
+    c = _cotizacion(piloto)
+    e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "Avianca", "regreso").json()
+    assert e["guia"] == ("Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD. "
+                         "En eDreams, elige el regreso AV 9, desde 316 USD.")

@@ -450,7 +450,9 @@ class EnvioVendedor(BaseModel):
     motivo: str | None = Field(description="Por qué no se llegó por la página, si es el caso.")
     guia: str | None = Field(None, description="Qué vuelo elegir en la página del vendedor, para mostrarlo antes del "
                                                "envío: «En COPA, elige CM 687 · CM 240, sale 12:40 pm, desde 334 USD.» "
-                                               "Solo por el camino `buscador`, que trae el tiquete.")
+                                               "Si otro vende ahora ese tramo, empieza con el aviso: «Avianca ya no "
+                                               "vende este tramo; ahora lo vende eDreams a 316 USD.» Solo por el "
+                                               "camino `buscador`, que trae el tiquete.")
 
 
 # ---------- errores ----------

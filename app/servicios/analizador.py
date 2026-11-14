@@ -452,7 +452,7 @@ def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, ca
     (la página del vuelo en Google Flights). Si otro vende ahora ese tramo, el `motivo` lo dice.
 
     Devuelve `{"camino", "url", "campos", "vendedor", "tarifa", "motivo", "tiquete", "guia"}`: la `guia` dice qué vuelo
-    elegir en el vendedor (solo por el buscador, que da el tiquete). Los `campos` del envío viajan solo en esta
+    elegir en el vendedor y empieza con el aviso si cambió el vendedor (solo por el buscador, que da el tiquete). Los `campos` del envío viajan solo en esta
     respuesta: no se guardan ni se registran. Quien llama comprueba antes que la persona ve la cotización.
     LookupError si el vuelo no es de ella."""
     sol, _, vuelo = _opcion(sid, opcion_id)   # LookupError si el vuelo no es de la cotización: solo aquí
@@ -533,7 +533,7 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
                       f"{canal} · {usuario['nombre']}", ms)
     return {"camino": camino, "url": destino["url"], "campos": destino["campos"], "vendedor": destino.get("vendedor") or vendedor,
             "tarifa": tarifa, "motivo": None if camino == "pagina" else motivo, "tiquete": destino.get("tiquete"),
-            "guia": precios.guia_tiquete(destino.get("tiquete"))}
+            "guia": precios.guia(destino.get("aviso"), destino.get("tiquete"))}
 
 
 def aviso_precio(analisis: dict | None, precio_buscador) -> str | None:
