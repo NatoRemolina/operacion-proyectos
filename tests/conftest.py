@@ -33,11 +33,13 @@ from app.main import app  # noqa: E402
 
 
 @pytest.fixture(autouse=True, scope="session")
-def _tope_de_cotizaciones_amplio():
-    """Las pruebas cotizan muchas veces al día con las mismas cuentas: el tope diario por persona
-    (`tope_cotizaciones_persona_dia`) no debe depender de cuántas llevan. Las pruebas del tope fijan el suyo."""
+def _topes_diarios_amplios():
+    """Las pruebas cotizan y leen recibos muchas veces al día con las mismas cuentas: los topes diarios
+    (`tope_cotizaciones_persona_dia` y los de lecturas de recibos) no deben depender de cuántas llevan.
+    Las pruebas de cada tope fijan el suyo."""
     from app import db
-    db.ejecutar("update reglas set valor='100000' where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
+    db.ejecutar("""update reglas set valor='100000' where ambito='supuesto'
+                   and clave in ('tope_cotizaciones_persona_dia', 'lecturas_recibo_persona_dia', 'lecturas_recibo_dia')""")
 
 
 @pytest.fixture(scope="session")

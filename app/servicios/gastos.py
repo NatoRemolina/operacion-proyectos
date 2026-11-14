@@ -45,6 +45,9 @@ def preparar(contenido: bytes, nombre: str) -> tuple[bytes, str, str]:
     if not tipo:
         raise SoporteRechazado("Tipo de archivo no admitido. " + TIPOS_ADMITIDOS)
     mime, extension = tipo
+    if mime == "application/pdf" and (paginas := extraccion.paginas_pdf(contenido)) > extraccion.MAX_PAGINAS_PDF:
+        raise SoporteRechazado(f"El PDF tiene {paginas} páginas; se leen hasta {extraccion.MAX_PAGINAS_PDF}. "
+                               "Envía solo las páginas del recibo.")
     if mime == "text/html":
         texto = extraccion.html_a_texto(contenido)
         if not texto:
@@ -171,7 +174,7 @@ def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, 
         if op:
             envios.enlazar(op, gid)   # desde aquí, un reintento con la misma clave recibe este gasto
     try:
-        _leer_y_decidir(gid, contenido, mime, nombre, viaje, proyecto_id, rapido, huella, op)
+        _leer_y_decidir(gid, contenido, mime, nombre, viaje, proyecto_id, rapido, huella, op, usuario)
     except envios.EnvioEnCurso:
         raise   # otro proceso recuperó el envío y ya dejó el gasto en revisión
     except Exception:
@@ -183,15 +186,18 @@ def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, 
 
 
 def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: dict | None, proyecto_id: int | None,
-                    rapido: bool, huella: str, op: dict | None):
+                    rapido: bool, huella: str, op: dict | None, usuario: dict | None = None):
     # Un archivo idéntico ya leído no se vuelve a pagar: se reutiliza su lectura
     previo = db.uno("""select g.extraido from gastos g join documentos d on d.id=g.documento_id
                        where d.huella=:h and g.id<>:i and g.extraido is not null order by g.id limit 1""", h=huella, i=gid)
+    # La lectura con el modelo se paga: se reserva antes, del tope de la persona y del de la empresa, por cualquier vía
+    por_tope = not previo and not extraccion.reservar_lectura(usuario, f"gasto {gid}")
     marca = llm.RAPIDO.set(rapido)
     try:
         with eventos.cronometro() as t:
             try:
                 x = {**db.de_json(previo["extraido"], {}), "origen_dato": "reutilizado", "error": None} if previo else \
+                    {**_sin_lectura(extraccion.PENDIENTE_POR_TOPE), "origen_dato": extraccion.ORIGEN_POR_TOPE} if por_tope else \
                     extraccion.extraer(contenido, mime, nombre, gid)
             except Exception as e:   # un fallo inesperado de la lectura manda el gasto a revisión, como una lectura fallida
                 x = _sin_lectura(f"La lectura del recibo falló ({type(e).__name__}). Administración completará los datos.")
@@ -212,7 +218,7 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
         r = validacion.revisar(x, proyecto, gid, viaje)
         if x.get("error"):
-            # Una lectura fallida nunca se aprueba sola
+            # Una lectura fallida (o pendiente por el tope, que lo dice en su aviso y en su origen) nunca se aprueba sola
             r["alertas"].insert(0, x["error"])
             r["motivos"].insert(0, "lectura_fallida")
             r["estado"] = "revision"

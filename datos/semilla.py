@@ -133,6 +133,12 @@ SUPUESTOS_NUEVOS = [
     ("cupo_minimo_monitoreo", "25", "Si al plan del buscador le quedan menos búsquedas que esto, el monitoreo del vuelo se suspende."),
     ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
     # Cotizar (pantallas, web y API v1): cada cotización nueva puede pagar dos búsquedas y cada decisión otras dos
+    # Lectura de recibos y notas de voz con el modelo (cada lectura se paga): se reserva antes de llamarlo
+    ("lecturas_recibo_persona_dia", "40", "Lecturas con el modelo por persona y día (recibos y notas de voz), por cualquier vía: web, "
+                                          "API, buzón y Telegram. Alcanzado, el soporte se guarda y el gasto queda en revisión "
+                                          "«lectura pendiente por tope»."),
+    ("lecturas_recibo_dia", "400", "Lecturas con el modelo por día en toda la empresa (recibos y notas de voz). Alcanzado, el "
+                                   "soporte se guarda y el gasto queda en revisión «lectura pendiente por tope»."),
     ("tope_cotizaciones_persona_dia", "20", "Cotizaciones nuevas por persona y día, por cualquier canal. Alcanzado, se retoma una que ya existe."),
     ("decisiones_en_vivo_dia", "10", "Decisiones por persona y día que consultan en vivo el regreso y las opciones de reserva del vuelo "
                                      "(dos búsquedas cada una). Alcanzado, se decide con lo guardado y se dice."),

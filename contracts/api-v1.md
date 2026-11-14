@@ -192,6 +192,8 @@ El Excel contable: un `.xlsx` (`application/vnd.openxmlformats-officedocument.sp
 - 201 `GastoDetalle` con su estado real tras leer y validar: `aprobado_auto` o `revision`. La web muestra ese estado, no «aprobado» por haber recibido 201.
 - Misma clave y mismo archivo (y mismo `viaje_id`): 200 con el mismo gasto, aunque siga `procesando`; no se vuelve a leer. Misma clave con otro archivo u otro `viaje_id`: 409 `IDEMPOTENCY_CONFLICT`. Si el primer envío aún no creó el gasto: 409 `REQUEST_IN_PROGRESS`. La clave es de cada persona: la misma clave de dos personas son dos envíos.
 - Si la lectura se interrumpe, el gasto no queda `procesando`: pasa a `revision` con el motivo `lectura_fallida`, y el reintento con la misma clave lo devuelve.
+- Cada lectura con el modelo se reserva antes de llamarlo, del tope de la persona (`lecturas_recibo_persona_dia`) y del total de la empresa (`lecturas_recibo_dia`), igual por la web, la API, el buzón y Telegram. Pasado el tope no se llama al modelo: 201 con el gasto en `revision`, motivo `lectura_fallida`, el aviso «Lectura pendiente por tope» y `origen_dato` «pendiente por tope». El soporte queda guardado.
+- Un PDF de más de 15 páginas no se lee ni se guarda: 422 con el número de páginas en `fields.archivo`.
 - Errores: 413, 415, 422.
 
 ### `POST /gastos/{id}/revision`

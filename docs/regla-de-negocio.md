@@ -113,7 +113,7 @@ Detalles que el código hace cumplir:
 | `atipico` | Importe atípico | Bloquea | Con al menos 4 gastos aprobados de la misma categoría y moneda, el total supera la mediana + 3,5 desviaciones robustas (tres veces la mediana si todos los importes son iguales) y el doble de la mediana (`inteligencia.es_atipico`). Con menos historia no opina |
 | `sin_puntos` | Fidelización perdida | **Solo avisa** | Un hotel reservado por una agencia (Booking, Expedia, Hotels.com…): esa estadía no acumula puntos en el programa del hotel |
 | `compra_anticipada` | Compra anticipada | **Solo avisa** | Con viaje: vuelo, hotel, alquiler de carro o compras del proyecto con fecha anterior al viaje (`validacion.SE_COMPRAN_ANTES`). Sin viaje: un vuelo anterior al inicio del proyecto |
-| `lectura_fallida` | Lectura fallida | Bloquea | La lectura del recibo falló, o el gasto quedó en `procesando` más de 5 minutos. Una lectura fallida nunca se aprueba sola |
+| `lectura_fallida` | Lectura fallida | Bloquea | La lectura del recibo falló, o el gasto quedó en `procesando` más de 5 minutos, o la lectura quedó pendiente porque se alcanzó el tope de lecturas del día (`lecturas_recibo_persona_dia`, 40 por persona, y `lecturas_recibo_dia`, 400 en total): entonces el aviso dice «Lectura pendiente por tope», el origen del dato es «pendiente por tope» y el soporte queda guardado. Una lectura fallida nunca se aprueba sola |
 | `sin_viaje` | Sin viaje asignado | Bloquea | No se pudo asignar el gasto a un viaje (ver sección 6) |
 | `viaje_no_aprobado` | Viaje sin presupuesto aprobado | Bloquea | El viaje está pendiente de aprobación o rechazado |
 | `viaje_cerrado` | Viaje cerrado | Bloquea | El viaje ya se cerró |

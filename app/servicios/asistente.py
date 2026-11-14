@@ -116,8 +116,9 @@ EXPLICACION = {
                    "Es solo un aviso para la próxima vez: reservar directo con el hotel suma puntos."),
     "compra_anticipada": ("Se compró antes del viaje, lo que es normal en tiquetes y reservas.",
                           "No tienes que hacer nada: es solo un aviso."),
-    "lectura_fallida": ("No se pudo leer el recibo.",
-                        "Sube de nuevo una foto clara o el PDF del recibo; mientras tanto el gasto queda guardado."),
+    "lectura_fallida": ("No se pudo leer el recibo, o quedó pendiente porque hoy se alcanzó el tope de lecturas.",
+                        "Si el aviso dice «Lectura pendiente por tope», no tienes que hacer nada: el recibo quedó guardado y "
+                        "administración completa los datos. Si no, sube de nuevo una foto clara o el PDF del recibo."),
     "sin_viaje": ("No se sabe a qué viaje pertenece el gasto.",
                   "Di en la justificación de qué viaje es; administración lo asigna."),
     "viaje_no_aprobado": ("El presupuesto del viaje todavía no está aprobado.",

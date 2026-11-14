@@ -19,6 +19,8 @@ topes_reservas = db._tabla(
 # Valor de cada tope si la regla falta. Cada servicio siembra su regla con la nota que la explica.
 LIMITES: dict[str, int] = {
     "tope_cotizaciones_persona_dia": 20,
+    "lecturas_recibo_persona_dia": 40,
+    "lecturas_recibo_dia": 400,
 }
 
 
