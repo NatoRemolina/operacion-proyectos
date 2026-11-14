@@ -1,4 +1,5 @@
 import type { Dinero, FechaISO } from "@/shared/domain/tipos";
+import { esEnlaceExterno } from "@/shared/domain/enlaces";
 
 /**
  * Cotizar un viaje de grabación: lugares, pedido, comparación por costo total esperado y decisión.
@@ -854,23 +855,12 @@ export function tablasPorVendedor(tarifas: readonly TarifaLeida[], origen: Orige
  * mismo criterio que el servidor. Un enlace que no cumple no se pinta.
  */
 export function esEnlaceGoogle(url: string): boolean {
-  if (!url || /[\s\u0000-\u001f\u007f]/.test(url)) return false;
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return false;
-  }
+  if (!esEnlaceExterno(url, ["www.google.com", "google.com"])) return false;
   let ruta: string;
   try {
-    ruta = decodeURIComponent(u.pathname);
+    ruta = decodeURIComponent(new URL(url).pathname);
   } catch {
     return false;
   }
-  return (
-    u.protocol === "https:" &&
-    (u.hostname === "www.google.com" || u.hostname === "google.com") &&
-    !u.port && !u.username && !u.password &&
-    ruta.startsWith("/travel/") && !ruta.split("/").includes("..")
-  );
+  return ruta.startsWith("/travel/") && !ruta.split("/").includes("..");
 }

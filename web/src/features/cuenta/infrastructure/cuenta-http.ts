@@ -2,6 +2,7 @@ import { z } from "zod";
 import { personaSchema } from "@/features/auth/infrastructure/auth-http";
 import type { ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { CuentaRepository, MiCuenta, VinculoTelegram } from "../domain/cuenta";
+import { enlaceExternoSchema } from "@/shared/infrastructure/enlaces";
 
 const cuentaSchema = z.object({
   persona: personaSchema,
@@ -11,7 +12,8 @@ const cuentaSchema = z.object({
 
 const vinculoSchema = z.object({
   codigo: z.string().min(1),
-  enlace: z.string().nullable(),
+  // Solo https://t.me: cualquier otro destino no se ofrece como enlace
+  enlace: enlaceExternoSchema(["t.me"]).nullable(),
   minutos: z.number().int().positive(),
 }) satisfies z.ZodType<VinculoTelegram>;
 

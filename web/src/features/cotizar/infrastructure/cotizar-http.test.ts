@@ -113,3 +113,20 @@ describe("enlaces que no son de Google", () => {
     expect([c.fuente_url, c.fuente_hoteles_url, c.vuelos[0]!.fuente_url]).toEqual([null, null, null]);
   });
 });
+
+describe("rutas de la API que se pintan en un href (B7)", () => {
+  it("una ruta del vendedor que no es propia es una respuesta inesperada, no un enlace", async () => {
+    for (const malo of ["javascript:alert(1)", "//otro.test/vendedor", "https://otro.test/vendedor"]) {
+      const vuelos = COTIZACION_MOAB.vuelos.map((v) => ({ ...v, vendedor_url: malo }));
+      const { cotizar } = preparar(respuestaJson({ ...COTIZACION_MOAB, vuelos }));
+      expect((await errorDe(cotizar.obtener(12))).tipo, malo).toBe("contrato");
+    }
+  });
+
+  it("lo mismo con las imágenes y el texto de la evidencia guardada", async () => {
+    const captura = { id: 1, tipo: "vuelo", motivo: "decision", estado: "lista", fallo: null, intentos: 1, creado: null,
+      terminado: null, datos: null, imagenes: ["//otro.test/x.png"], texto_url: null };
+    const { cotizar } = preparar(respuestaJson({ estado: "guardada", guardada: null, capturas: [captura], seguimiento: [] }));
+    expect((await errorDe(cotizar.evidencia(12))).tipo).toBe("contrato");
+  });
+});

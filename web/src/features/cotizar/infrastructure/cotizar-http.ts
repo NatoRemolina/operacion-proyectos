@@ -9,6 +9,7 @@ import type {
   FormularioCotizacion,
   ListaLugares,
 } from "../domain/cotizar";
+import { rutaPropiaSchema } from "@/shared/infrastructure/enlaces";
 
 /** Un enlace a Google que no es `https://www.google.com/travel/…` no llega a la pantalla. */
 const enlaceGoogle = z.string().transform((u) => (esEnlaceGoogle(u) ? u : null));
@@ -107,7 +108,7 @@ const vueloSchema = z.object({
   frente_esperado_pct: z.number().int().nullable(),
   total_con_hotel_usd: dineroSchema,
   fuente_url: enlaceGoogle,
-  vendedor_url: z.string(),
+  vendedor_url: rutaPropiaSchema,
 });
 
 const hotelSchema = z.object({
@@ -244,7 +245,7 @@ const analisisSchema = z.object({
           cambios: lista,
           reembolso: lista,
           otras: lista,
-          ir_url: z.string().nullable().default(null),
+          ir_url: rutaPropiaSchema.nullable().default(null),
         }),
       ),
       vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
@@ -265,7 +266,7 @@ const analisisSchema = z.object({
     })
     .nullable(),
   extracto: z.string().nullable().default(null),
-  captura_url: z.string().nullable(),
+  captura_url: rutaPropiaSchema.nullable(),
 });
 
 const tarifaSchema = z.object({
@@ -276,7 +277,7 @@ const tarifaSchema = z.object({
   cambios: lista,
   reembolso: lista,
   otras: lista,
-  ir_url: z.string().nullable().default(null),
+  ir_url: rutaPropiaSchema.nullable().default(null),
 });
 const opcionesBuscadorSchema = z.object({
   estado: z.enum(["listo", "sin_datos"]),
@@ -299,8 +300,8 @@ export const evidenciaSchema = z.object({
     creado: z.string().nullable(),
     terminado: z.string().nullable(),
     datos: z.record(z.string(), z.unknown()).nullable(),
-    imagenes: z.array(z.string()),
-    texto_url: z.string().nullable(),
+    imagenes: z.array(rutaPropiaSchema),
+    texto_url: rutaPropiaSchema.nullable(),
   })),
   seguimiento: z.array(z.object({
     momento: z.string().nullable(),

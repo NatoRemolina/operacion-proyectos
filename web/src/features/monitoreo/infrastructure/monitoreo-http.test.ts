@@ -21,6 +21,14 @@ describe("Monitoreo por HTTP", () => {
     await expect(crearMonitoreoHttp(crearClienteHttp("/api/v1")).pestana("gastos", { proyecto_id: null, desde: null, hasta: null })).rejects.toMatchObject({ tipo: "contrato" });
   });
 
+  it("tampoco acepta una ruta que el navegador lee como otro sitio (//… o /\\…) (B7)", async () => {
+    for (const href of ["//otro.test/x", "/\\otro.test"]) {
+      const malo = { ...GASTOS_EJEMPLO, tablas: [{ ...GASTOS_EJEMPLO.tablas[1]!, filas: [[{ texto: "x", href }, 1]] }] };
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(malo), { status: 200 }));
+      await expect(crearMonitoreoHttp(crearClienteHttp("/api/v1")).pestana("gastos", { proyecto_id: null, desde: null, hasta: null })).rejects.toMatchObject({ tipo: "contrato" });
+    }
+  });
+
   it("la descarga es un enlace con la vista y los filtros", () => {
     expect(crearMonitoreoHttp(crearClienteHttp("/api/v1")).urlExportar("v_h_evento", { proyecto_id: null, desde: "2026-11-01", hasta: null })).toBe(
       "/api/v1/monitoreo/exportar.csv?vista=v_h_evento&desde=2026-11-01",
