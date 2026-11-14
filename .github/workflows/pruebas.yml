@@ -27,6 +27,65 @@ jobs:
       - name: Pruebas
         # Sin claves: base SQLite temporal y servicios externos apagados (ver tests/conftest.py)
         run: pytest -q
+      - name: Pruebas de la infraestructura en Python
+        # poblar_secreto (ORIGEN_SECRETO), imágenes por digest y archivos de bloqueo
+        run: pytest -q infra/pruebas
+
+  postgres:
+    # La misma suite contra PostgreSQL, el motor de producción: RLS y permisos, concurrencia con cerrojos y la migración.
+    # El servicio usa el puerto y las credenciales del docker compose local, así corren también las pruebas que lo buscan.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      db:
+        image: postgres:17-alpine@sha256:d3244e8ce3f165ee3c93d9c4a4b1d0fe48b3a89e2287b717fdcbbde92d405065
+        env:
+          POSTGRES_DB: operacion
+          POSTGRES_USER: operacion
+          POSTGRES_PASSWORD: operacion-local   # solo para este contenedor desechable; no es una credencial real
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U operacion -d operacion"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      SERVIDOR: postgresql://operacion:operacion-local@127.0.0.1:5433
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - name: Instalar dependencias
+        run: pip install --require-hashes -r requirements-dev.lock
+      - name: Bases nuevas para la migración y para la suite
+        run: >-
+          python -c "import os, psycopg;
+          c = psycopg.connect(os.environ['SERVIDOR'] + '/operacion', autocommit=True);
+          [c.execute(f'create database {b}') for b in ('migracion', 'pruebas_pg')]"
+      - name: Migración dos veces sobre una base vacía y comprobación (la migración es idempotente)
+        env:
+          ENTORNO: local
+        run: |
+          export DATABASE_URL="$SERVIDOR/migracion"
+          python -m datos.semilla
+          python -m datos.semilla
+          python -m datos.comprobar_supabase
+      - name: Suite en PostgreSQL (incluye las pruebas de RLS y de migración)
+        run: PRUEBAS_DATABASE_URL="$SERVIDOR/pruebas_pg" pytest -q -p no:cacheprovider
+
+  analizador:
+    # La imagen del analizador (Playwright) y sus pruebas sin red: lee páginas guardadas, nunca Google Flights.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Imagen de pruebas
+        run: docker build --target pruebas --tag analizador-pruebas:ci analizador
+      - name: Pruebas sin red
+        run: docker run --rm --network none --shm-size 1g analizador-pruebas:ci python -m pytest -q analizador/pruebas
+      - name: Imagen de producción
+        run: docker build --target produccion --tag analizador:ci analizador
 
   web:
     runs-on: ubuntu-latest
@@ -83,6 +142,9 @@ jobs:
         run: "! grep -l '\"AWS::Route53::HostedZone\"' cdk.out/*.template.json"
       - name: Síntesis sin dominio
         run: npx cdk synth --quiet -c correo=avisos@example.com
+      - name: Síntesis con el WAF encendido
+        # Por omisión no se crea (cuesta unos 7 USD al mes): se comprueba que la plantilla con él también sale bien
+        run: npx cdk synth --quiet -c correo=avisos@example.com -c dominio=nataliaremolinarodriguez.com -c zonaId=Z0731422246SUYEGG2Z5R -c waf=1
 
   imagenes:
     # Construye las dos imágenes sin publicarlas. En la nube corren en arm64: aquí se comprueba que se construyen,
