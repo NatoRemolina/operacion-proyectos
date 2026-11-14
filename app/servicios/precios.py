@@ -581,6 +581,39 @@ def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[
     return opciones
 
 
+TRAMOS_TIQUETE = ("ida", "regreso")
+
+
+def vendedor_cambio(pedido: str, actual: str, precio) -> str:
+    """«Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD» (la misma frase del analizador)."""
+    return f"{pedido} ya no vende este tramo; ahora lo vende {actual}" + (f" a {precio:,.0f} USD" if _numero(precio) is not None else "")
+
+
+def elegir_tiquete(opciones: list[dict], vendedor: str, tarifa: str) -> tuple[dict | None, str | None]:
+    """La opción de `reserva_en_vivo` que se pidió, con su envío válido, y un aviso si cambió el vendedor.
+
+    Con `tarifa` «ida» o «regreso» se busca el tiquete de ese tramo (billetes separados). Si el vendedor pedido ya no
+    lo vende, va el que lo vende ahora (la aerolínea primero; si no, el más barato) con el aviso. Con otra tarifa, la
+    opción junta de ese vendedor y esa tarifa, o ninguna. (None, None) si no hay ninguna que sirva."""
+    tramo = tarifa.strip().lower() if tarifa.strip().lower() in TRAMOS_TIQUETE else "ambos"
+    validas = [o for o in opciones if o["tramo"] == tramo and es_envio_google(o["url"]) and isinstance(o["post_data"], str)]
+    if tramo == "ambos":
+        return next((o for o in validas if (o["vendedor"].lower(), o["tarifa"].lower()) ==
+                     (vendedor.strip().lower(), tarifa.strip().lower())), None), None
+    propia = next((o for o in validas if o["vendedor"].lower() == vendedor.strip().lower()), None)
+    if propia or not validas:
+        return propia, None
+    actual = min(validas, key=lambda o: (not o["aerolinea"], o["precio"] if o["precio"] is not None else float("inf")))
+    return actual, vendedor_cambio(vendedor.strip(), actual["vendedor"], actual["precio"])
+
+
+def tiquete(opcion: dict, vuelo: dict) -> dict:
+    """Lo que la persona debe elegir en la página del vendedor: tramo, vuelos, tarifa y precio (nunca el pedido)."""
+    numeros = opcion.get("numeros") or (vuelo.get("numeros") if opcion.get("tramo") != "regreso" else []) or []
+    return {"tramo": opcion.get("tramo") or "ambos", "numeros": list(numeros)[:6], "tarifa": opcion.get("tarifa"),
+            "precio": opcion.get("precio"), "vendedor": opcion.get("vendedor")}
+
+
 def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, vuelo: dict,
                      solicitud_id: int | None = None, permitir_en_vivo: bool = False):
     """Familias tarifarias de un vuelo. Devuelve (tarifas, origen del dato).

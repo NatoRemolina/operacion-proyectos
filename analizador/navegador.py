@@ -55,7 +55,7 @@ SIN_ENVIO = "Google no respondió al elegir la tarifa"
 # Con billetes separados («Separate tickets») cada tiquete se compra aparte: «Continue» de la opción abre un diálogo
 # con un tiquete por tramo, cada uno con su «Continue» (prueba 12). «Ir a {aerolínea} · ida|regreso» pulsa ese.
 TRAMOS_TIQUETE = ("ida", "regreso")
-CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for [\d,.]+ US dollars")
+CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for (?P<precio>[\d,.]+) US dollars")
 VENDEDOR_O_TARIFA = re.compile(r"^[\w .,&'()+/-]{1,60}$")
 OTRA_PESTANA = "la página quiso abrir otra pestaña"
 
@@ -322,8 +322,19 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     if pedido["tarifa"].strip().lower() in TRAMOS_TIQUETE:   # billetes separados: el «Continue» del tiquete de ese tramo
         def es_el(e):
             return _es_tiquete(e, pedido["vendedor"])
+        regreso_pedido = pedido["tarifa"].strip().lower() == "regreso"
         candidatas = [e for e in _etiquetas(pagina) if es_el(e)]
-        etiqueta = (candidatas[-1] if pedido["tarifa"].strip().lower() == "regreso" else candidatas[0]) if candidatas else None
+        etiqueta = (candidatas[-1] if regreso_pedido else candidatas[0]) if candidatas else None
+        if etiqueta is None:
+            # Google cambia el vendedor de un tramo entre cargas: si otro lleva el tiquete de ese tramo, se dice quién
+            tiquetes = [m for m in (CONTINUAR.match(lector.normal(e or "")) for e in _etiquetas(pagina))
+                        if m and not m["tarifa"] and "booked individually" not in m.string]
+            if tiquetes:
+                actual = tiquetes[-1] if regreso_pedido else tiquetes[0]
+                otro, precio = _sin_marca(actual["vendedor"]), float(actual["precio"].replace(",", ""))
+                return _resultado("fallido", inicio, vendedor_cambio(pedido["vendedor"], otro, precio), url_final=pagina.url,
+                                  regreso_elegido=regreso, vendedor_actual={"vendedor": otro, "precio": precio},
+                                  **_evidencia(pagina))
     else:
         def es_el(e):
             return _es_continuar(e, pedido["vendedor"], pedido["tarifa"])
@@ -598,6 +609,11 @@ def _sin_marca(nombre: str | None) -> str:
     """«COPA airline» → «COPA»: Google añade la marca a la etiqueta cuando vende la aerolínea (prueba 12)."""
     nombre = (nombre or "").strip()
     return nombre[:-len(" airline")].strip() if nombre.lower().endswith(" airline") else nombre
+
+
+def vendedor_cambio(pedido: str, actual: str, precio: float | None) -> str:
+    """«Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD»."""
+    return f"{pedido} ya no vende este tramo; ahora lo vende {actual}" + (f" a {precio:,.0f} USD" if precio is not None else "")
 
 
 def _es_continuar(etiqueta, vendedor: str, tarifa: str) -> bool:

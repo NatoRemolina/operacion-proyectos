@@ -100,3 +100,105 @@ def test_las_opciones_guardadas_muestran_cada_tiquete(buscador):
     tarifas, _ = precios.opciones_guardadas(IDA, "MDE", "MIA", "2026-11-20", "2026-11-29")
     assert [(t["vendedor"], t["nombre"], t["precio"], t["tramo"]) for t in tarifas] == [
         ("COPA", "ida", 334, "ida"), ("Avianca", "regreso", 323, "regreso")]
+
+
+# ---------- punto 2: se elige por vendedor y tramo; si el vendedor cambió, el actual con un aviso ----------
+def _yo():
+    return db.uno("select * from usuarios where correo='piloto@demo.local'")
+
+
+def _cotizacion(c) -> dict:
+    from app import api_v1
+    from app.servicios import acceso
+    pedido = {"proyecto_id": 1, "origen": {"texto": "Miami (MIA)"}, "destino": {"texto": "Las Vegas (LAS)"},
+              "ida": "2026-12-08", "regreso": "2026-12-11"}
+    r = c.post("/api/v1/cotizaciones", json=pedido, headers={"X-CSRF-Token": api_v1.token_csrf(c.cookies.get(acceso.COOKIE))})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+@pytest.fixture
+def con_regreso(monkeypatch, buscador):
+    monkeypatch.setattr(precios, "vuelo_regreso", lambda *a, **k: {"booking": "TOKEN"})
+    db.ejecutar("delete from cupos_buscador")
+    db.ejecutar("delete from consultas_buscador where tipo in ('vendedor', 'vendedor_regreso')")
+    yield buscador
+    db.ejecutar("delete from cupos_buscador")
+
+
+def test_elegir_tiquete_por_vendedor_y_tramo(buscador):
+    opciones = _en_vivo()
+    o, aviso = precios.elegir_tiquete(opciones, "COPA", "ida")
+    assert (o["vendedor"], o["tramo"], aviso) == ("COPA", "ida", None)
+    o, aviso = precios.elegir_tiquete(opciones, "avianca", "Regreso")
+    assert (o["vendedor"], aviso) == ("Avianca", None)
+    assert precios.elegir_tiquete(opciones, "COPA", "Main Cabin") == (None, None)   # ningún tiquete es el viaje entero
+
+
+def test_si_otro_vende_el_regreso_se_elige_el_actual_con_aviso(buscador):
+    respuesta, _ = buscador
+    respuesta["datos"] = separados("eDreams", 316, regreso_aerolinea=False)
+    o, aviso = precios.elegir_tiquete(_en_vivo(), "Avianca", "regreso")
+    assert (o["vendedor"], o["post_data"]) == ("eDreams", "u=REGRESO-SECRETA")
+    assert aviso == "Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD"
+
+
+def test_el_enlace_al_vendedor_lleva_la_ida_de_copa(piloto, con_regreso):
+    from app.servicios import cotizacion
+    c = _cotizacion(piloto)
+    destino = cotizacion.enlace_vendedor(_yo(), c["id"], c["vuelos"][0]["id"], vendedor="COPA", tarifa="ida")
+    assert (destino["tipo"], destino["vendedor"], destino["url"], destino["campos"]) == (
+        "envio", "COPA", CLK, [("u", "IDA-COPA-SECRETA")])
+    assert destino["aviso"] is None and destino["tiquete"]["numeros"] == ["CM 687", "CM 240"]
+
+
+def test_el_enlace_al_vendedor_con_otro_vendedor_lo_avisa(piloto, con_regreso):
+    from app.servicios import cotizacion
+    respuesta, _ = con_regreso
+    respuesta["datos"] = separados("eDreams", 316, regreso_aerolinea=False)
+    c = _cotizacion(piloto)
+    destino = cotizacion.enlace_vendedor(_yo(), c["id"], c["vuelos"][0]["id"], vendedor="Avianca", tarifa="regreso")
+    assert (destino["tipo"], destino["vendedor"]) == ("envio", "eDreams")
+    assert destino["aviso"] == "Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD"
+
+
+def test_sin_tramo_el_enlace_al_vendedor_no_compra_solo_la_ida(piloto, con_regreso):
+    from app.servicios import cotizacion
+    c = _cotizacion(piloto)
+    assert cotizacion.enlace_vendedor(_yo(), c["id"], c["vuelos"][0]["id"])["tipo"] == "google"
+
+
+@pytest.fixture
+def analizador_doble(monkeypatch):
+    """El analizador como servicio (doble): cada prueba dice qué responde."""
+    from app.servicios import analizador
+    pedidos, respuesta = [], {"estado": "fallido", "motivo": "no se encontró la tarifa"}
+    monkeypatch.setenv("ANALIZADOR_URL", "http://analizador:8090")
+    monkeypatch.delenv("ANALIZADOR", raising=False)
+    monkeypatch.setattr(analizador, "_invocar", lambda p: pedidos.append(p) or dict(respuesta))
+    db.ejecutar("delete from analisis_vuelo")
+    yield pedidos, respuesta
+    db.ejecutar("delete from analisis_vuelo")
+
+
+def _ir(c, sid: int, vuelo: int, vendedor: str, tarifa: str):
+    from app import api_v1
+    from app.servicios import acceso
+    return c.post(f"/api/v1/cotizaciones/{sid}/vuelos/{vuelo}/ir", json={"vendedor": vendedor, "tarifa": tarifa},
+                  headers={"X-CSRF-Token": api_v1.token_csrf(c.cookies.get(acceso.COOKIE))})
+
+
+def test_ir_a_un_tiquete_que_ahora_vende_otro_lleva_al_actual_y_lo_dice(piloto, con_regreso, analizador_doble):
+    respuesta, _ = con_regreso
+    respuesta["datos"] = separados("eDreams", 316, regreso_aerolinea=False)
+    c = _cotizacion(piloto)
+    vuelo = c["vuelos"][0]
+    r = _ir(piloto, c["id"], vuelo["id"], "Avianca", "regreso")
+    assert r.status_code == 200, r.text
+    e = r.json()
+    assert (e["camino"], e["vendedor"], e["tarifa"], e["campos"]) == ("buscador", "eDreams", "regreso", [["u", "REGRESO-SECRETA"]])
+    assert e["motivo"] == "Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD"
+    fila = db.uno("select * from analisis_vuelo where accion='ir_a' order by id desc limit 1")
+    assert (fila["camino"], fila["vendedor"]) == ("buscador", "Avianca")   # lo que pidió la persona
+    ev = db.uno("select detalle from eventos where paso='ir a vendedor' order by id desc limit 1")["detalle"]
+    assert "camino buscador" in ev and "ahora lo vende eDreams" in ev and "REGRESO-SECRETA" not in ev

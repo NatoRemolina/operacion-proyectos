@@ -353,6 +353,15 @@ def test_ir_a_cada_aerolinea_por_su_tiquete_sin_mandarlo(vendedor, tramo, cuerpo
     assert not any("/travel/clk" in p for p in pedidos)          # el envío no salió del navegador del servidor
 
 
+def test_si_otro_vendedor_lleva_el_tramo_ir_a_lo_dice_y_no_pulsa():
+    """Google cambia el vendedor de un tramo entre cargas (14 nov: el regreso de Avianca pasó a eDreams)."""
+    pedidos = []
+    r = navegador.ir_a(URL, "eDreams", "regreso", servir=_servir(dict(SEPARADOS), pedidos))
+    assert (r["estado"], r["motivo"]) == ("fallido", "eDreams ya no vende este tramo; ahora lo vende Avianca a 323 USD")
+    assert r["vendedor_actual"] == {"vendedor": "Avianca", "precio": 323.0}
+    assert not any("/travel/clk" in p for p in pedidos)
+
+
 def test_ir_a_con_billetes_separados_sin_tramo_no_pulsa():
     pedidos = []
     r = navegador.ir_a(URL, "COPA", "Main Cabin", servir=_servir(dict(SEPARADOS), pedidos))

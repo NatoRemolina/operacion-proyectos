@@ -430,17 +430,19 @@ def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict
 
 
 def _por_buscador(sol: dict, vuelo: dict, vendedor: str, tarifa: str, sid: int) -> dict | None:
-    """El pedido de un solo uso de esa tarifa de ese vendedor, de las opciones de reserva del buscador."""
+    """El pedido de un solo uso de esa tarifa de ese vendedor (o de ese tiquete, con «ida» o «regreso»), de las opciones
+    de reserva del buscador. Si otro vende ahora ese tramo, el suyo, con el `aviso` (`precios.elegir_tiquete`)."""
     lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
     regreso = precios.vuelo_regreso(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid,
                                     tipo="vendedor_regreso")
     if not regreso:
         return None
-    for o in precios.reserva_en_vivo(vuelo, regreso, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid):
-        if o["tramo"] == "ambos" and (o["vendedor"].lower(), o["tarifa"].lower()) == (vendedor.lower(), tarifa.lower()) \
-                and _es_envio(o["url"]):
-            return {"url": o["url"], "campos": parse_qsl(o["post_data"] or "", keep_blank_values=True)}
-    return None
+    opciones = precios.reserva_en_vivo(vuelo, regreso, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid)
+    o, aviso = precios.elegir_tiquete(opciones, vendedor, tarifa)
+    if not o:
+        return None
+    return {"url": o["url"], "campos": parse_qsl(o["post_data"] or "", keep_blank_values=True), "vendedor": o["vendedor"],
+            "aviso": aviso, "tiquete": precios.tiquete(o, vuelo)}
 
 
 def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, canal: str = "api v1") -> dict:
@@ -502,6 +504,8 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
         if reservar_cupo(usuario, f"ir_a_{clave(sol, vuelo)}", unidades_busqueda(sol, vuelo)):
             destino = _por_buscador(sol, vuelo, vendedor, tarifa, sid)
             camino = "buscador" if destino else None
+            if destino and destino.get("aviso"):
+                motivo = destino["aviso"]
         else:
             motivo = motivo or "se alcanzó el tope de búsquedas del día"
     if not destino:
@@ -524,8 +528,8 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
                       f"{' + '.join(vuelo.get('numeros') or [])} (opción {opcion_id}): {vendedor} · {tarifa} · camino {camino} · "
                       f"{dominio} · {ms} ms{' · ' + motivo if motivo and camino != 'pagina' else ''}"[:500],
                       f"{canal} · {usuario['nombre']}", ms)
-    return {"camino": camino, "url": destino["url"], "campos": destino["campos"], "vendedor": vendedor, "tarifa": tarifa,
-            "motivo": None if camino == "pagina" else motivo}
+    return {"camino": camino, "url": destino["url"], "campos": destino["campos"], "vendedor": destino.get("vendedor") or vendedor,
+            "tarifa": tarifa, "motivo": None if camino == "pagina" else motivo, "tiquete": destino.get("tiquete")}
 
 
 def aviso_precio(analisis: dict | None, precio_buscador) -> str | None:
