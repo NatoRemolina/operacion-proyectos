@@ -93,6 +93,17 @@ def gestor():
     return _con_sesion("gestor@demo.local", "demo-gestor-2026")
 
 
+@pytest.fixture(scope="session")
+def revisor():
+    """Segunda cuenta de administración: revisa lo que sube la primera, porque nadie revisa lo que subió (cuatro ojos)."""
+    from app import db
+    from app.servicios import acceso
+    if not db.uno("select id from usuarios where correo='revisor@demo.local'"):
+        acceso.crear_usuario("revisor@demo.local", "Revisión de pruebas", "admin", "demo-revisor-2026")
+    db.ejecutar("update usuarios set activo=1 where correo='revisor@demo.local'")
+    return _con_sesion("revisor@demo.local", "demo-revisor-2026")
+
+
 @pytest.fixture()
 def anonimo():
     return TestClient(app)

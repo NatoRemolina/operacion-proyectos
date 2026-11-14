@@ -37,7 +37,7 @@ def test_ejemplo_ilegible_va_a_revision(cliente, ejemplos):
     assert _gasto(r.json()["gastos"][0])["estado"] == "revision"
 
 
-def test_duplicado_va_a_revision_y_se_aprueba_con_excepcion(cliente, ejemplos):
+def test_duplicado_va_a_revision_y_se_aprueba_con_excepcion(cliente, revisor, ejemplos):
     foto = (ejemplos / "recibo_diner.png").read_bytes()
     _subir(cliente, "a.png", foto, "image/png")
     gid = _subir(cliente, "b.png", foto, "image/png").json()["gastos"][0]
@@ -45,11 +45,12 @@ def test_duplicado_va_a_revision_y_se_aprueba_con_excepcion(cliente, ejemplos):
     assert g["estado"] == "revision" and g["origen_dato"] == "reutilizado"   # no se paga otra lectura
     campos = dict(proyecto_id=1, viajero_id=1, comercio=g["comercio"], fecha=g["fecha"], categoria=g["categoria"],
                   total=str(g["total"]), moneda=g["moneda"])
-    cliente.post(f"/gastos/{gid}", data={**campos, "accion": "aprobar"})
+    # Lo subió administración: lo revisa otra persona de administración
+    revisor.post(f"/gastos/{gid}", data={**campos, "accion": "aprobar"})
     assert _gasto(gid)["estado"] == "revision"                               # las reglas siguen bloqueando
-    cliente.post(f"/gastos/{gid}", data={**campos, "accion": "excepcion", "motivo_excepcion": "corto"})
+    revisor.post(f"/gastos/{gid}", data={**campos, "accion": "excepcion", "motivo_excepcion": "corto"})
     assert _gasto(gid)["estado"] == "revision"                               # sin motivo real no pasa
-    cliente.post(f"/gastos/{gid}", data={**campos, "accion": "excepcion", "motivo_excepcion": "Dos comidas del mismo día"})
+    revisor.post(f"/gastos/{gid}", data={**campos, "accion": "excepcion", "motivo_excepcion": "Dos comidas del mismo día"})
     assert _gasto(gid)["estado"] == "aprobado"
 
 

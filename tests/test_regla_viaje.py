@@ -61,7 +61,7 @@ def test_solo_administracion_mueve_el_estado(cliente, piloto, nuevo_viaje):
                      "presupuesto aprobado"]
 
 
-def test_cada_gasto_responde_al_estado_de_su_viaje(cliente, ejemplos, nuevo_viaje):
+def test_cada_gasto_responde_al_estado_de_su_viaje(cliente, revisor, ejemplos, nuevo_viaje):
     v = nuevo_viaje(aprobar=False)
     g = _subir(cliente, ejemplos, "factura_alquiler_carro.pdf", viaje_id=v["id"])   # soporte que no usa ninguna otra prueba
     assert g["estado"] == "revision" and "viaje_no_aprobado" in _motivos(g) and g["viaje_id"] == v["id"]
@@ -70,12 +70,12 @@ def test_cada_gasto_responde_al_estado_de_su_viaje(cliente, ejemplos, nuevo_viaj
     cliente.post(f"/admin/viajes/{v['id']}", data={"accion": "aprobar"})
     db.actualizar("viajes", v["id"], presupuesto_usd=1)                      # mucho menos que la factura
     campos = dict(comercio=g["comercio"], fecha=g["fecha"], categoria=g["categoria"], total=str(g["total"]), moneda=g["moneda"])
-    cliente.post(f"/gastos/{g['id']}", data={**campos, "accion": "aprobar"})
+    revisor.post(f"/gastos/{g['id']}", data={**campos, "accion": "aprobar"})   # lo subió administración: revisa otra persona
     g = db.uno("select * from gastos where id=:i", i=g["id"])
     assert g["estado"] == "revision" and "presupuesto_superado" in _motivos(g)
 
     db.actualizar("viajes", v["id"], presupuesto_usd=50000)
-    cliente.post(f"/gastos/{g['id']}", data={**campos, "accion": "aprobar"})
+    revisor.post(f"/gastos/{g['id']}", data={**campos, "accion": "aprobar"})
     assert db.uno("select estado from gastos where id=:i", i=g["id"])["estado"] == "aprobado"
     assert viajes.resumen(v["id"])["gastado"] == g["total_usd"] > 0
 

@@ -310,21 +310,23 @@ NO_AUTORREVISAR = "Nadie revisa sus propios gastos: debe hacerlo otra persona de
 
 
 def gasto_propio_de(gasto: dict | None, u: dict | None) -> bool:
-    """El gasto es de la persona: se carga a su perfil de viajero, a un viaje suyo, o lo subió sin cargarlo a nadie más.
+    """El gasto es de la persona para la revisión: lo subió ella, se carga a su perfil de viajero o a un viaje suyo.
 
-    Un recibo que administración sube a nombre de otra persona es de esa persona, no de quien lo subió.
+    Quien sube un recibo nunca lo revisa (cuatro ojos), aunque sea de administración y lo cargue a nombre de otra
+    persona o lo lea del buzón: lo revisa otra persona de administración.
     """
     if not gasto or not u:
         return False
-    if u.get("viajero_id") and gasto.get("viajero_id") == u["viajero_id"]:
+    if gasto.get("usuario_id") == u["id"]:
         return True
-    if not gasto.get("viajero_id") and gasto.get("usuario_id") == u["id"]:
+    if u.get("viajero_id") and gasto.get("viajero_id") == u["viajero_id"]:
         return True
     return es_propio_de(uno(gasto.get("viaje_id")), u)
 
 
 def revision_permitida(gid: int, antes: dict, despues: dict, quien: dict, accion: str) -> str | None:
-    """Nadie revisa sus propios gastos, ni los que la revisión le asignaría a sí mismo. Devuelve el aviso si se impide."""
+    """Nadie revisa sus propios gastos (los que subió, aunque sean de otra persona), ni los que la revisión le
+    asignaría a sí mismo. Devuelve el aviso si se impide."""
     if gasto_propio_de(antes, quien) or gasto_propio_de(despues, quien):
         impedir_autoaprobacion("gasto", gid, quien, f"{accion} su propio gasto #{gid} en la revisión")
         return NO_AUTORREVISAR
