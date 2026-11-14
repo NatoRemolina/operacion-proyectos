@@ -84,7 +84,7 @@ ORIGEN_SECRETO = _txt("ORIGEN_SECRETO")
 ORIGENES_WEB = [o.strip().rstrip("/") for o in _txt("ORIGENES_WEB").split(",") if o.strip()]
 
 # «redirige»: las pantallas de la plataforma anterior llevan a su equivalente en la web (la primera de ORIGENES_WEB).
-# Vacío: siguen disponibles, como en local y en las pruebas.
+# Vacío: siguen disponibles, como en local y en las pruebas. En la nube vale siempre «redirige» (más abajo).
 INTERFAZ_ANTIGUA = _txt("INTERFAZ_ANTIGUA").lower()
 
 # Recolector diario de precios de las rutas frecuentes (datos/recolectar.py --frecuentes): gasta búsquedas pagas.
@@ -103,6 +103,8 @@ ES_SQLITE = not DATABASE_URL or DATABASE_URL.startswith("sqlite")
 # Conectar un PostgreSQL existente (por ejemplo, la base publicada desde .env) no autoriza a
 # migrarlo ni sembrarlo al arrancar: hace falta PREPARAR_BASE_LOCAL=1, como en docker-compose.yml.
 PREPARAR_BASE_LOCAL = LOCAL and (ES_SQLITE or _txt("PREPARAR_BASE_LOCAL") == "1")
+if not LOCAL:
+    INTERFAZ_ANTIGUA = "redirige"   # en la nube las pantallas anteriores siempre llevan a la web (app/servicios/interfaz.py)
 if not LOCAL and not ORIGEN_SECRETO:
     # No impide arrancar (sin ella CloudFront no podría entrar), pero queda como error de configuración y avisa la alarma
     PROBLEMAS.append("ORIGEN_SECRETO vacía: la función acepta peticiones directas a su dirección, sin pasar por CloudFront.")

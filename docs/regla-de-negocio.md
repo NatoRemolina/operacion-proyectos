@@ -75,7 +75,7 @@ El **permiso** (`usuarios.rol`, restricción `ck_usuarios_rol`) decide qué se p
 |---|---|---|
 | Colaborador | Lo suyo: lo que creó o donde es quien viaja (`acceso.alcance`) | Cotizar y decidir sus viajes, cargar y justificar sus gastos, descargar el Excel contable de lo suyo, preguntar al asistente por lo suyo |
 | Gestor de proyecto | Lo suyo y todo lo de los proyectos que gestiona (`proyecto_miembros`) | Lo mismo que el colaborador y, **en los proyectos que gestiona, cotizar y decidir por otras personas** (`cotizacion.puede_decidir`, `cotizacion.para_otros_en`). Descarga el Excel contable de sus proyectos y pregunta al asistente por ellos. No aprueba viajes ni revisa gastos |
-| Administración | Todo | Además: aprobar, rechazar, reabrir y cerrar viajes; revisar gastos; cargar recibos a nombre de otra persona; administrar cuentas, cargos, proyectos y reglas; indicadores, monitoreo y la pantalla completa del asistente |
+| Administración | Todo | Además: aprobar, rechazar, reabrir y cerrar viajes; revisar gastos; cargar recibos a nombre de otra persona; administrar cuentas, cargos, proyectos y reglas; indicadores, monitoreo, la analítica de precios y el asistente con todo el alcance |
 
 Detalles que el código hace cumplir:
 

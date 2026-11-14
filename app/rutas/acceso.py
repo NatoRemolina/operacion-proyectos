@@ -6,7 +6,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import config, db
-from ..servicios import acceso, eventos, intentos, telegram, usuarios, viajes
+from ..servicios import acceso, eventos, intentos, interfaz, telegram, usuarios, viajes
 from ..web import (
     _ctx,
     _indicadores,
@@ -33,9 +33,12 @@ def entrar(request: Request, error: str = "", siguiente: str = ""):
 
 
 def _destino_seguro(siguiente: str) -> str:
-    """Solo rutas de esta misma plataforma: nada de «//otro-sitio» ni direcciones completas."""
+    """Solo rutas de esta misma plataforma: nada de «//otro-sitio» ni direcciones completas. Sin destino, el inicio
+    (con las pantallas anteriores retiradas, la analítica, que sigue aquí)."""
     s = (siguiente or "").strip()
-    return s if s.startswith("/") and not s.startswith("//") and not s.startswith("/entrar") and "\\" not in s else "/"
+    if s.startswith("/") and not s.startswith("//") and not s.startswith("/entrar") and "\\" not in s and s != "/":
+        return s
+    return interfaz.inicio()
 
 
 @router.post("/entrar")
@@ -49,7 +52,7 @@ def entrar_enviar(request: Request, correo: str = Form(""), clave: str = Form(""
     if not usuario:
         intentos.anotar_fallo(request.state.direccion, correo)
         eventos.registrar("acceso", None, "ingreso fallido", correo.strip().lower()[:80], "formulario")
-        return RedirectResponse(f"/entrar?error={quote(mensaje)}" + (f"&siguiente={quote(destino)}" if destino != "/" else ""), status_code=303)
+        return RedirectResponse(f"/entrar?error={quote(mensaje)}" + (f"&siguiente={quote(destino)}" if destino != interfaz.inicio() else ""), status_code=303)
     intentos.anotar_exito(correo)
     acceso.fijar(usuario)
     eventos.registrar("acceso", usuario["id"], "ingreso", usuario["correo"], "formulario")

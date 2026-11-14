@@ -44,7 +44,7 @@ if config.PREPARAR_BASE_LOCAL:
 async def control_de_acceso(request: Request, call_next):
     """Identifica a quien llama y aplica el nivel de la ruta antes de ejecutar nada."""
     ruta = request.url.path
-    if interfaz.activa() and (nueva := interfaz.destino(ruta)):
+    if interfaz.activa() and (nueva := interfaz.destino(ruta, request.method)):
         # Las pantallas anteriores se retiraron: cada una lleva a su equivalente en la web
         return RedirectResponse(nueva, status_code=303 if request.method not in ("GET", "HEAD") else 302)
     necesario = acceso.nivel(ruta)
