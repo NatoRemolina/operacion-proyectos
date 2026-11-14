@@ -12,20 +12,24 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, CheckConstraint, Column, Float, ForeignKey, Integer, MetaData, Table, Text, create_engine, event, inspect, text
+from sqlalchemy.engine import URL, make_url
 
 from . import config
 
 
-def _url() -> str:
-    url = config.DATABASE_URL
-    if not url:
+def _url(cadena: str, local: bool) -> str | URL:
+    """La conexión para SQLAlchemy. Fuera del equipo, PostgreSQL va cifrado: `sslmode=require` si la cadena no trae su
+    propio `sslmode` (que se respeta, por ejemplo `verify-full`). En local no se fuerza: el contenedor no usa SSL."""
+    if not cadena:
         (config.RAIZ / "datos").mkdir(exist_ok=True)
         return f"sqlite:///{config.RAIZ / 'datos' / 'local.db'}"
-    if url.startswith("sqlite"):
-        return url
-    for prefijo in ("postgresql://", "postgres://"):
-        if url.startswith(prefijo):
-            return "postgresql+psycopg://" + url[len(prefijo):]
+    if cadena.startswith("sqlite"):
+        return cadena
+    url = make_url(cadena)
+    if url.drivername in ("postgresql", "postgres"):
+        url = url.set(drivername="postgresql+psycopg")
+    if url.get_backend_name() == "postgresql" and not local and "sslmode" not in url.query:
+        url = url.update_query_dict({"sslmode": "require"})
     return url
 
 
@@ -39,7 +43,7 @@ if not config.ES_SQLITE:
         # En la nube cada instancia mantiene pocas conexiones y las comprueba al reanudar tras una pausa
         _args.update(pool_size=2, max_overflow=2, pool_recycle=120, pool_pre_ping=True)
 # Un error de la base no lleva los valores enviados (por ejemplo, la huella de una contraseña) a los registros
-motor = create_engine(_url(), hide_parameters=True, **_args)
+motor = create_engine(_url(config.DATABASE_URL, config.LOCAL), hide_parameters=True, **_args)
 
 if config.ES_SQLITE:
     @event.listens_for(motor, "connect")
@@ -227,21 +231,30 @@ def ahora() -> str:
 
 
 def crear_tablas():
-    """Crea las tablas que falten y añade las columnas nuevas a las que ya existen."""
+    """Crea las tablas que falten y añade las columnas nuevas a las que ya existen. Dentro de `transaccion()` lo hace en
+    ella (así la migración de PostgreSQL crea y altera en una sola transacción); fuera, en una propia."""
     import importlib
     import pkgutil
 
     from . import servicios
     for m in pkgutil.iter_modules(servicios.__path__):   # cada servicio puede declarar sus propias tablas
         importlib.import_module(f"{servicios.__name__}.{m.name}")
-    meta.create_all(motor)
-    existentes = inspect(motor)
-    with motor.begin() as c:
+    with _conexion(escritura=True) as c:
+        meta.create_all(c)
+        existentes = inspect(c)
         for t in meta.sorted_tables:
             presentes = {col["name"] for col in existentes.get_columns(t.name)}
             for col in t.columns:
                 if col.name not in presentes:
                     c.execute(text(f"alter table {t.name} add column {col.name} {col.type.compile(motor.dialect)}"))
+
+
+@contextmanager
+def catalogo():
+    """El inspector de SQLAlchemy sobre la transacción en curso (o una conexión propia): dentro de la migración ve las
+    tablas y columnas que esa misma transacción acaba de crear."""
+    with _conexion() as c:
+        yield inspect(c)
 
 
 # ---------- transacción de verdad ----------

@@ -1,11 +1,11 @@
 """Lleva una base existente al modelo actual. Se puede ejecutar las veces que haga falta: cada paso comprueba antes.
 
 `db.crear_tablas()` crea tablas y añade columnas; aquí va lo demás: datos que cambian de forma,
-claves foráneas, restricciones, índices y permisos.
+claves foráneas, restricciones, índices y permisos. En PostgreSQL todo va en una sola transacción (`migrar`).
 """
 import re
 
-from sqlalchemy import CheckConstraint, inspect
+from sqlalchemy import CheckConstraint
 
 from app import config, db
 
@@ -162,12 +162,12 @@ def _enlazar_gastos() -> int:
 # aquí se rellenan con su valor por omisión y se les pone la restricción, para que la base diga lo mismo que el modelo.
 def columnas_desalineadas() -> list[str]:
     """Columnas que el modelo declara obligatorias y la base todavía admite vacías."""
-    inspector = inspect(db.motor)
     faltan = []
-    for t in db.meta.sorted_tables:
-        en_base = {c["name"]: c for c in inspector.get_columns(t.name)}
-        faltan += [f"{t.name}.{c.name}" for c in t.columns
-                   if not c.nullable and not c.primary_key and c.name in en_base and en_base[c.name]["nullable"]]
+    with db.catalogo() as inspector:
+        for t in db.meta.sorted_tables:
+            en_base = {c["name"]: c for c in inspector.get_columns(t.name)}
+            faltan += [f"{t.name}.{c.name}" for c in t.columns
+                       if not c.nullable and not c.primary_key and c.name in en_base and en_base[c.name]["nullable"]]
     return faltan
 
 
@@ -275,9 +275,25 @@ def _restricciones_postgres() -> dict:
     return hechos
 
 
+def roles_publicos() -> list[str]:
+    """Los roles públicos del proveedor que existen en esta base (en Supabase, `anon` y `authenticated`)."""
+    return [r["rolname"] for r in db.todos("select rolname from pg_roles where rolname in ('anon','authenticated') order by 1")]
+
+
+def _privilegios_por_omision_postgres():
+    """Supabase concede por omisión a los roles públicos todo lo que se cree en `public`. Se retira para lo que cree el
+    rol de la aplicación desde ahora (tablas, vistas, secuencias y funciones), y de las secuencias que ya existen."""
+    publicos = ", ".join(roles_publicos())
+    if not publicos:
+        return
+    for clase in ("tables", "sequences", "functions"):
+        db.ejecutar(f"alter default privileges in schema public revoke all on {clase} from {publicos}")
+    db.ejecutar(f"revoke all on all sequences in schema public from {publicos}")
+
+
 def _permisos_postgres():
     """La aplicación entra con su propio rol. Los roles públicos del proveedor no deben poder tocar nada."""
-    publicos = [r["rolname"] for r in db.todos("select rolname from pg_roles where rolname in ('anon','authenticated')")]
+    publicos = roles_publicos()
     for t in db.meta.sorted_tables:
         db.ejecutar(f"alter table {t.name} enable row level security")
         for rol in publicos:
@@ -287,24 +303,23 @@ def _permisos_postgres():
 def permisos_de_vistas(vistas):
     if config.ES_SQLITE:
         return
-    for rol in [r["rolname"] for r in db.todos("select rolname from pg_roles where rolname in ('anon','authenticated')")]:
+    for rol in roles_publicos():
         for v in vistas:
             db.ejecutar(f"revoke all on {v} from {rol}")
 
 
 def _tablas_modelo() -> dict:
-    """Tablas del conjunto de datos para modelos: se crean si faltan, con sus índices y, en PostgreSQL, con RLS y sin
-    permisos para los roles públicos; y la regla del tope diario del recolector. Repetirlo no cambia nada."""
+    """Tablas del conjunto de datos para modelos (las crea `migrar` con las demás): sus índices y, en PostgreSQL, RLS y
+    ningún permiso para los roles públicos; y la regla del tope diario del recolector. Repetirlo no cambia nada."""
     from app.servicios import ofertas
     from datos import recolectar
-    db.crear_tablas()
     recolectar.asegurar_regla()   # el tope diario del recolector aparece en Reglas desde el inicio
     for nombre in ofertas.INDICES_RETIRADOS:
         db.ejecutar(f"drop index if exists {nombre}")
     for nombre, columnas, unico in ofertas.INDICES:
         db.ejecutar(f"create {'unique ' if unico else ''}index if not exists {nombre} on ofertas_tarifa ({columnas})")
     if not config.ES_SQLITE:
-        publicos = [r["rolname"] for r in db.todos("select rolname from pg_roles where rolname in ('anon','authenticated')")]
+        publicos = roles_publicos()
         for tabla in ofertas.TABLAS:
             db.ejecutar(f"alter table {tabla} enable row level security")
             for rol in publicos:
@@ -312,8 +327,9 @@ def _tablas_modelo() -> dict:
     return {"tablas_modelo": list(ofertas.TABLAS)}
 
 
-def migrar() -> dict:
+def _pasos() -> dict:
     from app.servicios import analizador, capturas, compras, cotizacion, envios, revision, topes  # noqa: F401  (registran sus tablas y columnas)
+    db.crear_tablas()
     hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas(),
               "reglas_vendedor": cotizacion.asegurar_reglas_vendedor(), "reglas_capturas": capturas.asegurar_reglas()}
     hechos.update(_tablas_modelo())
@@ -323,3 +339,17 @@ def migrar() -> dict:
         hechos.update(_restricciones_postgres())
         _permisos_postgres()
     return hechos
+
+
+def migrar() -> dict:
+    """En PostgreSQL, una sola transacción: las tablas, el DDL y los cambios de datos se confirman juntos o, si algo
+    falla, no queda nada y se repite desde el principio. El cerrojo pone en fila dos migraciones a la vez.
+
+    SQLite rehace tablas con su propio procedimiento (otra conexión y `executescript`), que no cabe dentro de una
+    transacción abierta: ahí son pasos que comprueban antes de actuar, y repetir la migración retoma lo que falte."""
+    if config.ES_SQLITE:
+        return _pasos()
+    with db.transaccion():
+        db.cerrojo("migración")
+        _privilegios_por_omision_postgres()   # antes de crear nada: lo que nazca aquí ya no da permisos a los roles públicos
+        return _pasos()

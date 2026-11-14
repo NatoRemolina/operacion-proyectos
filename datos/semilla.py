@@ -73,7 +73,6 @@ def sembrar():
     sembrar_cuentas()
     hechos = migracion.migrar()
     crear_vistas()
-    migracion.permisos_de_vistas(VISTAS)
     return hechos
 
 
@@ -234,9 +233,17 @@ def asegurar_fidelizacion_hotel():
 
 
 def crear_vistas():
-    for nombre, consulta in VISTAS.items():
-        db.ejecutar(f"drop view if exists {nombre}")
-        db.ejecutar(f"create view {nombre} as {consulta}")
+    """Recrea las vistas y les retira los permisos de los roles públicos en una sola transacción: ninguna queda a medio
+    crear ni un instante a la vista de esos roles. En PostgreSQL corren con los permisos de quien consulta
+    (`security_invoker`), así que también respetan la seguridad por filas de las tablas que leen."""
+    from app import config
+    from datos import migracion
+    opciones = "" if config.ES_SQLITE else " with (security_invoker = on)"
+    with db.transaccion():
+        for nombre, consulta in VISTAS.items():
+            db.ejecutar(f"drop view if exists {nombre}")
+            db.ejecutar(f"create view {nombre}{opciones} as {consulta}")
+        migracion.permisos_de_vistas(VISTAS)
 
 
 # Cuentas de demostración para ejecutar en local sin configurar nada. Nunca se crean en una base compartida.
