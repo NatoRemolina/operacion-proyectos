@@ -372,3 +372,14 @@ def test_continuar_reconoce_la_marca_airline_y_no_confunde_la_opcion_de_dos_tiqu
     assert not navegador._es_continuar("Continue to book with COPA, Avianca airline for 657 US dollars. The 2 tickets…",
                                        "COPA", "Avianca airline")
     assert navegador._es_continuar("Continue to book with American, Main Cabin for 1014 US dollars", "American", "Main Cabin")
+
+
+# ---------- prueba 13: la página de error de Google («Oops, something went wrong») ----------
+def test_la_pagina_de_error_de_google_falla_enseguida_con_su_motivo():
+    pedidos = []
+    r = navegador.analizar(URL, servir=_servir({"https://www.google.com/travel/flights?": "sin_resultados.html"}, pedidos))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+    assert r["duracion_ms"] < 15_000                                 # no espera a que se agote el plazo
+    assert "Oops, something went wrong" in r["extracto"]
+    r = navegador.ir_a(URL, "COPA", "ida", servir=_servir({"https://www.google.com/travel/flights?": "sin_resultados.html"}, []))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)

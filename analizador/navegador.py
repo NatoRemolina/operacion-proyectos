@@ -28,8 +28,12 @@ EN_LAMBDA = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 # En Lambda no hay /dev/shm grande ni varios procesos: Chromium corre en uno solo
 ARGUMENTOS = ["--disable-gpu", "--disable-dev-shm-usage", "--single-process", "--no-zygote"] if EN_LAMBDA else []
 # Una lista cuenta como cargada solo con precios a la vista: el título «Returning flights» sale antes que los resultados
+# La página de error de Google («No results returned. Oops, something went wrong. Reload»: prueba 13) también termina
+# la espera: no hay precios que esperar
+ERROR_GOOGLE = re.compile(r"Oops, something went wrong|No results returned")
+SIN_RESULTADOS = "Google no devolvió resultados; vuelve a intentarlo en unos minutos"
 LISTO = re.compile(r"Booking options[\s\S]*\$\d|(Returning|Departing) flights[\s\S]*\$\d|unusual traffic|not a robot|"
-                   r"Before you continue")
+                   r"Before you continue|Oops, something went wrong|No results returned")
 PARAMETROS_FIJOS = {"hl": "en", "gl": "us", "curr": "USD"}   # lo que sabe leer el lector: inglés, EE. UU. y dólares
 RESERVA = re.compile(r"Booking options[\s\S]*\$\d")
 
@@ -215,6 +219,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
             if texto is None:
                 return _resultado("fallido", inicio, "la página tardó demasiado en mostrar los precios", url_final=pagina.url,
                                   **_evidencia(pagina))
+            if ERROR_GOOGLE.search(texto):
+                return _resultado("fallido", inicio, SIN_RESULTADOS, url_final=pagina.url, **_evidencia(pagina))
             motivo = lector.bloqueo(pagina.url, texto)
             if motivo:   # una verificación no se fotografía: no se guarda nada de ella
                 return _resultado("fallido", inicio, motivo, url_final=pagina.url)
