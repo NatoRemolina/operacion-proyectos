@@ -447,6 +447,22 @@ describe("Comparación de una cotización", () => {
     expect(within(tarjeta).getByRole("button", { name: "Ocultar desglose" })).toBeInTheDocument();
   });
 
+  it("con billetes separados hay un botón por tiquete, cada uno a su aerolínea (prueba 12)", async () => {
+    const usuario = userEvent.setup();
+    const tiquete = (vendedor: string, nombre: string, precio: number) => ({ vendedor, nombre, precio, equipaje: [], cambios: [],
+      reembolso: [], otras: [], ir_url: `/api/v1/ir/${vendedor}/${nombre}` });
+    const datos = { ...ANALISIS_EJEMPLO.datos!, tarifas: [tiquete("COPA", "ida", 334), tiquete("Avianca", "regreso", 323)],
+      vendedores: [{ vendedor: "COPA", aerolinea: true, precio_desde: 334 }, { vendedor: "Avianca", aerolinea: true, precio_desde: 323 }] };
+    const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>()
+      .mockResolvedValue({ ...ANALISIS_EJEMPLO, datos, aviso_precio: null, leido: "2026-11-13T22:00:00Z" });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo }) });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+    const aerolinea = within(tarjeta).getByRole("region", { name: "Ir a la aerolínea" });
+    expect(await within(aerolinea).findByRole("link", { name: /^Ir a COPA · ida/ })).toHaveAttribute("href", "/api/v1/ir/COPA/ida");
+    expect(within(aerolinea).getByRole("link", { name: /^Ir a Avianca · regreso/ })).toHaveAttribute("href", "/api/v1/ir/Avianca/regreso");
+  });
+
   it("si la lectura falla o no está disponible, el desglose lo dice y muestra solo lo del buscador", async () => {
     const usuario = userEvent.setup();
     const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>()
