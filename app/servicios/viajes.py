@@ -5,11 +5,12 @@ persona -> cotización -> decisión -> VIAJE (presupuesto, estado) -> gastos y e
 """
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
-from . import acceso, costo, eventos, tiempo
+from . import acceso, costo, dinero, eventos, tiempo
 
 ESTADOS = {"pendiente_aprobacion": "Pendiente de aprobación", "aprobado": "Aprobado", "rechazado": "Rechazado", "cerrado": "Cerrado"}
 APROBADOS = ("aprobado", "aprobado_auto")
@@ -230,20 +231,20 @@ LO_PAGADO = " · lo pagado al comprar el tiquete"
 def _presupuesto_con_lo_pagado(v: dict, compra: dict, quien: dict) -> str:
     """Con el tiquete ya comprado, el precio no se reconfirma (no se paga otra búsqueda): la línea del tiquete pasa a lo
     pagado y el presupuesto se recalcula. Devuelve el texto para el mensaje."""
-    pagado = round(float(compra["precio_pagado"]), 2)
+    pagado = dinero.decimal(compra["precio_pagado"])   # se calcula con Decimal; a coma flotante solo al guardar
     lineas, linea = _lineas_y_tiquete(v)
     texto = f" El tiquete ya está comprado: el presupuesto usa lo pagado ({pagado:.2f} USD) y no se consultó el buscador."
     if not linea:
         return texto
     antes = linea["valor"]
-    linea["valor"] = pagado
+    linea["valor"] = float(pagado)
     linea["concepto"] = linea["concepto"].split(LO_PAGADO)[0] + LO_PAGADO
-    total = round(sum(l["valor"] for l in lineas), 2)
-    db.actualizar("viajes", v["id"], presupuesto_usd=total, presupuesto_detalle=lineas)
+    total = dinero.decimal(sum((Decimal(str(l["valor"])) for l in lineas), Decimal(0)))
+    db.actualizar("viajes", v["id"], presupuesto_usd=float(total), presupuesto_detalle=lineas)
     eventos.registrar("viaje", v["id"], "presupuesto con lo pagado del tiquete",
                       f"{v['codigo']} · tiquete {antes:.2f} → {pagado:.2f} USD · presupuesto {v['presupuesto_usd']:.2f} → {total:.2f} USD",
                       quien["nombre"])
-    v["presupuesto_usd"] = total
+    v["presupuesto_usd"] = float(total)
     return texto
 
 

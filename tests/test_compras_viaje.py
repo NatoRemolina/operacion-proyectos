@@ -102,6 +102,19 @@ def test_volver_a_aprobar_con_el_tiquete_comprado_no_consulta_el_buscador_y_usa_
     assert compras.de_viaje(v["id"])["aviso"] is None   # aprobado otra vez, ya no hay nada que mirar
 
 
+def test_el_presupuesto_con_lo_pagado_se_suma_con_decimal(piloto):
+    """Con coma flotante, 300 + 100,005 = 400,00499…, que redondeaba a 400,00; a centavos y medio hacia arriba es 400,01."""
+    v, _ = _viaje_con_compra(piloto, "comprada")
+    lineas = [{"grupo": "vuelo", "concepto": "Precio del vuelo", "valor": 279.0},
+              {"grupo": "hotel", "concepto": "Hotel", "valor": 100.005}]
+    db.actualizar("viajes", v["id"], presupuesto_detalle=lineas, presupuesto_usd=379.01)
+    texto = viajes._presupuesto_con_lo_pagado(viajes.uno(v["id"]), {"precio_pagado": 300.0}, _admin())
+    assert "300.00 USD" in texto
+    guardado = viajes.uno(v["id"])
+    assert guardado["presupuesto_usd"] == 400.01
+    assert db.de_json(guardado["presupuesto_detalle"], [])[0]["valor"] == 300.0
+
+
 def test_aprobar_con_la_compra_en_se_comprara_lo_avisa(piloto):
     v, c = _viaje_con_compra(piloto, "se_comprara")
     db.actualizar("viajes", v["id"], estado="pendiente_aprobacion")   # dato de antes, con la compra sin devolver a análisis
