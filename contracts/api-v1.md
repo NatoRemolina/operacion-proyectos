@@ -197,6 +197,7 @@ El Excel contable: un `.xlsx` (`application/vnd.openxmlformats-officedocument.sp
 - Misma clave y mismo archivo (y mismo `viaje_id`): 200 con el mismo gasto, aunque siga `procesando`; no se vuelve a leer. Misma clave con otro archivo u otro `viaje_id`: 409 `IDEMPOTENCY_CONFLICT`. Si el primer envío aún no creó el gasto: 409 `REQUEST_IN_PROGRESS`. La clave es de cada persona: la misma clave de dos personas son dos envíos.
 - Si la lectura se interrumpe, el gasto no queda `procesando`: pasa a `revision` con el motivo `lectura_fallida`, y el reintento con la misma clave lo devuelve.
 - Cada lectura con el modelo se reserva antes de llamarlo, del tope de la persona (`lecturas_recibo_persona_dia`) y del total de la empresa (`lecturas_recibo_dia`), igual por la web, la API, el buzón y Telegram. Pasado el tope no se llama al modelo: 201 con el gasto en `revision`, motivo `lectura_fallida`, el aviso «Lectura pendiente por tope» y `origen_dato` «pendiente por tope». El soporte queda guardado.
+- Si el recibo es del tiquete ya comprado del viaje (de vuelo, con el localizador de la compra o con su mismo importe), se enlaza como soporte del gasto de la compra y la respuesta trae ese gasto: no se crea otro.
 - Un PDF de más de 15 páginas no se lee ni se guarda: 422 con el número de páginas en `fields.archivo`.
 - Errores: 413, 415, 422.
 
@@ -795,7 +796,7 @@ interface CompraDetalle extends Compra {
 Cuerpo `{"accion": "en_analisis" | "se_comprara" | "no_se_comprara" | "cancelada", "version": 2, "motivo": ""}` con `X-CSRF-Token`. «Se va a comprar» exige el viaje **aprobado**; «No se va a comprar» y «Cancelada» exigen motivo (5 caracteres o más; 422 con `fields.motivo`). Cada decisión avisa al viajero en la bitácora de su viaje (`aviso al viajero`). 200 `Compra` con la versión nueva.
 
 ### `POST /compras/{id}/registro`
-Cuerpo `{"version": 3, "localizador": "QX7Z2P", "precio_pagado": "461.30", "vendedor": "American"}` con `X-CSRF-Token`, solo desde `se_comprara`. Guarda localizador (5 a 8 letras o números), precio pagado y vendedor, calcula `anticipacion_dias` y responde 200 `Compra` en `comprada` con `frente_presupuesto`.
+Cuerpo `{"version": 3, "localizador": "QX7Z2P", "precio_pagado": "461.30", "vendedor": "American"}` con `X-CSRF-Token`, solo desde `se_comprara`. Guarda localizador (5 a 8 letras o números), precio pagado y vendedor, calcula `anticipacion_dias` y responde 200 `Compra` en `comprada` con `frente_presupuesto`. Crea además el gasto del tiquete (categoría `vuelo`, `aprobado`, `origen_dato` «compra registrada»): lo comprado suma en lo gastado del viaje y entra al Excel contable.
 
 ### `POST /compras/{id}/analisis`
 Con `X-CSRF-Token`. Pide (o reutiliza) la lectura de la página del vuelo de la compra: 200 `AnalisisVuelo`.

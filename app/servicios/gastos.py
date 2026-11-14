@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from .. import config, db
-from . import almacen, avisos, dinero, envios, eventos, extraccion, llm, revision, validacion
+from . import almacen, avisos, compras, dinero, envios, eventos, extraccion, llm, revision, validacion
 
 
 class SoporteRechazado(ValueError):
@@ -174,7 +174,7 @@ def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, 
         if op:
             envios.enlazar(op, gid)   # desde aquí, un reintento con la misma clave recibe este gasto
     try:
-        _leer_y_decidir(gid, contenido, mime, nombre, viaje, proyecto_id, rapido, huella, op, usuario)
+        gid = _leer_y_decidir(gid, contenido, mime, nombre, viaje, proyecto_id, rapido, huella, op, usuario)
     except envios.EnvioEnCurso:
         raise   # otro proceso recuperó el envío y ya dejó el gasto en revisión
     except Exception:
@@ -186,7 +186,9 @@ def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, 
 
 
 def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: dict | None, proyecto_id: int | None,
-                    rapido: bool, huella: str, op: dict | None, usuario: dict | None = None):
+                    rapido: bool, huella: str, op: dict | None, usuario: dict | None = None) -> int:
+    """Lee el soporte y decide el gasto. Devuelve el gasto que quedó: el mismo, o el del tiquete comprado si el recibo es
+    de ese tiquete (entonces el gasto provisional se borra y el soporte queda en el de la compra)."""
     # Un archivo idéntico ya leído no se vuelve a pagar: se reutiliza su lectura
     previo = db.uno("""select g.extraido from gastos g join documentos d on d.id=g.documento_id
                        where d.huella=:h and g.id<>:i and g.extraido is not null order by g.id limit 1""", h=huella, i=gid)
@@ -214,7 +216,9 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         viaje = _vigente(conexion, viaje)
         actual = db.uno("select estado from gastos where id=:i" + ("" if config.ES_SQLITE else " for update"), i=gid)
         if not actual or actual["estado"] != "procesando":
-            return   # mientras se leía, alguien lo recuperó o lo decidió: la lectura tardía no lo pisa
+            return gid   # mientras se leía, alguien lo recuperó o lo decidió: la lectura tardía no lo pisa
+        if (del_tiquete := compras.tiquete_por_enlazar(viaje, x)):
+            return _enlazar_al_tiquete(gid, del_tiquete, x, op)
         proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
         r = validacion.revisar(x, proyecto, gid, viaje)
         if x.get("error"):
@@ -235,6 +239,25 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
                           " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
         if op:
             envios.terminar(op, "completado")
+    return gid
+
+
+def _enlazar_al_tiquete(gid: int, del_tiquete: int, x: dict, op: dict | None) -> int:
+    """Dentro de la decisión: el recibo es del tiquete ya comprado. Su soporte y su lectura pasan al gasto de la compra y
+    el gasto provisional se borra, así el tiquete no se cuenta dos veces. Un reintento con la misma clave recibe ese gasto."""
+    provisional = db.uno("select documento_id from gastos where id=:i", i=gid)
+    original = {c: x.get(c) for c in extraccion.CAMPOS} | extraccion.datos_de_factura(x) \
+        | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
+    db.actualizar("gastos", del_tiquete, documento_id=provisional["documento_id"], extraido=original)
+    revision.subir_version(del_tiquete)
+    db.ejecutar("update envios_soporte set gasto_id=:t where gasto_id=:g", t=del_tiquete, g=gid)
+    db.ejecutar("delete from gastos where id=:i", i=gid)
+    eventos.registrar("gasto", del_tiquete, "recibo del tiquete enlazado",
+                      f"{x.get('comercio') or ''} · {x.get('total')} {x.get('moneda') or ''} · el gasto provisional #{gid} no se guarda",
+                      f"modelo ({x['origen_dato']})")
+    if op:
+        envios.terminar(op, "completado")
+    return del_tiquete
 
 
 IMPORTES = ("subtotal", "impuesto", "propina", "total")

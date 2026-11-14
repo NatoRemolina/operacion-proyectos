@@ -7,7 +7,9 @@ Estados: `solicitada` → `en_analisis` → `se_comprara` | `no_se_comprara` →
 - «Se va a comprar» exige el viaje aprobado; «no se va a comprar» y «cancelada» exigen motivo. Cada decisión avisa al
   viajero (bitácora del viaje).
 - Registrar la compra guarda localizador, precio pagado y vendedor, los días de anticipación y la diferencia con el
-  precio cotizado.
+  precio cotizado, y crea el gasto del tiquete (categoría vuelo, `compras.gasto_id`): lo comprado suma en lo gastado del
+  viaje y entra al Excel contable. Si después llega el recibo de ese tiquete, se enlaza a ese gasto (`tiquete_por_enlazar`)
+  y no se cuenta dos veces.
 - Cuando el viaje cambia de estado (`al_cambiar_el_viaje`, desde `viajes.cambiar_estado`): «Se va a comprar» vuelve a
   análisis si el viaje deja de estar aprobado (también al cerrarlo: desde análisis tiene salida, «no se va a comprar»);
   con el tiquete ya comprado, rechazar o reabrir el viaje deja un evento y la compra muestra un aviso. Leer una compra
@@ -24,7 +26,7 @@ from sqlalchemy import Column, Float, Integer, Text, text
 from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
-from . import eventos, viajes
+from . import eventos, tiempo, viajes
 
 compras = db._tabla(
     "compras",
@@ -273,10 +275,13 @@ def registrar_compra(cid: int, version: int, localizador: str, precio_pagado: De
             raise EstadoInvalido(f"El viaje {actual['viaje_codigo']} ya no está aprobado: la compra vuelve a análisis.")
         hoy = db.ahora()
         ida = actual["ida"] or actual["solicitud_ida"]
+        gasto_id = _gasto_del_tiquete(actual, localizador, precio_pagado, vendedor, usuario)
         db.actualizar("compras", cid, estado="comprada", localizador=localizador, precio_pagado=float(precio_pagado),
                       vendedor=vendedor, comprada=hoy, comprada_por=usuario["id"], actualizado=hoy, version=version + 1,
-                      anticipacion_dias=(date.fromisoformat(ida[:10]) - date.fromisoformat(hoy[:10])).days if ida else None)
-    eventos.registrar("compra", cid, "compra registrada", f"{localizador} · {vendedor} · {precio_pagado} USD", usuario["nombre"])
+                      gasto_id=gasto_id,
+                      anticipacion_dias=(date.fromisoformat(ida[:10]) - tiempo.hoy()).days if ida else None)
+    eventos.registrar("compra", cid, "compra registrada", f"{localizador} · {vendedor} · {precio_pagado} USD · gasto #{gasto_id}",
+                      usuario["nombre"])
     from . import capturas  # aquí: capturas usa el analizador, que usa compras
     try:   # la captura final del vuelo comprado es evidencia: si no se encola, la compra queda registrada igual
         capturas.al_comprar(cid)
@@ -284,6 +289,42 @@ def registrar_compra(cid: int, version: int, localizador: str, precio_pagado: De
         eventos.registrar("compra", cid, "evidencia de compra no encolada", f"{type(e).__name__}: {str(e)[:200]}", "sistema")
     _avisar(actual, f"comprada a {vendedor}, localizador {localizador}", usuario)
     return uno(cid)
+
+
+# ---------- el gasto del tiquete ----------
+ORIGEN_COMPRA = "compra registrada"   # `gastos.origen_dato` del gasto que nace al registrar la compra
+
+
+def _gasto_del_tiquete(compra: dict, localizador: str, precio: Decimal, vendedor: str, usuario: dict) -> int:
+    """El gasto de lo comprado, aprobado: lo registra administración (nunca sobre su propio viaje) con el precio pagado."""
+    viaje = viajes.uno(compra["viaje_id"])
+    gid = db.insertar("gastos", documento_id=None, proyecto_id=viaje["proyecto_id"], viajero_id=viaje["viajero_id"],
+                      viaje_id=viaje["id"], comercio=vendedor, fecha=tiempo.hoy().isoformat(), categoria="vuelo",
+                      total=float(precio), moneda="USD", total_usd=float(precio), canal_reserva=vendedor, confianza=1.0,
+                      estado="aprobado", alertas=[], motivos=[], origen_dato=ORIGEN_COMPRA, creado=db.ahora(),
+                      usuario_id=usuario["id"], revisado_por=usuario["id"], version=1)
+    eventos.registrar("gasto", gid, "gasto del tiquete comprado", f"compra #{compra['id']} · {localizador} · {precio} USD",
+                      usuario["nombre"])
+    return gid
+
+
+def tiquete_por_enlazar(viaje: dict | None, lectura: dict) -> int | None:
+    """El gasto del tiquete comprado del viaje al que corresponde un recibo recién leído, si todavía no tiene soporte: un
+    recibo de vuelo con el localizador de la compra, o con su mismo importe (a un 1 %, o un dólar)."""
+    if not viaje or lectura.get("categoria") != "vuelo" or lectura.get("error"):
+        return None
+    c = db.uno("""select c.gasto_id, c.localizador, c.precio_pagado from compras c join gastos g on g.id=c.gasto_id
+                  where c.viaje_id=:v and c.activa=1 and c.estado='comprada' and g.documento_id is null""", v=viaje["id"])
+    if not c:
+        return None
+    if c["localizador"] and (lectura.get("numero_factura") or "").strip().upper() == c["localizador"]:
+        return c["gasto_id"]
+    from . import costo, validacion
+    usd = validacion.a_usd(lectura.get("total"), lectura.get("moneda"), costo.catalogo())
+    pagado = Decimal(str(c["precio_pagado"]))
+    if usd is not None and abs(Decimal(str(usd)) - pagado) <= max(pagado / 100, Decimal(1)):
+        return c["gasto_id"]
+    return None
 
 
 # ---------- rastro de los enlaces ----------
