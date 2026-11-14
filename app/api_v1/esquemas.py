@@ -200,7 +200,8 @@ class ListaGastos(BaseModel):
 
 # ---------- asistente ----------
 Pantalla = Literal["resumen", "viajes", "viaje", "gastos", "gasto", "buzon", "nuevo_gasto", "cotizar", "cotizacion",
-                   "kpis", "persona", "monitoreo", "vuelos", "reglas", "usuarios", "proyectos", "proyecto", "mi_cuenta"]
+                   "kpis", "persona", "monitoreo", "vuelos", "reglas", "usuarios", "proyectos", "proyecto", "mi_cuenta",
+                   "compras", "compra"]
 
 
 class ContextoPantalla(BaseModel):
@@ -208,7 +209,7 @@ class ContextoPantalla(BaseModel):
     el servidor y solo si el registro está en su alcance."""
     model_config = ConfigDict(extra="forbid")
     pantalla: Pantalla
-    id: int | None = Field(None, ge=1, le=2**31 - 1, description="Id del gasto, viaje, cotización, persona o proyecto.")
+    id: int | None = Field(None, ge=1, le=2**31 - 1, description="Id del gasto, viaje, cotización, persona, proyecto o compra.")
 
 
 class TurnoAsistente(BaseModel):
@@ -222,8 +223,12 @@ class PreguntaAsistente(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pregunta: str = Field(min_length=1, max_length=500, description="La pregunta en lenguaje natural.")
     contexto: ContextoPantalla | None = Field(None, description="La pantalla desde la que se pregunta.")
+    anteriores: list[int] = Field(default_factory=list, max_length=3,
+                                  description="Los `id` de las respuestas anteriores de esta conversación (como mucho 3, de la "
+                                              "más vieja a la más nueva). Las preguntas y respuestas se leen del servidor.")
     historial: list[TurnoAsistente] = Field(default_factory=list, max_length=3,
-                                            description="Las últimas preguntas y respuestas (como mucho 3), para seguir la conversación.")
+                                            description="Ya no se usa: el texto de respuestas anteriores no se acepta del cliente "
+                                                        "(se manda `anteriores`). Se valida y se ignora, para no romper clientes viejos.")
 
 
 class DestinoFuente(BaseModel):
@@ -239,6 +244,8 @@ class FuenteAsistente(BaseModel):
 
 
 class RespuestaAsistente(BaseModel):
+    id: int | None = Field(None, description="El id de esta respuesta: se manda en `anteriores` para seguir la conversación. "
+                                             "Vacío con el tope del día.")
     texto: str
     modo: Literal["asesor", "modelo", "determinista", "tope"] = Field(
         description="Quién respondió: el asesor (agente con herramientas), el modelo con herramientas, las consultas "

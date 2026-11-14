@@ -846,9 +846,12 @@ def test_el_asesor_recibe_la_pantalla_y_la_conversacion_reciente(con_asesor, cli
     gid = piloto_con_gastos["gastos"][0]
     s = Servicio([corriendo(), mensaje("Ese gasto está en revisión por el importe."), fin()])
     con_asesor(s)
+    # la conversación se lee del servidor por sus ids: la respuesta anterior es la que quedó guardada
+    anterior = db.insertar("asistente_consultas", usuario_id=_admin()["id"], pregunta="¿Qué gastos hay en revisión?",
+                           respuesta="Hay dos.", modo="determinista", momento=db.ahora())
     r = cliente.post("/api/v1/asistente", headers={"X-CSRF-Token": api_v1.token_csrf(cliente.cookies.get(acceso.COOKIE))},
                      json={"pregunta": "¿Por qué está en revisión este gasto?", "contexto": {"pantalla": "gasto", "id": gid},
-                           "historial": [{"pregunta": "¿Qué gastos hay en revisión?", "respuesta": "Hay dos."}]})
+                           "anteriores": [anterior]})
     assert r.status_code == 200, r.text
     texto = s.enviados[0]["initial_events"][0]["content"][0]["text"]
     assert f"Está viendo el gasto #{gid}" in texto and "«este»" in texto

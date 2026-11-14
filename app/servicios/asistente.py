@@ -43,6 +43,7 @@ consultas = db._tabla(
     "asistente_consultas",  # rastro del propio asistente: quién preguntó qué, con qué herramientas y qué citó
     db._ref("asistente_consultas", "usuario_id", "usuarios"), Column("pregunta", Text), Column("herramientas", Text),
     Column("fuentes", Text), Column("modo", Text), Column("duracion_ms", Integer), Column("momento", Text),
+    Column("respuesta", Text),   # lo que se respondió: la conversación se lee de aquí, no de lo que manda el cliente
 )
 dictados = db._tabla(
     "asistente_dictados",  # un cupo de dictado reservado antes de transcribir: es lo que cuenta el tope del día
@@ -1074,10 +1075,12 @@ def citadas(texto: str, fuentes: list[dict]) -> list[dict]:
             or (f["tipo"] == "cotizacion" and nombra(f"cotizaci[oó]n #{f['id']}"))]
 
 
-def responder(pregunta: str, usuario: dict, contexto: dict | None = None, historial: list | None = None) -> dict:
-    """Devuelve {texto, fuentes, modo, herramientas, duracion_ms}. Para los tres permisos: el alcance lo decide la sesión.
+def responder(pregunta: str, usuario: dict, contexto: dict | None = None, anteriores: list | None = None) -> dict:
+    """Devuelve {texto, fuentes, modo, herramientas, duracion_ms, consulta_id}. Para los tres permisos: el alcance lo
+    decide la sesión.
 
-    `contexto` ({pantalla, id}) es lo que la persona está viendo; `historial`, sus últimas preguntas y respuestas.
+    `contexto` ({pantalla, id}) es lo que la persona está viendo; `anteriores`, los ids de sus preguntas anteriores en
+    esta conversación (`consulta_id`): las preguntas y respuestas se leen de la base (`conversacion`), nunca del cliente.
     """
     if not Alcance(usuario).valido:
         raise PermissionError("El asistente necesita una sesión válida.")
@@ -1092,7 +1095,7 @@ def responder(pregunta: str, usuario: dict, contexto: dict | None = None, histor
         return {"texto": f"Llegaste al tope de {tope_diario()} preguntas por día. {como}",
                 "fuentes": [], "modo": "tope", "herramientas": [], "duracion_ms": 0}
     try:
-        return _responder(pregunta, usuario, cid, contexto, historial)
+        return _responder(pregunta, usuario, cid, contexto, conversacion(usuario, anteriores))
     except BaseException:
         db.actualizar("asistente_consultas", cid, modo="fallida")   # cuenta para el tope, pero ya no está en curso
         raise
@@ -1107,8 +1110,8 @@ PANTALLAS = {
     "nuevo_gasto": "la pantalla para cargar un recibo", "cotizar": "la pantalla para cotizar un viaje",
     "kpis": "el tablero de indicadores (KPIs)", "monitoreo": "el monitoreo de la plataforma", "vuelos": "el estado de los vuelos",
     "reglas": "las reglas y supuestos", "usuarios": "la administración de usuarios", "proyectos": "la lista de proyectos",
-    "mi_cuenta": "su cuenta",
-    "gasto": "", "viaje": "", "cotizacion": "", "persona": "", "proyecto": "",
+    "mi_cuenta": "su cuenta", "compras": "la bandeja de compras de tiquetes",
+    "gasto": "", "viaje": "", "cotizacion": "", "persona": "", "proyecto": "", "compra": "",
 }
 _DEICTICO = re.compile(r"\b(est[eao]s?|esto|aqu[ií]|ac[aá]|pantalla|ficha)\b", re.I)
 MAX_HISTORIAL = 3
@@ -1137,6 +1140,12 @@ def _registro_visible(pantalla: str, id_, alcance: Alcance) -> dict | None:
     if pantalla == "persona" and alcance.ve("persona", id_) and db.uno("select id from usuarios where id=:i", i=id_):
         codigo = viajes.codigo_persona(id_)
         return {"referencia": codigo, "linea": f"la ficha de indicadores de {codigo}"}
+    if pantalla == "compra" and alcance.admin:   # la bandeja de compras es de administración
+        c = db.uno("""select c.estado, v.id viaje_id, v.creado from compras c join viajes v on v.id=c.viaje_id
+                      where c.id=:i""", i=id_)
+        if c:
+            codigo = viajes.codigo_viaje({"id": c["viaje_id"], "creado": c["creado"]})
+            return {"referencia": f"compra #{id_}", "linea": f"la compra #{id_} del tiquete del viaje {codigo}, en estado {c['estado']}"}
     if pantalla == "proyecto" and (alcance.admin or id_ in alcance.proyectos):
         pr = db.uno("select nombre from proyectos where id=:i", i=id_)
         if pr:
@@ -1158,6 +1167,18 @@ def contexto_de_pantalla(contexto: dict | None, alcance: Alcance) -> dict:
     return {"linea": (f"Está viendo {registro['linea']}. Si dice «este», «esta» o «aquí», se refiere a ese registro: "
                       "consulta sus datos con las herramientas antes de responder."),
             "referencia": registro["referencia"]}
+
+
+def conversacion(usuario: dict, ids: list | None) -> list[dict]:
+    """Los turnos anteriores de la conversación, de la base y por su id: solo los de la persona y ya respondidos.
+    Así nadie pone en boca del asistente algo que no respondió."""
+    ids = [i for i in (ids or []) if isinstance(i, int) and not isinstance(i, bool) and 0 < i < 2**31][-MAX_HISTORIAL:]
+    if not ids:
+        return []
+    marcas = {f"i{n}": i for n, i in enumerate(ids)}
+    filas = db.todos(f"""select pregunta, respuesta from asistente_consultas where usuario_id=:u and respuesta is not null
+                         and id in ({", ".join(":" + m for m in marcas)}) order by id""", u=usuario["id"], **marcas)  # noqa: S608
+    return [{"pregunta": f["pregunta"], "respuesta": f["respuesta"]} for f in filas]
 
 
 def historial_texto(historial: list | None) -> str:
@@ -1263,7 +1284,7 @@ def _responder(pregunta: str, usuario: dict, cid: int, contexto: dict | None = N
     if modo in ("modelo", "asesor"):   # se muestran las que la respuesta cita; si no cita ninguna, todas las consultadas
         fuentes = citadas(texto, fuentes) or fuentes
     db.actualizar("asistente_consultas", cid, herramientas=r.pasos, fuentes=[{k: f[k] for k in ("tipo", "id", "codigo")} for f in fuentes],
-                  modo=modo, duracion_ms=t())
+                  modo=modo, duracion_ms=t(), respuesta=texto[:4000])
     sesion = (f" · sesión {r.sesion['id']} · tokens {r.sesion.get('entrada', 0)}/{r.sesion.get('salida', 0)}"
               + (f" · {r.sesion['costo_usd']:.2f} USD" if r.sesion.get("costo_usd") is not None else "")
               if modo == "asesor" and r.sesion.get("id") else "")
