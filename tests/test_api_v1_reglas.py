@@ -3,13 +3,13 @@
 La validación vive en `app/servicios/reglas.py` y es la misma para la pantalla de administración (`/reglas`) y la API:
 una regla numérica sigue siendo numérica.
 """
-from datetime import date
+from datetime import UTC, datetime
 
 import pytest
 from starlette.testclient import TestClient
 
 from app import api_v1, db
-from app.servicios import acceso
+from app.servicios import acceso, reglas
 
 V1 = "/api/v1"
 
@@ -113,7 +113,7 @@ def test_las_membresias_van_en_solo_lectura_con_el_dato_de_ejemplo(cliente):
 def test_una_regla_numerica_acepta_coma_decimal_y_deja_el_evento(cliente, numerica):
     r = _editar(cliente, numerica["id"], " 0,25 ")
     assert r.status_code == 200, r.text
-    assert r.json()["valor"] == "0.25" and r.json()["verificado"] == date.today().isoformat()
+    assert r.json()["valor"] == "0.25" and r.json()["verificado"] == reglas.hoy_empresa()
     assert _regla("supuesto", "tolerancia_presupuesto")["valor"] == "0.25"
     evento = db.uno("select * from eventos where entidad='regla' and entidad_id=:i order by id desc limit 1", i=numerica["id"])
     assert evento["paso"] == "regla editada" and evento["detalle"] == f"tolerancia_presupuesto: {numerica['valor']} → 0.25"
@@ -170,3 +170,13 @@ def test_los_numeros_claros_se_guardan(cliente, numerica, valor, guardado):
     r = _editar(cliente, numerica["id"], valor)
     assert r.status_code == 200, r.text
     assert r.json()["valor"] == guardado
+
+
+@pytest.mark.parametrize("ahora, esperado", [
+    (datetime(2026, 11, 14, 1, 30, tzinfo=UTC), "2026-11-13"),   # 20:30 en Bogotá: sigue siendo el 13
+    (datetime(2026, 11, 14, 5, 0, tzinfo=UTC), "2026-11-14"),    # medianoche en Bogotá
+    (datetime(2026, 11, 13, 4, 59, tzinfo=UTC), "2026-11-12"),
+])
+def test_la_fecha_de_verificacion_es_la_del_dia_de_la_empresa(ahora, esperado):
+    """La fecha «verificado» de una regla es la del día en la zona de la empresa, no la del día en UTC."""
+    assert reglas.hoy_empresa(ahora) == esperado
