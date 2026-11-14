@@ -3,6 +3,7 @@
 Para que las consultas sean idénticas en los dos motores, las fechas se guardan como
 texto ISO y los campos compuestos como texto JSON.
 """
+import hashlib
 import json
 import time
 from contextlib import contextmanager
@@ -278,6 +279,27 @@ def transaccion():
         finally:
             _en_transaccion.reset(marca)
             _cache.clear()
+
+
+def _numero_de_cerrojo(clave) -> int:
+    """Un número de 64 bits estable para cualquier clave: un número se usa tal cual; lo demás, por su huella."""
+    if isinstance(clave, int) and not isinstance(clave, bool):
+        return clave
+    return int.from_bytes(hashlib.sha256(repr(clave).encode()).digest()[:8], "big", signed=True)
+
+
+def cerrojo(clave) -> None:
+    """Pone en fila, hasta el final de la transacción en curso, a quien pida la misma clave. Va dentro de `transaccion()`.
+
+    Es la única forma de ordenar escrituras que compiten (reservar un tope, una decisión a la vez...). En PostgreSQL es
+    un cerrojo de transacción (`pg_advisory_xact_lock`), que se suelta solo al confirmar o revertir; en SQLite,
+    `transaccion()` ya tomó el cerrojo de escritura de toda la base con BEGIN IMMEDIATE.
+    """
+    conexion = _en_transaccion.get()
+    if conexion is None:
+        raise RuntimeError("db.cerrojo va dentro de db.transaccion(): fuera de ella no ordenaría nada")
+    if not config.ES_SQLITE:
+        conexion.execute(text("select pg_advisory_xact_lock(:k)"), {"k": _numero_de_cerrojo(clave)})
 
 
 def bloquear_viaje(conexion, viaje_id: int | None) -> dict | None:

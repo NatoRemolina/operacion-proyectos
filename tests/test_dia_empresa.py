@@ -32,7 +32,7 @@ def persona():
     """Una cuenta nueva, para contar solo lo suyo; al final se borra todo lo que quedó a su nombre."""
     uid = acceso.crear_usuario(f"dia-{uuid.uuid4().hex[:8]}@demo.local", "Persona del día", "colaborador", "clave-del-dia-2031")
     yield db.uno("select * from usuarios where id=:i", i=uid)
-    for tabla in ("solicitudes", "consultas_buscador", "asistente_dictados", "asistente_consultas", "cupos_buscador", "viajes"):
+    for tabla in ("topes_reservas", "consultas_buscador", "asistente_dictados", "asistente_consultas", "cupos_buscador", "viajes"):
         db.ejecutar(f"delete from {tabla} where usuario_id=:u", u=uid)  # noqa: S608
     db.ejecutar("delete from llamadas_modelo where uso='asesor' and momento>='2031-01-01'")
     db.ejecutar("delete from sesiones where usuario_id=:u", u=uid)
@@ -48,8 +48,8 @@ def test_la_zona_y_el_dia_de_la_empresa():
 
 
 def test_el_tope_de_cotizaciones_cuenta_el_dia_de_la_empresa(reloj, persona):
-    for creado in (AYER, HOY):
-        db.insertar("solicitudes", usuario_id=persona["id"], estado="comparando", creado=creado)
+    for momento in (AYER, HOY):
+        db.insertar("topes_reservas", regla=cotizacion.TOPE_COTIZACIONES, usuario_id=persona["id"], momento=momento)
     assert cotizacion.cotizaciones_de_hoy(persona) == 1
 
 

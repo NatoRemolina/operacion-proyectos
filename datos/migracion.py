@@ -35,6 +35,7 @@ INDICES = [  # nombre, tabla, columnas, único
     ("ix_capturas_empezado", "capturas", "empezado", False),
     ("ix_clics_fuente_viaje", "clics_fuente", "viaje_id", False),
     ("ix_clics_fuente_solicitud", "clics_fuente", "solicitud_id", False),
+    ("ix_topes_reservas_regla", "topes_reservas", "regla, momento", False),
 ]
 
 
@@ -311,7 +312,7 @@ def _tablas_modelo() -> dict:
 
 
 def migrar() -> dict:
-    from app.servicios import analizador, capturas, compras, cotizacion, envios, revision  # noqa: F401  (registran sus tablas y columnas)
+    from app.servicios import analizador, capturas, compras, cotizacion, envios, revision, topes  # noqa: F401  (registran sus tablas y columnas)
     hechos = {**_roles(), **_datos(), **_columnas(), "reglas_analizador": analizador.asegurar_reglas(),
               "reglas_vendedor": cotizacion.asegurar_reglas_vendedor(), "reglas_capturas": capturas.asegurar_reglas()}
     hechos.update(_tablas_modelo())

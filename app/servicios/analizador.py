@@ -21,7 +21,7 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import parse_qsl, urlsplit
 
 import httpx
-from sqlalchemy import Column, Integer, Text, text
+from sqlalchemy import Column, Integer, Text
 
 from .. import config, db
 from . import almacen, compras, costo, eventos, precios, tiempo
@@ -81,9 +81,8 @@ def tope_enlace_vendedor() -> int:
 def reservar_cupo(usuario: dict, clave_busqueda: str, unidades: int) -> bool:
     """Reserva `unidades` búsquedas pagas del cupo diario del enlace al vendedor antes de hacerlas, en fila con las
     demás reservas (cerrojo de transacción; en SQLite, el de escritura). False si no alcanza: no se busca nada."""
-    with db.transaccion() as c:
-        if not config.ES_SQLITE:
-            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_CUPO})
+    with db.transaccion():
+        db.cerrojo(BLOQUEO_CUPO)
         usadas = db.uno("""select coalesce(sum(unidades), 0) n from cupos_buscador where tipo='enlace_vendedor'
                            and usuario_id=:u and creado>=:h""", u=usuario["id"], h=tiempo.inicio_del_dia())["n"]
         if usadas + unidades > tope_enlace_vendedor():
@@ -269,9 +268,8 @@ def _reservar(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict) -
         url = enlace_itinerario(sol, vuelo)
     except ValueError:
         url = None
-    with db.transaccion() as c:
-        if not config.ES_SQLITE:
-            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_TURNO})
+    with db.transaccion():
+        db.cerrojo(BLOQUEO_TURNO)
         # una lectura que se quedó a medias (caída del proceso) no retiene el turno ni cuenta como en curso
         db.ejecutar("update analisis_vuelo set estado='fallido', motivo=:m, terminado=:t where estado='pendiente' and creado<:c",
                     m=NO_TERMINO, t=db.ahora(), c=_hace(EN_CURSO))
@@ -395,9 +393,8 @@ def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict
     """El turno del analizador para «ir a», en fila con las lecturas (mismo cerrojo y una a la vez), con su tope por
     persona. La fila se reserva aquí en todos los caminos que no son de tope (con o sin turno del analizador): ningún
     pedido simultáneo pasa el tope. Devuelve `{"id", "motivo", "turno"}` o `{"motivo", "tope"}`."""
-    with db.transaccion() as c:
-        if not config.ES_SQLITE:
-            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_TURNO})
+    with db.transaccion():
+        db.cerrojo(BLOQUEO_TURNO)
         db.ejecutar("update analisis_vuelo set estado='fallido', motivo=:m, terminado=:t where estado='pendiente' and creado<:c",
                     m=NO_TERMINO, t=db.ahora(), c=_hace(EN_CURSO))
         cat, hoy = costo.catalogo(), tiempo.inicio_del_dia()

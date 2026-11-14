@@ -13,10 +13,10 @@ import base64
 import hashlib
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Column, Integer, Text, text
+from sqlalchemy import Column, Integer, Text
 from sqlalchemy.exc import IntegrityError
 
-from .. import config, db
+from .. import db
 from . import almacen, analizador, costo, eventos, precios, tiempo
 
 capturas = db._tabla(
@@ -155,9 +155,8 @@ def tope_dia() -> int:
 def tomar() -> dict | None:
     """La siguiente captura pendiente, con el turno del analizador (mismo cerrojo que las lecturas: una a la vez) y dentro
     del tope del día. La deja `en_curso` con un intento más. None si no hay, si se alcanzó el tope o si está ocupado."""
-    with db.transaccion() as c:
-        if not config.ES_SQLITE:
-            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": analizador.BLOQUEO_TURNO})
+    with db.transaccion():
+        db.cerrojo(analizador.BLOQUEO_TURNO)
         # una captura que se quedó a medias (caída del trabajador) vuelve a la cola o se da por fallida
         for f in db.todos("select id, intentos from capturas where estado='en_curso' and empezado<:h", h=_hace(EN_CURSO_MAX)):
             db.actualizar("capturas", f["id"], estado="fallida" if f["intentos"] >= INTENTOS else "pendiente",

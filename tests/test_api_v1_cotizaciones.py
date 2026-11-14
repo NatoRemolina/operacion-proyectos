@@ -328,7 +328,7 @@ def test_decidir_por_la_api_crea_el_viaje(piloto, cliente):
 def test_hay_tope_de_cotizaciones_por_persona_y_dia(piloto2):
     """Cada cotización nueva puede gastar dos búsquedas pagas: la API corta al llegar al tope del día."""
     yo = _cuenta("piloto2@demo.local")
-    hoy = db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=yo["id"], h=db.ahora()[:10])["n"]
+    hoy = cotizacion.cotizaciones_de_hoy(yo)
     previo = _regla("tope_cotizaciones_persona_dia")
     assert previo.isdigit()                                            # editable: es una regla de la base
     _fijar_regla("tope_cotizaciones_persona_dia", str(hoy + 1))

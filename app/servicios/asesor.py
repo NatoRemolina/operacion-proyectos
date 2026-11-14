@@ -28,7 +28,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import httpx
-from sqlalchemy import text
 
 from .. import config, db, validar_config
 from . import acceso, agente, asistente, costo, justificaciones, tiempo, viajes
@@ -413,9 +412,8 @@ def _reservar_gasto(usuario: dict) -> int:
     """Reserva el costo estimado de una sesión antes de abrirla, en fila con las demás reservas: varias sesiones
     simultáneas no pasan juntas el tope. Fuera de administración vale además el cupo de colaboradores, así
     administración conserva el suyo. Devuelve la fila de `llamadas_modelo` que se completa al cerrar."""
-    with db.transaccion() as c:
-        if not config.ES_SQLITE:   # en SQLite la transacción ya toma el cerrojo de escritura
-            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_GASTO})
+    with db.transaccion():
+        db.cerrojo(BLOQUEO_GASTO)
         gastado, tope = gasto_hoy(), tope_usd_dia()
         if gastado >= tope:
             raise ErrorAsesor(f"se alcanzó el tope de gasto del día ({gastado:.2f} de {tope:.2f} USD, supuesto asesor_usd_dia)", tope=True)

@@ -22,7 +22,7 @@ import json
 import re
 import time
 
-from sqlalchemy import Column, Integer, Text, text
+from sqlalchemy import Column, Integer, Text
 
 from .. import config, db
 from . import acceso, costo, eventos, kpis, llm, memoria, metricas, tiempo, validacion, viajes
@@ -1007,16 +1007,15 @@ def dictados_hoy(usuario_id: int) -> int:
     return db.uno("select count(*) n from asistente_dictados where usuario_id=:u and momento>=:d", u=usuario_id, d=tiempo.inicio_del_dia())["n"]
 
 
-def _bloquear_persona(c, usuario_id: int):
-    """Ordena las reservas de una misma persona (en SQLite, la transacción ya toma el cerrojo de escritura)."""
-    if not config.ES_SQLITE:
-        c.execute(text("select id from usuarios where id=:u for update"), {"u": usuario_id})
+def _en_fila_de_la_persona(usuario_id: int):
+    """Ordena las reservas de una misma persona (preguntas y dictados) con el cerrojo común."""
+    db.cerrojo(("asistente", usuario_id))
 
 
 def _reservar_dictado(usuario: dict):
     """Reserva un dictado antes de pagar la transcripción: varios dictados simultáneos no pasan juntos el tope."""
-    with db.transaccion() as c:
-        _bloquear_persona(c, usuario["id"])
+    with db.transaccion():
+        _en_fila_de_la_persona(usuario["id"])
         if usadas_hoy(usuario["id"]) >= tope_diario():
             raise TopeDeDictado(f"Llegaste al tope de {tope_diario()} preguntas por día: hoy no se transcribe más voz.")
         if dictados_hoy(usuario["id"]) >= tope_dictados():
@@ -1174,8 +1173,8 @@ def _reservar(usuario: dict, pregunta: str) -> int | None:
     Va en una transacción con la fila de la persona bloqueada (en SQLite, la transacción ya toma el cerrojo de
     escritura): dos peticiones simultáneas no pasan las dos la comprobación. Devuelve None si no queda cupo.
     """
-    with db.transaccion() as c:
-        _bloquear_persona(c, usuario["id"])
+    with db.transaccion():
+        _en_fila_de_la_persona(usuario["id"])
         if usadas_hoy(usuario["id"]) >= tope_diario():
             return None
         return db.insertar("asistente_consultas", usuario_id=usuario["id"], pregunta=pregunta, modo="en_curso", momento=db.ahora())

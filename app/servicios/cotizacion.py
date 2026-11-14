@@ -11,11 +11,11 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import parse_qsl, urlsplit
 
-from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint, text
+from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
-from . import acceso, analizador, capturas, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, tiempo, viajes
+from . import acceso, analizador, capturas, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, tiempo, topes, viajes
 
 # Un pedido de cotización con `Idempotency-Key` por la API: la misma clave de la misma persona da la misma cotización
 envios_cotizacion = db._tabla(
@@ -69,17 +69,18 @@ class TopeAlcanzado(ValueError):
     """La persona ya hizo hoy las cotizaciones nuevas que permite la regla `tope_cotizaciones_persona_dia`."""
 
 
-TOPE_COTIZACIONES_DIA = 20   # si la regla no existe
+TOPE_COTIZACIONES = "tope_cotizaciones_persona_dia"   # regla editable; si no existe, `topes.LIMITES`
 AVISO_TOPE_COTIZACIONES = ("Llegaste al tope de cotizaciones nuevas de hoy. Retoma una de las que ya tienes o pide a "
                            "administración que amplíe el tope.")
 
 
 def tope_cotizaciones_dia() -> int:
-    return int(costo.supuesto(costo.catalogo(), "tope_cotizaciones_persona_dia", TOPE_COTIZACIONES_DIA))
+    return topes.limite(TOPE_COTIZACIONES)
 
 
 def cotizaciones_de_hoy(usuario: dict) -> int:
-    return db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=usuario["id"], h=tiempo.inicio_del_dia())["n"]
+    """Cotizaciones nuevas que la persona reservó hoy (día de la empresa)."""
+    return topes.usadas(TOPE_COTIZACIONES, usuario)
 
 
 # ---------- quién cotiza y decide para otra persona (la misma regla en las pantallas y en la API) ----------
@@ -185,7 +186,8 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
           origen_lugar=None, destino_lugar=None, canal: str = "formulario") -> int:
     """Guarda la solicitud, busca vuelos y hoteles (una consulta para todos los aeropuertos marcados) y deja las
     opciones listas para comparar. `prob_cambio` va en porcentaje (0 a 100). Devuelve el id de la solicitud."""
-    if cotizaciones_de_hoy(usuario) >= tope_cotizaciones_dia():   # cada cotización nueva puede gastar dos búsquedas pagas
+    # Cada cotización nueva puede gastar dos búsquedas pagas. Aquí solo se avisa pronto; la reserva que cuenta va abajo
+    if cotizaciones_de_hoy(usuario) >= tope_cotizaciones_dia():
         raise TopeAlcanzado(AVISO_TOPE_COTIZACIONES)
     sale, llega = lado(origen, origen_aeropuertos, origen_lugar), lado(destino, destino_aeropuertos, destino_lugar)
     if "malo" in sale or "malo" in llega:
@@ -229,13 +231,17 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         raise CotizacionInvalida("viajero_id", "Elige quién viaja.")
     if viajero_id != usuario.get("viajero_id") and not para_otros_en(usuario, proyecto_id):
         raise FueraDeAlcance("Para cotizar para otra persona elige uno de los proyectos que gestionas.")
-    sid = db.insertar("solicitudes", proyecto_id=proyecto_id, viajero_id=viajero_id, origen=origen,
-                      destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
-                      llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,
-                      maleta=1 if maleta else 0, prob_cambio=prob_cambio / 100, carro_dia=carro_dia,
-                      estado="buscando", creado=db.ahora(), solicitado_por=solicitado_por, usuario_id=usuario["id"],
-                      origen_lugar=sale["lugar"], destino_lugar=llega["lugar"],
-                      origen_aeropuertos=sale["lista"], destino_aeropuertos=llega["lista"])
+    # La reserva del tope y la solicitud, juntas y en fila: varias cotizaciones a la vez no pasan juntas el tope
+    with db.transaccion():
+        if not topes.reservar(TOPE_COTIZACIONES, usuario, detalle=f"{origen}-{destino} {ida}"):
+            raise TopeAlcanzado(AVISO_TOPE_COTIZACIONES)
+        sid = db.insertar("solicitudes", proyecto_id=proyecto_id, viajero_id=viajero_id, origen=origen,
+                          destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
+                          llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,
+                          maleta=1 if maleta else 0, prob_cambio=prob_cambio / 100, carro_dia=carro_dia,
+                          estado="buscando", creado=db.ahora(), solicitado_por=solicitado_por, usuario_id=usuario["id"],
+                          origen_lugar=sale["lugar"], destino_lugar=llega["lugar"],
+                          origen_aeropuertos=sale["lista"], destino_aeropuertos=llega["lista"])
     eventos.registrar("solicitud", sid, "solicitud recibida", f"{origen}-{destino} {ida} a {regreso} · "
                       f"origen: {texto_lado(sale)} · destino: {texto_lado(llega)}", f"{canal} · {solicitado_por}")
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
@@ -629,9 +635,8 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     # Todo o nada: la decisión, sus elecciones, el viaje, sus tramos y la solicitud de compra. Un choque con otra
     # decisión al mismo tiempo (o con la compra activa del viaje) responde 409 y no deja nada a medias.
     try:
-        with db.transaccion() as conexion:
-            if not config.ES_SQLITE:   # en SQLite, BEGIN IMMEDIATE ya pone en fila
-                conexion.execute(text("select pg_advisory_xact_lock(:k, :s)"), {"k": BLOQUEO_DECISION, "s": sid})
+        with db.transaccion():
+            db.cerrojo((BLOQUEO_DECISION, sid))
             bloqueo = viajes.bloquea_decision(sid) or compras.bloqueo(sid)   # releído bajo el cerrojo
             if bloqueo:
                 raise DecisionBloqueada(bloqueo)
