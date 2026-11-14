@@ -617,6 +617,31 @@ def tiquete(opcion: dict, vuelo: dict, regreso: dict | None = None) -> dict:
             "precio": opcion.get("precio"), "vendedor": opcion.get("vendedor"), "sale": (de or {}).get("sale")}
 
 
+def _hora(sale) -> str | None:
+    """«12:40 pm» de «2026-11-20 12:40»; None si no tiene esa forma."""
+    m = re.fullmatch(r"\d{4}-\d\d-\d\d[ T](\d\d):(\d\d).*", str(sale or ""))
+    if not m:
+        return None
+    h = int(m[1])
+    return f"{h % 12 or 12}:{m[2]} {'am' if h < 12 else 'pm'}"
+
+
+def guia_tiquete(tiquete: dict | None) -> str | None:
+    """Qué vuelo elegir en el vendedor: «En COPA, elige CM 687 · CM 240, sale 12:40 pm, Economy desde 334 USD.»
+    COPA, por ejemplo, abre la lista del día sin el vuelo preseleccionado. None sin vuelos."""
+    if not isinstance(tiquete, dict) or not tiquete.get("numeros"):
+        return None
+    partes = [f"En {tiquete.get('vendedor') or 'el vendedor'}, elige "
+              f"{'el regreso ' if tiquete.get('tramo') == 'regreso' else ''}{' · '.join(tiquete['numeros'])}"]
+    if _hora(tiquete.get("sale")):
+        partes.append(f"sale {_hora(tiquete['sale'])}")
+    precio = tiquete.get("precio")
+    if isinstance(precio, int | float) and not isinstance(precio, bool):
+        tarifa = tiquete.get("tarifa") if tiquete.get("tarifa") not in (None, "", "Tarifa") else None
+        partes.append(f"{tarifa + ' ' if tarifa else ''}desde {precio:,.0f} USD")
+    return ", ".join(partes) + "."
+
+
 def tarifas_de_vuelo(origen: str | list[str], destino: str | list[str], ida: str, regreso: str, vuelo: dict,
                      solicitud_id: int | None = None, permitir_en_vivo: bool = False):
     """Familias tarifarias de un vuelo. Devuelve (tarifas, origen del dato).

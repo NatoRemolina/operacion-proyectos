@@ -6,6 +6,7 @@ cada opción trae `separate_tickets`, el total en `together` (sin pedido) y un t
 inventados.
 """
 import json
+import logging
 
 import pytest
 
@@ -240,14 +241,13 @@ def test_sin_buscador_ni_pagina_va_a_google_flights_con_el_motivo_de_la_pagina(p
 
 # ---------- punto 4: la página propia de envío dice qué vuelo elegir en el vendedor ----------
 def test_la_guia_del_tiquete():
-    from app.rutas import v1_cotizaciones
-    guia = v1_cotizaciones.guia_tiquete({"vendedor": "COPA", "tramo": "ida", "numeros": ["CM 687", "CM 240"],
+    guia = precios.guia_tiquete({"vendedor": "COPA", "tramo": "ida", "numeros": ["CM 687", "CM 240"],
                                          "sale": "2026-11-20 12:40", "tarifa": "Economy", "precio": 334})
     assert guia == "En COPA, elige CM 687 · CM 240, sale 12:40 pm, Economy desde 334 USD."
-    guia = v1_cotizaciones.guia_tiquete({"vendedor": "eDreams", "tramo": "regreso", "numeros": ["AV 9"],
+    guia = precios.guia_tiquete({"vendedor": "eDreams", "tramo": "regreso", "numeros": ["AV 9"],
                                          "sale": "2026-11-29 01:35", "tarifa": "Tarifa", "precio": 316})
     assert guia == "En eDreams, elige el regreso AV 9, sale 1:35 am, desde 316 USD."
-    assert v1_cotizaciones.guia_tiquete(None) is None
+    assert precios.guia_tiquete(None) is None
 
 
 def test_la_pagina_de_envio_muestra_la_guia_el_aviso_y_un_solo_boton():
@@ -262,3 +262,72 @@ def test_la_pagina_de_envio_muestra_la_guia_el_aviso_y_un_solo_boton():
     assert "puede pedir una verificación" in pagina and pagina.count("<button") == 1
     assert '<button type="submit">Ir a eDreams</button>' in pagina and "<script" not in pagina
     assert r.headers["Cache-Control"] == "no-store" and "form-action https:" in r.headers["Content-Security-Policy"]
+
+
+# ---------- ronda 1 de la pieza 6 ----------
+def test_post_ir_devuelve_la_guia(piloto, con_regreso, analizador_doble):
+    """La página que abre «Ir a…» (`GET …/ir`) recibe la guía por `POST …/ir`: qué vuelo elegir en el vendedor."""
+    c = _cotizacion(piloto)
+    e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "COPA", "ida").json()
+    assert e["camino"] == "buscador"
+    assert e["guia"].startswith("En COPA, elige CM 687 · CM 240")
+
+
+def test_por_google_flights_no_hay_guia(piloto, con_regreso, analizador_doble):
+    respuesta_buscador, _ = con_regreso
+    respuesta_buscador["datos"] = {"booking_options": []}
+    c = _cotizacion(piloto)
+    e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "COPA", "ida").json()
+    assert (e["camino"], e["guia"]) == ("google", None)
+
+
+MAL = '<img src=x onerror=alert(1)>'
+
+
+def test_la_pagina_de_envio_escapa_todo_lo_que_viene_de_afuera():
+    from app.rutas import v1_cotizaciones
+    r = v1_cotizaciones._pagina_envio({"url": CLK + '"><script>x()</script>', "campos": [('a"><b', MAL)], "vendedor": MAL,
+                                       "aviso": MAL, "tiquete": {"vendedor": MAL, "tramo": "ida",
+                                                                 "numeros": [MAL, "</p><script>1</script>"],
+                                                                 "sale": "2026-11-20 12:40<script>", "tarifa": MAL, "precio": 1}})
+    p = r.body.decode()
+    assert "<img" not in p and "<script" not in p and "<b" not in p.replace("<body", "").replace("<button", ""), p
+
+
+def test_lo_del_buscador_llega_escapado_a_la_pagina_de_envio(piloto, con_regreso):
+    from app.rutas import v1_cotizaciones
+    from app.servicios import cotizacion
+    respuesta, _ = con_regreso
+    respuesta["datos"] = {"booking_options": [{"together": {**tiquete(MAL, 458, [MAL], "JUNTA"), "option_title": MAL}}]}
+    c = _cotizacion(piloto)
+    d = cotizacion.enlace_vendedor(_yo(), c["id"], c["vuelos"][0]["id"])
+    assert d["tipo"] == "envio"
+    assert "<img" not in v1_cotizaciones._pagina_envio(d).body.decode()
+
+
+def test_el_pedido_no_deja_rastro(piloto, con_regreso, analizador_doble, capfd, caplog):
+    caplog.set_level(logging.DEBUG)
+    respuesta, carpeta = con_regreso
+    respuesta["datos"] = separados("eDreams", 316, regreso_aerolinea=False)
+    c = _cotizacion(piloto)
+    for v, t in (("COPA", "ida"), ("Avianca", "regreso"), ("eDreams", "regreso")):
+        assert _ir(piloto, c["id"], c["vuelos"][0]["id"], v, t).status_code == 200
+    todo = ""
+    for tabla in ("busquedas", "eventos", "consultas_buscador", "analisis_vuelo", "clics_fuente", "cupos_buscador"):
+        todo += json.dumps(db.todos(f"select * from {tabla}"), default=str)
+    todo += "".join(p.read_text(errors="ignore") for p in carpeta.rglob("*") if p.is_file())
+    salida = capfd.readouterr()
+    todo += salida.out + salida.err + caplog.text
+    for x in ("IDA-COPA-SECRETA", "REGRESO-SECRETA", "booking_request", "post_data"):
+        assert x not in todo, x
+
+
+def test_el_cambio_de_vendedor_que_ve_la_pagina_llega_al_motivo(piloto, con_regreso, analizador_doble):
+    respuesta_buscador, _ = con_regreso
+    respuesta_buscador["datos"] = {"booking_options": []}
+    _, respuesta = analizador_doble
+    respuesta.update(estado="fallido", motivo="Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD",
+                     vendedor_actual={"vendedor": "eDreams", "precio": 316.0})
+    c = _cotizacion(piloto)
+    e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "Avianca", "regreso").json()
+    assert e["camino"] == "google" and e["motivo"].startswith("Avianca ya no vende"), e
