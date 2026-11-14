@@ -323,19 +323,13 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     if pedido["tarifa"].strip().lower() in TRAMOS_TIQUETE:   # billetes separados: el «Continue» del tiquete de ese tramo
         def es_el(e):
             return _es_tiquete(e, pedido["vendedor"])
-        regreso_pedido = pedido["tarifa"].strip().lower() == "regreso"
-        candidatas = [e for e in _etiquetas(pagina) if es_el(e)]
-        etiqueta = (candidatas[-1] if regreso_pedido else candidatas[0]) if candidatas else None
-        if etiqueta is None:
-            # Google cambia el vendedor de un tramo entre cargas: si otro lleva el tiquete de ese tramo, se dice quién
-            tiquetes = [m for m in (CONTINUAR.match(lector.normal(e or "")) for e in _etiquetas(pagina))
-                        if m and not m["tarifa"] and "booked individually" not in m.string]
-            if tiquetes:
-                actual = tiquetes[-1] if regreso_pedido else tiquetes[0]
-                otro, precio = _sin_marca(actual["vendedor"]), float(actual["precio"].replace(",", ""))
-                return _resultado("fallido", inicio, vendedor_cambio(pedido["vendedor"], otro, precio), url_final=pagina.url,
-                                  regreso_elegido=regreso, vendedor_actual={"vendedor": otro, "precio": precio},
-                                  **_evidencia(pagina))
+        etiqueta, otro = _tiquete_del_tramo(_tiquetes_con_tramo(pagina), pedido["vendedor"], pedido["tarifa"].strip().lower())
+        if otro:
+            # Google cambia el vendedor de un tramo entre cargas (si otro lleva ese tramo, se dice quién) o no muestra
+            # el tiquete de ese tramo: no se pulsa nada
+            return _resultado("fallido", inicio, otro["motivo"], url_final=pagina.url, regreso_elegido=regreso,
+                              **({"vendedor_actual": otro["vendedor_actual"]} if otro.get("vendedor_actual") else {}),
+                              **_evidencia(pagina))
     else:
         def es_el(e):
             return _es_continuar(e, pedido["vendedor"], pedido["tarifa"])
@@ -640,6 +634,68 @@ def _es_tiquete(etiqueta, vendedor: str) -> bool:
     m = CONTINUAR.match(texto)
     return bool(m) and "booked individually" not in texto and not m["tarifa"] \
         and _sin_marca(m["vendedor"]).lower() == vendedor.strip().lower()
+
+
+SIN_TIQUETE_TRAMO = "Google no muestra un tiquete de {tramo} para este vuelo"
+# El tramo de cada tiquete del diálogo: el último encabezado («Departing flight» / «Returning flight») antes de su
+# «Continue», en el orden del documento (el mismo criterio de `lector.TRAMO_IDA` y `lector.TRAMO_REGRESO`).
+_JS_TIQUETES = r"""() => {
+  const ida = /^(Departing|Departure|Outbound)( flights?)?\b/i, regreso = /^(Return|Returning)( flights?)?\b/i;
+  const salida = []; let tramo = null;
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    if (n.nodeType === Node.TEXT_NODE) {
+      const t = n.textContent.trim();
+      if (ida.test(t)) tramo = "ida"; else if (regreso.test(t)) tramo = "regreso";
+    } else if ((n.getAttribute("aria-label") || "").startsWith("Continue to book with")) {
+      salida.push([tramo, n.getAttribute("aria-label")]);
+    }
+  }
+  return salida;
+}"""
+
+
+def _tiquetes_con_tramo(pagina) -> list[tuple[str | None, str]]:
+    """Los «Continue» de los tiquetes de billetes separados, cada uno con el tramo de su encabezado (None si no hay)."""
+    from playwright.sync_api import Error
+
+    try:
+        return [(t, e) for t, e in pagina.evaluate(_JS_TIQUETES) if _es_un_tiquete(e)]
+    except Error:
+        return []
+
+
+def _es_un_tiquete(etiqueta) -> bool:
+    m = CONTINUAR.match(lector.normal(etiqueta or ""))
+    return bool(m) and not m["tarifa"] and "booked individually" not in m.string
+
+
+def _precio_etiqueta(etiqueta: str) -> float | None:
+    m = CONTINUAR.match(lector.normal(etiqueta or ""))
+    try:
+        return float(m["precio"].replace(",", "")) if m else None
+    except ValueError:
+        return None   # un precio ilegible no impide decir quién vende ahora
+
+
+def _tiquete_del_tramo(tiquetes: list[tuple[str | None, str]], vendedor: str, tramo: str) -> tuple[str | None, dict | None]:
+    """El «Continue» del tiquete de ese vendedor en ese tramo, elegido por el encabezado del tramo (no por su orden).
+    Si ese tramo lo lleva otro vendedor, (None, {"motivo", "vendedor_actual"}); si el diálogo no trae un tiquete de ese
+    tramo, (None, {"motivo"}); sin tiquetes, (None, None). Sin ningún encabezado reconocible, dos tiquetes se toman en
+    el orden del diálogo (ida y regreso)."""
+    if len(tiquetes) == 2 and all(t is None for t, _ in tiquetes):
+        tiquetes = [(TRAMOS_TIQUETE[i], e) for i, (_, e) in enumerate(tiquetes)]
+    if not tiquetes:
+        return None, None
+    del_tramo = [e for t, e in tiquetes if t == tramo]
+    propia = next((e for e in del_tramo if _es_tiquete(e, vendedor)), None)
+    if propia:
+        return propia, None
+    if not del_tramo:
+        return None, {"motivo": SIN_TIQUETE_TRAMO.format(tramo=tramo)}
+    m = CONTINUAR.match(lector.normal(del_tramo[0]))
+    otro, precio = _sin_marca(m["vendedor"]), _precio_etiqueta(del_tramo[0])
+    return None, {"motivo": vendedor_cambio(vendedor, otro, precio), "vendedor_actual": {"vendedor": otro, "precio": precio}}
 
 
 def _abrir_separados(pagina, restante) -> bool:
