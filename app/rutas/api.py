@@ -4,8 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from .. import db
-from ..servicios import agente, analitica
-from .cotizaciones import _comparacion, _completar_ahorros
+from ..servicios import agente, analitica, cotizacion
 
 router = APIRouter()
 
@@ -13,7 +12,7 @@ router = APIRouter()
 # ---------- API en JSON (contrato para un front aparte) ----------
 @router.get("/api/analitica", tags=["api"])
 def api_analitica():
-    _completar_ahorros()
+    cotizacion.completar_ahorros()
     return analitica.resumen()
 
 
@@ -24,7 +23,7 @@ def api_solicitudes():
 
 @router.get("/api/solicitudes/{sid}", tags=["api"])
 def api_solicitud(sid: int):
-    c = _comparacion(sid)
+    c = cotizacion.comparacion(sid)
     if not c:
         return Response(status_code=404)
     quitar = lambda o: {k: v for k, v in o.items() if k != "tarifas_lista"}

@@ -8,10 +8,9 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Path, Query, Request
 
 from .. import db
-from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
+from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, formas, persona
 from ..api_v1.esquemas_compras import CambioEstadoCompra, Compra, CompraDetalle, ListaCompras, RegistroCompra, errores_compras
-from ..servicios import acceso, analizador, compras, consultas, cotizacion
-from . import v1_analisis, v1_cotizaciones
+from ..servicios import acceso, analizador, compras, consultas, cotizacion, enlaces
 
 router = APIRouter(prefix=PREFIJO + "/compras", tags=["compras"])
 ENTERO_MAXIMO = 2**31 - 1
@@ -52,14 +51,14 @@ def _forma(c: dict) -> dict:
 
 
 def _detalle(c: dict, sesion: str) -> dict:
-    o = db.uno("select * from opciones where id=:o", o=c["opcion_id"]) if c["opcion_id"] else None
+    o = cotizacion.opcion(c["opcion_id"]) if c["opcion_id"] else None
     vuelo = None
     if o:
         v = db.de_json(o["datos"], {}) or {}
-        sol = db.uno("select * from solicitudes where id=:i", i=c["solicitud_id"])
+        sol = cotizacion.solicitud(c["solicitud_id"])
         vuelo = {"opcion_id": o["id"], "numeros": v.get("numeros") or [], "aerolinea": v.get("aerolinea"), "sale": v.get("sale"),
                  "llega": v.get("llega"), "precio_usd": consultas.dinero(v.get("precio")),
-                 "vendedor_url": v1_cotizaciones.url_vendedor(sesion, c["solicitud_id"], o["id"]),
+                 "vendedor_url": enlaces.url_vendedor(sesion, c["solicitud_id"], o["id"]),
                  "fuente_url": cotizacion.fuente_vuelo(sol, v) if sol else None}
     lectura = None
     if o:
@@ -67,8 +66,8 @@ def _detalle(c: dict, sesion: str) -> dict:
             a = analizador.ultimo(c["solicitud_id"], o["id"])
         except LookupError:
             a = None
-        lectura = v1_analisis._forma(c["solicitud_id"], o["id"], {**a, "reutilizado": True}, sesion) if a else None
-    return {**_forma(c), "vuelo": vuelo, "analisis": lectura, "evidencia": v1_analisis.evidencia(c["solicitud_id"]),
+        lectura = formas.analisis(c["solicitud_id"], o["id"], {**a, "reutilizado": True}, sesion) if a else None
+    return {**_forma(c), "vuelo": vuelo, "analisis": lectura, "evidencia": formas.evidencia(c["solicitud_id"]),
             "clics": [{**k, "momento": consultas.instante(k["momento"])} for k in compras.clics(c)]}
 
 
@@ -130,4 +129,4 @@ def analizar(id: int = Id, yo: dict = Depends(admin_escritura)) -> dict:
     c = _uno(id)
     if not c["opcion_id"]:
         raise _no_encontrado()
-    return v1_analisis._forma(c["solicitud_id"], c["opcion_id"], analizador.solicitar(yo, c["solicitud_id"], c["opcion_id"]))
+    return formas.analisis(c["solicitud_id"], c["opcion_id"], analizador.solicitar(yo, c["solicitud_id"], c["opcion_id"]))

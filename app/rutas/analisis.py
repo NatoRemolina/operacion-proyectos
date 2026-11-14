@@ -5,14 +5,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from datos.semilla import VISTAS
 
 from .. import db
-from ..servicios import analitica, metricas, tablero
+from ..servicios import analitica, cotizacion, metricas, tablero
 from ..web import (
     NO_ENCONTRADO,
     _ctx,
     _indicadores,
     plantillas,
 )
-from .cotizaciones import _completar_ahorros
 
 router = APIRouter()
 
@@ -33,7 +32,7 @@ def flujo(request: Request):
 
 @router.get("/analitica", response_class=HTMLResponse)
 def analitica_pagina(request: Request):
-    _completar_ahorros()
+    cotizacion.completar_ahorros()
     return plantillas.TemplateResponse(request, "analitica.html", _ctx(a=analitica.resumen()))
 
 

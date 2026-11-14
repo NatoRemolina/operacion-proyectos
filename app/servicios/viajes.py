@@ -310,6 +310,11 @@ def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict, confirm
 
 
 # ---------- a qué viaje pertenece un gasto ----------
+def asignables(yo: dict, donde: str) -> list[dict]:
+    """Viajes a los que se puede cargar un gasto, marcando los propios de quien mira (cargarlo ahí lo haría suyo)."""
+    return [{**v, "propio": es_propio_de(v, yo)} for v in lista(donde)]
+
+
 def de_persona(usuario: dict, estados: tuple = ("aprobado",)) -> list[dict]:
     marcas = ",".join(f"'{e}'" for e in estados if e in ESTADOS)
     return lista(f"(v.usuario_id=:u or (v.viajero_id is not null and v.viajero_id=:vj)) and v.estado in ({marcas})",

@@ -97,9 +97,9 @@ def test_el_servicio_explica_por_que_no_guarda_la_decision(cliente):
 
 
 def test_las_pantallas_usan_el_servicio():
-    from app.rutas import cotizaciones
-    assert cotizaciones._comparacion is cotizacion.comparacion
-    assert cotizaciones._completar_ahorros is cotizacion.completar_ahorros
+    from pathlib import Path
+    fuente = (Path(__file__).resolve().parent.parent / "app" / "rutas" / "cotizaciones.py").read_text()
+    assert "cotizacion.comparacion(" in fuente and "def comparacion" not in fuente   # la pantalla llama al servicio
     assert acceso.es_admin(_cuenta("admin@demo.local"))
 
 

@@ -120,6 +120,17 @@ def seguimiento_encendido() -> bool:
     return costo.supuesto(costo.catalogo(), "seguimiento_diario", 1) >= 1
 
 
+def de_la_decision_vigente(sid: int) -> list[dict]:
+    """Las capturas de la decisión vigente de la cotización (al decidir, el seguimiento y la compra)."""
+    d = db.uno("select id from decisiones where solicitud_id=:s order by id desc limit 1", s=sid)
+    return [f for f in de_la_cotizacion(sid) if d and f["decision_id"] == d["id"]]
+
+
+def lista(sid: int, captura_id: int) -> dict | None:
+    """Una captura terminada de la cotización; None si no es de ella o no está lista."""
+    return db.uno("select * from capturas where id=:c and solicitud_id=:s and estado='lista'", c=captura_id, s=sid)
+
+
 def encolar_seguimiento(hoy: str | None = None) -> int:
     """Una captura del día por cada vuelo decidido cuya compra sigue abierta (ni comprada, ni descartada, ni cancelada)
     y cuya ida no pasó. Idempotente en el día. Devuelve cuántas encoló."""

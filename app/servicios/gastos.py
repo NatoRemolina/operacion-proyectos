@@ -88,6 +88,25 @@ def disposicion(mime: str | None, nombre: str | None) -> str:
     return f'attachment; filename="{base}.txt"'
 
 
+TIPOS_EN_LINEA = ("image/jpeg", "image/png", "image/webp", "application/pdf")
+
+
+def original_legible(contenido: bytes, mime: str | None) -> tuple[bytes, str]:
+    """El original tal como se muestra, con su tipo. Un correo (.eml) no se entrega crudo (MIME con base64): se muestra
+    su adjunto si es un PDF o una foto (el que se leyó), y si no, el texto del correo con De, Asunto y Fecha."""
+    if mime == "message/rfc822":
+        try:
+            texto, adjunto, tipo = extraccion.partes_del_correo(contenido)   # la misma lectura que el gasto
+        except Exception:   # un correo mal formado se sigue viendo, como texto
+            texto, adjunto, tipo = None, None, None
+        if adjunto and tipo in TIPOS_EN_LINEA:
+            return adjunto, tipo
+        if texto is not None:
+            return texto.encode("utf-8"), "text/plain; charset=utf-8"
+    # Solo se sirven en línea tipos inertes; el resto se muestra como texto
+    return contenido, mime if mime in TIPOS_EN_LINEA else "text/plain; charset=utf-8"
+
+
 def correo_de(texto: str | None) -> dict | None:
     """El remitente y el asunto guardados con el soporte, si llegó como correo; None si no los hay."""
     datos = db.de_json(texto, None) if texto else None

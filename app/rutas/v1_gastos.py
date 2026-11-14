@@ -11,10 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
-from ..api_v1.esquemas import Dinero, EstadoGasto, EstadoViaje, GastoDetalle, ListaGastos, NuevaJustificacion, errores
+from ..api_v1.esquemas import Dinero, EstadoGasto, GastoDetalle, ListaGastos, NuevaJustificacion, ViajeAsignable, errores
 from ..servicios import acceso, almacen, consultas, contable, dinero, envios, justificaciones, revision, viajes
 from ..servicios import gastos as soportes
-from .gastos import original_legible
 
 router = APIRouter(prefix=PREFIJO, tags=["gastos"])
 
@@ -82,25 +81,6 @@ class Categoria(BaseModel):
     nombre: str
 
 
-class ViajeAsignable(BaseModel):
-    id: int
-    codigo: str
-    estado: EstadoViaje
-    estado_texto: str
-    titular: str | None
-    origen: str | None
-    destino: str | None
-    ida: str | None
-    regreso: str | None
-    propio: bool = Field(False, description="Es un viaje de quien revisa (titular o viajero): cargar el gasto ahí lo "
-                                            "haría suyo, y nadie revisa lo suyo.")
-
-
-def viajes_asignables(yo: dict, donde: str) -> list[dict]:
-    """Viajes a los que se puede cargar un gasto, marcando los propios de quien mira."""
-    return [{**v, "propio": viajes.es_propio_de(v, yo)} for v in viajes.lista(donde)]
-
-
 class DatosRevision(BaseModel):
     """Lo que la revisión de administración necesita además de la ficha del gasto (`GET /gastos/{id}`)."""
     gasto_id: int
@@ -117,27 +97,13 @@ class DatosRevision(BaseModel):
                                                  "administración que pueda hacerlo.")
 
 
-def marcar_propios(items: list[dict], yo: dict) -> list[dict]:
-    """Añade de quién es cada gasto para quien mira: `propio` (nadie revisa lo suyo, la misma regla que la revisión)
-    y `puede_justificar` (solo quien lo hizo o quien viaja). Así la web no ofrece botones que la API rechazaría."""
-    if not items:
-        return items
-    ids = ",".join(str(int(g["id"])) for g in items)
-    filas = {f["id"]: f for f in db.todos(f"select id, usuario_id, viajero_id, viaje_id from gastos where id in ({ids})")}
-    for g in items:
-        fila = filas.get(g["id"])
-        g["propio"] = viajes.gasto_propio_de(fila, yo)
-        g["puede_justificar"] = justificaciones.puede_justificar(yo, fila)
-    return items
-
-
 def _revisable(yo: dict, id: int) -> dict | None:
     g = consultas.gasto(yo, id)
     if not g:
         return None
     extra = db.uno("""select g.version, g.motivo_rechazo, d.texto from gastos g left join documentos d on d.id=g.documento_id
                       where g.id=:i""", i=id)
-    return marcar_propios([{**g, "version": extra["version"] or 0, "motivo_rechazo": extra["motivo_rechazo"],
+    return consultas.marcar_gastos_propios([{**g, "version": extra["version"] or 0, "motivo_rechazo": extra["motivo_rechazo"],
                             "correo": soportes.correo_de(extra["texto"])}], yo)[0]
 
 
@@ -161,7 +127,7 @@ def _forma_soporte(mime: str | None, ruta: str | None) -> str:
     if mime == "message/rfc822":
         try:   # si el almacenamiento falla, la revisión sigue y el original se ofrece como descarga
             contenido = almacen.leer(ruta) if ruta else None
-            mime = original_legible(contenido, mime)[1] if contenido else None
+            mime = soportes.original_legible(contenido, mime)[1] if contenido else None
         except Exception:
             mime = None
     if mime in ("image/jpeg", "image/png", "image/webp"):
@@ -189,7 +155,7 @@ def lista(viaje_id: int | None = None, estado: EstadoGasto | None = None, pagina
     """Mismo alcance que los viajes. Más reciente primero."""
     limite, cursor = paginacion
     resultado = consultas.lista_gastos(yo, viaje_id, estado, limite, cursor)
-    marcar_propios(resultado["items"], yo)
+    consultas.marcar_gastos_propios(resultado["items"], yo)
     return resultado
 
 
@@ -294,7 +260,7 @@ def datos_revision(id: int, yo: dict = Depends(persona)):
             "lectura_original": _lectura_original(g["extraido"]),
             "soporte": {"documento_id": g["doc"], "nombre": g["archivo"], "forma": _forma_soporte(g["mime"], g["ruta"])} if g["doc"] else None,
             "categorias": [{"clave": c, "nombre": n} for c, n in config.CATEGORIAS.items()],
-            "viajes": viajes_asignables(yo, "v.estado<>'rechazado'"), "propio": propio, "aviso_propio": aviso}
+            "viajes": viajes.asignables(yo, "v.estado<>'rechazado'"), "propio": propio, "aviso_propio": aviso}
 
 
 @router.post("/gastos/{id}/revision", response_model=GastoRevisable, responses=errores(401, 403, 404, 409, 422))
@@ -359,7 +325,7 @@ def contenido(id: int, yo: dict = Depends(persona)):
         raise _no_encontrado()
     datos, _ = archivo
     d = db.uno("select mime, nombre from documentos where id=:i", i=id)
-    datos, tipo = original_legible(datos, d["mime"])   # un correo: su adjunto o su texto, nunca el MIME crudo
+    datos, tipo = soportes.original_legible(datos, d["mime"])   # un correo: su adjunto o su texto, nunca el MIME crudo
     return Response(datos, media_type=tipo, headers={
         "Content-Disposition": soportes.disposicion(d["mime"], d["nombre"]), "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",

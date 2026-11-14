@@ -21,7 +21,6 @@ MENU = [{"texto": "Cotizar viaje", "href": "/viajes/nuevo", "orden": 20}]
 
 # ---------- reto 1: viajes ----------
 # La lógica vive en `app/servicios/cotizacion.py`; estas rutas la presentan como pantallas y redirecciones.
-_comparacion, _completar_ahorros = cotizacion.comparacion, cotizacion.completar_ahorros   # otras pantallas las importan de aquí
 
 
 @router.get("/viajes/nuevo", response_class=HTMLResponse)
@@ -65,7 +64,7 @@ def _decide(sid: int) -> bool:
 
 @router.get("/viajes/{sid}", response_class=HTMLResponse)
 def viaje(request: Request, sid: int, aviso: str = ""):
-    c = _comparacion(sid) if _solicitud_propia(sid) else None
+    c = cotizacion.comparacion(sid) if _solicitud_propia(sid) else None
     if not c:
         return NO_ENCONTRADO
     return plantillas.TemplateResponse(request, "viaje.html", _ctx(
@@ -76,7 +75,7 @@ def viaje(request: Request, sid: int, aviso: str = ""):
 @router.post("/viajes/{sid}/agente", response_class=HTMLResponse)
 def viaje_agente(request: Request, sid: int, pregunta: str = Form("")):
     """Pregunta al agente. Con modelo de lenguaje usa las herramientas; sin él, responde el análisis determinista."""
-    c = _comparacion(sid) if _solicitud_propia(sid) else None
+    c = cotizacion.comparacion(sid) if _solicitud_propia(sid) else None
     if not c:
         return NO_ENCONTRADO
     with eventos.cronometro() as t:
@@ -121,7 +120,7 @@ def viaje_decidir(sid: int, vuelo_id: int = Form(0), hotel_id: int = Form(0), mo
 def viaje_ficha(request: Request, sid: int):
     if not _solicitud_propia(sid):
         return NO_ENCONTRADO
-    c = _comparacion(sid)
+    c = cotizacion.comparacion(sid)
     if not c or not c["decision"]:
         return RedirectResponse(f"/viajes/{sid}", status_code=303)
     return plantillas.TemplateResponse(request, "ficha.html", _ctx(**c, d=db.de_json(c["decision"]["desglose"], {}),

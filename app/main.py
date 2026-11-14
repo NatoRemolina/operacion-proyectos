@@ -130,6 +130,6 @@ async def _error_validacion(request: Request, e: RequestValidationError):
 
 
 # Nombres que las pruebas y los guiones importan desde aquí
-from .rutas.cotizaciones import _comparacion  # noqa: E402,F401
 from .rutas.gastos import _numero  # noqa: E402,F401
+from .servicios.cotizacion import comparacion as _comparacion  # noqa: E402,F401
 from .web import _indicadores  # noqa: E402,F401

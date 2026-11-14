@@ -188,7 +188,7 @@ def _adjunto_util(msg) -> tuple[bytes, str] | None:
     return datos, tipo
 
 
-def _correo(contenido: bytes):
+def partes_del_correo(contenido: bytes):
     """Devuelve (texto del correo, adjunto o None, mime del adjunto)."""
     msg = email.message_from_bytes(contenido, policy=policy.default)
     adjunto = _adjunto_util(msg)
@@ -210,7 +210,7 @@ def _bloque(contenido: bytes, mime: str) -> dict:
 def _en_vivo(contenido: bytes, mime: str) -> dict:
     partes = []
     if mime == "message/rfc822":
-        texto, adjunto, mime_adjunto = _correo(contenido)
+        texto, adjunto, mime_adjunto = partes_del_correo(contenido)
         partes.append(_bloque(adjunto, mime_adjunto) if adjunto else {"type": "text", "text": texto[:20000]})
     elif mime == "text/plain":
         partes.append({"type": "text", "text": contenido.decode("utf-8", "replace")[:20000]})
@@ -242,7 +242,7 @@ ESQUEMA = {"type": "OBJECT", "properties": {
 def _con_cliente(contenido: bytes, mime: str, entidad_id: int | None, uso: str = "recibo") -> dict:
     """Lectura con el cliente único: salida con esquema fijo, de modo que siempre llega un JSON con los mismos campos."""
     if mime == "message/rfc822":
-        texto, adjunto, mime_adjunto = _correo(contenido)
+        texto, adjunto, mime_adjunto = partes_del_correo(contenido)
         parte = llm.parte_archivo(adjunto, mime_adjunto) if adjunto else llm.parte_texto(texto[:20000])
     elif mime == "text/plain":   # una confirmación HTML ya reducida a texto
         parte = llm.parte_texto(contenido.decode("utf-8", "replace")[:20000])

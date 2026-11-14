@@ -999,6 +999,17 @@ class TopeDeDictado(Exception):
     """Se llegó al tope del día: no se paga otra transcripción."""
 
 
+# Cómo se muestra el modo de cada respuesta: texto y clase de la etiqueta (pantalla anterior y API v1)
+MODOS = {"asesor": ("Asesor con herramientas", "ok"), "modelo": ("Modelo de lenguaje con herramientas", "ok"),
+         "determinista": ("Sin modelo: consultas directas", "azul"), "tope": ("Tope diario alcanzado", "aviso"),
+         # una pregunta reserva su cupo «en curso» y queda «fallida» si algo la corta a mitad
+         "en_curso": ("Respondiendo…", "azul"), "fallida": ("Sin respuesta: falló", "aviso")}
+
+
+def modo_visible(modo: str) -> tuple[str, str]:
+    return MODOS.get(modo, (modo, "aviso"))
+
+
 def tope_dictados() -> int:
     return int(costo.supuesto(costo.catalogo(), "asistente_dictados_dia", TOPE_DIARIO))
 

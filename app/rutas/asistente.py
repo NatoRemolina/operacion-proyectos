@@ -28,16 +28,6 @@ plantillas.env.globals.update(bienvenida_asistente=lambda yo: BIENVENIDA.get((yo
 MENU = [{"texto": "Asistente", "href": "/admin/asistente", "orden": 66, "rol": "admin"}]
 
 # Cómo se presenta cada vía de respuesta: (texto del chip, clase). La página y el asistente flotante usan lo mismo.
-MODOS = {"asesor": ("Asesor con herramientas", "ok"), "modelo": ("Modelo de lenguaje con herramientas", "ok"),
-         "determinista": ("Sin modelo: consultas directas", "azul"), "tope": ("Tope diario alcanzado", "aviso"),
-         # una pregunta reserva su cupo «en curso» y queda «fallida» si algo la corta a mitad
-         "en_curso": ("Respondiendo…", "azul"), "fallida": ("Sin respuesta: falló", "aviso")}
-
-
-def modo_visible(modo: str) -> tuple[str, str]:
-    return MODOS.get(modo, (modo, "aviso"))
-
-
 def _ejemplos() -> list[str]:
     """Preguntas armadas con datos que existen, para que el primer clic ya responda algo."""
     salida = []
@@ -62,7 +52,7 @@ def _pagina(request: Request, **extra):
     asistente.asegurar_regla()
     yo = _yo()
     return plantillas.TemplateResponse(request, "asistente.html", _ctx(
-        modo_visible=modo_visible, indice=memoria.estado(), ejemplos=_ejemplos(), tope=asistente.tope_diario(), usadas=asistente.usadas_hoy(yo["id"]),
+        modo_visible=asistente.modo_visible, indice=memoria.estado(), ejemplos=_ejemplos(), tope=asistente.tope_diario(), usadas=asistente.usadas_hoy(yo["id"]),
         recientes=db.todos("""select pregunta, modo, duracion_ms, momento from asistente_consultas where usuario_id=:u
                               order by id desc limit 5""", u=yo["id"]), **extra))
 
@@ -76,7 +66,7 @@ def asistente_pagina(request: Request, aviso: str = ""):
 
 def _json(request: Request, respuesta: dict) -> JSONResponse:
     """Lo que pide el asistente flotante: solo la respuesta, sin la página."""
-    texto, clase = modo_visible(respuesta["modo"])
+    texto, clase = asistente.modo_visible(respuesta["modo"])
     return JSONResponse({
         "texto": respuesta["texto"], "modo": respuesta["modo"], "modo_texto": texto, "modo_clase": clase,
         "fuentes": [{"codigo": f["codigo"], "enlace": f["enlace"]} for f in _con_enlaces(request, respuesta["fuentes"])],

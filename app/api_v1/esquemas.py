@@ -19,6 +19,20 @@ class Ingreso(BaseModel):
     clave: str = Field(min_length=1, max_length=200)
 
 
+class ViajeAsignable(BaseModel):
+    id: int
+    codigo: str
+    estado: EstadoViaje
+    estado_texto: str
+    titular: str | None
+    origen: str | None
+    destino: str | None
+    ida: str | None
+    regreso: str | None
+    propio: bool = Field(False, description="Es un viaje de quien revisa (titular o viajero): cargar el gasto ahí lo "
+                                            "haría suyo, y nadie revisa lo suyo.")
+
+
 class CambioEstadoViaje(BaseModel):
     """Lo que decide administración sobre un viaje. Quién decide sale de la sesión, nunca del cuerpo."""
     model_config = ConfigDict(extra="forbid")

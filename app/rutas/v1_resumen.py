@@ -10,8 +10,6 @@ from .. import db
 from ..api_v1 import PREFIJO, datos_demostracion, solo_admin
 from ..api_v1.esquemas import ResumenAdmin, errores
 from ..servicios import consultas, metricas, viajes
-from .v1_gastos import marcar_propios
-from .v1_viajes import con_decision
 
 router = APIRouter(prefix=PREFIJO + "/resumen", tags=["administracion"])
 
@@ -44,12 +42,12 @@ def resumen(yo: dict = Depends(solo_admin)):
         en_revision = metricas.valor("pendientes_revision", {})["valor"]
     aprobado, gastado = v["presupuesto_aprobado"], v["gastado"]
     en_revision_usd = db.uno("select coalesce(sum(total_usd), 0) t from gastos where estado='revision'")["t"]
-    pendientes = con_decision(consultas.lista_viajes(yo, "pendiente_aprobacion", 5)["items"], yo)
+    pendientes = consultas.marcar_viajes(consultas.lista_viajes(yo, "pendiente_aprobacion", 5)["items"], yo)
     return {
         "presupuesto_aprobado_usd": consultas.dinero(aprobado), "gastado_usd": consultas.dinero(gastado),
         "disponible_usd": consultas.dinero(Decimal(str(aprobado)) - Decimal(str(gastado))), "en_revision_usd": consultas.dinero(en_revision_usd),
         "ejecucion_pct": v["ejecucion"], "viajes_por_aprobar": v["pendientes"], "gastos_en_revision": en_revision,
-        "pendientes": pendientes, "revision": marcar_propios(consultas.lista_gastos(yo, estado="revision", limite=5)["items"], yo),
+        "pendientes": pendientes, "revision": consultas.marcar_gastos_propios(consultas.lista_gastos(yo, estado="revision", limite=5)["items"], yo),
         "actividad": _actividad(yo), "nota": NOTA,
         "datos_demostracion": datos_demostracion(),
     }

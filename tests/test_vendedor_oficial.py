@@ -10,8 +10,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from app import api_v1, config, db
-from app.rutas import v1_cotizaciones
-from app.servicios import acceso, cotizacion, precios
+from app.servicios import acceso, cotizacion, enlaces, precios
 
 V1 = "/api/v1"
 SECRETO_URL = "https://www.google.com/travel/clk/f?u=SECRETOURL123"
@@ -67,7 +66,7 @@ def buscador(monkeypatch, tmp_path):
 def _abrir(c: TestClient, sid: int, vuelo: int, sitio: str | None = "same-origin", firma: str | None = "propia"):
     """Abre el enlace al vendedor como lo haría la web: con el token firmado de la sesión de `c` (o el que se pase)."""
     if firma == "propia":
-        firma = v1_cotizaciones.token_vendedor(c.cookies.get(acceso.COOKIE) or "", sid, vuelo)
+        firma = enlaces.token_vendedor(c.cookies.get(acceso.COOKIE) or "", sid, vuelo)
     consulta = f"?t={firma}" if firma else ""
     return c.get(f"{V1}/cotizaciones/{sid}/vuelos/{vuelo}/vendedor{consulta}", follow_redirects=False,
                  headers={"Sec-Fetch-Site": sitio} if sitio else {})
@@ -316,9 +315,9 @@ def test_sin_token_valido_no_se_busca_nada_y_va_a_google_flights(piloto, piloto2
     # el de la propia cotización funciona tal cual (también sin la cabecera Sec-Fetch-Site)
     r = piloto.get(vuelo["vendedor_url"], follow_redirects=False)
     assert r.status_code == 200 and len(llamadas) == 2
-    ajeno = v1_cotizaciones.token_vendedor(piloto2.cookies.get(acceso.COOKIE), c["id"], vuelo["id"])   # de otra sesión
-    otro_vuelo = v1_cotizaciones.token_vendedor(piloto.cookies.get(acceso.COOKIE), c["id"], c["vuelos"][1]["id"])
-    vencido = v1_cotizaciones.token_vendedor(piloto.cookies.get(acceso.COOKIE), c["id"], vuelo["id"], ahora=0)
+    ajeno = enlaces.token_vendedor(piloto2.cookies.get(acceso.COOKIE), c["id"], vuelo["id"])   # de otra sesión
+    otro_vuelo = enlaces.token_vendedor(piloto.cookies.get(acceso.COOKIE), c["id"], c["vuelos"][1]["id"])
+    vencido = enlaces.token_vendedor(piloto.cookies.get(acceso.COOKIE), c["id"], vuelo["id"], ahora=0)
     for firma in (None, "basura", ajeno, otro_vuelo, vencido):
         r = _abrir(piloto, c["id"], vuelo["id"], sitio=None, firma=firma)
         assert r.status_code == 303 and r.headers["location"] == vuelo["fuente_url"], firma

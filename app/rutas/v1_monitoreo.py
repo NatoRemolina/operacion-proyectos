@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
 from ..api_v1 import PREFIJO, solo_admin
+from ..api_v1.comun import FILTRO_DESDE, FILTRO_HASTA, FILTRO_PROYECTO
 from ..api_v1.esquemas import errores
 from ..api_v1.esquemas_monitoreo import Pestana, PestanaMonitoreo
 from ..servicios import tablero
-from .v1_kpis import FILTRO_DESDE, FILTRO_HASTA, FILTRO_PROYECTO
 
 router = APIRouter(prefix=PREFIJO + "/monitoreo", tags=["monitoreo"])
 

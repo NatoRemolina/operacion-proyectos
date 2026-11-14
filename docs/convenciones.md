@@ -7,6 +7,8 @@ Cómo se escribe, se prueba y se integra el código de este repositorio. Vale pa
 - **Español** en nombres, comentarios, mensajes de commit y textos de interfaz. Voz neutra: el código y la documentación describen lo que hace el sistema, no quién lo escribió.
 - Comentarios solo donde explican un **porqué** que el código no deja ver.
 - Se siguen los patrones existentes: rutas por área en `app/rutas/` (se cargan solas), lógica en `app/servicios/`, tablas declaradas con `db._tabla` en el módulo de su servicio, menú declarado como datos (`MENU`). No se introducen marcos ni capas nuevas sin una decisión registrada en `docs/adr/`.
+- **Rutas delgadas** (`tests/test_capas.py` lo vigila): las rutas validan, autorizan y llaman; la lógica, el SQL y las reglas viven en `app/servicios/`, y el HTML con JavaScript en plantillas (`app/templates/api/` para las páginas que abre la API). Ninguna ruta importa otra ruta y ningún servicio importa una ruta: lo que comparten las rutas de la API va en `app/api_v1/comun.py` (validación, páginas de la pestaña del vendedor) y `app/api_v1/formas.py` (la forma de la lectura y de la evidencia).
+- Una sola forma de cada cosa: idempotencia con `envios`; cerrojos y topes con `db.cerrojo(clave)` y `topes.reservar(regla, quien)`; día y zona con `config.ZONA_EMPRESA` y `tiempo.inicio_del_dia()` / `tiempo.hoy()`; dinero con `Decimal` y `dinero.*`.
 - Textos para personas no técnicas: claros, sin jerga ni nombres internos. Los códigos de motivo (`importe_invalido`, `sin_viaje`…) son estables y no se renombran.
 - Dinero: se valida y se compara con `Decimal` (`app/servicios/dinero.py`); nunca se compara un importe con `==` en coma flotante.
 

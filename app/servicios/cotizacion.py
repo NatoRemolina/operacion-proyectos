@@ -261,6 +261,51 @@ def completar_ahorros():
         registrar_ahorro(s["id"])
 
 
+# ---------- lecturas que usan la API y las pantallas ----------
+def fila_de_acceso(sid: int) -> dict | None:
+    """Lo que decide quién ve una cotización: quien la creó, quien viaja y su proyecto (`acceso.puede_ver`)."""
+    return db.uno("select usuario_id, viajero_id, proyecto_id from solicitudes where id=:i", i=sid)
+
+
+def solicitud(sid: int) -> dict | None:
+    return db.uno("select * from solicitudes where id=:i", i=sid)
+
+
+def opcion(opcion_id: int) -> dict | None:
+    return db.uno("select * from opciones where id=:o", o=opcion_id)
+
+
+def vuelo_de(sid: int, opcion_id: int) -> dict | None:
+    """Los datos de un vuelo de la cotización; None si esa opción no es un vuelo de ella."""
+    o = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=opcion_id, s=sid)
+    return (db.de_json(o["datos"], {}) or {}) if o else None
+
+
+def precio_de_opcion(opcion_id: int):
+    return (db.uno("select precio from opciones where id=:o", o=opcion_id) or {}).get("precio")
+
+
+def origen_de_los_vuelos(sid: int) -> str | None:
+    """De dónde salieron los vuelos de la cotización: en vivo, guardado…, según la última consulta."""
+    fila = db.uno("select origen from consultas_buscador where solicitud_id=:i and tipo='vuelos' order by id desc limit 1", i=sid)
+    return fila["origen"] if fila else None
+
+
+def opciones_de_reserva(sid: int, opcion_id: int) -> dict | None:
+    """Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo), y cada
+    vendedor con su precio más bajo. None si la opción no es un vuelo de la cotización."""
+    sol, vuelo = solicitud(sid), vuelo_de(sid, opcion_id)
+    if not sol or vuelo is None:
+        return None
+    lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
+    tarifas, creado = precios.opciones_guardadas(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"])
+    vendedores: dict[str, dict] = {}
+    for t in tarifas:
+        v = vendedores.setdefault(t["vendedor"], {"vendedor": t["vendedor"], "aerolinea": t["aerolinea"], "precio_desde": t["precio"]})
+        v["precio_desde"] = min(v["precio_desde"], t["precio"])
+    return {"tarifas": tarifas, "creado": creado, "vendedores": list(vendedores.values())}
+
+
 # ---------- comparar ----------
 def comparacion(sid: int) -> dict | None:
     sol = db.uno("""select s.*, p.nombre proyecto, v.nombre viajero from solicitudes s

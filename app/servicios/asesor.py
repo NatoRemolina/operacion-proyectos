@@ -470,8 +470,8 @@ def _de_cotizacion(funcion):
         sid = _solicitud(cotizacion, usuario)
         if isinstance(sid, dict):
             return sid
-        from ..rutas.cotizaciones import _comparacion  # aquí y no arriba: las rutas importan los servicios
-        c = _comparacion(sid)
+        from . import cotizacion  # aquí: la cotización usa el agente, que este módulo también usa
+        c = cotizacion.comparacion(sid)
         if not c:
             return {"error": f"No existe la cotización #{sid}."}
         r.cotizacion(sid)

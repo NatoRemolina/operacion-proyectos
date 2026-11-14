@@ -11,10 +11,10 @@ from fastapi import Path as PathParam
 from fastapi.responses import Response
 
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
+from ..api_v1.comun import pagina_estricta
 from ..api_v1.esquemas import errores
 from ..api_v1.esquemas_proyectos import DatosProyecto, ListaProyectos, ProyectoResumen, TableroProyecto
 from ..servicios import acceso, consultas, contable, proyectos
-from .v1_usuarios import pagina_estricta
 
 # Los id son INTEGER: uno mayor no existe y en PostgreSQL rompería la consulta (422 antes de llegar a la base)
 Id = Annotated[int, PathParam(ge=1, le=contable.MAXIMO_ID)]

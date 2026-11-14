@@ -1,7 +1,6 @@
 """API v1: viajes visibles para la persona y el cambio de estado que hace administración. Contrato en `contracts/api-v1.md`."""
 from fastapi import APIRouter, Depends
 
-from .. import db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, pagina, persona
 from ..api_v1.esquemas import CambioEstadoViaje, EstadoViaje, ListaViajes, ResultadoCambioEstado, ViajeDetalle, errores
 from ..servicios import acceso, consultas, viajes
@@ -9,26 +8,11 @@ from ..servicios import acceso, consultas, viajes
 router = APIRouter(prefix=PREFIJO + "/viajes", tags=["viajes"])
 
 
-def con_decision(items: list[dict], yo: dict) -> list[dict]:
-    """Añade lo que la web necesita para decidir: si el viaje es de quien mira y si su precio espera confirmación."""
-    if not items:
-        return items
-    admin = acceso.es_admin(yo)
-    filas = {f["id"]: f for f in db.todos(
-        f"select id, usuario_id, viajero_id from viajes where id in ({','.join(str(int(v['id'])) for v in items)})")}
-    for v in items:
-        v["propio"] = viajes.es_propio_de(filas.get(v["id"]), yo)
-        # Solo lo usa quien aprueba: a los demás no se les consulta la bitácora por cada viaje
-        v["precio_por_confirmar"] = (viajes.precio_por_confirmar(v["id"])
-                                     if admin and v["estado"] == "pendiente_aprobacion" else None)
-    return items
-
-
 def _detalle(yo: dict, id: int) -> dict:
     v = consultas.viaje(yo, id)
     if not v:
         raise ErrorApi(404, "NOT_FOUND", MENSAJE_HTTP[404])
-    return con_decision([v], yo)[0]
+    return consultas.marcar_viajes([v], yo)[0]
 
 
 @router.get("", response_model=ListaViajes, responses=errores(401, 422))
@@ -36,7 +20,7 @@ def lista(estado: EstadoViaje | None = None, paginacion: tuple = Depends(pagina)
     """Los suyos; el gestor, además los de sus proyectos; administración, todos. Más reciente primero."""
     limite, cursor = paginacion
     resultado = consultas.lista_viajes(yo, estado, limite, cursor)
-    con_decision(resultado["items"], yo)
+    consultas.marcar_viajes(resultado["items"], yo)
     return resultado
 
 
