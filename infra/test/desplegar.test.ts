@@ -23,6 +23,8 @@ function repositorio(): string {
   const raiz = fs.mkdtempSync(path.join(os.tmpdir(), "desplegar-"));
   git(raiz, "init", "-q", "-b", "main");
   fs.writeFileSync(path.join(raiz, "README.md"), "inicio\n");
+  fs.mkdirSync(path.join(raiz, "infra"));
+  fs.writeFileSync(path.join(raiz, "infra", ".gitkeep"), "");
   git(raiz, "add", ".");
   git(raiz, "commit", "-q", "-m", "inicio");
   git(raiz, "checkout", "-q", "-b", "dev");
@@ -35,7 +37,7 @@ function repositorio(): string {
 }
 
 /** La carpeta principal falsa (.venv y .env.*) y los dobles de las herramientas, que anotan cada llamada. */
-function entorno() {
+function entorno(opc: { npx?: string; directo?: string } = {}) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "desplegar-entorno-"));
   const principal = path.join(base, "principal");
   const bin = path.join(base, "bin");
@@ -49,13 +51,20 @@ function entorno() {
   fs.renameSync(path.join(bin, "python"), path.join(principal, ".venv", "bin", "python"));
   fs.renameSync(path.join(bin, "dotenv"), path.join(principal, ".venv", "bin", "dotenv"));
   doble("docker");
-  doble("npx");
+  doble("npx", opc.npx ?? "");
   doble("npm");
-  doble("curl", 'echo "200 "');
+  // Responde según la dirección: la API directa (sin CloudFront) da el código de opc.directo
+  doble("curl", `case "$*" in
+  *api.example.com*) echo "${opc.directo ?? "403"} " ;;
+  *auth/me*) echo "401 " ;;
+  *http://web.example.com/entrar*) echo "301 https://web.example.com/entrar" ;;
+  *admin/viajes*) echo "302 https://web.example.com/viajes" ;;
+  *) echo "200 " ;;
+esac`);
   doble("aws", `case "$1 $2" in
   "sts get-caller-identity") echo 000000000000 ;;
   "configure export-credentials") echo "export AWS_ACCESS_KEY_ID=AKIAFALSA AWS_SECRET_ACCESS_KEY=no-es-real" ;;
-  "cloudformation describe-stacks") case "$*" in *FuncionTareas*) echo OperacionApp-Tareas ;; *Funcion*) echo OperacionApp-Web ;; *Concurrencia*) echo 20 ;; *) echo None ;; esac ;;
+  "cloudformation describe-stacks") case "$*" in *FuncionTareas*) echo OperacionApp-Tareas ;; *Funcion*) echo OperacionApp-Web ;; *Concurrencia*) echo 20 ;; *UrlWeb*) echo https://web.example.com ;; *UrlAdmin*) echo https://admin.example.com ;; *"=='Url'"*) echo https://api.example.com/ ;; *) echo None ;; esac ;;
   "cloudwatch describe-alarms") echo OperacionApp-RechazosAnalizador ;;
 esac`);
   const respaldos = path.join(base, "respaldos");
@@ -66,9 +75,9 @@ esac`);
   return { env, llamadas, respaldos };
 }
 
-function desplegar(cwd: string, args: string[] = ["--ensayo"]) {
-  const { env, llamadas, respaldos } = entorno();
-  const r = spawnSync("zsh", [GUION, ...args], { cwd, env, encoding: "utf-8", input: "" });
+function desplegar(cwd: string, args: string[] = ["--ensayo"], input = "", opc: { npx?: string; directo?: string } = {}) {
+  const { env, llamadas, respaldos } = entorno(opc);
+  const r = spawnSync("zsh", [GUION, ...args], { cwd, env, encoding: "utf-8", input });
   const anotadas = fs.existsSync(llamadas) ? fs.readFileSync(llamadas, "utf-8") : "";
   return { codigo: r.status, salida: `${r.stdout}${r.stderr}`, llamadas: anotadas, respaldos };
 }
@@ -151,5 +160,20 @@ describe("guion de despliegue: solo desde la punta de dev (B5)", { skip: !hayZsh
     const r = spawnSync("zsh", [GUION, "--ensayo"], { cwd: raiz, env: { ...env, CORREO_AVISOS: "" }, encoding: "utf-8" });
     assert.notEqual(r.status, 0);
     assert.match(`${r.stdout}${r.stderr}`, /CORREO_AVISOS/);
+  });
+
+  test("una corrida real, sin --ensayo, pausa, despliega y devuelve la concurrencia", () => {
+    git(raiz, "checkout", "-q", "--detach", "dev");
+    const r = desplegar(raiz, [], "si\nsi\nsi\nsi\n");
+    assert.equal(r.codigo, 0, r.salida);
+    assert.match(r.salida, /== 2\. Pausa/);
+    assert.match(r.salida, /Fin de la pausa/);
+    const l = r.llamadas.split("\n");
+    const pausa = l.findIndex((x) => /put-function-concurrency .* 0$/.test(x));
+    const respaldo = l.findIndex((x) => /datos\.respaldar/.test(x));
+    const web = l.findIndex((x) => /cdk deploy OperacionWeb/.test(x));
+    const devuelta = l.findIndex((x, i) => i > web && /put-function-concurrency .* 20$/.test(x));
+    assert.ok(pausa >= 0 && pausa < respaldo, "la pausa va antes del respaldo");
+    assert.ok(web >= 0 && devuelta > web, "la concurrencia se devuelve después de desplegar la web");
   });
 });

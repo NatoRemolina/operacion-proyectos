@@ -75,9 +75,12 @@ RAIZ=$(git rev-parse --show-toplevel 2>/dev/null) || fallar "Esto no es una carp
 cd "$RAIZ"
 PRINCIPAL=${PRINCIPAL:-$(cd "$(git rev-parse --git-common-dir)/.." && pwd)}
 mkdir -p "$RESPALDOS"
-REGISTRO="$RESPALDOS/despliegue_$(date +%Y-%m-%d_%H%M%S)$( (( ENSAYO )) && print -n _ensayo).log"
+# Con errexit, un «(( X )) && …» que da falso dentro de $( ) o como última orden mata el guion: los sufijos se calculan antes
+SUFIJO_REGISTRO="" AVISO_ENSAYO="" FIN_ENSAYO="Despliegue terminado."
+if (( ENSAYO )); then SUFIJO_REGISTRO=_ensayo AVISO_ENSAYO="(ensayo, no cambia nada) " FIN_ENSAYO="Ensayo terminado: no se cambió nada."; fi
+REGISTRO="$RESPALDOS/despliegue_$(date +%Y-%m-%d_%H%M%S)${SUFIJO_REGISTRO}.log"
 exec > >(tee -a "$REGISTRO") 2>&1
-print "Despliegue $( (( ENSAYO )) && print -n "(ensayo, no cambia nada) ")desde $RAIZ — registro en $REGISTRO"
+print "Despliegue ${AVISO_ENSAYO}desde $RAIZ — registro en $REGISTRO"
 
 # ---------- 1. comprobaciones ----------
 paso "1. Comprobaciones"
@@ -218,4 +221,4 @@ if (( ! SIN_TELEGRAM )); then
   print "  $DOTENV -f $PRINCIPAL/.env.produccion run -- $PY -m datos.telegram_webhook ${URL_API:-<Url de OperacionApp>}"
 fi
 (( FALLOS )) && fallar "$FALLOS comprobaciones fallaron: decidir con docs/despliegue.md, «Vuelta atrás». Registro: $REGISTRO"
-print "\n✓ $( (( ENSAYO )) && print -n "Ensayo terminado: no se cambió nada." || print -n "Despliegue terminado.") Registro: $REGISTRO"
+print "\n✓ $FIN_ENSAYO Registro: $REGISTRO"
