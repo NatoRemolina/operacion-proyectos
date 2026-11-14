@@ -208,14 +208,14 @@ El bot apunta a la dirección de la función de la API (`<Url>/telegram/webhook`
 
 | Qué | Cómo | Esperado |
 |---|---|---|
-| API | `curl -s -o /dev/null -w "%{http_code}" "${URL_API}salud"` | 200 |
+| API | `curl -s -o /dev/null -w "%{http_code}" "${URL_API}salud"` (directo, sin CloudFront) | 403: la API exige `X-Origen-CloudFront`; el 200 se ve por CloudFront, en la fila de administración |
 | Administración | `https://admin.software.nataliaremolinarodriguez.com/salud`, y luego entrar con una cuenta de administración y abrir la bandeja de viajes | 200; la sesión se abre |
 | Web | Entrar en `https://software.nataliaremolinarodriguez.com/entrar` con una cuenta real y hacer una escritura (cotizar o cerrar la sesión) | Sin 403: CloudFront reenvía la cookie, `Origin`, `Sec-Fetch-Site` y `X-CSRF-Token` |
 | Estáticos | Abrir un archivo de `/_next/static/` de la página | 200, servido desde S3 (cabecera `server: AmazonS3`) |
 | Alarma de prueba | `aws cloudwatch set-alarm-state --alarm-name <nombre de ErroresDeLaAplicacion> --state-value ALARM --state-reason "Prueba del despliegue"` (el nombre sale de `aws cloudwatch describe-alarms`) | Llega el correo de aviso. La alarma vuelve sola a OK en el periodo siguiente |
 | Telegram (si se publicó) | `--estado` del paso 6, y mandar la foto de un recibo al bot desde un celular | Sin «Último error»; el gasto aparece en la plataforma |
 | Concurrencia | `aws lambda get-function-concurrency --function-name "$FUNCION"` | `ReservedConcurrentExecutions: 20` (y Tareas sin reserva) |
-| La API solo por CloudFront | `curl -s -o /dev/null -w "%{http_code}" "${URL_API}salud"`, directo a la función | 403 cuando la API exige `X-Origen-CloudFront` (frente de backend); por CloudFront, `https://admin.software.nataliaremolinarodriguez.com/salud` sigue en 200 |
+| La API solo por CloudFront | `curl -s -o /dev/null -w "%{http_code}" "${URL_API}salud"`, directo a la función | 403, y el guion lo exige: con un 200 falla con «La función acepta peticiones directas: revisa ORIGEN_SECRETO en el secreto y vuelve a desplegar OperacionApp»; por CloudFront, `https://admin.software.nataliaremolinarodriguez.com/salud` sigue en 200 |
 | Cabeceras | `curl -sI https://software.nataliaremolinarodriguez.com/entrar` | `strict-transport-security` con `includeSubDomains` y `content-security-policy` |
 | Agente del asesor | `"$PY" -m datos.asesor --verificar`, con la configuración del asesor (el agente es el mismo en local y en producción) | Termina con ✓: el agente coincide con el código y con el candado, y su entorno no tiene salida a la red |
 | Configuración al arrancar | En el registro de la función, buscar `ERROR peticion=arranque` después del despliegue | Ninguna línea. Si hay, nombra la variable mal escrita; se corrige en `.env.produccion` y se repite el paso 3 |

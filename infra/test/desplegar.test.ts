@@ -207,4 +207,18 @@ describe("guion de despliegue: solo desde la punta de dev (B5)", { skip: !hayZsh
     assert.match(r.salida, /dev local está detrás de origin\/dev/);
     assert.equal(r.llamadas.includes("put-function-concurrency"), false);
   });
+
+  test("si la función acepta peticiones directas (200 sin CloudFront), el guion termina con error y lo dice", () => {
+    git(raiz, "checkout", "-q", "--detach", "dev");
+    const r = desplegar(raiz, [], "si\nsi\nsi\nsi\n", { directo: "200" });
+    assert.notEqual(r.codigo, 0);
+    assert.match(r.salida, /La función acepta peticiones directas: revisa ORIGEN_SECRETO en el secreto y vuelve a desplegar OperacionApp/);
+  });
+
+  test("si la función rechaza lo directo con 403, la comprobación pasa", () => {
+    git(raiz, "checkout", "-q", "--detach", "dev");
+    const r = desplegar(raiz, [], "si\nsi\nsi\nsi\n", { directo: "403" });
+    assert.equal(r.codigo, 0, r.salida);
+    assert.match(r.salida, /✓ La dirección directa de la API no atiende sin CloudFront: 403/);
+  });
 });

@@ -204,14 +204,15 @@ URL_WEB=$(salida OperacionWeb UrlWeb)
 URL_ADMIN=$(salida OperacionWeb UrlAdmin)
 URL_API=$(salida OperacionApp Url)
 FALLOS=0
-comprobar() {   # descripción, dirección, códigos aceptados (expresión), destino esperado de la redirección (opcional)
-  local que=$1 url=$2 esperado=$3 destino=${4:-} codigo ubicacion
+comprobar() {   # descripción, dirección, códigos aceptados (expresión), destino esperado de la redirección (opcional), ayuda si falla (opcional)
+  local que=$1 url=$2 esperado=$3 destino=${4:-} ayuda=${5:-} codigo ubicacion
   if (( ENSAYO )); then print "[ensayo] $que: $url → $esperado${destino:+ hacia $destino}"; return 0; fi
   read -r codigo ubicacion <<< "$(curl -s -o /dev/null --max-time 30 -w '%{http_code} %{redirect_url}' "$url" || print 000)"
   if [[ $codigo == ${~esperado} && ( -z $destino || $ubicacion == $destino ) ]]; then
     print "✓ $que: $codigo${ubicacion:+ → $ubicacion}"
   else
     print "✗ $que: $url respondió $codigo${ubicacion:+ → $ubicacion}; se esperaba $esperado${destino:+ hacia $destino}"
+    [[ -z $ayuda ]] || print "  $ayuda"
     FALLOS=$(( FALLOS + 1 ))
   fi
 }
@@ -220,8 +221,9 @@ comprobar "La web responde" "$URL_WEB/entrar" 200
 comprobar "La API responde por CloudFront (sin sesión: 401)" "$URL_WEB/api/v1/auth/me" 401
 comprobar "La web obliga HTTPS" "http://${URL_WEB#https://}/entrar" "(301|308)" "$URL_WEB/entrar"
 (( SIN_DOMINIO )) || comprobar "Las pantallas anteriores llevan a la web" "$URL_ADMIN/admin/viajes" "(302|307)" "$URL_WEB/viajes"
-# Directo a la función, sin la cabecera de CloudFront: 403 si la API ya la exige (frente de backend), 200 si aún no
-comprobar "La dirección directa de la API no atiende sin CloudFront" "${URL_API%/}/salud" "(403|200)"
+# Directo a la función, sin la cabecera de CloudFront: la API la exige (frente de backend) y responde 403
+comprobar "La dirección directa de la API no atiende sin CloudFront" "${URL_API%/}/salud" 403 "" \
+  "La función acepta peticiones directas: revisa ORIGEN_SECRETO en el secreto y vuelve a desplegar OperacionApp"
 
 if (( ! SIN_TELEGRAM )); then
   print "\nTelegram: registra el webhook con el mismo archivo (docs/despliegue.md, paso 6):"
