@@ -193,18 +193,39 @@ def _precios(lineas: list[str], etiquetas: list[str]) -> dict:
     return salida
 
 
-def _reserva(lineas: list[str]) -> list[dict]:
-    """Opciones de reserva por vendedor: «Book with American» y, debajo, cada tarifa con su precio y lo que incluye."""
-    vendedores, vendedor, tarifa = [], None, None
+# Billetes separados («Separate tickets»): Google muestra un tiquete por tramo, cada uno con su vendedor. Estas frases
+# son avisos, nunca tarifas ni vendedores (producción, cotización 12, 13 nov 2026)
+AVISO_RESERVA = re.compile(r"^Separate tickets|tickets in your itinerary|booked (individually|separately)|^Price includes|"
+                           r"service fee", re.I)
+TRAMO_IDA = re.compile(r"^(Departing|Departure|Outbound)( flights?)?\b", re.I)
+TRAMO_REGRESO = re.compile(r"^(Return|Returning)( flights?)?\b", re.I)
+
+
+def _reserva(lineas: list[str]) -> tuple[list[dict], list[str], bool]:
+    """Opciones de reserva por vendedor: «Book with American» y, debajo, cada tarifa con su precio y lo que incluye.
+    Con billetes separados, cada vendedor lleva su `tramo` («ida» o «regreso»); el resumen con los vendedores juntos
+    («Book with COPA, Avianca») no es un vendedor. Devuelve (vendedores, avisos, billetes separados)."""
+    vendedores, vendedor, tarifa, tramo, avisos, separados = [], None, None, None, [], False
     for i, linea in enumerate(lineas):
+        if AVISO_RESERVA.search(linea):
+            avisos.append(linea)
+            separados = separados or bool(re.search(r"separate tickets|booked individually", linea, re.I))
+            continue
+        if TRAMO_IDA.match(linea) or TRAMO_REGRESO.match(linea):
+            tramo, vendedor, tarifa = ("ida" if TRAMO_IDA.match(linea) else "regreso"), None, None
+            continue
         if linea.startswith("Book with "):
             nombre = linea.removeprefix("Book with ").strip()
             # `innerText` junta el nombre y la marca «Airline» cuando van en la misma fila: «AmericanAirline»
             pegado = nombre.endswith("Airline") and nombre != "Airline" and not nombre.endswith(" Airline")
-            vendedor = {"vendedor": nombre.removesuffix("Airline") if pegado else nombre, "tarifas": [],
+            nombre = nombre.removesuffix("Airline") if pegado else nombre
+            tarifa = None
+            if ", " in nombre:   # varios vendedores juntos: el resumen de billetes separados, no se reserva ahí
+                vendedor, separados = None, True
+                continue
+            vendedor = {"vendedor": nombre, "tarifas": [], "tramo": tramo,
                         "aerolinea": pegado or (i + 1 < len(lineas) and lineas[i + 1] == "Airline")}
             vendedores.append(vendedor)
-            tarifa = None
             continue
         if vendedor is None or linea in SIN_INTERES or DUPLICADO_ACCESIBLE.match(linea):
             if linea == "Continue":
@@ -213,16 +234,22 @@ def _reserva(lineas: list[str]) -> list[dict]:
         precio = _precio(linea)
         if precio is not None:
             anterior = lineas[i - 1] if i else ""
-            nombre = anterior if anterior not in SIN_INTERES and not anterior.startswith("Book with ") else "Tarifa"
+            nombre = anterior if anterior not in SIN_INTERES and not anterior.startswith("Book with ") \
+                and not AVISO_RESERVA.search(anterior) and _precio(anterior) is None else "Tarifa"
             tarifa = {"nombre": nombre, "precio": precio, "caracteristicas": []}
             vendedor["tarifas"].append(tarifa)
         elif tarifa is not None:
             tarifa["caracteristicas"].append(linea)
         # una línea suelta antes del precio es el nombre de la tarifa: se toma al ver el precio
+    if separados and len(vendedores) == 2 and not any(v["tramo"] for v in vendedores):
+        vendedores[0]["tramo"], vendedores[1]["tramo"] = "ida", "regreso"   # sin encabezados: un tiquete por tramo, en orden
+    if not separados:
+        for v in vendedores:
+            v["tramo"] = None
     for v in vendedores:
         for t in v["tarifas"]:
             t.update(_clasificar(t.pop("caracteristicas")))
-    return vendedores
+    return vendedores, avisos, separados
 
 
 ETIQUETA_ITINERARIO = re.compile(
@@ -273,19 +300,22 @@ def leer(texto: str, etiquetas: list[str] | None = None) -> dict:
     fin_reserva = next((i for i, l in enumerate(lineas) if inicio_reserva is not None and i > inicio_reserva
                         and l.startswith(FIN_RESERVA)), len(lineas))
     tramos = _tramos(lineas[inicio_tramos + 1:inicio_reserva or len(lineas)]) if inicio_tramos is not None else []
-    vendedores = _reserva(lineas[inicio_reserva + 1:fin_reserva]) if inicio_reserva is not None else []
+    vendedores, avisos_reserva, separados = _reserva(lineas[inicio_reserva + 1:fin_reserva]) if inicio_reserva is not None \
+        else ([], [], False)
+    avisos += avisos_reserva
     lista = itinerarios(etiquetas or [])
     if inicio_reserva is None:
         avisos.append("La página no mostró opciones de reserva.")
     elif not vendedores:
         avisos.append("Hubo opciones de reserva, pero no se reconoció ningún vendedor.")
     notas = [l for l in lineas[fin_reserva:] if l.startswith(("Fare and baggage fees", "Prices include required taxes"))]
-    tarifas = [{**t, "vendedor": v["vendedor"]} for v in vendedores for t in v["tarifas"]]
+    tarifas = [{**t, "vendedor": v["vendedor"], "tramo": v["tramo"]} for v in vendedores for t in v["tarifas"]]
     return {
         "precio_total": total,
         "tramos": tramos,
-        "vendedores": [{"vendedor": v["vendedor"], "aerolinea": v["aerolinea"],
+        "vendedores": [{"vendedor": v["vendedor"], "aerolinea": v["aerolinea"], "tramo": v["tramo"],
                         "precio_desde": min((t["precio"] for t in v["tarifas"]), default=None)} for v in vendedores],
+        "billetes_separados": separados,
         "tarifas": tarifas,
         "equipaje": sorted({e for t in tarifas for e in t["equipaje"]}),
         "cambios": sorted({e for t in tarifas for e in t["cambios"]}),

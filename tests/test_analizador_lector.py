@@ -20,8 +20,8 @@ def test_lee_tarifas_equipaje_cambios_reembolso_escalas_y_vendedores():
         ("Tue, Dec 8", "9:48 AM", "12:24 PM", "American", "5 hr 36 min", "MIA–LAS", "Nonstop")
     assert (vuelta["ruta"], vuelta["escalas"], vuelta["detalle_escalas"]) == ("LAS–MIA", "1 stop", ["1 hr 10 min DFW"])
     assert d["escalas"][1] == {"ruta": "LAS–MIA", "escalas": "1 stop", "detalle": ["1 hr 10 min DFW"]}
-    assert d["vendedores"] == [{"vendedor": "American", "aerolinea": True, "precio_desde": 619.0},
-                               {"vendedor": "Expedia", "aerolinea": False, "precio_desde": 612.4}]
+    assert d["vendedores"] == [{"vendedor": "American", "aerolinea": True, "tramo": None, "precio_desde": 619.0},
+                               {"vendedor": "Expedia", "aerolinea": False, "tramo": None, "precio_desde": 612.4}]
     basica, main_cabin, select, expedia = d["tarifas"]
     assert (basica["nombre"], basica["precio"], basica["vendedor"]) == ("Basic Economy", 619.0, "American")
     assert basica["equipaje"] == ["1 free carry-on", "1st checked bag: $110"]   # sin la frase repetida para lectores
@@ -38,7 +38,7 @@ def test_lee_el_texto_real_de_la_pagina():
     """`innerText` de la página real (13 nov 2026): el vendedor y su marca llegan pegados en una línea."""
     d = lector.leer((EJEMPLO / "reserva_texto_real.txt").read_text(encoding="utf-8"), [])
     assert d["precio_total"] == 619 and d["avisos"] == []
-    assert d["vendedores"] == [{"vendedor": "American", "aerolinea": True, "precio_desde": 619.0}]
+    assert d["vendedores"] == [{"vendedor": "American", "aerolinea": True, "tramo": None, "precio_desde": 619.0}]
     assert [(t["nombre"], t["precio"]) for t in d["tarifas"]] == [("Basic Economy", 619), ("Main Cabin", 1014),
                                                                   ("Main Plus", 1226), ("Main Select", 1284)]
     assert d["tarifas"][2]["equipaje"] == ["1 free carry-on", "1st checked bag free"]
@@ -164,3 +164,23 @@ def test_el_hotel_solo_abre_google_hotels():
     for malo in ("https://www.google.com/travel/flights?tfs=x", "https://www.google.com/search?q=hotel",
                  "http://www.google.com/travel/search?q=x", "https://www.booking.com/hotel/us/flamingo.html"):
         assert not lector.url_permitida_hotel(malo), malo
+
+
+# ---------- producción, cotización 12: billetes separados («Separate tickets») ----------
+def test_billetes_separados_cada_tiquete_con_su_tramo_y_los_avisos_aparte():
+    d = _leer("billetes_separados.html")
+    assert d["billetes_separados"] is True
+    assert [(t["tramo"], t["vendedor"], t["nombre"], t["precio"]) for t in d["tarifas"]] == [
+        ("ida", "COPA", "Tarifa", 412.0), ("regreso", "Avianca", "Tarifa", 245.0)]
+    assert [(v["vendedor"], v["tramo"]) for v in d["vendedores"]] == [("COPA", "ida"), ("Avianca", "regreso")]
+    # ningún aviso es una tarifa ni un vendedor; los dos vendedores juntos tampoco
+    nombres = " ".join(t["nombre"] for t in d["tarifas"]) + " ".join(v["vendedor"] for v in d["vendedores"])
+    assert "Separate tickets" not in nombres and "phone service fee" not in nombres and "COPA, Avianca" not in nombres
+    assert any("must be booked individually" in a for a in d["avisos"])
+    assert any("phone service fee of $25" in a for a in d["avisos"])
+    assert d["tarifas"][0]["equipaje"] == ["1 free carry-on", "1st checked bag: $45"]
+
+
+def test_una_tarifa_comun_no_lleva_tramo():
+    d = _leer("reserva_completa.html")
+    assert d["billetes_separados"] is False and all(t["tramo"] is None for t in d["tarifas"])
