@@ -224,9 +224,11 @@ export function useAnalisisVuelo(id: number, vueloId: number) {
       }
     },
   });
-  // Si otra persona (u otra pestaña) ya la está leyendo, la respuesta llega «pendiente»: se sigue cada 3 s, 15 veces
+  // Si otra persona (u otra pestaña) ya la está leyendo, la respuesta llega «pendiente»: se sigue cada 3 s, 15 veces.
+  // Igual si el pedido agotó su plazo (58 s) o CloudFront cortó con un 504: la lectura puede seguir en la API.
   const queryClient = useQueryClient();
-  const enCurso = pedido.data?.estado === "pendiente";
+  const sinRespuesta = pedido.error?.tipo === "tiempo_agotado";
+  const enCurso = pedido.data?.estado === "pendiente" || sinRespuesta;
   // una consulta nueva por cada pedido: el conteo de intentos empieza de cero
   const clave = claveDePersona(personaId, "cotizar", "analisis", id, vueloId, pedido.submittedAt);
   const seguimiento = useQuery({
@@ -239,14 +241,18 @@ export function useAnalisisVuelo(id: number, vueloId: number) {
         ? SEGUIMIENTO_MS
         : false,
   });
-  const { mutate, isPending, error } = pedido;
+  const { mutate, isPending } = pedido;
+  // Tras el plazo, el error que cuenta es el de la consulta (por ejemplo, una lectura que nunca quedó registrada)
+  const error = sinRespuesta ? (seguimiento.error as ErrorDeAplicacion | null) : pedido.error;
+  // Mientras llega la primera consulta tras el plazo, la lectura sigue «en curso» para la pantalla
+  const esperandoEstado = sinRespuesta && !seguimiento.data && !seguimiento.error;
   const pedir = useCallback(() => mutate(), [mutate]);
   const consultas = queryClient.getQueryState(clave)?.dataUpdateCount ?? 0;
   // se lee siempre: React Query solo vuelve a pintar por los campos que se leyeron
   const buscando = seguimiento.isFetching;
   const data = enCurso && seguimiento.data ? seguimiento.data : pedido.data;
   return {
-    isPending,
+    isPending: isPending || esperandoEstado,
     error,
     data,
     mutate: pedir,

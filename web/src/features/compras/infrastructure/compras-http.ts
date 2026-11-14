@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { esEnlaceGoogle } from "@/features/cotizar/domain/cotizar";
-import { conRutasEvidencia, evidenciaSchema } from "@/features/cotizar/infrastructure/cotizar-http";
-import { PLAZO_LARGO_MS, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
+import { PLAZO_ANALISIS_MS, conRutasEvidencia, evidenciaSchema } from "@/features/cotizar/infrastructure/cotizar-http";
+import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { Compra, CompraDetalle, ComprasRepository } from "../domain/compras";
 
 const estado = z.enum(["solicitada", "en_analisis", "se_comprara", "no_se_comprara", "comprada", "cancelada"]);
@@ -88,7 +88,8 @@ export function crearComprasHttp(cliente: ClienteHttp): ComprasRepository {
       return cliente.postJson(`/compras/${id}/registro`, { version, ...registro }, compraSchema);
     },
     async analizar(id) {
-      const a = await cliente.postJson(`/compras/${id}/analisis`, {}, analisisSchema, { plazoMs: PLAZO_LARGO_MS });
+      // El mismo analizador que en cotizar: al agotarse, la pantalla vuelve a pedir la compra y ve cómo va la lectura
+      const a = await cliente.postJson(`/compras/${id}/analisis`, {}, analisisSchema, { plazoMs: PLAZO_ANALISIS_MS });
       return a ? { ...a, captura_url: absoluta(a.captura_url) } : null;
     },
   };

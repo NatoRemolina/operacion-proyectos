@@ -1,4 +1,5 @@
-import { PLAZO_LARGO_MS, PLAZO_MS } from "@/shared/infrastructure/cliente-http";
+import { PLAZO_MS } from "@/shared/infrastructure/cliente-http";
+import { PLAZO_ANALISIS_MS } from "@/features/cotizar/infrastructure/cotizar-http";
 import { probarRepositorioHttp } from "@/test/repositorio-http";
 import { crearComprasHttp } from "./compras-http";
 
@@ -8,5 +9,5 @@ probarRepositorioHttp("compras", crearComprasHttp, {
   cambiarEstado: { llamar: (r) => r.cambiarEstado(4, "se_comprara" as never, 2, null as never), plazoMs: PLAZO_MS },
   registrar: { llamar: (r) => r.registrar(4, 2, {} as never), plazoMs: PLAZO_MS },
   // lee la página del vuelo con el analizador
-  analizar: { llamar: (r) => r.analizar(4), plazoMs: PLAZO_LARGO_MS },
+  analizar: { llamar: (r) => r.analizar(4), plazoMs: PLAZO_ANALISIS_MS },
 }, "lista");

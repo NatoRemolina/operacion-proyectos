@@ -318,6 +318,12 @@ export function conRutasEvidencia(e: Evidencia, absoluta: (ruta: string) => stri
   };
 }
 
+/**
+ * Plazo del pedido de lectura de la página del vuelo: 58 s, antes de los 60 s con que CloudFront corta a la API. Si se
+ * agota (o llega un 504), la lectura puede seguir en la API y la web pasa a consultar su estado (`useAnalisisVuelo`).
+ */
+export const PLAZO_ANALISIS_MS = 58_000;
+
 const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), url: z.string() });
 
 export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
@@ -363,7 +369,7 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
     },
     async analizarVuelo(id, vueloId): Promise<AnalisisVuelo> {
       const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema, {
-        plazoMs: PLAZO_LARGO_MS,
+        plazoMs: PLAZO_ANALISIS_MS,
       });
       // La API da las rutas con su prefijo (captura e «Ir a…» de cada tarifa); la web las pide a la misma base que el resto
       return conCaptura(a);
