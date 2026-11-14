@@ -412,3 +412,14 @@ def test_nunca_mas_de_un_reintento():
     r = navegador.analizar(URL, servir=_servir_con_error(5, cargas))
     assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
     assert len(cargas) == 2                                          # la carga y un solo «Reload»
+
+
+def test_el_error_de_google_despues_de_elegir_el_regreso_tambien_se_reconoce():
+    """Prueba 13, Avianca: la lista de regresos cargó, y al elegir el regreso Google mostró su página de error."""
+    paginas = {"https://www.google.com/travel/flights/reserva": "sin_resultados.html",
+               "https://www.google.com/travel/flights?": "regresos.html"}
+    r = navegador.ir_a(URL, "Avianca", "regreso", servir=_servir(dict(paginas), []))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+    assert r["duracion_ms"] < 20_000                                 # no espera los 45 s
+    r = navegador.analizar(URL, servir=_servir(dict(paginas), []))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)

@@ -36,6 +36,7 @@ LISTO = re.compile(r"Booking options[\s\S]*\$\d|(Returning|Departing) flights[\s
                    r"Before you continue|Oops, something went wrong|No results returned")
 PARAMETROS_FIJOS = {"hl": "en", "gl": "us", "curr": "USD"}   # lo que sabe leer el lector: inglés, EE. UU. y dólares
 RESERVA = re.compile(r"Booking options[\s\S]*\$\d")
+RESERVA_O_ERROR = re.compile(RESERVA.pattern + r"|Oops, something went wrong|No results returned")
 
 ALTO_CAPTURA = 4000          # px: la reserva entera cabe; lo de más abajo (historia de precios) no hace falta
 TOPE_CAPTURA = 3_000_000     # bytes en base64: con los datos, la respuesta queda bajo 4 MB
@@ -233,9 +234,12 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 regreso = _elegir_regreso(pagina, min(5000, restante()), regreso_cotizacion)
                 if regreso:
                     # sin opciones de reserva a tiempo se lee lo que haya: `avisos` dirá que no las hubo
-                    texto = _esperar(pagina, RESERVA, min(espera_ms, restante())) or pagina.inner_text("body")
+                    texto = _esperar(pagina, RESERVA_O_ERROR, min(espera_ms, restante())) or pagina.inner_text("body")
             if salida():   # antes de leer y de capturar: nunca otro sitio ni una pestaña que se abrió
                 return _resultado("fallido", inicio, salida())
+            if ERROR_GOOGLE.search(texto) and not RESERVA.search(texto):   # el error de Google al elegir el regreso
+                return _resultado("fallido", inicio, SIN_RESULTADOS, url_final=pagina.url, regreso_elegido=regreso,
+                                  **_evidencia(pagina))
             if RESERVA.search(texto) and _desplegar(pagina, restante):
                 texto = pagina.inner_text("body")
             if salida():
