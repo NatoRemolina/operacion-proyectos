@@ -350,7 +350,14 @@ def buscar_vuelos(origen: str | list[str], destino: str | list[str], ida: str, r
 
 
 def _tarifa(opcion: dict) -> dict | None:
-    t = opcion.get("together") or opcion.get("departing")
+    t = opcion.get("together")
+    if not t and isinstance(opcion.get("departing"), dict) and isinstance(opcion.get("returning"), dict):
+        # billetes separados sin total: el viaje cuesta los dos tiquetes (solo la ida dejaría fuera el regreso)
+        ida, vuelta = opcion["departing"], opcion["returning"]
+        if _numero(ida.get("price")) is None or _numero(vuelta.get("price")) is None:
+            return None
+        t = {**ida, "price": ida["price"] + vuelta["price"],
+             "book_with": ", ".join(dict.fromkeys(str(x.get("book_with") or "el vendedor") for x in (ida, vuelta)))}
     if not t or not t.get("price"):
         return None
     notas = t.get("extensions", [])
@@ -473,6 +480,29 @@ def _textos(valor) -> list[str]:
     return [x[:200] for x in valor if isinstance(x, str)] if isinstance(valor, list) else []
 
 
+def _numero(valor) -> float | None:
+    return valor if isinstance(valor, int | float) and not isinstance(valor, bool) else None
+
+
+def _tiquetes(opcion) -> list[tuple[str, dict]]:
+    """Los tiquetes de una opción de reserva con su tramo: `ambos` para la opción junta (`together`); con billetes
+    separados (`separate_tickets`, o `departing`/`returning` sin pedido en `together`), `ida` y `regreso`, cada uno
+    con su precio y su pedido. El `together` de billetes separados es solo el total: no se compra."""
+    if not isinstance(opcion, dict):
+        return []
+    separados = opcion.get("separate_tickets") is True or (
+        "together" not in opcion and any(k in opcion for k in ("departing", "returning")))
+    if not separados:
+        t = opcion.get("together")
+        return [("ambos", t)] if isinstance(t, dict) else []
+    return [(tramo, opcion[clave]) for tramo, clave in (("ida", "departing"), ("regreso", "returning"))
+            if isinstance(opcion.get(clave), dict) and _numero(opcion[clave].get("price")) is not None]
+
+
+def _vendedor(t: dict) -> str:
+    return str(t.get("book_with") or "el vendedor")[:60]
+
+
 def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
                        regreso: str) -> tuple[list[dict], str | None]:
     """Las opciones de reserva del itinerario que ya están guardadas (las trajo el enlace a la página oficial o una
@@ -490,23 +520,26 @@ def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str
     fila = db.uno("select creado from busquedas where clave=:c order by id desc limit 1", c=nombre)
     salida = []
     for o in datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []:
-        t = o.get("together") if isinstance(o, dict) else None   # billetes separados: el precio de la ida no es el del viaje
-        if not isinstance(t, dict) or not isinstance(t.get("price"), int | float):
-            continue
-        notas = _textos(t.get("extensions"))
-        cambios = [x for x in notas if "change" in x.lower()]
-        reembolso = [x for x in notas if "refund" in x.lower()]
-        salida.append({"vendedor": str(t.get("book_with") or "el vendedor")[:60], "aerolinea": bool(t.get("airline")),
-                       "nombre": str(t.get("option_title") or "Tarifa")[:60], "precio": float(t["price"]),
-                       "equipaje": _textos(t.get("baggage_prices")),
-                       "cambios": cambios, "reembolso": reembolso, "otras": [x for x in notas if x not in cambios + reembolso]})
+        # con billetes separados, un tiquete por tramo con su precio («ida» y «regreso» como nombre de la tarifa)
+        for tramo, t in _tiquetes(o):
+            if _numero(t.get("price")) is None:
+                continue
+            notas = _textos(t.get("extensions"))
+            cambios = [x for x in notas if "change" in x.lower()]
+            reembolso = [x for x in notas if "refund" in x.lower()]
+            salida.append({"vendedor": _vendedor(t), "aerolinea": t.get("airline") is True,
+                           "nombre": tramo if tramo != "ambos" else str(t.get("option_title") or "Tarifa")[:60],
+                           "precio": float(t["price"]), "tramo": tramo, "numeros": _textos(t.get("marketed_as")),
+                           "equipaje": _textos(t.get("baggage_prices")),
+                           "cambios": cambios, "reembolso": reembolso, "otras": [x for x in notas if x not in cambios + reembolso]})
     return salida, fila["creado"] if fila else None
 
 
 def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
                     regreso: str, solicitud_id: int | None = None) -> list[dict]:
     """Opciones de reserva del itinerario consultadas ahora, con el `booking_request` de cada vendedor (`url` y
-    `post_data`): el pedido de un solo uso que lleva a su página oficial.
+    `post_data`): el pedido de un solo uso que lleva a su página oficial. Cada opción lleva su `tramo`: `ambos` o, con
+    billetes separados, `ida` y `regreso` (el pedido de cada tiquete es el mismo del «Continue» de Google).
 
     El `booking_request` vive solo en lo que devuelve esta función: la respuesta se guarda sin él (`_guardar`), la
     bitácora y el registro de la consulta no lo llevan. Si el mismo pedido se repite dentro de la hora, el buscador lo
@@ -534,20 +567,15 @@ def reserva_en_vivo(vuelo_ida: dict, vuelo_regreso_: dict, origenes: str | list[
     opciones = []
     lista = datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []
     for o in lista:   # cada campo se comprueba: una respuesta rara deja la opción fuera, nunca rompe
-        # con billetes separados (`departing` y `returning` sin `together`) el pedido de la ida solo compraría la ida:
-        # esa opción no sirve para la página oficial
-        t = o.get("together") if isinstance(o, dict) else None
-        if not isinstance(t, dict):
-            continue
-        pedido = t.get("booking_request") if isinstance(t.get("booking_request"), dict) else {}
-        precio = t.get("price") if isinstance(t.get("price"), int | float) and not isinstance(t.get("price"), bool) else None
-        opciones.append({"vendedor": str(t.get("book_with") or "el vendedor")[:60], "aerolinea": t.get("airline") is True,
-                         "precio": precio, "tarifa": str(t.get("option_title") or "Tarifa")[:60],
-                         "notas": [x for x in t.get("extensions") or [] if isinstance(x, str)] if isinstance(t.get("extensions"), list) else [],
-                         "equipaje": [x for x in t.get("baggage_prices") or [] if isinstance(x, str)]
-                         if isinstance(t.get("baggage_prices"), list) else [],
-                         "url": pedido.get("url") if isinstance(pedido.get("url"), str) else None,
-                         "post_data": pedido.get("post_data") if isinstance(pedido.get("post_data"), str) else None})
+        # `tramo`: `ambos` (la opción junta) o, con billetes separados, `ida` y `regreso`, cada uno con su pedido
+        for tramo, t in _tiquetes(o):
+            pedido = t.get("booking_request") if isinstance(t.get("booking_request"), dict) else {}
+            opciones.append({"tramo": tramo, "vendedor": _vendedor(t), "aerolinea": t.get("airline") is True,
+                             "precio": _numero(t.get("price")), "tarifa": str(t.get("option_title") or "Tarifa")[:60],
+                             "numeros": _textos(t.get("marketed_as")), "notas": _textos(t.get("extensions")),
+                             "equipaje": _textos(t.get("baggage_prices")),
+                             "url": pedido.get("url") if isinstance(pedido.get("url"), str) else None,
+                             "post_data": pedido.get("post_data") if isinstance(pedido.get("post_data"), str) else None})
     _anotar("vendedor", nombre, "caché del buscador" if repetida else "en vivo", solicitud_id, inicio,
             [o["precio"] for o in opciones if o["precio"] is not None])
     return opciones

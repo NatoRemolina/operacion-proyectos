@@ -437,7 +437,8 @@ def _por_buscador(sol: dict, vuelo: dict, vendedor: str, tarifa: str, sid: int) 
     if not regreso:
         return None
     for o in precios.reserva_en_vivo(vuelo, regreso, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid):
-        if (o["vendedor"].lower(), o["tarifa"].lower()) == (vendedor.lower(), tarifa.lower()) and _es_envio(o["url"]):
+        if o["tramo"] == "ambos" and (o["vendedor"].lower(), o["tarifa"].lower()) == (vendedor.lower(), tarifa.lower()) \
+                and _es_envio(o["url"]):
             return {"url": o["url"], "campos": parse_qsl(o["post_data"] or "", keep_blank_values=True)}
     return None
 

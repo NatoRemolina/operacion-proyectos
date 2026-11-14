@@ -527,7 +527,9 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
         return google
     regreso = precios.vuelo_regreso(vuelo, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid, tipo="vendedor_regreso")
     opciones = precios.reserva_en_vivo(vuelo, regreso, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid) if regreso else []
-    validas = [x for x in opciones if precios.es_envio_google(x["url"]) and isinstance(x["post_data"], str)]
+    # «Ver desglose» lleva al itinerario completo: un tiquete de billetes separados solo compraría un tramo
+    validas = [x for x in opciones if x["tramo"] == "ambos" and precios.es_envio_google(x["url"])
+               and isinstance(x["post_data"], str)]
     elegida = next((x for x in validas if x["aerolinea"]), validas[0] if validas else None)
     if not elegida:
         anotar(f"{'sin opciones de reserva' if not opciones else 'vendedor fuera de la lista blanca'} · Google Flights")
