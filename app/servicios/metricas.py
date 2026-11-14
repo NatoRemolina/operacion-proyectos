@@ -111,7 +111,7 @@ def gastos(f: dict) -> dict:
     motivos = Counter()
     for g in filas:
         for m in set(db.de_json(g["motivos"], []) or []):
-            motivos[validacion.MOTIVOS.get(m, m)] += 1
+            motivos[validacion.etiqueta(m)] += 1
 
     # Tiempo de recibido a aprobado, a partir de la bitácora
     tiempos = []

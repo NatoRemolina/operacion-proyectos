@@ -8,8 +8,13 @@ Estados: `solicitada` → `en_analisis` → `se_comprara` | `no_se_comprara` →
   viajero (bitácora del viaje).
 - Registrar la compra guarda localizador, precio pagado y vendedor, los días de anticipación y la diferencia con el
   precio cotizado, y crea el gasto del tiquete (categoría vuelo, `compras.gasto_id`): lo comprado suma en lo gastado del
-  viaje y entra al Excel contable. Si después llega el recibo de ese tiquete, se enlaza a ese gasto (`tiquete_por_enlazar`)
-  y no se cuenta dos veces.
+  viaje y entra al Excel contable. «Aprobado si cuadra»: queda aprobado si lo pagado no supera lo cotizado al decidir en
+  más de la regla `tolerancia_tiquete_pct`; si lo supera, o no hay precio cotizado, va a revisión y lo aprueba otra
+  persona de administración. Si el recibo del tiquete ya estaba cargado (mismo localizador o mismo comercio, con el
+  importe parecido), se enlaza ese gasto en vez de crear otro; si llega después, se une al del tiquete solo si el importe
+  coincide (`tiquete_por_enlazar`), y con el mismo localizador y otro importe queda aparte, en revisión.
+- Cancelar el tiquete ya comprado devuelve su gasto a revisión («Compra cancelada: revisar reembolso»): volver a
+  comprar no deja dos tiquetes aprobados.
 - Cuando el viaje cambia de estado (`al_cambiar_el_viaje`, desde `viajes.cambiar_estado`): «Se va a comprar» vuelve a
   análisis si el viaje deja de estar aprobado (también al cerrarlo: desde análisis tiene salida, «no se va a comprar»);
   con el tiquete ya comprado, rechazar o reabrir el viaje deja un evento y la compra muestra un aviso. Leer una compra
@@ -26,7 +31,7 @@ from sqlalchemy import Column, Float, Integer, Text, text
 from sqlalchemy.exc import IntegrityError
 
 from .. import config, db
-from . import eventos, tiempo, viajes
+from . import costo, dinero, eventos, revision, tiempo, validacion, viajes
 
 compras = db._tabla(
     "compras",
@@ -246,6 +251,8 @@ def cambiar_estado(cid: int, accion: str, version: int, motivo: str, usuario: di
             raise EstadoInvalido(f"El viaje {actual['viaje_codigo']} no tiene el presupuesto aprobado: primero se aprueba.")
         db.actualizar("compras", cid, estado=accion, motivo=motivo or actual["motivo"], decidida_por=usuario["id"],
                       decidido=db.ahora(), actualizado=db.ahora(), version=version + 1)
+        if accion == "cancelada" and actual["estado"] == "comprada" and actual["gasto_id"]:
+            _gasto_a_revision(actual["gasto_id"], COMPRA_CANCELADA, CANCELADA_TEXTO, f"compra #{cid} · {motivo}", usuario)
     eventos.registrar("compra", cid, f"compra: {ESTADOS[accion].lower()}", motivo, usuario["nombre"])
     if accion != "en_analisis":
         _avisar(actual, f"{ESTADOS[accion].lower()}{f' ({motivo})' if motivo else ''}", usuario)
@@ -293,38 +300,115 @@ def registrar_compra(cid: int, version: int, localizador: str, precio_pagado: De
 
 # ---------- el gasto del tiquete ----------
 ORIGEN_COMPRA = "compra registrada"   # `gastos.origen_dato` del gasto que nace al registrar la compra
+TOLERANCIA_TIQUETE = "tolerancia_tiquete_pct"   # regla editable: cuánto puede pasar lo pagado de lo cotizado (10 = 10 %)
+SOBRE_COTIZADO, COMPRA_CANCELADA, IMPORTE_DISTINTO = "tiquete_sobre_cotizado", "compra_cancelada", "tiquete_importe_distinto"
+CANCELADA_TEXTO = "Compra cancelada: revisar reembolso"
+IMPORTE_DISTINTO_TEXTO = "Mismo localizador que el tiquete, importe distinto"
+UN_DOLAR = Decimal(1)
+
+
+def importe_coincide(a: Decimal, b: Decimal) -> bool:
+    """Dos importes del mismo tiquete: a un 1 % o a un dólar, lo que sea mayor."""
+    return abs(a - b) <= max(abs(b) / 100, UN_DOLAR)
+
+
+def _importe(valor) -> Decimal | None:
+    try:
+        return dinero.decimal(valor, positivo=True) if valor is not None else None
+    except ValueError:
+        return None
+
+
+def _frente_a_lo_cotizado(pagado: Decimal, cotizado) -> str | None:
+    """None si lo pagado cuadra con lo cotizado al decidir; si no, la alerta para quien revisa."""
+    cotizado = _importe(cotizado)
+    if cotizado is None:
+        return f"Tiquete sin precio cotizado para comparar ({pagado:.2f} USD): lo revisa otra persona de administración"
+    tolerancia = Decimal(str(costo.supuesto(costo.catalogo(), TOLERANCIA_TIQUETE, 10)))
+    if pagado <= cotizado * (1 + tolerancia / 100):
+        return None
+    return f"Tiquete por encima de lo cotizado ({pagado:.2f} USD frente a {cotizado:.2f} USD)"
+
+
+def _gasto_a_revision(gid: int, codigo: str, alerta: str, detalle: str, quien: dict):
+    """El gasto vuelve a revisión con su motivo. Lo rechazado se queda como está."""
+    g = db.uno("select estado, alertas, motivos from gastos where id=:i", i=gid)
+    if not g or g["estado"] == "rechazado":
+        return
+    motivos, alertas = db.de_json(g["motivos"], []) or [], db.de_json(g["alertas"], []) or []
+    if codigo not in motivos:
+        motivos, alertas = [codigo, *motivos], [alerta, *alertas]
+    db.actualizar("gastos", gid, estado="revision", motivos=motivos, alertas=alertas)
+    revision.subir_version(gid)
+    eventos.registrar("gasto", gid, alerta.lower() if codigo == COMPRA_CANCELADA else "enviado a revisión",
+                      f"{alerta} · {detalle}", quien["nombre"])
+
+
+def _recibo_ya_cargado(viaje_id: int, localizador: str, vendedor: str, pagado: Decimal) -> int | None:
+    """El gasto de vuelo del viaje que ya trae el recibo de este tiquete: mismo localizador o mismo comercio, con el
+    importe parecido, y sin otra compra que lo use."""
+    for g in db.todos("""select g.id, g.comercio, g.total_usd, g.extraido from gastos g
+                         where g.viaje_id=:v and g.categoria='vuelo' and g.documento_id is not null
+                           and g.estado not in ('rechazado', 'procesando')
+                           and not exists (select 1 from compras c where c.gasto_id=g.id) order by g.id""", v=viaje_id):
+        importe = _importe(g["total_usd"])
+        numero = str((db.de_json(g["extraido"], {}) or {}).get("numero_factura") or "").strip().upper()
+        if importe is not None and importe_coincide(importe, pagado) \
+                and (numero == localizador or validacion.mismo_comercio(g["comercio"], vendedor)):
+            return g["id"]
+    return None
 
 
 def _gasto_del_tiquete(compra: dict, localizador: str, precio: Decimal, vendedor: str, usuario: dict) -> int:
-    """El gasto de lo comprado, aprobado: lo registra administración (nunca sobre su propio viaje) con el precio pagado."""
+    """El gasto de lo comprado: aprobado si cuadra con lo cotizado; si no, en revisión para otra persona de
+    administración (lo registra quien compró, que no revisa lo suyo). Si el recibo ya estaba cargado, es ese gasto."""
     viaje = viajes.uno(compra["viaje_id"])
+    alerta = _frente_a_lo_cotizado(precio, compra["precio_cotizado"])
+    detalle = f"compra #{compra['id']} · {localizador} · {precio:.2f} USD"
+    if (previo := _recibo_ya_cargado(viaje["id"], localizador, vendedor, precio)):
+        eventos.registrar("gasto", previo, "recibo ya cargado enlazado a la compra", detalle, usuario["nombre"])
+        g = db.uno("select estado from gastos where id=:i", i=previo)
+        if alerta and g["estado"] in ("aprobado_auto", "revision"):   # lo que aprobó una persona no se toca
+            _gasto_a_revision(previo, SOBRE_COTIZADO, alerta, detalle, usuario)
+        return previo
     gid = db.insertar("gastos", documento_id=None, proyecto_id=viaje["proyecto_id"], viajero_id=viaje["viajero_id"],
                       viaje_id=viaje["id"], comercio=vendedor, fecha=tiempo.hoy().isoformat(), categoria="vuelo",
                       total=float(precio), moneda="USD", total_usd=float(precio), canal_reserva=vendedor, confianza=1.0,
-                      estado="aprobado", alertas=[], motivos=[], origen_dato=ORIGEN_COMPRA, creado=db.ahora(),
-                      usuario_id=usuario["id"], revisado_por=usuario["id"], version=1)
-    eventos.registrar("gasto", gid, "gasto del tiquete comprado", f"compra #{compra['id']} · {localizador} · {precio} USD",
+                      estado="revision" if alerta else "aprobado", alertas=[alerta] if alerta else [],
+                      motivos=[SOBRE_COTIZADO] if alerta else [], origen_dato=ORIGEN_COMPRA, creado=db.ahora(),
+                      usuario_id=usuario["id"], revisado_por=None, version=1)
+    eventos.registrar("gasto", gid, "gasto del tiquete comprado", f"{detalle}" + (f" · {alerta}" if alerta else ""),
                       usuario["nombre"])
     return gid
 
 
-def tiquete_por_enlazar(viaje: dict | None, lectura: dict) -> int | None:
-    """El gasto del tiquete comprado del viaje al que corresponde un recibo recién leído, si todavía no tiene soporte: un
-    recibo de vuelo con el localizador de la compra, o con su mismo importe (a un 1 %, o un dólar)."""
+def _compra_del_viaje(viaje: dict | None, lectura: dict) -> dict | None:
+    """La compra registrada del viaje frente a un recibo de vuelo recién leído, con el importe del recibo en USD."""
     if not viaje or lectura.get("categoria") != "vuelo" or lectura.get("error"):
         return None
-    c = db.uno("""select c.gasto_id, c.localizador, c.precio_pagado from compras c join gastos g on g.id=c.gasto_id
-                  where c.viaje_id=:v and c.activa=1 and c.estado='comprada' and g.documento_id is null""", v=viaje["id"])
+    c = db.uno("""select c.gasto_id, c.localizador, c.precio_pagado, g.documento_id from compras c join gastos g on g.id=c.gasto_id
+                  where c.viaje_id=:v and c.activa=1 and c.estado='comprada'""", v=viaje["id"])
     if not c:
         return None
-    if c["localizador"] and (lectura.get("numero_factura") or "").strip().upper() == c["localizador"]:
-        return c["gasto_id"]
-    from . import costo, validacion
     usd = validacion.a_usd(lectura.get("total"), lectura.get("moneda"), costo.catalogo())
-    pagado = Decimal(str(c["precio_pagado"]))
-    if usd is not None and abs(Decimal(str(usd)) - pagado) <= max(pagado / 100, Decimal(1)):
-        return c["gasto_id"]
-    return None
+    mismo = bool(c["localizador"]) and (lectura.get("numero_factura") or "").strip().upper() == c["localizador"]
+    pagado = _importe(c["precio_pagado"])
+    coincide = usd is not None and pagado is not None and importe_coincide(Decimal(str(usd)), pagado)
+    return {**c, "mismo_localizador": mismo, "coincide": coincide}
+
+
+def tiquete_por_enlazar(viaje: dict | None, lectura: dict) -> int | None:
+    """El gasto del tiquete comprado del viaje al que se une un recibo recién leído, si todavía no tiene soporte: un recibo
+    de vuelo con el mismo importe (a un 1 %, o un dólar). Con el mismo localizador y otro importe (el equipaje, por
+    ejemplo) no se une: ver `localizador_con_otro_importe`."""
+    c = _compra_del_viaje(viaje, lectura)
+    return c["gasto_id"] if c and c["coincide"] and c["documento_id"] is None else None
+
+
+def localizador_con_otro_importe(viaje: dict | None, lectura: dict) -> bool:
+    """El recibo trae el localizador del tiquete comprado pero otro importe: queda como gasto aparte, en revisión."""
+    c = _compra_del_viaje(viaje, lectura)
+    return bool(c and c["mismo_localizador"] and not c["coincide"])
 
 
 # ---------- rastro de los enlaces ----------

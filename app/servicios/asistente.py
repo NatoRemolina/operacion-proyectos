@@ -130,6 +130,14 @@ EXPLICACION = {
                         "Explica en la justificación por qué este gasto es del viaje."),
     "presupuesto_superado": ("Con este gasto el viaje pasa del presupuesto aprobado más la tolerancia.",
                              "Explica en la justificación por qué hizo falta; administración decide si lo aprueba."),
+    "tiquete_sobre_cotizado": ("Lo pagado por el tiquete supera lo cotizado al decidir más la tolerancia, o no había precio "
+                               "cotizado para comparar.",
+                               "No tienes que hacer nada: otra persona de administración revisa el precio y lo aprueba."),
+    "compra_cancelada": ("La compra del tiquete se canceló después de pagarla.",
+                         "No tienes que hacer nada: administración revisa si hubo reembolso."),
+    "tiquete_importe_distinto": ("El recibo trae el localizador del tiquete comprado, pero otro importe (por ejemplo, el "
+                                 "equipaje).",
+                                 "Si es un cargo aparte del tiquete, explícalo en la justificación."),
 }
 DEL_RECIBO = {"ilegible", "lectura_fallida", "campo_faltante", "importe_invalido", "fecha_invalida"}   # se arreglan con otra foto
 FALTA_JUSTIFICACION = "La justificación: para qué fue el gasto (es opcional y ayuda a quien revisa)."
@@ -408,7 +416,7 @@ def _codigos(g: dict) -> list[str]:
 
 def _explicado(codigo: str) -> dict:
     que_paso, que_hacer = EXPLICACION.get(codigo, ("Una regla de validación lo marcó.", "Quien revisa lo mira y decide."))
-    return {"motivo": validacion.MOTIVOS.get(codigo, codigo), "que_paso": que_paso, "que_puedes_hacer": que_hacer}
+    return {"motivo": validacion.etiqueta(codigo), "que_paso": que_paso, "que_puedes_hacer": que_hacer}
 
 
 def _falta(estado: str, motivos: list[str], justificado: bool) -> list[str]:
@@ -542,7 +550,7 @@ def h_gastos_de(r: Rastro, persona: str = "", viaje: str = "", estado: str = "",
         motivos = _codigos(g) if g["estado"] == "revision" else []
         salida.append({"gasto": f"#{g['id']}", "fecha": g["fecha"], "comercio": g["comercio"], "categoria": config.CATEGORIAS.get(g["categoria"], g["categoria"]),
                        "total": g["total"], "moneda": g["moneda"], "total_usd": g["total_usd"], "estado": memoria.ESTADO_GASTO.get(g["estado"], g["estado"]),
-                       "viaje": codigos.get(g["viaje_id"]), "canal": g["canal"], "motivos": [validacion.MOTIVOS.get(c, c) for c in motivos],
+                       "viaje": codigos.get(g["viaje_id"]), "canal": g["canal"], "motivos": [validacion.etiqueta(c) for c in motivos],
                        "justificado": bool(g["justificaciones"]), "falta": _falta(g["estado"], motivos, bool(g["justificaciones"]))})
     return {"gastos": salida, "hay_mas": len(filas) > MAX_GASTOS,
             "totales_por_estado": [{"estado": memoria.ESTADO_GASTO.get(t["estado"], t["estado"]), "gastos": t["n"], "total_usd": round(t["usd"], 2)}

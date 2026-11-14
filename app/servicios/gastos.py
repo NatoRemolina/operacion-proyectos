@@ -20,6 +20,8 @@ EXTENSIONES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "a
 FORMATOS_DE_CORREO = ("message/rfc822", "text/html")
 TIPOS_ADMITIDOS = "Se aceptan fotos (JPG, PNG, WebP), PDF, correos (.eml) y confirmaciones en HTML (.html)."
 CANALES_DE_SUBIDA = ("web", "celular")
+# Motivos que no salen de las reglas del recibo: volver a validarlo no los quita
+CONSERVAN_REVISION = ("lectura_fallida", compras.SOBRE_COTIZADO, compras.COMPRA_CANCELADA, compras.IMPORTE_DISTINTO)
 
 
 def tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
@@ -245,6 +247,10 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
             r["alertas"].insert(0, x["error"])
             r["motivos"].insert(0, "lectura_fallida")
             r["estado"] = "revision"
+        elif compras.localizador_con_otro_importe(viaje, x):   # del mismo tiquete, pero no es el tiquete (el equipaje)
+            r["alertas"].insert(0, compras.IMPORTE_DISTINTO_TEXTO)
+            r["motivos"].insert(0, compras.IMPORTE_DISTINTO)
+            r["estado"] = "revision"
         # La lectura original tal cual, salvo NaN e infinito, que no son JSON válido: quedan vacíos
         original = {c: None if isinstance(x.get(c), float) and not math.isfinite(x[c]) else x.get(c) for c in extraccion.CAMPOS} \
             | extraccion.datos_de_factura(x) | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
@@ -326,9 +332,13 @@ def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
         cambios = {"viaje_id": viaje["id"], "proyecto_id": viaje["proyecto_id"], "viajero_id": viaje["viajero_id"] or g["viajero_id"]}
         if g["estado"] in ("revision", "aprobado_auto"):
             r = validacion.revisar(_campos_de(g), proyecto, gasto_id, viaje)
-            if "lectura_fallida" in (db.de_json(g["motivos"], []) or []):
-                r["estado"], r["motivos"] = "revision", ["lectura_fallida"] + r["motivos"]
-                r["alertas"] = (db.de_json(g["alertas"], []) or [])[:1] + r["alertas"]
+            # Lo que no sale de las reglas (la lectura fallida, lo del tiquete comprado) sigue pidiendo revisión
+            conservar = [(m, a) for m, a in zip(db.de_json(g["motivos"], []) or [], db.de_json(g["alertas"], []) or [], strict=False)
+                         if m in CONSERVAN_REVISION]
+            if conservar:
+                r["estado"] = "revision"
+                r["motivos"] = [m for m, _ in conservar] + r["motivos"]
+                r["alertas"] = [a for _, a in conservar] + r["alertas"]
             cambios.update(estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"])
         elif g["estado"] == "aprobado" and g["viaje_id"] != viaje["id"]:
             # Lo aprobado por una persona conserva su estado, pero no puede llevarse a un viaje que no lo admite

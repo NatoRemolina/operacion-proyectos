@@ -44,7 +44,7 @@ def comparar(campo: str, leido, esperado) -> bool | None:
         except InvalidOperation:
             return False
     if campo == "comercio":
-        return validacion._mismo_comercio(leido, esperado) or (leido is None and esperado is None)
+        return validacion.mismo_comercio(leido, esperado) or (leido is None and esperado is None)
     if campo == "moneda":
         return (leido or "").upper() == (esperado or "").upper()
     return leido == esperado
