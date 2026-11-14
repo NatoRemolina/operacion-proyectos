@@ -159,13 +159,25 @@ def test_las_vistas_se_recrean_y_protegen_en_una_sola_transaccion(monkeypatch):
 
 # ---------- 4. conexión cifrada fuera de local ----------
 def test_fuera_de_local_postgresql_exige_ssl_salvo_que_la_cadena_diga_otro():
+    """Decide el servidor de la cadena, no dónde corre la aplicación: la migración que corre el guion desde el equipo
+    contra Supabase también va cifrada."""
     remota = "postgresql://usr@db.ejemplo.invalid:5432/x"
-    assert db._url(remota, local=False).query["sslmode"] == "require"
-    assert db._url("postgres://usr@db.ejemplo.invalid/x", local=False).query["sslmode"] == "require"
-    assert db._url(remota + "?sslmode=verify-full", local=False).query["sslmode"] == "verify-full"
-    assert "sslmode" not in db._url(remota, local=True).query
-    assert db._url(remota, local=False).drivername == "postgresql+psycopg"
-    assert str(db._url("sqlite:///x.db", local=False)) == "sqlite:///x.db"
+    assert db._url(remota).query["sslmode"] == "require"
+    assert db._url("postgres://usr@db.ejemplo.invalid/x").query["sslmode"] == "require"
+    assert db._url(remota + "?sslmode=verify-full").query["sslmode"] == "verify-full"
+    for servidor in ("localhost", "127.0.0.1", "db", "host.docker.internal"):   # el contenedor de Compose no usa SSL
+        assert "sslmode" not in db._url(f"postgresql://usr@{servidor}:5433/x").query, servidor
+    assert db._url(remota).drivername == "postgresql+psycopg"
+    assert str(db._url("sqlite:///x.db")) == "sqlite:///x.db"
+
+
+def test_desde_el_equipo_la_conexion_a_supabase_tambien_exige_ssl():
+    entorno = {k: v for k, v in os.environ.items() if k not in ("PREPARAR_BASE_LOCAL", "DATABASE_URL", "ENTORNO", "SECRETO_ARN")}
+    entorno.update(DATABASE_URL="postgresql://usr@aws-1-us-east-1.pooler.ejemplo.invalid:5432/postgres")
+    salida = subprocess.run(  # noqa: S603  comando fijo: el intérprete actual con un texto constante
+        [sys.executable, "-c", "from app import config, db; print(config.LOCAL, db.motor.url.query.get('sslmode'))"],
+        cwd=RAIZ, env=entorno, capture_output=True, text=True, check=True)
+    assert salida.stdout.strip() == "True require"
 
 
 def test_el_motor_de_la_nube_conecta_con_ssl():

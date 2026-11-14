@@ -16,10 +16,14 @@ from sqlalchemy.engine import URL, make_url
 
 from . import config
 
+# Servidores del equipo o de Docker: el contenedor de PostgreSQL de Compose no usa SSL
+SERVIDORES_LOCALES = ("localhost", "127.0.0.1", "::1", "db", "host.docker.internal")
 
-def _url(cadena: str, local: bool) -> str | URL:
-    """La conexión para SQLAlchemy. Fuera del equipo, PostgreSQL va cifrado: `sslmode=require` si la cadena no trae su
-    propio `sslmode` (que se respeta, por ejemplo `verify-full`). En local no se fuerza: el contenedor no usa SSL."""
+
+def _url(cadena: str) -> str | URL:
+    """La conexión para SQLAlchemy. PostgreSQL en un servidor que no es local va cifrado: `sslmode=require` si la cadena
+    no trae su propio `sslmode` (que se respeta, por ejemplo `verify-full`). Decide el servidor de la cadena, no dónde
+    corre la aplicación: la migración que corre el guion desde el equipo contra Supabase también lo exige."""
     if not cadena:
         (config.RAIZ / "datos").mkdir(exist_ok=True)
         return f"sqlite:///{config.RAIZ / 'datos' / 'local.db'}"
@@ -28,7 +32,7 @@ def _url(cadena: str, local: bool) -> str | URL:
     url = make_url(cadena)
     if url.drivername in ("postgresql", "postgres"):
         url = url.set(drivername="postgresql+psycopg")
-    if url.get_backend_name() == "postgresql" and not local and "sslmode" not in url.query:
+    if url.get_backend_name() == "postgresql" and url.host not in SERVIDORES_LOCALES and "sslmode" not in url.query:
         url = url.update_query_dict({"sslmode": "require"})
     return url
 
@@ -43,7 +47,7 @@ if not config.ES_SQLITE:
         # En la nube cada instancia mantiene pocas conexiones y las comprueba al reanudar tras una pausa
         _args.update(pool_size=2, max_overflow=2, pool_recycle=120, pool_pre_ping=True)
 # Un error de la base no lleva los valores enviados (por ejemplo, la huella de una contraseña) a los registros
-motor = create_engine(_url(config.DATABASE_URL, config.LOCAL), hide_parameters=True, **_args)
+motor = create_engine(_url(config.DATABASE_URL), hide_parameters=True, **_args)
 
 if config.ES_SQLITE:
     @event.listens_for(motor, "connect")
