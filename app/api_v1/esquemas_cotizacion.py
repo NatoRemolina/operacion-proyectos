@@ -447,7 +447,11 @@ class EnvioVendedor(BaseModel):
     campos: list[tuple[str, str]]
     vendedor: str
     tarifa: str
-    motivo: str | None = Field(description="Por qué no se llegó por la página, si es el caso.")
+    motivo: str | None = Field(description="Lo que la persona debe saber del camino, si hay algo: por el buscador, el "
+                                           "aviso si otro vende ahora ese tramo («Avianca ya no vende este tramo; ahora "
+                                           "lo vende eDreams a 316 USD»); por Google Flights, por qué no se llegó al "
+                                           "vendedor (tope, sin analizador, la página pidió verificación...). Vacío "
+                                           "por la página.")
     guia: str | None = Field(None, description="Qué vuelo elegir en la página del vendedor, para mostrarlo antes del "
                                                "envío: «En COPA, elige CM 687 · CM 240, sale 12:40 pm, desde 334 USD.» "
                                                "Si otro vende ahora ese tramo, empieza con el aviso: «Avianca ya no "

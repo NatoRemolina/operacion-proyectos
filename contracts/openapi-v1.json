@@ -8262,7 +8262,7 @@
               }
             ],
             "title": "Motivo",
-            "description": "Por qué no se llegó por la página, si es el caso."
+            "description": "Lo que la persona debe saber del camino, si hay algo: por el buscador, el aviso si otro vende ahora ese tramo («Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD»); por Google Flights, por qué no se llegó al vendedor (tope, sin analizador, la página pidió verificación...). Vacío por la página."
           },
           "guia": {
             "anyOf": [
