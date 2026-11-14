@@ -24,7 +24,7 @@ capturas = db._tabla(
     db._ref("capturas", "solicitud_id", "solicitudes"), db._ref("capturas", "decision_id", "decisiones"),
     db._ref("capturas", "compra_id", "compras"), db._ref("capturas", "opcion_id", "opciones"),
     Column("tipo", Text, nullable=False),        # vuelo | hotel
-    Column("motivo", Text, nullable=False),      # decision | seguimiento | compra
+    Column("motivo", Text, nullable=False),      # decision | seguimiento | compra | clic
     Column("clave", Text, nullable=False, unique=True),   # la cola no duplica: una por decisión, por día o por compra
     Column("url", Text),                         # armada por el servidor (Google Flights o Google Hotels)
     Column("estado", Text, nullable=False),      # pendiente | en_curso | lista | fallida
@@ -116,6 +116,22 @@ def al_comprar(compra_id: int) -> int | None:
                     decision_id=d["id"], compra_id=compra_id, opcion_id=d["vuelo_id"])
 
 
+def al_clic(sid: int, opcion_id: int, vendedor: str, tarifa: str) -> int | None:
+    """La captura completa del momento en que la persona abrió «Ir a {vendedor} · {tarifa}»: Google y la página de la
+    aerolínea, con esa tarifa. Una por vuelo, vendedor y tarifa en cada hora (repetir el clic no la repite)."""
+    sol = db.uno("select * from solicitudes where id=:i", i=sid)
+    vuelo = db.uno("select datos from opciones where id=:o and solicitud_id=:s", o=opcion_id, s=sid)
+    if not sol or not vuelo:
+        return None
+    try:
+        url = analizador.enlace_itinerario(sol, db.de_json(vuelo["datos"], {}) or {})
+    except (ValueError, TypeError):
+        return None
+    hora = datetime.now(UTC).strftime("%Y-%m-%d %H")
+    return _encolar(tipo="vuelo", motivo="clic", clave=f"vuelo:clic:{opcion_id}:{vendedor}:{tarifa}:{hora}", url=url,
+                    solicitud_id=sid, opcion_id=opcion_id, datos={"pedido": {"vendedor": vendedor, "tarifa": tarifa}})
+
+
 def seguimiento_encendido() -> bool:
     return costo.supuesto(costo.catalogo(), "seguimiento_diario", 1) >= 1
 
@@ -198,8 +214,16 @@ def _pedido(f: dict) -> list[dict]:
     d = db.uno("select * from decisiones where id=:i", i=f["decision_id"]) if f["decision_id"] else None
     vuelo = db.de_json((db.uno("select datos from opciones where id=:o", o=f["opcion_id"]) or {}).get("datos"), {}) or {}
     sol = db.uno("select * from solicitudes where id=:i", i=f["solicitud_id"])
-    return [{"accion": "captura_vuelo", "url": f["url"], "vendedor": str(vuelo.get("aerolinea") or "")[:60],
-             "tarifa": str((d or {}).get("tarifa") or "")[:60], "regreso": analizador.regreso_de(sol, vuelo) if sol else None}]
+    pedido = _pedido_guardado(f) or {"vendedor": vuelo.get("aerolinea"), "tarifa": (d or {}).get("tarifa")}   # el clic, o lo decidido
+    return [{"accion": "captura_vuelo", "url": f["url"], "vendedor": str(pedido.get("vendedor") or "")[:60],
+             "tarifa": str(pedido.get("tarifa") or "")[:60], "regreso": analizador.regreso_de(sol, vuelo) if sol else None}]
+
+
+def _pedido_guardado(f: dict) -> dict | None:
+    """La tarifa que pidió la persona con su clic (solo las capturas `clic` la guardan)."""
+    datos = db.de_json(f.get("datos"), None) if isinstance(f.get("datos"), str) else f.get("datos")
+    pedido = (datos or {}).get("pedido") if isinstance(datos, dict) else None
+    return pedido if isinstance(pedido, dict) else None
 
 
 def hacer(f: dict) -> dict:
@@ -236,6 +260,8 @@ def hacer(f: dict) -> dict:
         db.actualizar("capturas", f["id"], estado="fallida" if ultimo else "pendiente", fallo=fallo, duracion_ms=ms,
                       terminado=db.ahora(), proximo=None if ultimo else (datetime.now(UTC) + ESPERA_REINTENTO).strftime("%Y-%m-%d %H:%M:%S"))
     else:
+        if _pedido_guardado(f):
+            datos["pedido"] = _pedido_guardado(f)   # qué tarifa abrió la persona
         db.actualizar("capturas", f["id"], estado="lista", fallo=None, datos=datos, texto=_recortar("\n\n".join(textos)),
                       imagenes=imagenes, duracion_ms=ms, terminado=db.ahora(), proximo=None)
     if f["solicitud_id"]:

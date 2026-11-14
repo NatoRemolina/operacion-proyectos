@@ -53,6 +53,8 @@ def cola(monkeypatch):
         "captura_aerolinea": {"estado": "listo", "duracion_ms": 12000, "datos": {"total": 748.80, "impuestos": 79.30},
                               "texto": "Passengers\nYour trip total $748.80",
                               "capturas_png_b64": [base64.b64encode(PNG + b"aerolinea").decode()]},
+        "ir_a": {"estado": "listo", "url": "https://www.google.com/travel/clk/f?pf=1", "cuerpo": "u=UNSOLOUSO-CLIC-999&adurl=",
+                 "vendedor": "American", "tarifa": "Main Cabin", "duracion_ms": 5000},
         "captura_hotel": {"estado": "listo", "duracion_ms": 20000, "datos": {"calificacion": 4.3},
                           "texto": "Prices\nBooking.com $612", "capturas_png_b64": [base64.b64encode(PNG + b"hotel").decode()]},
     }
@@ -324,3 +326,38 @@ def test_la_evidencia_se_encola_despues_de_confirmar_la_decision(piloto, cola, m
     _decidir(piloto, cot)
     assert vistos == [None]                      # fuera de la transacción y del cerrojo de la decisión
     assert len(_de(cot["id"])) == 2
+
+
+# ---------- el clic a la aerolínea guarda todo (pedido de la responsable) ----------
+def test_el_clic_a_la_aerolinea_encola_una_captura_completa_sin_esperar(piloto, cola):
+    pedidos, _ = cola
+    cot = _cotizar(piloto)
+    vuelo = cot["vuelos"][0]["id"]
+    ir = lambda: piloto.post(f"{V1}/cotizaciones/{cot['id']}/vuelos/{vuelo}/ir",  # noqa: E731
+                             json={"vendedor": "American", "tarifa": "Main Cabin"}, headers=_csrf(piloto))
+    r = ir()
+    assert r.status_code == 200 and r.json()["camino"] == "pagina", r.text
+    assert [p["accion"] for p in pedidos] == ["ir_a"]                 # la persona no espera la captura
+    (f,) = [x for x in _de(cot["id"]) if x["motivo"] == "clic"]
+    assert (f["tipo"], f["estado"], f["opcion_id"], f["decision_id"]) == ("vuelo", "pendiente", vuelo, None)
+    assert db.de_json(f["datos"], {})["pedido"] == {"vendedor": "American", "tarifa": "Main Cabin"}
+    ir()                                                              # el mismo clic en la misma hora no se repite
+    assert len([x for x in _de(cot["id"]) if x["motivo"] == "clic"]) == 1
+    tareas.procesar(hoy="2026-11-20")
+    capt = [p for p in pedidos if p["accion"] == "captura_vuelo"]
+    assert (capt[0]["vendedor"], capt[0]["tarifa"]) == ("American", "Main Cabin")   # la tarifa del clic, no la decidida
+    f = db.uno("select * from capturas where id=:i", i=f["id"])
+    assert f["estado"] == "lista" and db.de_json(f["datos"], {})["pedido"]["tarifa"] == "Main Cabin"
+    assert "UNSOLOUSO-CLIC-999" not in str(db.todos("select * from capturas"))
+
+
+def test_si_no_se_puede_encolar_el_clic_la_persona_va_igual(piloto, cola, monkeypatch):
+    def falla(*a, **k):
+        raise RuntimeError("cola caída")
+    monkeypatch.setattr(capturas, "al_clic", falla)
+    cot = _cotizar(piloto)
+    r = piloto.post(f"{V1}/cotizaciones/{cot['id']}/vuelos/{cot['vuelos'][0]['id']}/ir",
+                    json={"vendedor": "American", "tarifa": "Main Cabin"}, headers=_csrf(piloto))
+    assert r.status_code == 200 and r.json()["camino"] == "pagina"
+    assert db.uno("select id from eventos where entidad='solicitud' and entidad_id=:s and paso='evidencia del clic no encolada'",
+                  s=cot["id"])

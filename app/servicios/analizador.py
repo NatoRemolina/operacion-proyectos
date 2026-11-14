@@ -458,9 +458,18 @@ def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, ca
         url = None
     turno = _reservar_ir(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa)
     try:
-        return _ir_con_turno(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa, turno, inicio, canal)
+        destino = _ir_con_turno(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa, turno, inicio, canal)
     finally:
         _no_dejar_pendiente(turno.get("id"))
+    # El mismo clic deja encolada una captura completa (Google y la aerolínea) del momento en que la persona abrió el
+    # enlace: la hace el trabajador, la persona no la espera y, si no se puede encolar, va igual.
+    try:
+        from . import capturas  # aquí: capturas usa este módulo
+        capturas.al_clic(sid, opcion_id, vendedor, tarifa)
+    except Exception as e:  # noqa: BLE001
+        eventos.registrar("solicitud", sid, "evidencia del clic no encolada", f"opción {opcion_id} · {type(e).__name__}",
+                          "sistema")
+    return destino
 
 
 def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict, url: str | None, vendedor: str,
