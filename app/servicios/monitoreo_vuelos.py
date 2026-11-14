@@ -24,6 +24,7 @@ tramos_vuelo = db._tabla(
     Column("ultimo_aviso", Text),
     Column("omitida", Text),   # último motivo para no consultar: se registra una vez, no en cada refresco del tablero
     Column("ultima_consulta", Text),   # «con datos» o «sin datos»: una respuesta sin el bloque no borra el estado conocido
+    sqlite_autoincrement=True,   # los tramos de un viaje se borran y se vuelven a crear al cambiar el vuelo
 )
 
 

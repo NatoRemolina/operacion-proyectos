@@ -27,6 +27,7 @@ def test_un_duplicado_exacto_se_reconoce_a_centavos(guardado, leido):
                                 "categoria": "comida", "confianza": 0.99, "dudas": []}, None, 0, None)
         assert "duplicado" in r["motivos"], r["motivos"]
     finally:
+        db.ejecutar("delete from eventos where entidad='gasto' and entidad_id=:i", i=gid)
         db.ejecutar("delete from gastos where id=:i", i=gid)
 
 
@@ -38,6 +39,7 @@ def test_un_centavo_de_diferencia_no_es_duplicado_exacto():
                                 "categoria": "comida", "confianza": 0.99, "dudas": []}, None, 0, None)
         assert "duplicado" not in r["motivos"] and "duplicado_aproximado" in r["motivos"]
     finally:
+        db.ejecutar("delete from eventos where entidad='gasto' and entidad_id=:i", i=gid)
         db.ejecutar("delete from gastos where id=:i", i=gid)
 
 

@@ -53,8 +53,10 @@ if config.ES_SQLITE:
 meta = MetaData()
 
 
-def _tabla(nombre, *columnas):
-    return Table(nombre, meta, Column("id", Integer, primary_key=True, autoincrement=True), *columnas)
+def _tabla(nombre, *columnas, **opciones):
+    """`sqlite_autoincrement=True` en las tablas cuyas filas se borran: sin AUTOINCREMENT, SQLite vuelve a dar el id más
+    alto que se borró, y la fila nueva hereda lo que apunta a ese número sin clave foránea (los eventos de un gasto)."""
+    return Table(nombre, meta, Column("id", Integer, primary_key=True, autoincrement=True), *columnas, **opciones)
 
 
 def _ref(tabla: str, columna: str, destino: str) -> Column:
@@ -142,6 +144,7 @@ gastos = _tabla(
     Column("motivos", Text),  # códigos de las alertas, para contar por qué se revisa sin buscar en el texto
     Column("extraido", Text),  # lectura original del modelo, intacta, para medir cuánto se corrige
     _ref("gastos", "viaje_id", "viajes"),
+    sqlite_autoincrement=True,   # el gasto provisional del recibo de un tiquete se borra (`gastos._enlazar_al_tiquete`)
 )
 eventos = _tabla(
     "eventos",

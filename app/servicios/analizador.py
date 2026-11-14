@@ -37,6 +37,7 @@ analisis_vuelo = db._tabla(
     Column("duracion_ms", Integer), Column("creado", Text), Column("terminado", Text),
     # «ir a» (pieza 3b): la misma tabla y el mismo turno; nunca guarda el envío al vendedor
     Column("accion", Text), Column("vendedor", Text), Column("tarifa", Text), Column("camino", Text),
+    sqlite_autoincrement=True,   # la lectura pendiente que no llegó a leerse se borra
 )
 LEER = "coalesce(accion, 'leer')='leer'"
 cupos_buscador = db._tabla(

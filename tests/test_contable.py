@@ -488,7 +488,9 @@ def test_las_consultas_del_libro_no_crecen_con_las_filas(mundo):
         assert _consultas_al_generar(mundo["g"], "2032-04-01", "2032-04-30") == \
             _consultas_al_generar(mundo["g"], "2032-05-01", "2032-05-31")
     finally:
-        db.ejecutar(f"delete from gastos where id in ({', '.join(str(int(i)) for i in ids)})")
+        lista = ", ".join(str(int(i)) for i in ids)
+        db.ejecutar(f"delete from eventos where entidad='gasto' and entidad_id in ({lista})")  # noqa: S608  ids enteros propios
+        db.ejecutar(f"delete from gastos where id in ({lista})")  # noqa: S608
 
 
 @pytest.mark.parametrize("ahora_utc", [datetime(2026, 12, 31, 23, 30, tzinfo=UTC),   # 18:30 en Bogotá

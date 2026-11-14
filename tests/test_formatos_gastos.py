@@ -35,6 +35,7 @@ def _sin_rastro():
     yield
     for g in db.todos("select id, documento_id from gastos where id>:m", m=antes):
         for sql in ("delete from envios_soporte where gasto_id=:g", "delete from justificaciones where gasto_id=:g",
+                    "delete from eventos where entidad='gasto' and entidad_id=:g",
                     "delete from gastos where id=:g"):
             db.ejecutar(sql, g=g["id"])
         if g["documento_id"]:
