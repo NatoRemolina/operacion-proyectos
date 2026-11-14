@@ -17,6 +17,9 @@ export type TipoError =
   | "precio_por_confirmar"
   | "cambio_ajeno"
   | "en_curso"
+  | "tiempo_agotado"
+  | "ocupado"
+  | "no_disponible"
   | "red"
   | "contrato"
   | "servidor";
@@ -27,7 +30,7 @@ const MENSAJES: Record<TipoError, string> = {
   demasiados_intentos: "Hubo demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
   prohibido: "No tienes permiso para hacer esta operación.",
   no_encontrado: "No encontramos lo que buscas o no tienes acceso.",
-  conflicto: "Ese envío ya se usó con otro archivo.",
+  conflicto: "Esto cambió mientras lo veías o ya se envió con otros datos. Recarga para ver cómo quedó.",
   demasiado_grande: "El archivo pesa más de 4,5 MB.",
   tipo_no_admitido: "Ese tipo de archivo no se admite. Usa una foto (JPG, PNG o WebP), un PDF o un correo (.eml).",
   validacion: "Hay datos que no son válidos.",
@@ -36,6 +39,10 @@ const MENSAJES: Record<TipoError, string> = {
   precio_por_confirmar: "El precio del vuelo cambió: confírmalo para aprobar.",
   cambio_ajeno: "Otra persona lo cambió mientras lo veías. Cargamos lo último para que lo revises de nuevo.",
   en_curso: "El envío anterior todavía se está procesando.",
+  tiempo_agotado:
+    "El servidor tardó demasiado en responder. Si enviaste algo, recarga antes de repetirlo: puede que ya se haya guardado.",
+  ocupado: "El servidor está recibiendo demasiadas peticiones. Espera un minuto y vuelve a intentarlo.",
+  no_disponible: "El servicio no está disponible en este momento. Inténtalo de nuevo en unos minutos.",
   red: "No hubo conexión con el servidor.",
   contrato: "El servidor respondió algo inesperado.",
   servidor: "Algo falló en el servidor. Ya quedó registrado.",

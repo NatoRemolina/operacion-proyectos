@@ -63,3 +63,59 @@ describe("cliente HTTP: cabeceras en escrituras JSON", () => {
     expect(cabeceras.get("Content-Type")).toBe("application/json");
   });
 });
+
+describe("cliente HTTP: plazo y respuestas de quien está delante de la API (B8)", () => {
+  it("el tope del día que explica la API se distingue del exceso de peticiones del borde", async () => {
+    const tope = await errorDe(errorApi(429, "TOO_MANY_REQUESTS", "Llegaste al tope de 10 cotizaciones de hoy."));
+    expect(tope.tipo).toBe("demasiados_intentos");
+    // El WAF responde con su propio código cuando una dirección pasa la tasa permitida
+    expect((await errorDe(errorApi(429, "RATE_LIMITED"))).tipo).toBe("ocupado");
+    expect((await errorDe(new Response("Rate Exceeded.", { status: 429 }))).tipo).toBe("ocupado");
+  });
+
+  it("un servicio no disponible de la API trae su explicación", async () => {
+    const error = await errorDe(errorApi(503, "SERVICE_UNAVAILABLE", "La transcripción no está configurada."));
+    expect(error.tipo).toBe("no_disponible");
+    expect(error.message).toBe("La transcripción no está configurada.");
+  });
+
+  it("un 409 sin código propio no habla de archivos: vale para cualquier pantalla", async () => {
+    const error = await errorDe(new Response(null, { status: 409 }));
+    expect(error.tipo).toBe("conflicto");
+    expect(error.message).not.toMatch(/archivo/);
+  });
+
+  it("cancelar la petición (por ejemplo, al salir de la pantalla) no se confunde con un plazo agotado", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(
+        (_url, init) =>
+          new Promise<Response>((_r, rechazar) =>
+            init?.signal?.addEventListener("abort", () => rechazar(new DOMException("Cancelada", "AbortError"))),
+          ),
+      ),
+    );
+    const control = new AbortController();
+    const pedido = crearClienteHttp("/api/v1").get("/x", z.object({}), { signal: control.signal });
+    control.abort();
+    await expect(pedido).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("cada llamada puede pedir su propio plazo", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>(
+          (_url, init) =>
+            new Promise<Response>((_r, rechazar) => init?.signal?.addEventListener("abort", () => rechazar(init.signal!.reason))),
+        ),
+      );
+      const pedido = crearClienteHttp("/api/v1").postJson("/x", {}, z.object({}), { plazoMs: 5000 }).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await pedido).toMatchObject({ tipo: "tiempo_agotado" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

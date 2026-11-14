@@ -69,12 +69,13 @@ describe("adaptador HTTP del asistente", () => {
     expect((init?.body as FormData).get("audio")).toBeInstanceOf(Blob);
   });
 
-  it("la voz no disponible llega como error del servidor", async () => {
+  it("la voz no disponible llega como servicio no disponible, con la explicación de la API", async () => {
     const { asistente } = preparar(
       respuestaJson({ error: { code: "SERVICE_UNAVAILABLE", message: "No está configurada." }, request_id: "x" }, 503),
     );
     const error = await asistente.transcribir(new Blob([])).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ErrorDeAplicacion);
-    expect((error as ErrorDeAplicacion).tipo).toBe("servidor");
+    expect((error as ErrorDeAplicacion).tipo).toBe("no_disponible");
+    expect((error as ErrorDeAplicacion).message).toBe("No está configurada.");
   });
 });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { consulta, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
+import { PLAZO_LARGO_MS, consulta, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import { esEnlaceGoogle } from "../domain/cotizar";
 import type {
   AnalisisVuelo,
@@ -345,6 +345,7 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
     async cotizar(pedido, claveIdempotencia) {
       return conRutas(await cliente.postJson("/cotizaciones", pedido, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
+        plazoMs: PLAZO_LARGO_MS,   // busca vuelos y hoteles en vivo
       }));
     },
     async obtener(id, signal) {
@@ -353,6 +354,7 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
     async decidir(id, decision, claveIdempotencia) {
       return conRutas(await cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
+        plazoMs: PLAZO_LARGO_MS,   // puede confirmar el precio en el buscador
       }));
     },
     async registrarFuente(id, destino, objetivo) {
@@ -360,7 +362,9 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       await cliente.postJson(`/cotizaciones/${id}/fuente`, cuerpo, enlaceFuenteSchema);
     },
     async analizarVuelo(id, vueloId): Promise<AnalisisVuelo> {
-      const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema);
+      const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema, {
+        plazoMs: PLAZO_LARGO_MS,
+      });
       // La API da las rutas con su prefijo (captura e «Ir a…» de cada tarifa); la web las pide a la misma base que el resto
       return conCaptura(a);
     },

@@ -393,7 +393,8 @@ function ResultadoEnvio({
     <Alerta tono="error" titulo="No se pudo cotizar" rol="alert">
       <p>{textos[error.tipo] ?? error.message}</p>
       {error.idPeticion ? <p className="mt-1 text-sm text-texto-secundario">Referencia: {error.idPeticion}</p> : null}
-      {error.tipo === "red" || error.tipo === "servidor" ? (
+      {/* Reintentar es seguro: el mismo pedido viaja con la misma clave de idempotencia y no duplica la cotización */}
+      {REINTENTABLES.includes(error.tipo) ? (
         <Boton variante="secundario" className="mt-3" onClick={onReintentar}>
           Reintentar
         </Boton>
@@ -401,6 +402,8 @@ function ResultadoEnvio({
     </Alerta>
   );
 }
+
+const REINTENTABLES: readonly ErrorDeAplicacion["tipo"][] = ["red", "servidor", "tiempo_agotado", "ocupado", "no_disponible"];
 
 /** Qué está haciendo la búsqueda, paso a paso. Una búsqueda en vivo tarda unos segundos. */
 function ProgresoBusqueda({ pedido, enVivo }: { pedido: PedidoCotizacion; enVivo: boolean }) {

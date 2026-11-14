@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  consulta,
-  dineroSchema,
-  paginaSchema,
-  type ClienteHttp,
-} from "@/shared/infrastructure/cliente-http";
+import { PLAZO_LARGO_MS, consulta, dineroSchema, paginaSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import {
   limpiarJustificacion,
   type GastoDetalle,
@@ -81,6 +76,7 @@ export function crearGastosHttp(cliente: ClienteHttp): GastosRepository {
       return cliente.postFormulario("/gastos", formulario, gastoDetalleSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
         signal,
+        plazoMs: PLAZO_LARGO_MS,   // el servidor lee el recibo con el modelo antes de responder
       });
     },
     justificar(id, texto) {

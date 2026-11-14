@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { consulta, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
+import { PLAZO_LARGO_MS, consulta, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { ResultadoActualizacion, TramoVuelo, VuelosDelDia, VuelosRepository } from "../domain/vuelos";
 
 const txt = z.string().nullable();
@@ -49,10 +49,11 @@ const resultadoSchema = z.object({
 export function crearVuelosHttp(cliente: ClienteHttp): VuelosRepository {
   return {
     delDia(fecha, signal) {
-      return cliente.get(`/vuelos${consulta({ fecha })}`, vuelosSchema, { signal });
+      // El tablero consulta el estado de los vuelos en el buscador
+      return cliente.get(`/vuelos${consulta({ fecha })}`, vuelosSchema, { signal, plazoMs: PLAZO_LARGO_MS });
     },
     actualizar(tramoId) {
-      return cliente.postJson(`/vuelos/${encodeURIComponent(tramoId)}/actualizar`, {}, resultadoSchema);
+      return cliente.postJson(`/vuelos/${encodeURIComponent(tramoId)}/actualizar`, {}, resultadoSchema, { plazoMs: PLAZO_LARGO_MS });
     },
   };
 }

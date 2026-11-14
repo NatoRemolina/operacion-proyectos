@@ -180,6 +180,22 @@ describe("Cotizar un viaje", () => {
     expect(await screen.findByText(/tope de cotizaciones nuevas de hoy/)).toBeInTheDocument();
   });
 
+  it("si la búsqueda tarda más del plazo, lo dice y deja reintentar con la misma clave (sin duplicar)", async () => {
+    const cotizar = vi
+      .fn<CotizarRepository["cotizar"]>()
+      .mockRejectedValueOnce(new ErrorDeAplicacion("tiempo_agotado"))
+      .mockResolvedValueOnce(COTIZACION_MOAB);
+    const usuario = userEvent.setup();
+    renderizarConFuente(<PantallaCotizar />, { cotizar: memoria({ cotizar }) });
+    await screen.findByRole("button", { name: "Buscar y comparar" });
+    await usuario.click(screen.getByRole("button", { name: "Usar el caso de ejemplo" }));
+    await usuario.click(screen.getByRole("button", { name: "Buscar y comparar" }));
+    expect(await screen.findByText(/tardó demasiado en responder/)).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(navegar).toHaveBeenCalledWith(`/cotizar/${COTIZACION_MOAB.id}`));
+    expect(cotizar.mock.calls[1]![1]).toBe(cotizar.mock.calls[0]![1]);
+  });
+
   it("al salir del campo de origen sin escribir, dice qué falta", async () => {
     const usuario = userEvent.setup();
     renderizarConFuente(<PantallaCotizar />, { cotizar: memoria() });
