@@ -9,6 +9,8 @@ import * as route53 from "aws-cdk-lib/aws-route53";
 import * as targets from "aws-cdk-lib/aws-route53-targets";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
 import * as path from "node:path";
 import { Dominio, dominioDesdeContexto } from "./dominio";
@@ -17,7 +19,17 @@ import { EstaticosDeLaWeb, IMAGEN_DE_RESERVA } from "./estaticos";
 export interface WebStackProps extends StackProps {
   /** La dirección de función de la API (OperacionApp): atiende `/api/v1/*` y las pantallas de administración. */
   urlApi: lambda.IFunctionUrl;
+  /** El secreto de OperacionBase: de él sale, al desplegar, el valor de la cabecera `X-Origen-CloudFront`. */
+  secreto: secretsmanager.ISecret;
 }
+
+/** Cabecera que CloudFront añade a todo lo que manda a la API: sin ella, la API rechaza lo que llega directo. */
+export const CABECERA_ORIGEN = "X-Origen-CloudFront";
+
+/** Tasa por dirección IP en 5 minutos. Una página de la web hace varias peticiones; una oficina comparte su salida. */
+export const TASA_GENERAL = 2000;
+/** Intentos de ingreso por dirección IP en 5 minutos (POST a /api/v1/auth/login y a /entrar de administración). */
+export const TASA_INGRESO = 20;
 
 /**
  * La web nueva detrás de un solo origen (ADR 0002), con el mismo patrón del backend.
@@ -86,7 +98,16 @@ export class WebStack extends Stack {
     // (asesor, lectura de un recibo con reintentos, una ruta nueva en el buscador) sigue en la función y queda
     // guardado, pero el navegador recibe 504. Qué pasa en cada caso: docs/adr/0002-hospedaje-de-la-web.md.
     // Un solo intento: CloudFront repetiría un GET lento, y el tablero de vuelos consulta el buscador pago en un GET.
-    const origenApi = new origins.FunctionUrlOrigin(props.urlApi, { readTimeout: Duration.seconds(60), connectionAttempts: 1 });
+    //
+    // La cabecera secreta (`ORIGEN_SECRETO` del secreto) se resuelve al desplegar: no queda escrita en la plantilla. Con
+    // ella la API distingue lo que pasa por CloudFront (y su WAF) de lo que llega directo a su dirección. Cambiar el valor
+    // en el secreto exige volver a desplegar esta pila (docs/despliegue.md).
+    const valorOrigen = props.secreto.secretValueFromJson("ORIGEN_SECRETO").unsafeUnwrap();
+    const origenApi = new origins.FunctionUrlOrigin(props.urlApi, {
+      readTimeout: Duration.seconds(60),
+      connectionAttempts: 1,
+      customHeaders: { [CABECERA_ORIGEN]: valorOrigen },
+    });
     // Si un archivo no está en el bucket (403 por OAC) lo sirve la función, que trae los suyos en la imagen
     const origenEstaticos = new origins.OriginGroup({
       primaryOrigin: origins.S3BucketOrigin.withOriginAccessControl(estaticos),
@@ -97,43 +118,60 @@ export class WebStack extends Stack {
     // sesión, Origin, Sec-Fetch-Site, X-CSRF-Token e Idempotency-Key para la API y los formularios de
     // administración (app/servicios/acceso.py), y la consulta y las cabeceras de navegación de Next para la web.
     // Los estáticos no llevan política: no reciben cookies ni cabeceras.
-    const dinamico = (origen: cloudfront.IOrigin): cloudfront.BehaviorOptions => ({
+    const dinamico = (origen: cloudfront.IOrigin, cabeceras: cloudfront.IResponseHeadersPolicy): cloudfront.BehaviorOptions => ({
       origin: origen,
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
       cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
       originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+      responseHeadersPolicy: cabeceras,
+    });
+    // HSTS de un año con los subdominios (admin. va debajo de la web). La web no pone sus cabeceras de seguridad: las
+    // añade CloudFront, y su CSP la pone Next (web/next.config.ts). La API y administración traen las suyas
+    // (app/web.py): CloudFront solo les fija HSTS con subdominios.
+    const hsts = { accessControlMaxAge: Duration.days(365), includeSubdomains: true, override: true };
+    const cabecerasWeb = new cloudfront.ResponseHeadersPolicy(this, "CabecerasWeb", {
+      comment: "Web: HSTS con subdominios, nosniff, marco propio y Referrer-Policy",
+      securityHeadersBehavior: {
+        strictTransportSecurity: hsts,
+        contentTypeOptions: { override: true },
+        frameOptions: { frameOption: cloudfront.HeadersFrameOption.SAMEORIGIN, override: true },
+        referrerPolicy: { referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN, override: true },
+      },
+    });
+    const soloHsts = new cloudfront.ResponseHeadersPolicy(this, "SoloHsts", {
+      comment: "API y administracion: HSTS con subdominios; el resto lo pone la aplicacion",
+      securityHeadersBehavior: { strictTransportSecurity: hsts },
     });
     const comunes = {
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,   // Norteamérica y Europa, donde opera la empresa
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
       minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
       certificate: certificado,
+      webAclId: this.node.tryGetContext("waf") === "1" ? this.cortafuegos().attrArn : undefined,
     };
 
     const web = new cloudfront.Distribution(this, "DistribucionWeb", {
       ...comunes,
       comment: "Web de operacion",
       domainNames: dominio ? [dominio.web] : undefined,
-      // La web no pone sus cabeceras de seguridad: las añade CloudFront (HSTS, nosniff, marco solo del mismo origen,
-      // Referrer-Policy). La API y administración ya traen las suyas (app/web.py).
-      defaultBehavior: { ...dinamico(origenWeb), responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS },
+      defaultBehavior: dinamico(origenWeb, cabecerasWeb),
       additionalBehaviors: {
         "/_next/static/*": {
           origin: origenEstaticos,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
           cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-          responseHeadersPolicy: cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
+          responseHeadersPolicy: cabecerasWeb,
         },
-        "/api/v1/*": dinamico(origenApi),
+        "/api/v1/*": dinamico(origenApi, soloHsts),
       },
     });
     const admin = new cloudfront.Distribution(this, "DistribucionAdmin", {
       ...comunes,
       comment: "Pantallas de administracion",
       domainNames: dominio ? [dominio.admin] : undefined,
-      defaultBehavior: dinamico(origenApi),
+      defaultBehavior: dinamico(origenApi, soloHsts),
     });
 
     if (dominio && certificado) {
@@ -145,6 +183,53 @@ export class WebStack extends Stack {
     new CfnOutput(this, "UrlAdmin", { value: direccion(admin, dominio?.admin) });
     new CfnOutput(this, "FuncionWeb", { value: funcion.functionName });
     new CfnOutput(this, "BucketEstaticos", { value: estaticos.bucketName });
+  }
+
+  /**
+   * WAF de las dos distribuciones (solo con `-c waf=1`: cuesta unos 7 USD al mes y el presupuesto de la cuenta es de 5).
+   * Una sola lista de reglas, compartida: una tasa estricta para los intentos de ingreso y otra general por dirección IP.
+   * Al pasarla responde 429 con el JSON de error del contrato (`RATE_LIMITED`), que la web muestra como «ocupado».
+   */
+  private cortafuegos(): wafv2.CfnWebACL {
+    const visible = (nombre: string) => ({ cloudWatchMetricsEnabled: true, metricName: nombre, sampledRequestsEnabled: true });
+    const bloquear = { block: { customResponse: { responseCode: 429, customResponseBodyKey: "demasiadas" } } };
+    const igual = (campo: wafv2.CfnWebACL.FieldToMatchProperty, valor: string): wafv2.CfnWebACL.StatementProperty => ({
+      byteMatchStatement: {
+        fieldToMatch: campo, positionalConstraint: "EXACTLY", searchString: valor,
+        textTransformations: [{ priority: 0, type: "NONE" }],
+      },
+    });
+    const ingreso: wafv2.CfnWebACL.StatementProperty = {
+      andStatement: {
+        statements: [
+          igual({ method: {} }, "POST"),
+          { orStatement: { statements: [igual({ uriPath: {} }, "/api/v1/auth/login"), igual({ uriPath: {} }, "/entrar")] } },
+        ],
+      },
+    };
+    return new wafv2.CfnWebACL(this, "Cortafuegos", {
+      scope: "CLOUDFRONT",
+      defaultAction: { allow: {} },
+      visibilityConfig: visible("Borde"),
+      customResponseBodies: {
+        demasiadas: {
+          contentType: "APPLICATION_JSON",
+          content: JSON.stringify({
+            error: { code: "RATE_LIMITED", message: "Demasiadas peticiones desde esta dirección. Espera unos minutos." },
+          }),
+        },
+      },
+      rules: [
+        {
+          name: "TasaIngreso", priority: 0, action: bloquear, visibilityConfig: visible("TasaIngreso"),
+          statement: { rateBasedStatement: { limit: TASA_INGRESO, aggregateKeyType: "IP", scopeDownStatement: ingreso } },
+        },
+        {
+          name: "TasaGeneral", priority: 1, action: bloquear, visibilityConfig: visible("TasaGeneral"),
+          statement: { rateBasedStatement: { limit: TASA_GENERAL, aggregateKeyType: "IP" } },
+        },
+      ],
+    });
   }
 
   /** Un certificado en us-east-1 (el que acepta CloudFront) para los dos nombres, validado por DNS en la zona. */

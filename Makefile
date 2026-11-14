@@ -17,6 +17,7 @@ ejecutar:         ## Arranca la plataforma en http://localhost:8000
 
 probar:           ## Corre las pruebas (no usan claves ni la base real)
 	$(PY) -m pytest -q
+	$(PY) -m pytest -q infra/pruebas
 
 probar-postgres:  ## Las mismas pruebas contra una base nueva en el PostgreSQL de Docker (make entorno antes)
 	docker compose exec -T db psql -U operacion -d operacion -q -c "drop database if exists pruebas_pg" -c "create database pruebas_pg"

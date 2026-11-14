@@ -28,6 +28,12 @@ export function sinVersionar(raiz: string): string[] {
   return [...new Set([...nuevos, ...cambiados])];
 }
 
+/**
+ * Concurrencia reservada de la API: un pico o un ataque no se lleva la de toda la cuenta (400), y deja libre la del
+ * analizador, Tareas y la web. El guion de despliegue la lee de la salida `ConcurrenciaReservada` para quitar la pausa.
+ */
+export const CONCURRENCIA_API = 20;
+
 export interface AppStackProps extends StackProps {
   secreto: secretsmanager.Secret;
   avisos: sns.Topic;
@@ -71,6 +77,7 @@ export class AppStack extends Stack {
       architecture: lambda.Architecture.ARM_64,
       memorySize: 2048,
       timeout: Duration.seconds(180),
+      reservedConcurrentExecutions: CONCURRENCIA_API,
       logGroup: registro,
       // Solo el ARN: el valor del secreto se lee al arrancar, nunca queda en la plantilla.
       environment: { SECRETO_ARN: props.secreto.secretArn, ENTORNO: "nube", ...origenesWeb },
@@ -172,6 +179,7 @@ export class AppStack extends Stack {
 
     new CfnOutput(this, "Url", { value: url.url });
     new CfnOutput(this, "Funcion", { value: web.functionName });
+    new CfnOutput(this, "ConcurrenciaReservada", { value: String(CONCURRENCIA_API) });
     new CfnOutput(this, "FuncionAnalizador", { value: analizador.functionName });
     new CfnOutput(this, "FuncionTareas", { value: tareas.functionName });
   }
