@@ -593,15 +593,19 @@ def elegir_tiquete(opciones: list[dict], vendedor: str, tarifa: str) -> tuple[di
     """La opción de `reserva_en_vivo` que se pidió, con su envío válido, y un aviso si cambió el vendedor.
 
     Con `tarifa` «ida» o «regreso» se busca el tiquete de ese tramo (billetes separados). Si el vendedor pedido ya no
-    lo vende, va el que lo vende ahora (la aerolínea primero; si no, el más barato) con el aviso. Con otra tarifa, la
-    opción junta de ese vendedor y esa tarifa, o ninguna. (None, None) si no hay ninguna que sirva."""
+    lo vende, va el que lo vende ahora (la aerolínea primero; si no, el más barato) con el aviso. Si lo sigue vendiendo
+    pero su envío no es válido (fuera de la lista blanca), no es un cambio de vendedor: (None, None), y «Ir a…» sigue
+    por el camino siguiente con el vendedor pedido. Con otra tarifa, la opción junta de ese vendedor y esa tarifa, o
+    ninguna. (None, None) si no hay ninguna que sirva."""
     tramo = tarifa.strip().lower() if tarifa.strip().lower() in TRAMOS_TIQUETE else "ambos"
-    validas = [o for o in opciones if o["tramo"] == tramo and es_envio_google(o["url"]) and isinstance(o["post_data"], str)]
+    del_tramo = [o for o in opciones if o["tramo"] == tramo]
+    validas = [o for o in del_tramo if es_envio_google(o["url"]) and isinstance(o["post_data"], str)]
     if tramo == "ambos":
         return next((o for o in validas if (o["vendedor"].lower(), o["tarifa"].lower()) ==
                      (vendedor.strip().lower(), tarifa.strip().lower())), None), None
-    propia = next((o for o in validas if o["vendedor"].lower() == vendedor.strip().lower()), None)
-    if propia or not validas:
+    es_el_pedido = lambda o: o["vendedor"].lower() == vendedor.strip().lower()  # noqa: E731
+    propia = next((o for o in validas if es_el_pedido(o)), None)
+    if propia or not validas or any(es_el_pedido(o) for o in del_tramo):
         return propia, None
     actual = min(validas, key=lambda o: (not o["aerolinea"], o["precio"] if o["precio"] is not None else float("inf")))
     return actual, vendedor_cambio(vendedor.strip(), actual["vendedor"], actual["precio"])

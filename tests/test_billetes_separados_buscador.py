@@ -341,3 +341,30 @@ def test_la_guia_empieza_con_el_aviso_si_cambio_el_vendedor(piloto, con_regreso,
     e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "Avianca", "regreso").json()
     assert e["guia"] == ("Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD. "
                          "En eDreams, elige el regreso AV 9, desde 316 USD.")
+
+
+def _avianca_con_enlace_fuera_de_la_lista_blanca() -> dict:
+    d = separados()
+    d["booking_options"][0]["returning"]["booking_request"]["url"] = "https://evil.example/clk"
+    d["booking_options"].append({"separate_tickets": True, "departing": tiquete("COPA", 334, ["CM 687"], "X"),
+                                 "returning": tiquete("eDreams", 316, ["AV 9"], "Y", False)})
+    return d
+
+
+def test_un_enlace_fuera_de_la_lista_blanca_no_es_cambio_de_vendedor(buscador):
+    """Avianca sí vende el regreso, pero su enlace no pasa la lista blanca: no se dice que «ya no vende» ni se lleva a
+    otro vendedor; se sigue por el camino siguiente (la página), que pide Avianca."""
+    respuesta, _ = buscador
+    respuesta["datos"] = _avianca_con_enlace_fuera_de_la_lista_blanca()
+    assert precios.elegir_tiquete(_en_vivo(), "Avianca", "regreso") == (None, None)
+
+
+def test_con_el_enlace_no_valido_ir_a_sigue_por_la_pagina_con_el_vendedor_pedido(piloto, con_regreso, analizador_doble):
+    respuesta_buscador, _ = con_regreso
+    respuesta_buscador["datos"] = _avianca_con_enlace_fuera_de_la_lista_blanca()
+    pedidos, respuesta = analizador_doble
+    respuesta.update(estado="listo", url=CLK, cuerpo="u=DE-LA-PAGINA")
+    c = _cotizacion(piloto)
+    e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "Avianca", "regreso").json()
+    assert (e["camino"], e["vendedor"], e["motivo"]) == ("pagina", "Avianca", None)
+    assert [p["vendedor"] for p in pedidos] == ["Avianca"]
