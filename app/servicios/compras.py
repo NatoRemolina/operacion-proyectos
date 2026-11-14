@@ -8,6 +8,10 @@ Estados: `solicitada` → `en_analisis` → `se_comprara` | `no_se_comprara` →
   viajero (bitácora del viaje).
 - Registrar la compra guarda localizador, precio pagado y vendedor, los días de anticipación y la diferencia con el
   precio cotizado.
+- Cuando el viaje cambia de estado (`al_cambiar_el_viaje`, desde `viajes.cambiar_estado`): «Se va a comprar» vuelve a
+  análisis si el viaje deja de estar aprobado (también al cerrarlo: desde análisis tiene salida, «no se va a comprar»);
+  con el tiquete ya comprado, rechazar o reabrir el viaje deja un evento y la compra muestra un aviso. Leer una compra
+  nunca la cambia.
 
 `clics_fuente` deja el rastro de cada enlace a una fuente o al vendedor (quién, qué vuelo, qué viaje, adónde).
 """
@@ -53,6 +57,8 @@ CON_MOTIVO = ("no_se_comprara", "cancelada")
 DESTINOS = ("google_flights", "google_hotels", "vendedor", "hotel_oficial")
 LOCALIZADOR = re.compile(r"^[A-Z0-9]{5,8}$")
 NO_PROPIA = "Nadie decide la compra de su propio viaje: debe hacerlo otra persona de administración."
+AVISO_COMPRADA = ("El tiquete ya está comprado y el viaje quedó «{estado}»: decide si se conserva o se cancela la compra "
+                  "(cancelarla puede tener costo con la aerolínea).")
 
 
 class CompraImpedida(PermissionError):
@@ -125,27 +131,48 @@ def uno(cid: int) -> dict | None:
                          v.viajero_id viaje_viajero_id, v.ida, s.ida solicitud_ida, u.nombre solicitada_por_nombre
                   from compras c join viajes v on v.id=c.viaje_id left join solicitudes s on s.id=c.solicitud_id
                   left join usuarios u on u.id=c.solicitada_por where c.id=:i""", i=cid)
-    if c and c["estado"] == "se_comprara" and c["viaje_estado"] != "aprobado" and _volver_a_analisis(c):
-        return uno(cid)
     if c:
         c["estado_texto"] = ESTADOS.get(c["estado"], c["estado"])
         c["viaje_codigo"] = viajes.codigo_viaje({"id": c["viaje_id"], "creado": c["viaje_creado"]})
+        c["aviso"] = AVISO_COMPRADA.format(estado=viajes.ESTADOS.get(c["viaje_estado"], c["viaje_estado"]).lower()) \
+            if c["estado"] == "comprada" and c["activa"] and c["viaje_estado"] in ("pendiente_aprobacion", "rechazado") else None
     return c
 
 
-def _volver_a_analisis(c: dict) -> bool:
-    """«Se va a comprar» exige el viaje aprobado: si se reabrió o se rechazó, la compra vuelve a análisis (con su rastro).
-    Se hace al leerla, porque el cambio de estado del viaje vive en otro servicio."""
-    with db.transaccion() as conexion:
-        if not config.ES_SQLITE:
-            conexion.execute(text("select id from compras where id=:i for update"), {"i": c["id"]})
-        if (db.uno("select estado from compras where id=:i", i=c["id"]) or {}).get("estado") != "se_comprara":
-            return False   # otra petición ya la movió
-        db.ejecutar("update compras set estado='en_analisis', version=version+1, actualizado=:t where id=:i",
-                    t=db.ahora(), i=c["id"])
-    eventos.registrar("compra", c["id"], "compra: vuelve a análisis",
-                      f"el viaje quedó «{viajes.ESTADOS.get(c['viaje_estado'], c['viaje_estado'])}»", "sistema")
-    return True
+# ---------- cuando el viaje cambia de estado ----------
+def al_cambiar_el_viaje(viaje_id: int, hacia: str, paso: str, quien: dict):
+    """La compra activa del viaje frente a su estado nuevo. Va dentro de la transacción del cambio de estado del viaje.
+
+    - «Se va a comprar» exige el viaje aprobado: si deja de estarlo (se reabre o se cierra), vuelve a análisis.
+    - Con el tiquete comprado, rechazar o reabrir deja el evento; la compra muestra el aviso (`uno`) mientras dure.
+    """
+    with db.transaccion() as c:
+        fila = db.uno("select id from compras where viaje_id=:v and activa=1", v=viaje_id)
+        if not fila:
+            return
+        actual = _bloquear(c, fila["id"])
+        if actual["estado"] == "se_comprara" and hacia != "aprobado":
+            db.ejecutar("update compras set estado='en_analisis', version=version+1, actualizado=:t where id=:i",
+                        t=db.ahora(), i=actual["id"])
+            eventos.registrar("compra", actual["id"], "compra: vuelve a análisis",
+                              f"el viaje quedó «{viajes.ESTADOS.get(hacia, hacia)}»", quien["nombre"])
+        elif actual["estado"] == "comprada" and hacia in ("pendiente_aprobacion", "rechazado"):
+            que = "reabierto" if hacia == "pendiente_aprobacion" else "rechazado"
+            eventos.registrar("compra", actual["id"], f"viaje {que} con el tiquete comprado",
+                              f"{actual['viaje_codigo']} · {actual['localizador'] or ''} · {paso}", quien["nombre"])
+
+
+def alinear_con_el_viaje() -> int:
+    """Migración: las compras que quedaron en «Se va a comprar» con el viaje sin aprobar (antes se corregían al leerlas)
+    vuelven a análisis. Idempotente; devuelve cuántas movió."""
+    filas = db.todos("""select c.id, v.estado from compras c join viajes v on v.id=c.viaje_id
+                        where c.activa=1 and c.estado='se_comprara' and v.estado<>'aprobado'""")
+    for f in filas:
+        db.ejecutar("update compras set estado='en_analisis', version=version+1, actualizado=:t where id=:i and estado='se_comprara'",
+                    t=db.ahora(), i=f["id"])
+        eventos.registrar("compra", f["id"], "compra: vuelve a análisis", f"el viaje estaba «{viajes.ESTADOS.get(f['estado'], f['estado'])}»",
+                          "migración")
+    return len(filas)
 
 
 def bloqueo(solicitud_id: int) -> str | None:

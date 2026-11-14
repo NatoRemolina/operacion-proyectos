@@ -335,6 +335,7 @@ def _pasos() -> dict:
     hechos.update(_tablas_modelo())
     _indices()
     hechos["compras_rellenadas"] = compras.rellenar()   # después del índice único de la compra activa
+    hechos["compras_a_analisis"] = compras.alinear_con_el_viaje()
     if not config.ES_SQLITE:
         hechos.update(_restricciones_postgres())
         _permisos_postgres()

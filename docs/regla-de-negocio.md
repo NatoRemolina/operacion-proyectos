@@ -48,6 +48,12 @@ cotización ──► decisión (opción elegida + porqué)
 - Rechazar exige un motivo de 5 caracteres o más.
 - Cada cambio avisa al titular por Telegram si tiene el chat vinculado.
 
+**La compra del tiquete frente al estado del viaje** (`compras.al_cambiar_el_viaje`, en la misma transacción que el cambio de estado):
+
+- «Se va a comprar» exige el viaje aprobado. Si el viaje deja de estarlo (se reabre o se cierra), la compra vuelve a «En análisis» en ese momento, con su evento. Leer la compra nunca la cambia ni le sube la versión. Con el viaje cerrado, desde «En análisis» la salida es «No se va a comprar»; una compra que hubiera quedado en «Se va a comprar» se puede cancelar.
+- **Excepción: el tiquete ya comprado.** Rechazar o reabrir un viaje cuya compra está `comprada` se permite, porque el viaje puede cambiar después de comprar (la grabación se mueve, el cliente cancela), pero el tiquete no desaparece en silencio: queda el evento «viaje reabierto (o rechazado) con el tiquete comprado» y la compra muestra un aviso en Compras hasta que el viaje vuelve a aprobarse o administración decide cancelarla. Cambiar el vuelo exige cancelar antes la compra (`DECISION_LOCKED`).
+- Volver a aprobar con el tiquete comprado no reconfirma el precio en el buscador (no se paga otra búsqueda): la línea del tiquete del presupuesto pasa a lo pagado y el presupuesto se recalcula («presupuesto con lo pagado del tiquete»). Si la compra está en «Se va a comprar», el precio se reconfirma como siempre y el mensaje lo avisa.
+
 ### Estados del gasto
 
 | Estado | Qué significa | Quién lo pone |

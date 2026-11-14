@@ -774,6 +774,7 @@ interface Compra {
   anticipacion_dias: number | null;                          // días entre la compra y la ida
   creado: string | null; decidido: string | null; comprada: string | null;
   frente_presupuesto: { presupuesto_usd: Dinero; cotizado_usd: Dinero; diferencia_usd: Dinero } | null;   // con la compra registrada
+  aviso: string | null;   // con el tiquete comprado y el viaje reabierto o rechazado: decidir si se conserva o se cancela
 }
 interface CompraDetalle extends Compra {
   vuelo: { opcion_id: number | null; numeros: string[]; aerolinea: string | null; sale: string | null; llega: string | null;
@@ -785,7 +786,7 @@ interface CompraDetalle extends Compra {
 ```
 
 ### `GET /compras?estado=…`
-200 `{"items": Compra[]}`: las compras activas, la más reciente primero (hasta 200).
+200 `{"items": Compra[]}`: las compras activas, la más reciente primero (hasta 200). Leer una compra nunca la cambia ni le sube la versión: lo que el estado del viaje le hace a la compra pasa al cambiar el estado del viaje (`POST /viajes/{id}/estado`): «Se va a comprar» vuelve a «En análisis» si el viaje se reabre o se cierra; con el tiquete comprado, reabrir o rechazar deja un evento y `aviso`; volver a aprobar con el tiquete comprado no consulta el buscador y el presupuesto usa lo pagado.
 
 ### `GET /compras/{id}`
 200 `CompraDetalle`: el vuelo con el mismo enlace a la página oficial que usa «Ver desglose» («Comprar en {vendedor}»), los clics a las fuentes (`clics_fuente`) y la última lectura de la página.

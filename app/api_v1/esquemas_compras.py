@@ -75,6 +75,8 @@ class Compra(BaseModel):
     decidido: str | None
     comprada: str | None
     frente_presupuesto: FrentePresupuesto | None = Field(description="Solo con la compra registrada.")
+    aviso: str | None = Field(None, description="Lo que administración debe mirar: el tiquete ya está comprado y el viaje "
+                                                "se reabrió o se rechazó.")
 
 
 class CompraDetalle(Compra):

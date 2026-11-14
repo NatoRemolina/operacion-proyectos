@@ -6822,6 +6822,18 @@
               }
             ],
             "description": "Solo con la compra registrada."
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Lo que administración debe mirar: el tiquete ya está comprado y el viaje se reabrió o se rechazó."
           }
         },
         "type": "object",
@@ -7051,6 +7063,18 @@
               }
             ],
             "description": "Solo con la compra registrada."
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Lo que administración debe mirar: el tiquete ya está comprado y el viaje se reabrió o se rechazó."
           },
           "vuelo": {
             "anyOf": [

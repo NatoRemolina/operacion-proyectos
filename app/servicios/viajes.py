@@ -218,11 +218,39 @@ def _reconfirmar_precio(v: dict, quien: dict, confirmado: bool) -> tuple[bool, s
     return True, f" El precio cambió: {texto}."
 
 
+def _lineas_y_tiquete(v: dict) -> tuple[list[dict], dict | None]:
+    """Las líneas del presupuesto del viaje y la del precio del tiquete, si la hay."""
+    lineas = db.de_json(v.get("presupuesto_detalle"), []) if isinstance(v.get("presupuesto_detalle"), str) else v.get("presupuesto_detalle") or []
+    return lineas, next((l for l in lineas if l.get("grupo") == "vuelo" and l["concepto"].startswith("Precio")), None)
+
+
+LO_PAGADO = " · lo pagado al comprar el tiquete"
+
+
+def _presupuesto_con_lo_pagado(v: dict, compra: dict, quien: dict) -> str:
+    """Con el tiquete ya comprado, el precio no se reconfirma (no se paga otra búsqueda): la línea del tiquete pasa a lo
+    pagado y el presupuesto se recalcula. Devuelve el texto para el mensaje."""
+    pagado = round(float(compra["precio_pagado"]), 2)
+    lineas, linea = _lineas_y_tiquete(v)
+    texto = f" El tiquete ya está comprado: el presupuesto usa lo pagado ({pagado:.2f} USD) y no se consultó el buscador."
+    if not linea:
+        return texto
+    antes = linea["valor"]
+    linea["valor"] = pagado
+    linea["concepto"] = linea["concepto"].split(LO_PAGADO)[0] + LO_PAGADO
+    total = round(sum(l["valor"] for l in lineas), 2)
+    db.actualizar("viajes", v["id"], presupuesto_usd=total, presupuesto_detalle=lineas)
+    eventos.registrar("viaje", v["id"], "presupuesto con lo pagado del tiquete",
+                      f"{v['codigo']} · tiquete {antes:.2f} → {pagado:.2f} USD · presupuesto {v['presupuesto_usd']:.2f} → {total:.2f} USD",
+                      quien["nombre"])
+    v["presupuesto_usd"] = total
+    return texto
+
+
 def _ajustar_presupuesto(v: dict, cambio: str, quien: dict) -> str:
     """Al confirmar un precio nuevo, el presupuesto del viaje pasa a ese precio (la línea del tiquete) y queda el evento."""
     precios_ = re.findall(r"(?:antes|ahora) ([\d.]+) USD", cambio)
-    lineas = db.de_json(v.get("presupuesto_detalle"), []) if isinstance(v.get("presupuesto_detalle"), str) else v.get("presupuesto_detalle") or []
-    linea = next((l for l in lineas if l.get("grupo") == "vuelo" and l["concepto"].startswith("Precio")), None)
+    lineas, linea = _lineas_y_tiquete(v)
     if len(precios_) != 2 or not linea:
         return ""
     antes, ahora = float(precios_[0]), float(precios_[1])
@@ -255,14 +283,25 @@ def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict, confirm
     motivo = (motivo or "").strip()[:300]
     if accion == "rechazar" and len(motivo) < 5:
         return False, "Para rechazar un presupuesto hay que escribir el motivo."
+    from . import compras  # aquí: compras usa este servicio
     aprobado, aviso_precio = hacia == "aprobado", ""
     if aprobado:
-        se_puede, aviso_precio = _reconfirmar_precio(v, quien, confirmar_precio)
-        if not se_puede:
-            return False, aviso_precio
-    db.actualizar("viajes", viaje_id, estado=hacia, motivo=motivo or None,
-                  aprobado_por=quien["id"] if aprobado else None, aprobado_en=db.ahora() if aprobado else None)
-    eventos.registrar("viaje", viaje_id, paso, f"{v['codigo']}" + (f" · {motivo}" if motivo else ""), quien["nombre"])
+        compra = compras.de_viaje(viaje_id)
+        if compra and compra["estado"] == "comprada" and compra["precio_pagado"] is not None:
+            aviso_precio = _presupuesto_con_lo_pagado(v, compra, quien)
+        else:
+            se_puede, aviso_precio = _reconfirmar_precio(v, quien, confirmar_precio)
+            if not se_puede:
+                return False, aviso_precio
+            if compra and compra["estado"] == "se_comprara":
+                aviso_precio += (" La compra del tiquete está «Se va a comprar»: revisa que el precio siga igual antes "
+                                 "de comprarlo.")
+    # El viaje y su compra cambian juntos: «Se va a comprar» no queda con un viaje que ya no está aprobado
+    with db.transaccion():
+        db.actualizar("viajes", viaje_id, estado=hacia, motivo=motivo or None,
+                      aprobado_por=quien["id"] if aprobado else None, aprobado_en=db.ahora() if aprobado else None)
+        eventos.registrar("viaje", viaje_id, paso, f"{v['codigo']}" + (f" · {motivo}" if motivo else ""), quien["nombre"])
+        compras.al_cambiar_el_viaje(viaje_id, hacia, paso, quien)
     from . import telegram  # el titular se entera por su chat, si lo tiene vinculado
     telegram.avisar(v["usuario_id"], f"Viaje {v['codigo']} ({v['origen']} → {v['destino']}, {v['ida']}): {paso}."
                     + (f"\nMotivo: {motivo}" if motivo else "")

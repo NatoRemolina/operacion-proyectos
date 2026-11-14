@@ -48,7 +48,7 @@ def _forma(c: dict) -> dict:
             "vendedor": c["vendedor"], "localizador": c["localizador"], "precio_pagado_usd": consultas.dinero(pagado),
             "precio_cotizado_usd": consultas.dinero(cotizado), "anticipacion_dias": c["anticipacion_dias"],
             "creado": consultas.instante(c["creado"]), "decidido": consultas.instante(c["decidido"]),
-            "comprada": consultas.instante(c["comprada"]), "frente_presupuesto": frente}
+            "comprada": consultas.instante(c["comprada"]), "frente_presupuesto": frente, "aviso": c["aviso"]}
 
 
 def _detalle(c: dict, sesion: str) -> dict:
