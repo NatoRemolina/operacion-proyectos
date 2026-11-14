@@ -26,6 +26,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -93,7 +94,9 @@ def _docker(p: dict, argumentos: list[str], salida=None, entrada=None) -> None:
     host = "host.docker.internal" if p["host"] in ("127.0.0.1", "localhost") else p["host"]
     variables = {"PGHOST": host, "PGPORT": p["puerto"], "PGUSER": p["usuario"], "PGPASSWORD": p["clave"],
                  "PGDATABASE": p["base"], "PGSSLMODE": "prefer" if host == "host.docker.internal" else "require"}
-    cmd = ["docker", "run", "--rm", "-i"] + [x for k in variables for x in ("-e", k)] + [IMAGEN] + argumentos
+    # En Linux `host.docker.internal` no existe sin este alias (en macOS y Windows ya está): sin él no alcanza el equipo
+    cmd = ["docker", "run", "--rm", "-i", "--add-host=host.docker.internal:host-gateway"] \
+        + [x for k in variables for x in ("-e", k)] + [IMAGEN] + argumentos
     r = subprocess.run(cmd, env={**dict(os.environ), **variables}, stdout=salida or subprocess.PIPE,  # noqa: S603
                        stdin=entrada, stderr=subprocess.PIPE, check=False)
     if r.returncode:
@@ -209,12 +212,15 @@ def verificar(carpeta: str, archivo_env: str, base: str) -> bool:
     return True
 
 
-def variables_pg(archivo_env: str) -> str:
+def variables_pg(archivo_env: str, base: str = "postgres") -> str:
     """Las variables de conexión para la vuelta atrás, listas para `eval "$(…)"`: así la contraseña llega al entorno de la
-    terminal sin aparecer en pantalla ni en el historial. Base `postgres`, que es donde restaura pg_restore."""
+    terminal sin aparecer en pantalla ni en el historial. Por omisión la base `postgres`, que es donde restaura pg_restore
+    en la publicada; `base` apunta a otra (un ensayo en una base aparte del Supabase de pruebas, sin pisar la principal)."""
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,63}", base or ""):
+        sys.exit("El nombre de la base son letras, números y _ (hasta 63).")
     p = _partes(_entorno(archivo_env)["url"])
     valores = {"PGHOST": p["host"], "PGPORT": p["puerto"], "PGUSER": p["usuario"], "PGPASSWORD": p["clave"],
-               "PGDATABASE": "postgres", "PGSSLMODE": "require"}
+               "PGDATABASE": base, "PGSSLMODE": "require"}
     return "export " + " ".join(f"{k}={shlex.quote(v)}" for k, v in valores.items())
 
 
@@ -232,9 +238,10 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--respaldo", required=True)
     g = sub.add_parser("variables-pg", help="órdenes export de PGHOST, PGPORT, PGUSER, PGPASSWORD y PGDATABASE para eval")
     g.add_argument("--env", required=True)
+    g.add_argument("--base", default="postgres", help="la base de PGDATABASE (por omisión postgres, la de la publicada)")
     x = a.parse_args(argv)
     if x.orden == "variables-pg":
-        print(variables_pg(x.env))
+        print(variables_pg(x.env, x.base))
         return 0
     if x.orden == "respaldar":
         respaldar(x.env, x.destino)
