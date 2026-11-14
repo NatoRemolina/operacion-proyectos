@@ -439,7 +439,8 @@ def test_si_todos_los_vuelos_quedan_descartados_se_decide_con_motivo(piloto):
     ruta = f"{V1}/cotizaciones/{c['id']}/decision"
     elegido = c["descartados"][0]["id"]
     cuerpo = _contrato(piloto.post(ruta, json={"vuelo_id": elegido}, headers=_csrf(piloto)), 422, "VALIDATION_ERROR")
-    assert "motivo" in cuerpo["error"]["fields"]
+    # sin recomendada no hay de qué apartarse: el mensaje lo dice así, no habla de «la recomendada»
+    assert cuerpo["error"]["fields"]["motivo"] == "Ningún vuelo cumple las condiciones: cuéntanos por qué te sirve este."
     r = piloto.post(ruta, json={"vuelo_id": elegido, "motivo": "La grabación puede empezar al día siguiente"}, headers=_csrf(piloto))
     assert r.status_code == 200 and r.json()["viaje"]["estado"] == "pendiente_aprobacion"
     assert r.json()["decision"]["siguio_recomendacion"] is False

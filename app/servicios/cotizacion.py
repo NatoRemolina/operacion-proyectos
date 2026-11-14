@@ -581,7 +581,8 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     razones = [r for r in razones if r in config.RAZONES]
     if not siguio and len(motivo.strip()) < 5:
         # Cuando la persona se aparta de la recomendación, el porqué es el dato más valioso
-        raise DecisionInvalida("motivo", "Elegiste una opción distinta a la recomendada: cuéntanos por qué.")
+        raise DecisionInvalida("motivo", "Elegiste una opción distinta a la recomendada: cuéntanos por qué." if recomendado
+                               else "Ningún vuelo cumple las condiciones: cuéntanos por qué te sirve este.")
     posicion = orden.index(vuelo) + 1
     # La opción elegida se carga completa: el regreso real y sus opciones de reserva (dos búsquedas; lo ya guardado no se paga)
     sol = c["sol"]
