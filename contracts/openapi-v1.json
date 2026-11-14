@@ -9024,7 +9024,7 @@
                 "type": "null"
               }
             ],
-            "description": "Frente a lo pagado, cuando hay compras registradas."
+            "description": "Lo pagado frente a lo cotizado al decidir, con las compras compradas y activas; vacío si no hay."
           }
         },
         "type": "object",

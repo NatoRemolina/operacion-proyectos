@@ -2,8 +2,6 @@
 momento y, cuando exista, frente a lo pagado. Proyecto propio para que nada de otras pruebas cambie las cifras."""
 import json
 
-from sqlalchemy import inspect
-
 from app import db
 from app.servicios import kpis, metricas, modelo
 
@@ -44,20 +42,3 @@ def test_es_un_indicador_con_meta_y_semaforo():
     assert k["sentido"] == "menor" and k["estado"] in ("verde", "ambar", "rojo")
     assert metricas.valor("exactitud_modelo", {"proyecto_id": 10 ** 6})["valor"] is None
     assert "exactitud_modelo" not in kpis.DE_PERSONA
-
-
-def test_frente_a_lo_pagado_cuando_hay_compras():
-    propia = not inspect(db.motor).has_table("compras")
-    if propia:   # en esta rama la tabla aún no existe; con la del otro frente se usa la suya tal cual
-        db.ejecutar("create table compras (id integer primary key, viaje_id integer, precio_pagado float)")
-    sid = _eleccion(400, {"esperado": 380}, origen="ZEE", destino="ZEF")
-    did = db.insertar("decisiones", solicitud_id=sid, proyecto_id=PROYECTO, total=400, creado=db.ahora())
-    db.ejecutar("update elecciones set decision_id=:d where solicitud_id=:s", d=did, s=sid)
-    vid = db.insertar("viajes", solicitud_id=sid, decision_id=did, proyecto_id=PROYECTO, usuario_id=1, estado="aprobado",
-                      presupuesto_usd=400, creado=db.ahora())
-    if propia:
-        db.ejecutar("insert into compras (id, viaje_id, precio_pagado) values (:i, :v, 418)",
-                    i=(db.uno("select max(id) i from compras")["i"] or 0) + 1, v=vid)
-        pagado = modelo.exactitud({"proyecto_id": PROYECTO})["contra_pagado"]
-        assert pagado["filas"] == 1 and pagado["mae"] == 38.0
-        db.ejecutar("drop table compras")

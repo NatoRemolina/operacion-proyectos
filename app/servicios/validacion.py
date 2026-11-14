@@ -108,6 +108,17 @@ def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict,
     return bloquea
 
 
+MEDIO_CENTAVO = Decimal("0.005")
+
+
+def _centavos(valor) -> Decimal | None:
+    """Un importe guardado, redondeado a centavos; None si no es un importe."""
+    try:
+        return dinero.decimal(valor)
+    except ValueError:
+        return None
+
+
 def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: dict | None = None) -> dict:
     """Devuelve {estado, alertas, motivos, total_usd}. `g` son los campos extraídos; `viaje`, el viaje al que pertenece."""
     cat = costo.catalogo()
@@ -176,12 +187,15 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
     if g.get("comercio") and g.get("fecha") and g.get("total") is not None:
         # Mismo importe en otra moneda no es el mismo gasto; dos gastos sin moneda leída sí se comparan entre sí
         misma_moneda = "moneda=:m" if g.get("moneda") else "moneda is null"
-        # El comercio se compara normalizado en Python: `lower()` de la base no quita tildes
+        # El importe se compara a centavos: la columna es de coma flotante y 0,1 + 0,2 no es 0,3. La base acota con medio
+        # centavo de banda y la igualdad se decide con Decimal. El comercio se compara normalizado en Python: `lower()`
+        # de la base no quita tildes
+        total = dinero.decimal(g["total"])
         mismos = db.todos(
-            f"""select id, comercio from gastos where fecha=:f and total=:t and {misma_moneda}
+            f"""select id, comercio, total from gastos where fecha=:f and total between :desde and :hasta and {misma_moneda}
                 and id<>:i and estado<>'rechazado' order by id""",
-            f=g["fecha"], t=g["total"], m=g.get("moneda"), i=gasto_id or 0)
-        repetido = next((c for c in mismos if _mismo_comercio(c["comercio"], g["comercio"])), None)
+            f=g["fecha"], desde=float(total - MEDIO_CENTAVO), hasta=float(total + MEDIO_CENTAVO), m=g.get("moneda"), i=gasto_id or 0)
+        repetido = next((c for c in mismos if _mismo_comercio(c["comercio"], g["comercio"]) and _centavos(c["total"]) == total), None)
         if repetido:
             alertas.agregar("duplicado", f"Posible duplicado del gasto #{repetido['id']}.")
             bloquea = True
@@ -193,8 +207,8 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
                                      and estado<>'rechazado' and total is not null and {misma_moneda}""",
                                  a=(dia - timedelta(days=1)).isoformat(), b=(dia + timedelta(days=1)).isoformat(),
                                  m=g.get("moneda"), i=gasto_id or 0)
-                parecido = next((c for c in cerca if _mismo_comercio(c["comercio"], g["comercio"])
-                                 and abs(c["total"] - g["total"]) <= 0.01 * max(abs(g["total"]), 1)), None)
+                parecido = next((c for c in cerca if _mismo_comercio(c["comercio"], g["comercio"]) and _centavos(c["total"]) is not None
+                                 and abs(_centavos(c["total"]) - total) <= Decimal("0.01") * max(abs(total), 1)), None)
                 if parecido:
                     alertas.agregar("duplicado_aproximado", f"Muy parecido al gasto #{parecido['id']} (mismo comercio, fecha cercana, importe casi igual).")
                     bloquea = True
