@@ -143,6 +143,10 @@ interface ResumenAdmin {
 ### `POST /auth/login` (pública)
 Cuerpo JSON `{"correo": string, "clave": string}`. Respuesta 200 `{"persona": Persona, "csrf_token": string, "demostracion": boolean}` y la cookie de sesión. `demostracion` dice si la plataforma corre en local con cuentas de demostración (la web lo muestra en la barra). Errores: 401 `INVALID_CREDENTIALS`, 429 `TOO_MANY_ATTEMPTS`, 403 `ORIGIN_NOT_ALLOWED`. No lleva `X-CSRF-Token` (todavía no hay sesión).
 
+Límite de intentos (`app/servicios/intentos.py`): con 20 fallos en 15 minutos desde una dirección, o 10 con un mismo correo (exista o no la cuenta), responde 429 `TOO_MANY_ATTEMPTS` sin mirar la contraseña, aunque sea la buena. Se suma al bloqueo progresivo de cada cuenta. Un ingreso bueno borra los fallos de su correo. La dirección es la de quien pide; detrás de CloudFront, la de `CloudFront-Viewer-Address`. El formulario `/entrar` aplica el mismo límite.
+
+En la nube, toda petición que no traiga la cabecera secreta `X-Origen-CloudFront` (la añade CloudFront; valor en `ORIGEN_SECRETO`) llegó directo a la dirección de la función y recibe 403 `FORBIDDEN`. La única excepción es `/telegram/webhook`, que trae su propio secreto.
+
 ### `GET /auth/me`
 200 `{"persona": Persona, "csrf_token": string, "demostracion": boolean}`. Sin sesión: 401. La web lo llama al cargar para saber quién es y para aislar su caché por persona.
 

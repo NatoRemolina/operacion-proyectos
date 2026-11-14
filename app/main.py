@@ -86,6 +86,20 @@ async def control_de_acceso(request: Request, call_next):
     return _asegurar(respuesta)
 
 
+# Va después de `control_de_acceso`, así corre antes que él: lo que no pasó por CloudFront no llega a nada más
+@app.middleware("http")
+async def solo_por_cloudfront(request: Request, call_next):
+    """En la nube solo entra lo que llega por CloudFront con la cabecera secreta; lo demás llegó directo a la dirección
+    de la función y se rechaza con 403. El webhook de Telegram llega directo y trae su propio secreto."""
+    if acceso.exige_cloudfront() and request.url.path not in acceso.DIRECTAS and not acceso.viene_de_cloudfront(request.headers):
+        request.state.peticion = secrets.token_hex(6)
+        if request.url.path.startswith(acceso.API_V1):
+            return _asegurar(respuesta_error(request, 403, "FORBIDDEN", "Esta dirección no atiende peticiones directas."))
+        return _asegurar(_pagina_error(403, "Acceso no permitido", "Entra por la dirección de la plataforma."))
+    request.state.direccion = acceso.direccion(request.headers, request.client.host if request.client else None)
+    return await call_next(request)
+
+
 # ---------- errores ----------
 # La API v1 responde siempre con su contrato JSON; las pantallas, con una página legible.
 @app.exception_handler(ErrorApi)

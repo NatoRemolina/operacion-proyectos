@@ -75,6 +75,10 @@ TELEGRAM_BOT_TOKEN = _txt("TELEGRAM_BOT_TOKEN")
 TELEGRAM_WEBHOOK_SECRETO = _txt("TELEGRAM_WEBHOOK_SECRETO")
 TELEGRAM_BOT_NOMBRE = _txt("TELEGRAM_BOT_NOMBRE").lstrip("@")
 
+# Valor de la cabecera `X-Origen-CloudFront` que CloudFront añade al pedirle a la función. En la nube, lo que llega sin
+# ella (directo a la dirección de la función) se rechaza con 403 (app/main.py), salvo el webhook de Telegram.
+ORIGEN_SECRETO = _txt("ORIGEN_SECRETO")
+
 # Orígenes desde los que la web nueva puede escribir en la API v1 (separados por comas), por ejemplo
 # http://localhost:8080. El mismo origen de la plataforma siempre está permitido.
 ORIGENES_WEB = [o.strip().rstrip("/") for o in _txt("ORIGENES_WEB").split(",") if o.strip()]
@@ -99,6 +103,9 @@ ES_SQLITE = not DATABASE_URL or DATABASE_URL.startswith("sqlite")
 # Conectar un PostgreSQL existente (por ejemplo, la base publicada desde .env) no autoriza a
 # migrarlo ni sembrarlo al arrancar: hace falta PREPARAR_BASE_LOCAL=1, como en docker-compose.yml.
 PREPARAR_BASE_LOCAL = LOCAL and (ES_SQLITE or _txt("PREPARAR_BASE_LOCAL") == "1")
+if not LOCAL and not ORIGEN_SECRETO:
+    # No impide arrancar (sin ella CloudFront no podría entrar), pero queda como error de configuración y avisa la alarma
+    PROBLEMAS.append("ORIGEN_SECRETO vacía: la función acepta peticiones directas a su dirección, sin pasar por CloudFront.")
 
 # Falla cerrado: un despliegue sin base, almacenamiento o control de acceso no arranca.
 if not LOCAL:

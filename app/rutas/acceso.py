@@ -6,7 +6,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import config, db
-from ..servicios import acceso, eventos, telegram, usuarios, viajes
+from ..servicios import acceso, eventos, intentos, telegram, usuarios, viajes
 from ..web import (
     _ctx,
     _indicadores,
@@ -39,12 +39,18 @@ def _destino_seguro(siguiente: str) -> str:
 
 
 @router.post("/entrar")
-def entrar_enviar(correo: str = Form(""), clave: str = Form(""), siguiente: str = Form("")):
+def entrar_enviar(request: Request, correo: str = Form(""), clave: str = Form(""), siguiente: str = Form("")):
+    if intentos.limitado(request.state.direccion, correo):
+        eventos.registrar("acceso", None, "ingreso limitado", correo.strip().lower()[:80], "formulario")
+        return plantillas.TemplateResponse(request, "entrar.html", {"error": intentos.DEMASIADOS, "siguiente": _destino_seguro(siguiente),
+                                                                    "demo": False}, status_code=429)
     usuario, mensaje = acceso.autenticar(correo, clave)
     destino = _destino_seguro(siguiente)
     if not usuario:
+        intentos.anotar_fallo(request.state.direccion, correo)
         eventos.registrar("acceso", None, "ingreso fallido", correo.strip().lower()[:80], "formulario")
         return RedirectResponse(f"/entrar?error={quote(mensaje)}" + (f"&siguiente={quote(destino)}" if destino != "/" else ""), status_code=303)
+    intentos.anotar_exito(correo)
     acceso.fijar(usuario)
     eventos.registrar("acceso", usuario["id"], "ingreso", usuario["correo"], "formulario")
     return acceso.abrir_sesion(RedirectResponse(destino, status_code=303), usuario["id"])

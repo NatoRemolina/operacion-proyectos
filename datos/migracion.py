@@ -36,6 +36,7 @@ INDICES = [  # nombre, tabla, columnas, único
     ("ix_clics_fuente_viaje", "clics_fuente", "viaje_id", False),
     ("ix_clics_fuente_solicitud", "clics_fuente", "solicitud_id", False),
     ("ix_topes_reservas_regla", "topes_reservas", "regla, momento", False),
+    ("ix_intentos_ingreso_clave", "intentos_ingreso", "clave, momento", False),
 ]
 
 
