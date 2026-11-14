@@ -12275,7 +12275,7 @@
             "type": "array",
             "maxItems": 3,
             "title": "Historial",
-            "description": "Ya no se usa: el texto de respuestas anteriores no se acepta del cliente (se manda `anteriores`). Se valida y se ignora, para no romper clientes viejos."
+            "description": "Para clientes que aún no mandan `anteriores`: solo se usa si no hay conversación guardada con esos ids (como mucho 3 turnos, recortados). Con `anteriores` válidos se ignora."
           }
         },
         "additionalProperties": false,

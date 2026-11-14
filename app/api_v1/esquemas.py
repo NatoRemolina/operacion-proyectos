@@ -227,8 +227,9 @@ class PreguntaAsistente(BaseModel):
                                   description="Los `id` de las respuestas anteriores de esta conversación (como mucho 3, de la "
                                               "más vieja a la más nueva). Las preguntas y respuestas se leen del servidor.")
     historial: list[TurnoAsistente] = Field(default_factory=list, max_length=3,
-                                            description="Ya no se usa: el texto de respuestas anteriores no se acepta del cliente "
-                                                        "(se manda `anteriores`). Se valida y se ignora, para no romper clientes viejos.")
+                                            description="Para clientes que aún no mandan `anteriores`: solo se usa si no hay "
+                                                        "conversación guardada con esos ids (como mucho 3 turnos, recortados). "
+                                                        "Con `anteriores` válidos se ignora.")
 
 
 class DestinoFuente(BaseModel):

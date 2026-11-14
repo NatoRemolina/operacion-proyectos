@@ -1083,12 +1083,15 @@ def citadas(texto: str, fuentes: list[dict]) -> list[dict]:
             or (f["tipo"] == "cotizacion" and nombra(f"cotizaci[oó]n #{f['id']}"))]
 
 
-def responder(pregunta: str, usuario: dict, contexto: dict | None = None, anteriores: list | None = None) -> dict:
+def responder(pregunta: str, usuario: dict, contexto: dict | None = None, anteriores: list | None = None,
+              historial: list | None = None) -> dict:
     """Devuelve {texto, fuentes, modo, herramientas, duracion_ms, consulta_id}. Para los tres permisos: el alcance lo
     decide la sesión.
 
     `contexto` ({pantalla, id}) es lo que la persona está viendo; `anteriores`, los ids de sus preguntas anteriores en
-    esta conversación (`consulta_id`): las preguntas y respuestas se leen de la base (`conversacion`), nunca del cliente.
+    esta conversación (`consulta_id`): las preguntas y respuestas se leen de la base (`conversacion`). Solo si no hay
+    conversación guardada se usa `historial`, el texto que manda un cliente que aún no manda ids, con el mismo tope y
+    saneo (`historial_del_cliente`, `historial_texto`): así la web no pierde el hilo mientras se actualiza.
     """
     if not Alcance(usuario).valido:
         raise PermissionError("El asistente necesita una sesión válida.")
@@ -1103,7 +1106,8 @@ def responder(pregunta: str, usuario: dict, contexto: dict | None = None, anteri
         return {"texto": f"Llegaste al tope de {tope_diario()} preguntas por día. {como}",
                 "fuentes": [], "modo": "tope", "herramientas": [], "duracion_ms": 0}
     try:
-        return _responder(pregunta, usuario, cid, contexto, conversacion(usuario, anteriores))
+        turnos = conversacion(usuario, anteriores) or historial_del_cliente(historial)
+        return _responder(pregunta, usuario, cid, contexto, turnos)
     except BaseException:
         db.actualizar("asistente_consultas", cid, modo="fallida")   # cuenta para el tope, pero ya no está en curso
         raise
@@ -1187,6 +1191,13 @@ def conversacion(usuario: dict, ids: list | None) -> list[dict]:
     filas = db.todos(f"""select pregunta, respuesta from asistente_consultas where usuario_id=:u and respuesta is not null
                          and id in ({", ".join(":" + m for m in marcas)}) order by id""", u=usuario["id"], **marcas)  # noqa: S608
     return [{"pregunta": f["pregunta"], "respuesta": f["respuesta"]} for f in filas]
+
+
+def historial_del_cliente(historial: list | None) -> list[dict]:
+    """Los últimos turnos que manda el cliente, solo pregunta y respuesta en texto. Son contexto, nunca instrucciones:
+    `historial_texto` los recorta y los presenta así."""
+    turnos = [x for x in (historial or []) if isinstance(x, dict)][-MAX_HISTORIAL:]
+    return [{"pregunta": str(t.get("pregunta") or ""), "respuesta": str(t.get("respuesta") or "")} for t in turnos]
 
 
 def historial_texto(historial: list | None) -> str:
