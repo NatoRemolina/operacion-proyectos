@@ -34,6 +34,24 @@ export function sinVersionar(raiz: string): string[] {
  */
 export const CONCURRENCIA_API = 20;
 
+/**
+ * Rechazos (Throttles) de una función y una duración máxima que pasa del 85 % de su plazo; con `errores`, también sus
+ * fallos. Todas avisan al tema de OperacionBase. La usan la API (analizador y Tareas) y la web.
+ */
+export function vigilarFuncion(pila: Construct, nombre: string, funcion: lambda.IFunction, plazo: Duration,
+  aviso: cloudwatch.IAlarmAction, { errores }: { errores: boolean }) {
+  const periodo = Duration.minutes(5);
+  const alarma = (id: string, metrica: cloudwatch.IMetric, umbral: number) =>
+    new cloudwatch.Alarm(pila, `${id}${nombre}`, {
+      metric: metrica, threshold: umbral, evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(aviso);
+  if (errores) alarma("Fallos", funcion.metricErrors({ period: periodo }), 1);
+  alarma("Rechazos", funcion.metricThrottles({ period: periodo }), 1);
+  alarma("CercaDelPlazo", funcion.metricDuration({ period: periodo, statistic: "Maximum" }), Math.round(plazo.toMilliseconds() * 0.85));
+}
+
 export interface AppStackProps extends StackProps {
   secreto: secretsmanager.Secret;
   avisos: sns.Topic;
@@ -152,6 +170,9 @@ export class AppStack extends Stack {
     alarma("PeticionesRechazadas", web.metricThrottles({ period: Duration.minutes(5) }), 1);
     alarma("Lentitud", web.metricDuration({ period: Duration.minutes(5), statistic: "p95" }), 20000, 2);
     alarma("FallosDelTrabajador", tareas.metricErrors({ period: Duration.minutes(15) }), 1);
+    // Analizador y Tareas: rechazos (sin turno) y una duración que roza el plazo (al pasarlo, Lambda corta sin aviso)
+    vigilarFuncion(this, "Analizador", analizador, Duration.seconds(60), aviso, { errores: true });
+    vigilarFuncion(this, "Tareas", tareas, Duration.minutes(15), aviso, { errores: false });   // los fallos ya los ve FallosDelTrabajador
 
     // Con el adaptador web, un 500 de la aplicación es una invocación correcta para Lambda: FallosDeLaFuncion no lo
     // ve. Se cuentan los errores que la propia aplicación escribe (app/web.py) y las respuestas 5xx de la dirección.

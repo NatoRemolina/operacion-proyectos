@@ -1,5 +1,7 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as acciones from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import { Platform } from "aws-cdk-lib/aws-ecr-assets";
@@ -10,9 +12,11 @@ import * as targets from "aws-cdk-lib/aws-route53-targets";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as sns from "aws-cdk-lib/aws-sns";
 import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
 import * as path from "node:path";
+import { vigilarFuncion } from "./app-stack";
 import { Dominio, dominioDesdeContexto } from "./dominio";
 import { EstaticosDeLaWeb, IMAGEN_DE_RESERVA } from "./estaticos";
 
@@ -21,6 +25,8 @@ export interface WebStackProps extends StackProps {
   urlApi: lambda.IFunctionUrl;
   /** El secreto de OperacionBase: de él sale, al desplegar, el valor de la cabecera `X-Origen-CloudFront`. */
   secreto: secretsmanager.ISecret;
+  /** El tema de avisos de OperacionBase: las alarmas de la web y de CloudFront van al mismo que las de la API. */
+  avisos: sns.ITopic;
 }
 
 /** Cabecera que CloudFront añade a todo lo que manda a la API: sin ella, la API rechaza lo que llega directo. */
@@ -176,6 +182,28 @@ export class WebStack extends Stack {
 
     if (dominio && certificado) {
       this.registros(dominio, web, admin);
+    }
+
+    // ---------- alarmas ----------
+    const aviso = new acciones.SnsAction(props.avisos);
+    vigilarFuncion(this, "Web", funcion, Duration.seconds(30), aviso, { errores: true });
+    const alarma = (id: string, metrica: cloudwatch.IMetric, umbral: number, periodos = 1) =>
+      new cloudwatch.Alarm(this, id, {
+        metric: metrica, threshold: umbral, evaluationPeriods: periodos, datapointsToAlarm: periodos,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }).addAlarmAction(aviso);
+    alarma("Respuestas5xxWeb", vivo.metric("Url5xxCount", { period: Duration.minutes(5), statistic: "Sum" }), 1);
+    // CloudFront mide en porcentaje: con poco tráfico un solo 504 es mucho, por eso se pide que se sostenga 10 minutos.
+    // Un 504 suelto por pasar de 60 s está previsto (docs/adr/0002-hospedaje-de-la-web.md). La métrica lleva
+    // Region=Global, como la publica CloudFront: sin esa dimensión (metric5xxErrorRate de CDK no la pone) la alarma
+    // nunca recibiría datos.
+    for (const [id, distribucion] of [["Web", web], ["Admin", admin]] as const) {
+      const tasa = new cloudwatch.Metric({
+        namespace: "AWS/CloudFront", metricName: "5xxErrorRate", statistic: "Average", period: Duration.minutes(5),
+        dimensionsMap: { DistributionId: distribucion.distributionId, Region: "Global" },
+      });
+      alarma(`Tasa5xx${id}`, tasa, 10, 2);
     }
 
     const direccion = (d: cloudfront.Distribution, nombre?: string) => `https://${nombre ?? d.distributionDomainName}`;
