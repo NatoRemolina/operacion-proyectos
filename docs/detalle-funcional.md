@@ -73,7 +73,7 @@ Además de la API v1, hay rutas JSON de **solo lectura y solo para administraci�
 
 **Respaldo de la base publicada.** El plan gratuito de Supabase no hace respaldos automáticos. `make respaldar` copia la base y los recibos en solo lectura, con conteos y huellas, y `make verificar-respaldo` ensaya la restauración en una base nueva del proyecto de pruebas. Procedimiento, cifrado de la copia y vuelta atrás: `docs/respaldo.md`.
 
-**Llevar lo cotizado de un entorno a otro.** `datos/importar_entorno.py` copia cotizaciones, decisiones, viajes, tramos y respuestas del buscador de una base a otra (por ejemplo, de Docker al proyecto de pruebas), emparejando personas por correo y proyectos y viajeros por nombre. `ensayo` dice qué entraría sin escribir nada; `aplicar` lo carga, sin duplicar en una segunda corrida. Nunca escribe en la base publicada.
+**Llevar lo cotizado de un entorno a otro.** `datos/importar_entorno.py` copia cotizaciones, decisiones, viajes, tramos y respuestas del buscador de una base a otra (por ejemplo, de Docker al proyecto de pruebas), emparejando personas por correo y proyectos y viajeros por nombre. `ensayo` dice qué entraría sin escribir nada; `aplicar` lo carga, sin duplicar en una segunda corrida. Una cotización ya cargada recibe lo que le falte: si en el origen se decidió después, entran la decisión, el viaje y sus tramos, y la cotización queda como en el origen. De las respuestas del buscador con la misma clave queda de última (la que se usa) la más nueva de las dos bases, y las consultas y los eventos se comparan por la fila entera, así dos del mismo segundo no se juntan. Nunca escribe en la base publicada.
 
 ```bash
 ORIGEN_URL=postgresql://... DESTINO_URL=postgresql://... .venv/bin/python -m datos.importar_entorno ensayo
