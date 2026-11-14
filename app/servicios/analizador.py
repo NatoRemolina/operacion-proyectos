@@ -53,8 +53,8 @@ EN_CURSO = timedelta(minutes=2)      # una lectura que no terminó en este tiemp
 FUNCION = timedelta(seconds=70)      # lo que puede seguir viva la función (60 s en infra) más un margen: una llamada sin
 #                                      respuesta retiene el turno hasta entonces, para no arrancar dos Chromium a la vez
 SIN_RESPUESTA = "el analizador no respondió"
-ESPERA_S = 54   # la lectura cabe en 45 s (analizador/navegador.py); el margen cubre el arranque en frío de la función, siempre
-#                 por debajo de los 60 s de CloudFront
+ESPERA_S = 48   # la lectura cabe en 45 s (analizador/navegador.py) más un margen corto: después de la espera aún se guarda
+#                 la captura y se responde, y todo debe caber en los 60 s de CloudFront
 TOPE_PERSONA, TOPE_TOTAL = 10, 40     # si las reglas no existen
 REGLAS = (
     ("analisis_persona_dia", str(TOPE_PERSONA), "Lecturas de la página del vuelo en Google Flights por persona y día. "

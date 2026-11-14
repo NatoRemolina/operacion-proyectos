@@ -272,8 +272,9 @@ def test_una_respuesta_que_no_es_un_objeto_queda_como_lectura_fallida(piloto, do
 def test_los_plazos_caben_en_el_minuto_de_la_funcion_y_de_cloudfront():
     from analizador import navegador
     assert navegador.PRESUPUESTO_MS == 45_000 and navegador.ESPERA_MS <= navegador.PRESUPUESTO_MS
-    # la API espera la lectura completa más un margen, siempre por debajo de los 60 s de CloudFront
-    assert navegador.PRESUPUESTO_MS / 1000 < analizador.ESPERA_S < 55
+    # la API espera la lectura completa (45 s) más un margen corto: después aún guarda la captura y responde,
+    # y todo debe caber en los 60 s de CloudFront. Con 54 s, el guardado de la captura podía pasarse.
+    assert navegador.PRESUPUESTO_MS / 1000 < analizador.ESPERA_S <= 48
 
 
 
