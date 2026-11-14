@@ -327,3 +327,19 @@ def test_ir_a_pulsa_la_tarifa_por_su_etiqueta_aunque_la_pagina_cambie(monkeypatc
 def test_la_etiqueta_con_comillas_se_busca_tal_cual():
     assert navegador._selector_etiqueta('Continue to book with "A", B') == '[aria-label="Continue to book with \\"A\\", B"]'
     assert navegador._selector_etiqueta("a\\b") == '[aria-label="a\\\\b"]'
+
+
+# ---------- producción, cotización 12: con billetes separados, «Ir a…» no pulsa nada ----------
+def test_ir_a_con_billetes_separados_no_pulsa_y_lo_dice():
+    pedidos = []
+    r = navegador.ir_a(URL, "COPA", "Tarifa",
+                       servir=_servir({"https://www.google.com/travel/flights?": "billetes_separados.html"}, pedidos))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.BILLETES_SEPARADOS)
+    assert not r.get("cuerpo") and not any("/travel/clk" in p for p in pedidos)
+
+
+def test_la_lectura_con_billetes_separados_marca_cada_tramo():
+    r = navegador.analizar(URL, servir=_servir({"https://www.google.com/travel/flights?": "billetes_separados.html"}, []))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["datos"]["billetes_separados"] is True
+    assert [(t["vendedor"], t["tramo"]) for t in r["datos"]["tarifas"]] == [("COPA", "ida"), ("Avianca", "regreso")]

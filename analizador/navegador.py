@@ -47,6 +47,8 @@ SIN_REGRESO = "no se pudo elegir el regreso"
 RESERVA_IR_MS = 20_000
 RESERVA_LEER_MS = 10_000
 SIN_ENVIO = "Google no respondió al elegir la tarifa"
+# Con billetes separados cada tiquete se compra aparte: «Ir a…» no elige uno, lleva a Google Flights (ronda, punto 19)
+BILLETES_SEPARADOS = "el itinerario son billetes separados: se compran en Google Flights"
 CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for [\d,.]+ US dollars")
 VENDEDOR_O_TARIFA = re.compile(r"^[\w .,&'()+/-]{1,60}$")
 OTRA_PESTANA = "la página quiso abrir otra pestaña"
@@ -231,6 +233,8 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 if not RESERVA.search(texto):   # sin opciones de reserva no hay «Continue» que pulsar
                     return _resultado("fallido", inicio, SIN_REGRESO, url_final=pagina.url, regreso_elegido=regreso,
                                       **_evidencia(pagina))
+                if not completa and lector.leer(texto)["billetes_separados"]:
+                    return _resultado("fallido", inicio, BILLETES_SEPARADOS, url_final=pagina.url, regreso_elegido=regreso)
                 if completa:
                     return _completa(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
                 return _ir(pagina, pedido_ir, envio, regreso, restante, salida, inicio)
