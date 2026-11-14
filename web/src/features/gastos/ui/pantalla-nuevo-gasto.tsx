@@ -150,6 +150,8 @@ export function PantallaNuevoGasto({ viajeInicial }: { viajeInicial?: number } =
             enCurso: v.en_curso,
           }))}
           cargandoViajes={viajes.isPending}
+          errorViajes={Boolean(viajes.error)}
+          onReintentarViajes={() => void viajes.refetch()}
           viajeId={viajeId}
           onCambiarViaje={setViajeId}
           justificacion={justificacion}
