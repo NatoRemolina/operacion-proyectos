@@ -35,12 +35,16 @@ capturas = db._tabla(
 )
 
 TOPE_DIA = 60
+TOPE_CLIC_PERSONA = 10
 REGLAS = (
     ("seguimiento_diario", "1", "Una captura al día de cada vuelo decidido y no comprado, hasta la compra o la fecha de ida "
                                 "(1 encendido, 0 apagado)."),
     ("capturas_dia", str(TOPE_DIA), "Capturas completas (vuelo, aerolínea u hotel) que el trabajador hace por día, en total."),
+    ("capturas_clic_persona_dia", str(TOPE_CLIC_PERSONA),
+     "Capturas por «Ir a…» que encola cada persona por día (las demás capturas no cuentan)."),
 )
 INTENTOS = 3
+BLOQUEO_CLIC = 7_311_402   # cerrojo de PostgreSQL del tope de capturas por clic (distinto del turno del analizador)
 ESPERA_REINTENTO = timedelta(minutes=30)
 EN_CURSO_MAX = timedelta(minutes=4)   # tres invocaciones de un minuto como máximo y un margen
 TOPE_TEXTO = 300_000                  # bytes del texto visible que se guardan por captura
@@ -50,7 +54,7 @@ ESTADOS = ("pendiente", "en_curso", "lista", "fallida")
 
 
 def asegurar_reglas() -> int:
-    """Las dos reglas como supuestos editables. La migración lo llama; no pisa un valor ya editado."""
+    """Las reglas como supuestos editables. La migración lo llama; no pisa un valor ya editado."""
     nuevas = 0
     for clave, valor, nota in REGLAS:
         if not db.uno("select id from reglas where ambito='supuesto' and clave=:c", c=clave):
@@ -116,20 +120,50 @@ def al_comprar(compra_id: int) -> int | None:
                     decision_id=d["id"], compra_id=compra_id, opcion_id=d["vuelo_id"])
 
 
-def al_clic(sid: int, opcion_id: int, vendedor: str, tarifa: str) -> int | None:
+def _tarifa_del_vuelo(sol: dict, vuelo: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str) -> bool:
+    """Si ese vendedor y esa tarifa (o ese tiquete, «ida» o «regreso») están en lo que la plataforma ya tiene del vuelo:
+    las opciones guardadas del buscador o la lectura vigente de la página (las dos fuentes de los «Ir a…» del desglose)."""
+    lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
+    tarifas, _ = precios.opciones_guardadas(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"])
+    lectura = analizador.vigente(analizador.clave_de(sid, opcion_id)) or {}
+    if lectura.get("estado") == "listo" and isinstance((lectura.get("datos") or {}).get("tarifas"), list):
+        tarifas = [*tarifas, *(t for t in lectura["datos"]["tarifas"] if isinstance(t, dict))]
+    pedida = (vendedor.strip().lower(), tarifa.strip().lower())
+    return any((str(t.get("vendedor") or "").lower(), str(t.get("nombre") or "").lower()) == pedida for t in tarifas)
+
+
+def tope_clic_persona() -> int:
+    return int(costo.supuesto(costo.catalogo(), "capturas_clic_persona_dia", TOPE_CLIC_PERSONA))
+
+
+def al_clic(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, confirmada: bool = False) -> int | None:
     """La captura completa del momento en que la persona abrió «Ir a {vendedor} · {tarifa}»: Google y la página de la
-    aerolínea, con esa tarifa. Una por vuelo, vendedor y tarifa en cada hora (repetir el clic no la repite)."""
+    aerolínea, con esa tarifa. Una por vuelo, vendedor y tarifa en cada hora (repetir el clic no la repite).
+
+    El vendedor y la tarifa los manda el cliente: solo se encola si están en lo guardado de ese vuelo (`_tarifa_del_vuelo`)
+    o si «Ir a…» acaba de encontrarlos (`confirmada`: el buscador los entregó o la página pulsó su «Continue»), y hasta
+    `capturas_clic_persona_dia` por persona y día. Si no, no se encola y no falla: la persona va igual al vendedor."""
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
     vuelo = db.uno("select datos from opciones where id=:o and solicitud_id=:s", o=opcion_id, s=sid)
     if not sol or not vuelo:
         return None
+    datos_vuelo = db.de_json(vuelo["datos"], {}) or {}
     try:
-        url = analizador.enlace_itinerario(sol, db.de_json(vuelo["datos"], {}) or {})
-    except (ValueError, TypeError):
+        url = analizador.enlace_itinerario(sol, datos_vuelo)
+        if not confirmada and not _tarifa_del_vuelo(sol, datos_vuelo, sid, opcion_id, vendedor, tarifa):
+            return None
+    except (ValueError, TypeError, KeyError, LookupError):
         return None
     hora = datetime.now(UTC).strftime("%Y-%m-%d %H")
-    return _encolar(tipo="vuelo", motivo="clic", clave=f"vuelo:clic:{opcion_id}:{vendedor}:{tarifa}:{hora}", url=url,
-                    solicitud_id=sid, opcion_id=opcion_id, datos={"pedido": {"vendedor": vendedor, "tarifa": tarifa}})
+    with db.transaccion() as c:
+        if not config.ES_SQLITE:   # dos clics a la vez de la misma persona no pasan juntos el tope
+            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_CLIC})
+        hoy = db.todos("select datos from capturas where motivo='clic' and creado>=:h", h=analizador.inicio_del_dia())
+        if sum((db.de_json(f["datos"], {}) or {}).get("usuario_id") == usuario["id"] for f in hoy) >= tope_clic_persona():
+            return None
+        return _encolar(tipo="vuelo", motivo="clic", clave=f"vuelo:clic:{opcion_id}:{vendedor}:{tarifa}:{hora}", url=url,
+                        solicitud_id=sid, opcion_id=opcion_id,
+                        datos={"pedido": {"vendedor": vendedor, "tarifa": tarifa}, "usuario_id": usuario["id"]})
 
 
 def seguimiento_encendido() -> bool:

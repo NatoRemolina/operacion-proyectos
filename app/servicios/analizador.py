@@ -467,10 +467,15 @@ def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, ca
     finally:
         _no_dejar_pendiente(turno.get("id"))
     # El mismo clic deja encolada una captura completa (Google y la aerolínea) del momento en que la persona abrió el
-    # enlace: la hace el trabajador, la persona no la espera y, si no se puede encolar, va igual.
+    # enlace: la hace el trabajador, la persona no la espera y, si no se puede encolar, va igual. Con el tope de «Ir a…»
+    # alcanzado no se encola nada; por el buscador, con el vendedor que lo vende ahora. Ruling (pieza 6, ronda 1): el
+    # buscador y la página confirman la tarifa (Google la entregó o la página pulsó su «Continue»); por Google Flights,
+    # solo si está en lo guardado del vuelo — si está mal, basta con quitar «pagina» de esta tupla.
     try:
-        from . import capturas  # aquí: capturas usa este módulo
-        capturas.al_clic(sid, opcion_id, vendedor, tarifa)
+        if not turno.get("tope"):
+            from . import capturas  # aquí: capturas usa este módulo
+            capturas.al_clic(usuario, sid, opcion_id, destino["vendedor"] if destino["camino"] == "buscador" else vendedor,
+                             tarifa, confirmada=destino["camino"] in ("buscador", "pagina"))
     except Exception as e:  # noqa: BLE001
         eventos.registrar("solicitud", sid, "evidencia del clic no encolada", f"opción {opcion_id} · {type(e).__name__}",
                           "sistema")

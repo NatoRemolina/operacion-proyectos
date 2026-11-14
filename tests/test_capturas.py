@@ -233,8 +233,8 @@ def test_el_manejador_de_lambda_encola_el_seguimiento_y_procesa(piloto, cola):
 
 def test_las_tablas_y_reglas_tienen_su_migracion():
     assert "capturas" in db.TABLAS
-    db.ejecutar("delete from reglas where clave in ('seguimiento_diario', 'capturas_dia')")
-    assert capturas.asegurar_reglas() == 2 and capturas.asegurar_reglas() == 0
+    db.ejecutar("delete from reglas where clave in ('seguimiento_diario', 'capturas_dia', 'capturas_clic_persona_dia')")
+    assert capturas.asegurar_reglas() == 3 and capturas.asegurar_reglas() == 0
 
 
 def test_el_adaptador_de_lambda_llega_por_post_events(cola, monkeypatch):
@@ -361,3 +361,84 @@ def test_si_no_se_puede_encolar_el_clic_la_persona_va_igual(piloto, cola, monkey
     assert r.status_code == 200 and r.json()["camino"] == "pagina"
     assert db.uno("select id from eventos where entidad='solicitud' and entidad_id=:s and paso='evidencia del clic no encolada'",
                   s=cot["id"])
+
+
+# ---------- pieza 6, ronda 1, punto 10: un «Ir a…» no agota las capturas de la empresa ----------
+def _ir_a(c: TestClient, cot: dict, tarifa: str, vendedor: str = "American"):
+    r = c.post(f"{V1}/cotizaciones/{cot['id']}/vuelos/{cot['vuelos'][0]['id']}/ir",
+               json={"vendedor": vendedor, "tarifa": tarifa}, headers=_csrf(c))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _clics(sid: int) -> list[dict]:
+    return [f for f in _de(sid) if f["motivo"] == "clic"]
+
+
+def test_con_el_tope_de_ir_a_alcanzado_no_se_encola_la_captura(piloto, cola, monkeypatch):
+    monkeypatch.setattr(analizador, "_reservar_ir", lambda *a, **k: {"motivo": analizador.TOPE_IR_A_TEXTO, "tope": True})
+    cot = _cotizar(piloto)
+    assert _ir_a(piloto, cot, "Main Cabin")["camino"] == "google"
+    assert _clics(cot["id"]) == []
+
+
+def _sin_la_tarifa_en_la_pagina(cola):
+    """La página no encuentra la tarifa (lo que pasa con una inventada): «Ir a…» va a Google Flights."""
+    _, respuestas = cola
+    respuestas["ir_a"] = {"estado": "fallido", "motivo": "no se encontró la tarifa", "duracion_ms": 5000}
+
+
+def _guardadas(monkeypatch, *nombres: str):
+    from app.servicios import precios
+    tarifas = [{"vendedor": "American", "nombre": n, "precio": 400.0, "tramo": "ambos"} for n in nombres]
+    monkeypatch.setattr(precios, "opciones_guardadas", lambda *a, **k: (tarifas, None))
+
+
+def test_una_tarifa_inventada_no_encola_ni_falla(piloto, cola, monkeypatch):
+    _sin_la_tarifa_en_la_pagina(cola)
+    _guardadas(monkeypatch, "Main Cabin")
+    cot = _cotizar(piloto)
+    assert _ir_a(piloto, cot, "Tarifa Inventada 1")["camino"] == "google"
+    assert _ir_a(piloto, cot, "Main Cabin", vendedor="Vendedor Inventado")["camino"] == "google"
+    assert _clics(cot["id"]) == []
+    _ir_a(piloto, cot, "main cabin")                        # la que sí está guardada (sin distinguir mayúsculas)
+    assert len(_clics(cot["id"])) == 1
+
+
+def test_el_clic_numero_11_del_dia_de_la_misma_persona_no_encola(piloto, cliente, cola, monkeypatch):
+    _sin_la_tarifa_en_la_pagina(cola)
+    _guardadas(monkeypatch, *(f"Tarifa {n}" for n in range(1, 13)))
+    cot = _cotizar(piloto)
+    for n in range(1, 12):
+        _ir_a(piloto, cot, f"Tarifa {n}")
+    clics = _clics(cot["id"])
+    assert len(clics) == capturas.TOPE_CLIC_PERSONA == 10
+    assert "Tarifa 11" not in str([f["datos"] for f in clics])
+    _ir_a(cliente, cot, "Tarifa 12")                        # el tope es por persona: otra persona sí encola
+    assert len(_clics(cot["id"])) == 11
+
+
+def test_el_tope_de_clics_por_persona_es_una_regla_editable(piloto, cola, monkeypatch):
+    _sin_la_tarifa_en_la_pagina(cola)
+    _guardadas(monkeypatch, "Tarifa 1", "Tarifa 2")
+    db.ejecutar("update reglas set valor='1' where ambito='supuesto' and clave='capturas_clic_persona_dia'")
+    try:
+        cot = _cotizar(piloto)
+        _ir_a(piloto, cot, "Tarifa 1")
+        _ir_a(piloto, cot, "Tarifa 2")
+        assert len(_clics(cot["id"])) == 1
+    finally:
+        db.ejecutar("update reglas set valor=:v where ambito='supuesto' and clave='capturas_clic_persona_dia'",
+                    v=str(capturas.TOPE_CLIC_PERSONA))
+
+
+def test_la_tarifa_de_la_lectura_vigente_tambien_vale(piloto, cola, monkeypatch):
+    _sin_la_tarifa_en_la_pagina(cola)
+    _guardadas(monkeypatch)
+    cot = _cotizar(piloto)
+    vuelo = cot["vuelos"][0]["id"]
+    db.insertar("analisis_vuelo", opcion_id=vuelo, solicitud_id=cot["id"], usuario_id=1, clave=analizador.clave_de(cot["id"], vuelo),
+                url="https://www.google.com/travel/flights", estado="listo", creado=db.ahora(), accion="leer",
+                datos={"tarifas": [{"vendedor": "Expedia", "nombre": "Economy", "precio": 500.0}]})
+    _ir_a(piloto, cot, "Economy", vendedor="Expedia")
+    assert len(_clics(cot["id"])) == 1
