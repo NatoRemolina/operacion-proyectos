@@ -47,8 +47,10 @@ def preparar(contenido: bytes, nombre: str) -> tuple[bytes, str, str]:
     if not tipo:
         raise SoporteRechazado("Tipo de archivo no admitido. " + TIPOS_ADMITIDOS)
     mime, extension = tipo
-    if mime == "application/pdf" and (paginas := extraccion.paginas_pdf(contenido)) > extraccion.MAX_PAGINAS_PDF:
-        raise SoporteRechazado(f"El PDF tiene {paginas} páginas; se leen hasta {extraccion.MAX_PAGINAS_PDF}. "
+    pdf = contenido if mime == "application/pdf" else _pdf_adjunto(contenido) if mime == "message/rfc822" else None
+    if pdf and (paginas := extraccion.paginas_pdf(pdf)) > extraccion.MAX_PAGINAS_PDF:
+        donde = "El PDF adjunto al correo" if mime == "message/rfc822" else "El PDF"
+        raise SoporteRechazado(f"{donde} tiene {paginas} páginas; se leen hasta {extraccion.MAX_PAGINAS_PDF}. "
                                "Envía solo las páginas del recibo.")
     if mime == "text/html":
         texto = extraccion.html_a_texto(contenido)
@@ -56,6 +58,15 @@ def preparar(contenido: bytes, nombre: str) -> tuple[bytes, str, str]:
             raise SoporteRechazado("La confirmación en HTML no tiene texto legible.")
         return texto.encode(), "text/plain", "txt"
     return contenido, mime, extension
+
+
+def _pdf_adjunto(contenido: bytes) -> bytes | None:
+    """El PDF que el modelo leería de un correo (su adjunto), para contar sus páginas como las de un PDF suelto."""
+    try:
+        _, adjunto, tipo = extraccion.partes_del_correo(contenido)
+    except Exception:  # noqa: BLE001  un correo mal formado se guarda y se lee como texto
+        return None
+    return adjunto if tipo == "application/pdf" else None
 
 
 def tipo_audio(contenido: bytes) -> tuple[str, str] | None:

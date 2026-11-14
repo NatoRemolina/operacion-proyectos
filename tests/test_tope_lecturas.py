@@ -200,3 +200,30 @@ def test_un_pdf_de_mas_de_15_paginas_no_se_lee(modelo, comprimido):
 def test_el_limite_de_paginas_vale_para_todas_las_vias():
     with pytest.raises(gastos.SoporteRechazado, match="16 páginas"):
         gastos.preparar(_pdf(16), "largo.pdf")
+
+
+
+def _correo_con_pdf(paginas: int, comprimido: bool = False) -> bytes:
+    from email.message import EmailMessage
+    m = EmailMessage()
+    m["From"], m["Subject"], m["Date"] = "reservas@aerolinea.example", "Tu recibo", "Fri, 13 Nov 2026 10:00:00 -0500"
+    m.set_content("Adjuntamos el recibo.")
+    m.add_attachment(_pdf(paginas, comprimido), maintype="application", subtype="pdf", filename="recibo.pdf")
+    return m.as_bytes()
+
+
+@pytest.mark.parametrize("comprimido", [False, True])
+def test_el_pdf_adjunto_de_un_correo_tambien_cuenta_sus_paginas(comprimido):
+    """El modelo lee el adjunto del .eml: sus páginas se pagan igual que las de un PDF suelto."""
+    with pytest.raises(gastos.SoporteRechazado, match="16 páginas"):
+        gastos.preparar(_correo_con_pdf(16, comprimido), "recibo.eml")
+    assert gastos.preparar(_correo_con_pdf(15, comprimido), "recibo.eml")[1] == "message/rfc822"
+
+
+def test_por_la_api_el_correo_con_un_pdf_largo_no_se_lee(modelo):
+    _, c = _cuenta()
+    antes = db.uno("select count(*) n from gastos")["n"]
+    r = c.post(f"{V1}/gastos", files={"archivo": ("recibo.eml", _correo_con_pdf(16), "message/rfc822")}, headers=_csrf(c))
+    assert r.status_code == 422, r.text
+    assert "16 páginas" in r.json()["error"]["fields"]["archivo"]
+    assert modelo == [] and db.uno("select count(*) n from gastos")["n"] == antes

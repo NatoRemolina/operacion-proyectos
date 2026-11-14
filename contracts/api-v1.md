@@ -198,7 +198,7 @@ El Excel contable: un `.xlsx` (`application/vnd.openxmlformats-officedocument.sp
 - Si la lectura se interrumpe, el gasto no queda `procesando`: pasa a `revision` con el motivo `lectura_fallida`, y el reintento con la misma clave lo devuelve.
 - Cada lectura con el modelo se reserva antes de llamarlo, del tope de la persona (`lecturas_recibo_persona_dia`) y del total de la empresa (`lecturas_recibo_dia`), igual por la web, la API, el buzón y Telegram. Pasado el tope no se llama al modelo: 201 con el gasto en `revision`, motivo `lectura_fallida`, el aviso «Lectura pendiente por tope» y `origen_dato` «pendiente por tope». El soporte queda guardado.
 - Si el recibo es del tiquete ya comprado del viaje (de vuelo, con el localizador de la compra o con su mismo importe), se enlaza como soporte del gasto de la compra y la respuesta trae ese gasto: no se crea otro.
-- Un PDF de más de 15 páginas no se lee ni se guarda: 422 con el número de páginas en `fields.archivo`.
+- Un PDF de más de 15 páginas no se lee ni se guarda, tampoco el que llega adjunto a un correo (`.eml`): 422 con el número de páginas en `fields.archivo`.
 - Errores: 413, 415, 422.
 
 ### `POST /gastos/{id}/revision`
