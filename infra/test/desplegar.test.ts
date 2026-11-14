@@ -197,4 +197,14 @@ describe("guion de despliegue: solo desde la punta de dev (B5)", { skip: !hayZsh
     assert.notEqual(r.status, 0);
     assert.match(`${r.stdout}${r.stderr}`, /siguen en pausa/);
   });
+
+  test("con dev local detrás de origin/dev pide confirmación y no sigue si no se escribe «si»", () => {
+    const otro = repositorio();
+    git(otro, "checkout", "-q", "--detach", "dev");
+    git(otro, "update-ref", "refs/remotes/origin/dev", git(otro, "rev-parse", "worktree-frente"));
+    const r = desplegar(otro, [], "no\n");
+    assert.notEqual(r.codigo, 0);
+    assert.match(r.salida, /dev local está detrás de origin\/dev/);
+    assert.equal(r.llamadas.includes("put-function-concurrency"), false);
+  });
 });

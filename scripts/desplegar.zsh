@@ -96,7 +96,12 @@ fi
 [[ -z $(git status --porcelain) ]] \
   || fallar "Hay cambios sin guardar en $RAIZ: se despliega exactamente el commit de dev, desde una carpeta limpia."
 if git rev-parse --verify --quiet refs/remotes/origin/dev >/dev/null && [[ $(git rev-parse refs/remotes/origin/dev) != $DEV ]]; then
-  print "Aviso: dev (${DEV[1,7]}) no coincide con origin/dev: lo que se publica no está aún en GitHub."
+  if git merge-base --is-ancestor "$DEV" refs/remotes/origin/dev; then
+    print "dev local (${DEV[1,7]}) está detrás de origin/dev: GitHub tiene commits que no se van a publicar."
+    confirmar "dev local está detrás de origin/dev; ¿desplegar igual?" "Actualiza dev (git fetch y avanzarla) y repite."
+  else
+    print "Aviso: dev (${DEV[1,7]}) no coincide con origin/dev: lo que se publica no está aún en GitHub."
+  fi
 fi
 print "✓ ${CABEZA[1,7]} es la punta de dev y la carpeta está limpia."
 
