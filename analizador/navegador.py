@@ -16,6 +16,7 @@ import os
 import re
 import threading
 import time
+from collections.abc import Callable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import lector
@@ -444,8 +445,6 @@ def captura_aerolinea(url: str, cuerpo: str, *, servir=None, presupuesto_ms: int
         _turno.release()
 
 
-PRECIO_O_BLOQUEO = re.compile(r"\$\d|" + "|".join(re.escape(x) for x in lector.SENALES_AEROLINEA + lector.SENALES_VERIFICACION),
-                              re.I)
 
 
 def _aerolinea(url: str, cuerpo: str, servir, presupuesto_ms: int, inicio: float) -> dict:
@@ -505,7 +504,7 @@ def _aerolinea(url: str, cuerpo: str, servir, presupuesto_ms: int, inicio: float
                 pagina.wait_for_timeout(250)
             if not destino:
                 return _resultado("fallido", inicio, SIN_AEROLINEA, **_evidencia(pagina))
-            texto = _esperar(pagina, PRECIO_O_BLOQUEO, max(min(15_000, restante() - 8_000), 1)) or _texto(pagina)
+            texto = _esperar(pagina, lector.precio_o_bloqueo_aerolinea, max(min(15_000, restante() - 8_000), 1)) or _texto(pagina)
             if lector.bloqueo(pagina.url, texto, aerolinea=True):
                 # una verificación no se resuelve ni se fotografía: la captura de Google vale igual
                 return _resultado("fallido", inicio, lector.VERIFICACION_AEROLINEA, url_final=f"https://{destino['host']}/")
@@ -699,16 +698,17 @@ def _recargar(pagina, restante, reserva: int) -> str | None:
     return _esperar(pagina, LISTO, max(restante() - reserva, 1))
 
 
-def _esperar(pagina, patron: re.Pattern, plazo_ms: int = ESPERA_MS) -> str | None:
-    """El texto visible en cuanto cumple `patron`; None si no llega a tiempo. Tolera que la página se recargue o cambie
-    de dirección mientras carga (Google lo hace): se vuelve a leer en vez de fallar."""
+def _esperar(pagina, patron: re.Pattern | Callable[[str], bool], plazo_ms: int = ESPERA_MS) -> str | None:
+    """El texto visible en cuanto cumple `patron` (una expresión o una función del texto); None si no llega a tiempo.
+    Tolera que la página se recargue o cambie de dirección mientras carga (Google lo hace): se vuelve a leer."""
     from playwright.sync_api import Error
 
+    cumple = patron.search if isinstance(patron, re.Pattern) else patron
     fin = time.monotonic() + plazo_ms / 1000
     while time.monotonic() < fin:
         try:
             texto = pagina.inner_text("body", timeout=max(min(2000, int((fin - time.monotonic()) * 1000)), 1))
-            if patron.search(texto):
+            if cumple(texto):
                 return texto
         except Error:
             pass   # contexto destruido por una navegación: se reintenta

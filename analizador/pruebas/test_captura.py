@@ -105,3 +105,11 @@ def test_el_servidor_atiende_las_capturas(monkeypatch):
     servidor.atender({"accion": "captura_aerolinea", "url": CLK, "cuerpo": "u=1"})
     servidor.atender({"accion": "captura_hotel", "url": "https://www.google.com/travel/search?q=x", "hotel": "X"})
     assert llamadas == ["captura_vuelo", "captura_aerolinea", "captura_hotel"]
+
+
+def test_el_pie_de_recaptcha_de_una_pagina_buena_no_es_un_bloqueo():
+    """Pieza 6, ronda 1: «This site is protected by reCAPTCHA» sale en páginas buenas de las aerolíneas. Con precios y
+    ese pie, la captura queda lista: en la aerolínea solo cuentan las señales fuertes de bloqueo."""
+    r = navegador.captura_aerolinea(CLK, "u=1", servir=_servir_aerolinea([], pagina_aerolinea="aerolinea_recaptcha.html"))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["datos"]["total"] == 748.80 and _png(r["capturas_png_b64"][0])

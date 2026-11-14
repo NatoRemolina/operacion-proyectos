@@ -76,17 +76,27 @@ def url_envio(url) -> bool:
     return ruta is not None and ruta.startswith("/travel/clk")
 
 
+TOPE_SENALES = 4000   # caracteres: las señales de bloqueo están arriba; más abajo hay textos de páginas buenas
+
+
 def bloqueo(url_final: str, texto: str, aerolinea: bool = False) -> str | None:
     """Por qué no se puede leer la página: una verificación o un aviso de condiciones. Nunca se resuelven. Con
-    `aerolinea`, la página a la que llevó el envío: solo cuentan sus verificaciones y bloqueos (no es de Google)."""
-    bajo = f"{url_final}\n{texto[:4000]}".lower()
+    `aerolinea`, la página a la que llevó el envío: solo cuentan sus señales fuertes de bloqueo (`SENALES_AEROLINEA`).
+    «captcha» o «recaptcha» sueltos no cuentan allí: el pie «This site is protected by reCAPTCHA» sale en páginas buenas."""
+    bajo = f"{url_final}\n{texto[:TOPE_SENALES]}".lower()
     if aerolinea:
-        return VERIFICACION_AEROLINEA if any(s in bajo for s in SENALES_VERIFICACION + SENALES_AEROLINEA) else None
+        return VERIFICACION_AEROLINEA if any(s in bajo for s in SENALES_AEROLINEA) else None
     if any(s in bajo for s in SENALES_VERIFICACION):
         return VERIFICACION
     if any(s in bajo for s in SENALES_CONSENTIMIENTO) or urlsplit(url_final or "").hostname not in DOMINIOS:
         return CONSENTIMIENTO
     return None
+
+
+def precio_o_bloqueo_aerolinea(texto: str) -> bool:
+    """Si la página de la aerolínea ya se puede leer: muestra un precio en dólares o una señal fuerte de bloqueo en sus
+    primeros `TOPE_SENALES` caracteres (el mismo criterio de `bloqueo`)."""
+    return re.search(r"\$\d", texto) is not None or bloqueo("", texto, aerolinea=True) is not None
 
 
 def _precio(linea: str) -> float | None:

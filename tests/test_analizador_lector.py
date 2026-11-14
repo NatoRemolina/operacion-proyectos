@@ -219,3 +219,22 @@ def test_los_tiquetes_del_dialogo_son_tarifas_de_su_aerolinea_por_tramo():
     assert op["precio"] == 657.0                                    # el total, no una tarifa
     assert d["por_telefono"][0]["precio"] == 3134.0 and len(d["tarifas"]) == 2
     assert "Confirm the price on each booking website" in d["notas"]
+
+
+def test_en_la_aerolinea_solo_cuentan_las_senales_fuertes():
+    """Pieza 6, ronda 1: «captcha» o «recaptcha» sueltos no son un bloqueo en la página de la aerolínea (el pie «This site
+    is protected by reCAPTCHA» sale en páginas buenas); «Access is temporarily restricted», «unusual activity» y
+    «Verificación requerida» sí."""
+    url = "https://shopping.copaair.com/"
+    pie = "Your trip total\n$748.80\nThis site is protected by reCAPTCHA and the Google Privacy Policy apply. captcha"
+    assert lector.bloqueo(url, pie, aerolinea=True) is None
+    for senal in ("Access is temporarily restricted", "We've detected unusual activity", "Verificación requerida"):
+        assert lector.bloqueo(url, senal, aerolinea=True) == lector.VERIFICACION_AEROLINEA, senal
+    assert lector.bloqueo(url, "x" * 4000 + "Access is temporarily restricted", aerolinea=True) is None
+
+
+def test_la_espera_en_la_aerolinea_usa_el_mismo_tope_de_4000_caracteres():
+    assert lector.precio_o_bloqueo_aerolinea("Your trip total\n$748.80")
+    assert lector.precio_o_bloqueo_aerolinea("Access is temporarily restricted")
+    assert not lector.precio_o_bloqueo_aerolinea("Loading… This site is protected by reCAPTCHA")
+    assert not lector.precio_o_bloqueo_aerolinea("x" * 4000 + "unusual activity")
