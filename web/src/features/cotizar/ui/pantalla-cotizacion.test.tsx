@@ -486,6 +486,42 @@ describe("Comparación de una cotización", () => {
     expect(within(capa).queryByRole("table")).toBeNull();
   });
 
+  it("el desglose dice qué vuelos elegir en el vendedor y que una verificación la resuelve la persona (integración)", async () => {
+    const usuario = userEvent.setup();
+    const tarifa = (vendedor: string, nombre: string, precio: number, elige: string) => ({ vendedor, nombre, precio,
+      equipaje: [], cambios: [], reembolso: [], otras: [], elige, ir_url: `/api/v1/ir/${vendedor}/${nombre}` });
+    const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValueOnce({
+      estado: "listo", consultado: "2026-11-16T15:00:00Z",
+      tarifas: [tarifa("American", "Basic Economy", 564, "la ida AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm"),
+        tarifa("American", "Main Cabin", 694, "la ida AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm")],
+      vendedores: [{ vendedor: "American", aerolinea: true, precio_desde: 564 }],
+    });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { opcionesBuscador }) });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+    const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+    expect(await within(capa).findByText(
+      "En la página del vendedor, elige la ida AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm.")).toBeInTheDocument();
+    expect(within(capa).getByText(/puede pedir una verificación/)).toBeInTheDocument();
+  });
+
+  it("con billetes separados cada tiquete dice qué vuelo elegir (integración)", async () => {
+    const usuario = userEvent.setup();
+    const tiquete = (vendedor: string, nombre: string, precio: number, elige: string) => ({ vendedor, nombre, precio,
+      equipaje: [], cambios: [], reembolso: [], otras: [], elige, ir_url: `/api/v1/ir/${vendedor}/${nombre}` });
+    const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValueOnce({
+      estado: "listo", consultado: "2026-11-16T15:00:00Z",
+      tarifas: [tiquete("COPA", "ida", 334, "CM 687 · CM 240, sale 12:40 pm"), tiquete("eDreams", "regreso", 316, "el regreso AV 9, sale 1:35 am")],
+      vendedores: [{ vendedor: "COPA", aerolinea: true, precio_desde: 334 }, { vendedor: "eDreams", aerolinea: false, precio_desde: 316 }],
+    });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { opcionesBuscador }) });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+    const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+    expect(await within(capa).findByText("En COPA, elige CM 687 · CM 240, sale 12:40 pm.")).toBeInTheDocument();
+    expect(within(capa).getByText("En eDreams, elige el regreso AV 9, sale 1:35 am.")).toBeInTheDocument();
+  });
+
   it("si la lectura falla o no está disponible, el desglose lo dice y muestra solo lo del buscador", async () => {
     const usuario = userEvent.setup();
     const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>()

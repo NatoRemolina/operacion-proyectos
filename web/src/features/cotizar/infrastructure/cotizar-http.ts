@@ -278,6 +278,7 @@ const tarifaSchema = z.object({
   reembolso: lista,
   otras: lista,
   ir_url: rutaPropiaSchema.nullable().default(null),
+  elige: z.string().nullable().default(null),
 });
 const opcionesBuscadorSchema = z.object({
   estado: z.enum(["listo", "sin_datos"]),

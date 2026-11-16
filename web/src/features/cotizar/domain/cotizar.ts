@@ -278,6 +278,8 @@ export interface TarifaLeida {
   readonly otras: readonly string[];
   /** «Ir a…» de esta tarifa: dirección firmada por el servidor para esta sesión (vence en 5 minutos). */
   readonly ir_url?: string | null;
+  /** Solo en las opciones del buscador: qué vuelos elegir en el vendedor, con su hora («la ida AA 1851, sale 9:48 am…»). */
+  readonly elige?: string | null;
 }
 
 export interface DetalleLeido {

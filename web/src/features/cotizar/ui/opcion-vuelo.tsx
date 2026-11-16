@@ -401,6 +401,8 @@ function CapaBuscador({
   const listo = opciones?.estado === "listo" && opciones.tarifas.length > 0;
   const tiquetes = listo ? opciones.tarifas.filter(esTiquete) : [];
   const juntas = listo ? opciones.tarifas.filter((t) => !esTiquete(t)) : [];
+  // qué vuelos elegir en el vendedor: algunos (COPA) abren la lista del día sin el vuelo elegido
+  const eligeJunta = juntas.find((t) => t.elige)?.elige ?? null;
   return (
     <section aria-label="Opciones del buscador" className="flex flex-col gap-3 border-t border-linea pt-3">
       <p role="status" className={`text-sm ${listo ? "font-semibold" : "text-texto-secundario"}`}>
@@ -416,11 +418,23 @@ function CapaBuscador({
         <>
           <p className="text-sm">Billetes separados: un tiquete por tramo, cada uno con su vendedor.</p>
           <BotonesIrA tarifas={tiquetes} />
+          <ul className="flex flex-col gap-1 text-sm">
+            {tiquetes.filter((t) => t.elige).map((t) => (
+              <li key={`${t.vendedor}-${t.nombre}`}>{`En ${t.vendedor}, elige ${t.elige}.`}</li>
+            ))}
+          </ul>
         </>
       ) : null}
+      {listo && eligeJunta ? <p className="text-sm">{`En la página del vendedor, elige ${eligeJunta}.`}</p> : null}
       {listo && juntas.length
         ? tablasPorVendedor(juntas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} />)
         : null}
+      {listo ? (
+        <p className="text-sm text-texto-secundario">
+          La página del vendedor puede pedir una verificación (por ejemplo, deslizar una barra o marcar «No soy un
+          robot»): resuélvela tú en esa página. La plataforma no la resuelve.
+        </p>
+      ) : null}
     </section>
   );
 }
