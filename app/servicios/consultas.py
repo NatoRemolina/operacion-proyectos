@@ -161,7 +161,9 @@ def marcar_gastos_propios(items: list[dict], yo: dict) -> list[dict]:
     if not items:
         return items
     ids = ",".join(str(int(g["id"])) for g in items)
-    filas = {f["id"]: f for f in db.todos(f"select id, usuario_id, viajero_id, viaje_id, categoria from gastos where id in ({ids})")}  # noqa: S608
+    filas = {f["id"]: f for f in db.todos(
+        "select g.id, g.usuario_id, g.viajero_id, g.viaje_id, g.categoria, exists(select 1 from compras c where "  # noqa: S608
+        f"c.gasto_id=g.id and c.comprada_por=:yo) compra_propia from gastos g where g.id in ({ids})", yo=yo["id"])}
     for g in items:
         fila = filas.get(g["id"])
         g["propio"] = viajes.gasto_propio_de(fila, yo)

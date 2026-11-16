@@ -277,6 +277,26 @@ def test_el_recibo_anterior_por_encima_de_lo_cotizado_no_lo_aprueba_quien_regist
     assert hecho["estado"] == "aprobado"
 
 
+def test_cambiar_la_categoria_del_tiquete_no_deja_que_lo_revise_quien_registro_la_compra(piloto, modelo, otra_admin):
+    _, v = _decidir(piloto)
+    c = _por_comprar(v["id"])
+    pagado = (Decimal(str(c["precio_cotizado"])) * Decimal("1.20")).quantize(Decimal("0.01"))
+    localizador = "K" + uuid.uuid4().hex[:5].upper()
+    modelo["respuesta"] = {"numero_factura": localizador, "total": float(pagado)}
+    recibo = _subir(piloto, v["id"]).json()                      # el recibo lo sube quien viaja, antes de la compra
+    g = _gasto(_registrar(c, pagado, localizador)["compra"]["gasto_id"])
+    assert g["id"] == recibo["id"] and g["estado"] == "revision"
+    # Otra persona de administración corrige la categoría y deja el gasto en revisión
+    revision.guardar(g["id"], otra_admin, g["version"], "guardar", campos={"categoria": "transporte_terrestre"})
+    g = _gasto(g["id"])
+    assert g["categoria"] == "transporte_terrestre" and g["estado"] == "revision"
+    # La compra sigue siendo de quien la registró: no lo revisa, aunque ya no diga «vuelo»
+    assert viajes.gasto_propio_de(g, _admin())
+    assert consultas.marcar_gastos_propios([{"id": g["id"]}], _admin())[0]["propio"]
+    with pytest.raises(revision.RevisionImpedida):
+        revision.guardar(g["id"], _admin(), g["version"], "excepcion", motivo="Se confirmó el precio con la aerolínea")
+
+
 # ---------- el recibo que llega después ----------
 def test_el_recibo_del_mismo_tiquete_se_enlaza_y_no_se_duplica(comprada, modelo, piloto):
     c, v = comprada["compra"], comprada["viaje"]

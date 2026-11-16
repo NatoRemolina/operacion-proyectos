@@ -369,8 +369,13 @@ def gasto_propio_de(gasto: dict | None, u: dict | None) -> bool:
         return True
     if u.get("viajero_id") and gasto.get("viajero_id") == u["viajero_id"]:
         return True
-    if gasto.get("id") and gasto.get("categoria") == "vuelo" and db.uno(
-            "select 1 from compras where gasto_id=:g and comprada_por=:u", g=gasto["id"], u=u["id"]):
+    # La compra enlaza su gasto por id: no se mira la categoría, que la revisión puede corregir.
+    # Las listas ya traen `compra_propia` y no consultan por cada gasto.
+    if "compra_propia" in gasto:
+        if gasto["compra_propia"]:
+            return True
+    elif gasto.get("id") and db.uno("select 1 from compras where gasto_id=:g and comprada_por=:u",
+                                    g=gasto["id"], u=u["id"]):
         return True
     return es_propio_de(uno(gasto.get("viaje_id")), u)
 
