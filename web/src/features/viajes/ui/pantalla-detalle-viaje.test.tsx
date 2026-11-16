@@ -1,5 +1,7 @@
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { crearAdministracionMemoria } from "@/features/administracion/infrastructure/administracion-memoria";
 import { crearGastosMemoria } from "@/features/gastos/infrastructure/gastos-memoria";
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { renderizarConFuente } from "@/test/renderizar";
@@ -68,6 +70,29 @@ describe("Detalle del viaje", () => {
     montar(viaje({ propio: false }), "admin");
     expect(await screen.findByRole("button", { name: "Cerrar viaje" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Cargar recibo" })).not.toBeInTheDocument();
+  });
+
+  it("reabrir pide confirmación con su efecto y manda la versión que se vio (B7)", async () => {
+    const usuario = userEvent.setup();
+    const administracion = crearAdministracionMemoria({});
+    const cambiar = vi.spyOn(administracion, "cambiarEstadoViaje").mockResolvedValue({
+      viaje: viaje({ propio: false, estado: "pendiente_aprobacion", estado_texto: "Pendiente de aprobación" }),
+      mensaje: "Viaje reabierto: vuelve a pendiente de aprobación.",
+    });
+    const viajes: ViajesRepository = {
+      listar: () => Promise.resolve({ items: [], siguiente: null }),
+      obtener: () => Promise.resolve(viaje({ propio: false, version: 4 })),
+    };
+    renderizarConFuente(<PantallaDetalleViaje id={7} />, { viajes, administracion, permiso: "admin" });
+    await usuario.click(await screen.findByRole("button", { name: "Reabrir para decidir de nuevo" }));
+    const dialogo = await screen.findByRole("dialog", { name: "Reabrir el viaje V-2026-0007" });
+    expect(within(dialogo).getByText(/vuelve a pendiente de aprobación/)).toBeInTheDocument();
+    expect(cambiar).not.toHaveBeenCalled();
+    await usuario.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    expect(cambiar).not.toHaveBeenCalled();
+    await usuario.click(screen.getByRole("button", { name: "Reabrir para decidir de nuevo" }));
+    await usuario.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Reabrir" }));
+    expect(cambiar).toHaveBeenCalledWith(7, { accion: "reabrir", version: 4 });
   });
 
   it("si no existe o no es visible lo dice y ofrece volver", async () => {

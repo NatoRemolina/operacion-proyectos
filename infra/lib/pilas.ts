@@ -23,6 +23,6 @@ export function crearPilas(app: App, entorno: Environment) {
   comprobarContexto(app);
   const base = new BaseStack(app, "OperacionBase", { env: entorno });
   const api = new AppStack(app, "OperacionApp", { env: entorno, secreto: base.secreto, avisos: base.avisos });
-  const web = new WebStack(app, "OperacionWeb", { env: entorno, urlApi: api.url });
+  const web = new WebStack(app, "OperacionWeb", { env: entorno, urlApi: api.url, secreto: base.secreto, avisos: base.avisos });
   return { base, api, web };
 }

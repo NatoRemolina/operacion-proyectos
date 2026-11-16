@@ -11,26 +11,26 @@ import { Alerta } from "@/shared/ui/estado";
 import { useCambiarEstadoViaje } from "../application/administracion";
 import type { AccionViaje } from "../domain/administracion";
 
-/** Reabrir y cerrar un viaje: solo administración. Cerrar pide confirmación con su efecto. */
+/** Reabrir y cerrar un viaje: solo administración. Los dos piden confirmación con su efecto y mandan la versión vista. */
 export function AccionesViaje({ viaje }: { viaje: ViajeResumen }) {
   const permiso = usePermiso();
   const mutacion = useCambiarEstadoViaje();
   const { avisar } = useAvisos();
-  const [cerrando, setCerrando] = useState(false);
+  const [confirmando, setConfirmando] = useState<"reabrir" | "cerrar" | null>(null);
   const [error, setError] = useState<ErrorDeAplicacion | null>(null);
   if (permiso !== "admin" || viaje.estado === "pendiente_aprobacion") return null;
 
   function hacer(accion: AccionViaje) {
     setError(null);
     mutacion.mutate(
-      { id: viaje.id, cambio: { accion } },
+      { id: viaje.id, cambio: { accion, ...(viaje.version === undefined ? {} : { version: viaje.version }) } },
       {
         onSuccess: (r) => {
-          setCerrando(false);
+          setConfirmando(null);
           avisar({ tono: "exito", texto: r.mensaje });
         },
         onError: (e) => {
-          setCerrando(false);
+          setConfirmando(null);
           setError(e);
         },
       },
@@ -46,23 +46,32 @@ export function AccionesViaje({ viaje }: { viaje: ViajeResumen }) {
       ) : null}
       <div className="flex flex-wrap gap-2">
         {viaje.estado === "aprobado" ? (
-          <Boton variante="secundario" onClick={() => setCerrando(true)} disabled={mutacion.isPending}>
+          <Boton variante="secundario" onClick={() => setConfirmando("cerrar")} disabled={mutacion.isPending}>
             Cerrar viaje
           </Boton>
         ) : null}
-        <Boton variante="secundario" onClick={() => hacer("reabrir")} disabled={mutacion.isPending}>
+        <Boton variante="secundario" onClick={() => setConfirmando("reabrir")} disabled={mutacion.isPending}>
           {mutacion.isPending && mutacion.variables?.cambio.accion === "reabrir" ? "Reabriendo…" : "Reabrir para decidir de nuevo"}
         </Boton>
       </div>
       <DialogoConfirmacion
-        abierto={cerrando}
+        abierto={confirmando === "reabrir"}
+        titulo={`Reabrir el viaje ${viaje.codigo}`}
+        efecto="El viaje vuelve a pendiente de aprobación hasta que alguien de administración lo decida de nuevo."
+        confirmar="Reabrir"
+        enviando={mutacion.isPending}
+        onConfirmar={() => hacer("reabrir")}
+        onCancelar={() => setConfirmando(null)}
+      />
+      <DialogoConfirmacion
+        abierto={confirmando === "cerrar"}
         titulo={`Cerrar el viaje ${viaje.codigo}`}
         efecto="El viaje deja de recibir gastos y queda como cerrado en los reportes. Solo administración puede reabrirlo."
         confirmar="Cerrar viaje"
         peligro
         enviando={mutacion.isPending}
         onConfirmar={() => hacer("cerrar")}
-        onCancelar={() => setCerrando(false)}
+        onCancelar={() => setConfirmando(null)}
       />
     </div>
   );

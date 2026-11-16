@@ -2,9 +2,10 @@ import { z } from "zod";
 import { parametrosDeFiltros } from "@/features/kpis/domain/kpis";
 import { consulta, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import { PESTANAS, type MonitoreoRepository, type PestanaMonitoreo } from "../domain/monitoreo";
+import { rutaPropiaSchema } from "@/shared/infrastructure/enlaces";
 
 const pestana = z.enum(PESTANAS);
-const celda = z.union([z.object({ texto: z.string(), href: z.string().startsWith("/") }), z.number(), z.string(), z.null()]);
+const celda = z.union([z.object({ texto: z.string(), href: rutaPropiaSchema }), z.number(), z.string(), z.null()]);
 
 export const pestanaSchema = z.object({
   pestana,

@@ -30,6 +30,7 @@ import {
 } from "../domain/cotizar";
 import { Horario, Leyenda, OpcionDeVuelo, nombreVuelo, pesoTotal } from "./opcion-vuelo";
 import { EvidenciaDeCotizacion } from "./evidencia-guardada";
+import { borrarBorrador, guardarBorrador, leerBorrador } from "@/shared/application/borradores";
 
 
 export function PantallaCotizacion({ id }: { id: number }) {
@@ -336,7 +337,7 @@ function FormularioDecision({
   const [motivo, setMotivo] = useState(inicial.motivo);
   const [razones, setRazones] = useState<string[]>(inicial.razones);
   useEffect(() => {
-    guardarDecision(clave, { vueloId, hotelId, motivo, razones });
+    guardarBorrador(clave, { vueloId, hotelId, motivo, razones });
   }, [clave, vueloId, hotelId, motivo, razones]);
   const [intentado, setIntentado] = useState(false);
   const [verDescartados, setVerDescartados] = useState(false);
@@ -363,7 +364,7 @@ function FormularioDecision({
     }
     decidir.decidir({ vuelo_id: vueloId, hotel_id: hotelId, motivo: motivo.trim(), razones }, (decidida) => {
       setIntentado(false);
-      borrarDecision(clave);
+      borrarBorrador(clave);
       avisar({
         tono: "exito",
         texto: decidida.viaje
@@ -514,7 +515,7 @@ function FormularioDecision({
   );
 }
 
-const CLAVE_DECISION = "cotizar-decision-";
+const CLAVE_DECISION = "decision:";
 
 interface BorradorDecision {
   vueloId: number | null;
@@ -523,32 +524,10 @@ interface BorradorDecision {
   razones: string[];
 }
 
-/** Lo escrito en la decisión se conserva en la pestaña: si la sesión vence, al volver sigue ahí. Se borra al decidir. */
+/** Lo escrito en la decisión se conserva en la pestaña: si la sesión vence, al volver sigue ahí. Se borra al decidir y al salir. */
 function leerDecision(clave: string): BorradorDecision {
   const vacio: BorradorDecision = { vueloId: null, hotelId: null, motivo: "", razones: [] };
-  if (typeof window === "undefined") return vacio;
-  try {
-    const guardado = window.sessionStorage.getItem(clave);
-    return guardado ? { ...vacio, ...(JSON.parse(guardado) as Partial<BorradorDecision>) } : vacio;
-  } catch {
-    return vacio;
-  }
-}
-
-function guardarDecision(clave: string, borrador: BorradorDecision) {
-  try {
-    window.sessionStorage.setItem(clave, JSON.stringify(borrador));
-  } catch {
-    // Sin almacenamiento disponible, lo escrito dura lo que la pantalla.
-  }
-}
-
-function borrarDecision(clave: string) {
-  try {
-    window.sessionStorage.removeItem(clave);
-  } catch {
-    // Nada que borrar.
-  }
+  return { ...vacio, ...leerBorrador<BorradorDecision>(clave) };
 }
 
 const ORIGEN_LINEA_HOTEL: Record<string, string> = { buscador: "Buscador", supuesto: "Supuesto" };

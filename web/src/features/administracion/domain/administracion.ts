@@ -44,6 +44,8 @@ export interface CambioEstadoViaje {
   readonly motivo?: string;
   /** Aprueba con el precio nuevo del vuelo cuando subió más que la tolerancia. */
   readonly confirmarPrecio?: boolean;
+  /** La versión del viaje que se vio (si la API la da): con otra, la API responde «cambio_ajeno» y no cambia nada. */
+  readonly version?: number;
 }
 
 export interface ResultadoCambioEstado {

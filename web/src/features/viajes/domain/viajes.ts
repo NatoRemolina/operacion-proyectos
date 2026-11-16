@@ -22,6 +22,11 @@ export interface ViajeResumen {
   readonly gastos: number;
   /** Es de la persona de la sesión (titular o viajero): nadie aprueba lo suyo. */
   readonly propio?: boolean;
+  /**
+   * La versión del viaje que se vio, si la API la da: reabrirlo la manda para que un cambio ajeno entretanto no se
+   * pise («cambio_ajeno»). Sin ella, la API decide con el estado actual.
+   */
+  readonly version?: number;
   /** Pendiente cuyo precio de vuelo subió más que la tolerancia: «antes … ahora …». */
   readonly precio_por_confirmar?: string | null;
 }

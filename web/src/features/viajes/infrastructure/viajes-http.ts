@@ -28,6 +28,7 @@ export const viajeResumenSchema = z.object({
   gastos: z.number().int().nonnegative(),
   propio: z.boolean().default(false),
   precio_por_confirmar: z.string().nullable().default(null),
+  version: z.number().int().positive().optional(),
 }) satisfies z.ZodType<ViajeResumen>;
 
 const lineaSchema = z.object({ concepto: z.string(), valor: dineroSchema, grupo: z.string() }) satisfies z.ZodType<LineaPresupuesto>;

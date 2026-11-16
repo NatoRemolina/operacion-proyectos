@@ -1,3 +1,5 @@
+import { esEnlaceExterno } from "@/shared/domain/enlaces";
+
 /**
  * Reglas y supuestos: lo que ningún buscador entrega (equipaje, programas de hotel, metas, cuentas
  * contables...). Solo administración las ve y las edita; las membresías se muestran en solo lectura.
@@ -74,5 +76,6 @@ export function valorParaEnviar(regla: Regla, valor: string): string {
 
 /** Solo una dirección http(s) se muestra como enlace; lo demás es texto. */
 export function esFuenteEnlace(fuente: string | null): boolean {
-  return !!fuente && /^https?:\/\//i.test(fuente);
+  // Una página de consulta: se admite http, porque no lleva datos de la sesión
+  return !!fuente && esEnlaceExterno(fuente, undefined, ["http:", "https:"]);
 }

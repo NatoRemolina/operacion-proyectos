@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { gastoDetalleSchema, gastoResumenSchema } from "@/features/gastos/infrastructure/gastos-http";
 import { viajeDetalleSchema, viajeResumenSchema } from "@/features/viajes/infrastructure/viajes-http";
-import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
+import { PLAZO_LARGO_MS, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { ActividadGasto, AdministracionRepository, ResumenAdmin } from "../domain/administracion";
 import type { BuzonSimulado, ResultadoBuzon } from "../domain/buzon";
 import type { DatosRevision } from "../domain/revision";
@@ -103,11 +103,18 @@ export function crearAdministracionHttp(cliente: ClienteHttp): AdministracionRep
     resumen(signal) {
       return cliente.get("/resumen", resumenSchema, { signal });
     },
-    cambiarEstadoViaje(id, { accion, motivo, confirmarPrecio }) {
+    cambiarEstadoViaje(id, { accion, motivo, confirmarPrecio, version }) {
       return cliente.postJson(
         `/viajes/${encodeURIComponent(id)}/estado`,
-        { accion, motivo: (motivo ?? "").trim(), confirmar_precio: confirmarPrecio ?? false },
+        {
+          accion,
+          motivo: (motivo ?? "").trim(),
+          confirmar_precio: confirmarPrecio ?? false,
+          // Solo si la API la dio: una API que aún no la conoce rechaza los campos que no espera
+          ...(version === undefined ? {} : { version }),
+        },
         resultadoCambioSchema,
+        { plazoMs: PLAZO_LARGO_MS },   // aprobar confirma el precio del vuelo en el buscador
       );
     },
     revisarGasto(id, { version, accion, motivo, campos, viajeId }) {
@@ -128,6 +135,7 @@ export function crearAdministracionHttp(cliente: ClienteHttp): AdministracionRep
         "/buzon/lectura",
         { nombres, ...(viajeId === null ? {} : { viaje_id: viajeId }) },
         resultadoBuzonSchema,
+        { plazoMs: PLAZO_LARGO_MS },   // lee con el modelo cada recibo
       );
     },
     urlAudioJustificacion(gastoId, justificacionId) {

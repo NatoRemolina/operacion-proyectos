@@ -79,3 +79,42 @@ Las claves se escriben solo en esos archivos; nunca en un chat, un ticket ni un 
 | C. Pro con recuperación a un punto en el tiempo | Restauración al minuto | ~125 USD/mes | Unos 2 minutos |
 
 Recomendación: la opción B mientras el volumen sea pequeño, y la A cuando la operación dependa de la plataforma a diario. Cualquiera de ellas se ensaya con `verificar` al menos una vez al mes: un respaldo que no se ha restaurado nunca no está probado.
+
+## Diseño del respaldo diario automático (opción B, sin desplegar)
+
+Pendiente de la aprobación de la responsable. Nada de esto está en las pilas todavía.
+
+### Qué hace
+
+Cada noche, una función programada copia la base publicada y sus recibos a un bucket S3 privado y cifrado, con el mismo formato que `make respaldar` (`base.dump`, `estructura.sql`, `soportes/` y `manifiesto.json` con conteos y huellas). Así la restauración y la vuelta atrás son las mismas que ya están probadas (arriba y en `docs/despliegue.md`).
+
+| Pieza | Cómo | Por qué |
+|---|---|---|
+| Disparo | Regla de EventBridge diaria a las 08:00 UTC (3:00 en Bogotá), sin reintentos de EventBridge | Hora sin uso; un fallo avisa en vez de repetirse a ciegas |
+| Función `Respaldo` | Imagen propia: Python 3.12 y el cliente de PostgreSQL 17 (el de la versión del servidor), arm64, 1 GB, 10 minutos | Con el tamaño de hoy (13 MB y unos pocos recibos) tarda segundos |
+| Código | `datos.respaldar respaldar` con un modo que llame a `pg_dump` directamente en vez de por Docker (en Lambda no hay Docker), y que suba la carpeta a S3 al terminar | Un solo código de respaldo para el equipo y para la nube |
+| Credenciales | Un secreto propio (`RespaldoBase`), separado del de la API, con la conexión de sesión (puerto 5432) de un **rol de solo lectura** creado en Supabase (`respaldo_lectura`: `select` en el esquema `public`) y la clave de servicio del almacenamiento, solo para listar y descargar `soportes` | Si la función se viera comprometida, con la base no podría escribir |
+| Destino | Bucket S3 privado: acceso público bloqueado, solo TLS, cifrado SSE-S3, versionado y una regla de ciclo de vida que borra las copias a los 14 días | Sin costo de llave propia; dos semanas de margen para notar un problema |
+| Alarmas | `Errors` de la función ≥ 1 y una métrica propia `RespaldosHechos` (la función la publica al terminar bien) con alarma si en 26 horas no hay ninguna (`TreatMissingData: BREACHING`). Las dos al tema de avisos que ya existe | Un respaldo que no corrió también avisa, no solo uno que falló |
+| Prueba mensual | Descargar la copia más reciente y `make verificar-respaldo` en una base nueva del proyecto de pruebas | Un respaldo nunca restaurado no está probado |
+
+### Costo
+
+Centavos al mes: unos cuantos MB en S3 por 14 días, un minuto de Lambda al día (dentro de la capa gratuita) y la regla de EventBridge (gratis). Cabe en el presupuesto de 5 USD.
+
+### Pérdida máxima y restauración
+
+Hasta un día de datos. Para restaurar se descarga la carpeta del día desde S3 (`aws s3 cp --recursive`) y se sigue «Vuelta atrás» de arriba (paso 2 si la migración añadió tablas, luego `pg_restore` en una sola transacción) con la aplicación en pausa.
+
+### Qué haría falta para desplegarlo
+
+1. **Su aprobación**, porque escribe en la cuenta: un bucket, una función, una regla, un secreto y dos alarmas.
+2. **El rol de solo lectura en Supabase** (lo crea quien tenga acceso al panel, con una contraseña propia).
+3. **En `datos/respaldar.py`** (backend): el modo sin Docker y la subida a S3, con sus pruebas.
+4. **En `infra/`**: una pila `OperacionRespaldo` aparte (la base del respaldo no cambia con cada despliegue de la API), con pruebas como las de las demás pilas.
+
+### Alternativas que no se recomiendan
+
+- **Un flujo de n8n**: n8n no corre `pg_dump`; solo podría exportar tablas a hojas o JSON, sin el esquema ni las secuencias, y la restauración ya no sería la probada.
+- **Una tarea programada de GitHub Actions**: no cuesta, pero dejaría la conexión de la base publicada en los secretos de GitHub, fuera de la cuenta de AWS donde vive el resto de la configuración.
+- **El plan Pro de Supabase** (opción A): 25 USD al mes; tiene sentido cuando la operación dependa de la plataforma a diario.

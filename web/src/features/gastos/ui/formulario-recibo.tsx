@@ -82,12 +82,16 @@ function BotonArchivo({
 function TarjetaViaje({
   viajes,
   cargandoViajes,
+  errorViajes,
+  onReintentarViajes,
   viajeId,
   onCambiarViaje,
   enviando,
 }: {
   viajes: readonly OpcionViaje[];
   cargandoViajes: boolean;
+  errorViajes: boolean;
+  onReintentarViajes: () => void;
   viajeId: string;
   onCambiarViaje: (valor: string) => void;
   enviando: boolean;
@@ -124,7 +128,19 @@ function TarjetaViaje({
         </p>
       )}
 
-      {cambiando ? (
+      {errorViajes ? (
+        // Sin la lista no se puede elegir, pero el recibo no se bloquea: el servidor asigna el viaje
+        <div className="mt-3">
+          <Alerta tono="aviso" titulo="No pudimos cargar tus viajes">
+            <p>El recibo igual se asigna solo al viaje que corresponda.</p>
+            <Boton variante="secundario" className="mt-2" onClick={onReintentarViajes} disabled={enviando}>
+              Reintentar
+            </Boton>
+          </Alerta>
+        </div>
+      ) : !cargandoViajes && viajes.length === 0 ? (
+        <p className="mt-1 text-sm text-texto-secundario">No tienes viajes aprobados para elegir.</p>
+      ) : cambiando ? (
         <div className="mt-3">
           <CampoSelector
             id="viaje"
@@ -161,6 +177,8 @@ export function FormularioRecibo({
   onElegirArchivo,
   viajes,
   cargandoViajes,
+  errorViajes = false,
+  onReintentarViajes = () => {},
   viajeId,
   onCambiarViaje,
   justificacion,
@@ -173,6 +191,9 @@ export function FormularioRecibo({
   onElegirArchivo: (archivo: File | null) => void;
   viajes: readonly OpcionViaje[];
   cargandoViajes: boolean;
+  /** La lista de viajes no cargó: se dice y se deja reintentar, sin bloquear el envío. */
+  errorViajes?: boolean;
+  onReintentarViajes?: () => void;
   viajeId: string;
   onCambiarViaje: (valor: string) => void;
   justificacion: string;
@@ -191,6 +212,8 @@ export function FormularioRecibo({
       <TarjetaViaje
         viajes={viajes}
         cargandoViajes={cargandoViajes}
+        errorViajes={errorViajes}
+        onReintentarViajes={onReintentarViajes}
         viajeId={viajeId}
         onCambiarViaje={onCambiarViaje}
         enviando={enviando}

@@ -85,7 +85,7 @@ describe("adaptador HTTP de gastos", () => {
   it("error sin JSON se clasifica por su estado", async () => {
     const { gastos } = preparar(new Response("Bad gateway", { status: 502 }));
     const error = await errorDe(gastos.listar({}));
-    expect(error.tipo).toBe("servidor");
+    expect(error.tipo).toBe("no_disponible");
   });
 
   it("fallo de red se traduce a error de red", async () => {

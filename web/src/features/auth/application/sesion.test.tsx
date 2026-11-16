@@ -34,6 +34,16 @@ describe("salir", () => {
     expect(window.sessionStorage.getItem("otra-cosa")).toBe("se conserva");
   });
 
+  it("borra los borradores de cotizar y de las decisiones: quien entre después no los ve (B7)", async () => {
+    window.sessionStorage.setItem("borrador:cotizar", JSON.stringify({ origen: "Miami" }));
+    window.sessionStorage.setItem("borrador:decision:12", JSON.stringify({ motivo: "Sale más temprano" }));
+    window.sessionStorage.setItem("otra-cosa", "se conserva");
+    const salir = montarSalir(() => Promise.resolve());
+    await act(() => salir.current.mutateAsync());
+    expect(Object.keys(window.sessionStorage).filter((k) => k.includes("borrador"))).toEqual([]);
+    expect(window.sessionStorage.getItem("otra-cosa")).toBe("se conserva");
+  });
+
   it("las borra aunque el servidor no responda al salir", async () => {
     guardarConversaciones();
     const salir = montarSalir(() => Promise.reject(new Error("sin red")));

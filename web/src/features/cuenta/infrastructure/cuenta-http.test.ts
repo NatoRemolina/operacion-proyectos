@@ -52,4 +52,11 @@ describe("adaptador HTTP de mi cuenta", () => {
     expect((await cuenta.vincularTelegram()).minutos).toBe(15);
     expect(fetchFalso.mock.calls[0]![0]).toBe("/api/v1/cuenta/telegram/vinculo");
   });
+
+  it("el enlace de Telegram solo se pinta si es https://t.me: cualquier otro queda en null (B7)", async () => {
+    for (const malo of ["javascript:alert(1)", "https://t.me.otro.test/bot?start=abc", "http://t.me/bot?start=abc", "https://otro.test/"]) {
+      const { cuenta } = preparar(respuestaJson({ codigo: "abc123", enlace: malo, minutos: 15 }));
+      expect((await cuenta.vincularTelegram()).enlace, malo).toBeNull();
+    }
+  });
 });

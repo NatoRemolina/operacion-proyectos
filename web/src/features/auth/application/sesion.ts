@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { olvidarBorradores } from "@/shared/application/borradores";
 import { crearContextoRepositorio } from "@/shared/application/contexto-repositorio";
 import { esErrorDeAplicacion, type ErrorDeAplicacion } from "@/shared/domain/errores";
 import type { AuthRepository, Persona } from "../domain/auth";
@@ -43,6 +44,7 @@ export function useSalir() {
       queryClient.clear();
       queryClient.setQueryData(CLAVE_SESION, null);
       olvidarConversacionesDelAsistente();
+      olvidarBorradores();
     },
   });
 }

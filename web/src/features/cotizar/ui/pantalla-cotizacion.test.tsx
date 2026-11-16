@@ -211,7 +211,7 @@ describe("Comparación de una cotización", () => {
     expect(await screen.findByRole("checkbox", { name: "Mejor horario" })).toBeChecked();
     await usuario.click(screen.getByRole("button", { name: "Guardar decisión y enviar a aprobación" }));
     await screen.findByRole("heading", { name: /creado, pendiente de aprobación$/ });
-    expect(Object.keys(window.sessionStorage).filter((k) => k.startsWith("cotizar-decision-"))).toEqual([]);
+    expect(Object.keys(window.sessionStorage).filter((k) => k.startsWith("borrador:decision:"))).toEqual([]);
   });
 
   it("si la decisión se tomó sin consultar en vivo por el tope del día, lo dice", async () => {
@@ -468,6 +468,45 @@ describe("Comparación de una cotización", () => {
     await usuario.click(within(segunda!).getByRole("link", { name: /^Ver desglose/ }));
     expect(await within(segunda!).findByText(/Llegaste al tope de lecturas de Google Flights de hoy/)).toBeInTheDocument();
     expect(within(segunda!).queryByText("Tarifas y qué incluye cada una")).toBeNull();
+  });
+
+  it("si el pedido de lectura agota su plazo (o llega un 504), pasa a consultar la lectura en curso (B9)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const enCurso = { ...ANALISIS_EJEMPLO, estado: "pendiente" as const, datos: null, leido: null, reutilizado: true };
+      const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>().mockRejectedValue(new ErrorDeAplicacion("tiempo_agotado"));
+      const verAnalisis = vi.fn<CotizarRepository["verAnalisis"]>()
+        .mockResolvedValueOnce(enCurso)
+        .mockResolvedValueOnce({ ...ANALISIS_EJEMPLO, leido: "2026-11-13T15:10:00Z" });
+      renderizarConFuente(<PantallaCotizacion id={12} />, {
+        cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo, verAnalisis }),
+      });
+      const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+      await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+      await vi.waitFor(() => expect(verAnalisis).toHaveBeenCalledTimes(1));
+      expect(within(tarjeta).getByText("Leyendo la página del vuelo…")).toBeInTheDocument();
+      expect(within(tarjeta).queryByText(/No se pudo leer/)).toBeNull();
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las/)).toBeInTheDocument();
+      expect(verAnalisis).toHaveBeenCalledWith(12, RECOMENDADA.id, expect.anything());
+      expect(analizarVuelo).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("si tras agotar el plazo la lectura no quedó registrada, lo dice en vez de seguir esperando (B9)", async () => {
+    const usuario = userEvent.setup();
+    const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>().mockRejectedValue(new ErrorDeAplicacion("tiempo_agotado"));
+    const verAnalisis = vi.fn<CotizarRepository["verAnalisis"]>().mockRejectedValue(new ErrorDeAplicacion("no_encontrado"));
+    renderizarConFuente(<PantallaCotizacion id={12} />, {
+      cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo, verAnalisis }),
+    });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+    expect(await within(tarjeta).findByText(/^No se pudo leer/)).toBeInTheDocument();
+    expect(verAnalisis).toHaveBeenCalledTimes(1);
   });
 
   it("si la lectura está en curso la sigue cada 3 s y, si no termina, lo dice", async () => {

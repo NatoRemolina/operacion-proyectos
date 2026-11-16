@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ClienteHttp } from "@/shared/infrastructure/cliente-http";
+import { PLAZO_LARGO_MS, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { AsistenteRepository, FuenteAsistente, RespuestaAsistente } from "../domain/asistente";
 
 const fuenteSchema = z.object({
@@ -30,12 +30,16 @@ export function crearAsistenteHttp(cliente: ClienteHttp): AsistenteRepository {
         ...(opciones.contexto ? { contexto: { pantalla: opciones.contexto.pantalla, id: opciones.contexto.id } } : {}),
         historial: (opciones.historial ?? []).map((t) => ({ pregunta: t.pregunta.slice(0, 500), respuesta: t.respuesta.slice(0, 4000) })),
       };
-      return cliente.postJson("/asistente", cuerpo, respuestaSchema, { signal });
+      // El servidor se da 55 s por pregunta (modelo y asesor)
+      return cliente.postJson("/asistente", cuerpo, respuestaSchema, { signal, plazoMs: PLAZO_LARGO_MS });
     },
     async transcribir(audio, signal) {
       const formulario = new FormData();
       formulario.append("audio", audio, "pregunta.wav");
-      const { texto } = await cliente.postFormulario("/asistente/voz", formulario, transcripcionSchema, { signal });
+      const { texto } = await cliente.postFormulario("/asistente/voz", formulario, transcripcionSchema, {
+        signal,
+        plazoMs: PLAZO_LARGO_MS,
+      });
       return texto;
     },
   };

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { consulta, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
+import { PLAZO_LARGO_MS, consulta, dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import { esEnlaceGoogle } from "../domain/cotizar";
 import type {
   AnalisisVuelo,
@@ -9,6 +9,7 @@ import type {
   FormularioCotizacion,
   ListaLugares,
 } from "../domain/cotizar";
+import { rutaPropiaSchema } from "@/shared/infrastructure/enlaces";
 
 /** Un enlace a Google que no es `https://www.google.com/travel/…` no llega a la pantalla. */
 const enlaceGoogle = z.string().transform((u) => (esEnlaceGoogle(u) ? u : null));
@@ -107,7 +108,7 @@ const vueloSchema = z.object({
   frente_esperado_pct: z.number().int().nullable(),
   total_con_hotel_usd: dineroSchema,
   fuente_url: enlaceGoogle,
-  vendedor_url: z.string(),
+  vendedor_url: rutaPropiaSchema,
 });
 
 const hotelSchema = z.object({
@@ -244,7 +245,7 @@ const analisisSchema = z.object({
           cambios: lista,
           reembolso: lista,
           otras: lista,
-          ir_url: z.string().nullable().default(null),
+          ir_url: rutaPropiaSchema.nullable().default(null),
         }),
       ),
       vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
@@ -265,7 +266,7 @@ const analisisSchema = z.object({
     })
     .nullable(),
   extracto: z.string().nullable().default(null),
-  captura_url: z.string().nullable(),
+  captura_url: rutaPropiaSchema.nullable(),
 });
 
 const tarifaSchema = z.object({
@@ -276,7 +277,7 @@ const tarifaSchema = z.object({
   cambios: lista,
   reembolso: lista,
   otras: lista,
-  ir_url: z.string().nullable().default(null),
+  ir_url: rutaPropiaSchema.nullable().default(null),
 });
 const opcionesBuscadorSchema = z.object({
   estado: z.enum(["listo", "sin_datos"]),
@@ -299,8 +300,8 @@ export const evidenciaSchema = z.object({
     creado: z.string().nullable(),
     terminado: z.string().nullable(),
     datos: z.record(z.string(), z.unknown()).nullable(),
-    imagenes: z.array(z.string()),
-    texto_url: z.string().nullable(),
+    imagenes: z.array(rutaPropiaSchema),
+    texto_url: rutaPropiaSchema.nullable(),
   })),
   seguimiento: z.array(z.object({
     momento: z.string().nullable(),
@@ -317,6 +318,12 @@ export function conRutasEvidencia(e: Evidencia, absoluta: (ruta: string) => stri
     capturas: e.capturas.map((c) => ({ ...c, imagenes: c.imagenes.map(absoluta), texto_url: c.texto_url ? absoluta(c.texto_url) : null })),
   };
 }
+
+/**
+ * Plazo del pedido de lectura de la página del vuelo: 58 s, antes de los 60 s con que CloudFront corta a la API. Si se
+ * agota (o llega un 504), la lectura puede seguir en la API y la web pasa a consultar su estado (`useAnalisisVuelo`).
+ */
+export const PLAZO_ANALISIS_MS = 58_000;
 
 const enlaceFuenteSchema = z.object({ destino: z.enum(["vuelos", "hoteles"]), url: z.string() });
 
@@ -345,6 +352,7 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
     async cotizar(pedido, claveIdempotencia) {
       return conRutas(await cliente.postJson("/cotizaciones", pedido, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
+        plazoMs: PLAZO_LARGO_MS,   // busca vuelos y hoteles en vivo
       }));
     },
     async obtener(id, signal) {
@@ -353,6 +361,7 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
     async decidir(id, decision, claveIdempotencia) {
       return conRutas(await cliente.postJson(`/cotizaciones/${id}/decision`, decision, cotizacionSchema, {
         cabeceras: { "Idempotency-Key": claveIdempotencia },
+        plazoMs: PLAZO_LARGO_MS,   // puede confirmar el precio en el buscador
       }));
     },
     async registrarFuente(id, destino, objetivo) {
@@ -360,7 +369,9 @@ export function crearCotizarHttp(cliente: ClienteHttp): CotizarRepository {
       await cliente.postJson(`/cotizaciones/${id}/fuente`, cuerpo, enlaceFuenteSchema);
     },
     async analizarVuelo(id, vueloId): Promise<AnalisisVuelo> {
-      const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema);
+      const a = await cliente.postJson(`/cotizaciones/${id}/vuelos/${vueloId}/analisis`, {}, analisisSchema, {
+        plazoMs: PLAZO_ANALISIS_MS,
+      });
       // La API da las rutas con su prefijo (captura e «Ir a…» de cada tarifa); la web las pide a la misma base que el resto
       return conCaptura(a);
     },

@@ -17,12 +17,15 @@ Uso, desde la raíz del repositorio:
   direcciones por HTTPS, secreto del webhook largo), en el archivo y en el resultado de la fusión: si algo está mal no
   sube nada. Avisa si ASESOR_AGENTE_VERSION, en el archivo o en lo que queda del secreto, fuerza otra versión que la
   del candado app/asesor_agente.json.
+- ORIGEN_SECRETO (la cabecera X-Origen-CloudFront de CloudFront hacia la API): si ni el archivo ni el secreto la traen,
+  la genera. Una que ya está no se cambia sola, porque CloudFront la copió al desplegar OperacionWeb.
 - Nunca imprime valores, solo nombres de claves. La función lee el secreto al arrancar: el cambio entra en las
   instancias que arranquen después (las encendidas siguen con el valor anterior hasta apagarse, o hasta que se
   despliegue una versión nueva de la función).
 """
 import argparse
 import json
+import secrets
 import sys
 from pathlib import Path
 from urllib.parse import quote
@@ -54,6 +57,9 @@ CLAVES = [
     "PROVEEDOR_LUGARES",
     "N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRETO", "URL_PUBLICA", "SOPORTE_ENLACE_SECRETO",   # avisos firmados a n8n; sin ellas quedan apagados
     "RECOLECTOR",
+    # Valor de la cabecera X-Origen-CloudFront que CloudFront añade hacia la API (infra/lib/web-stack.ts): con ella la API
+    # rechaza lo que llega directo a su dirección. Si falta se genera aquí (generar_origen); nadie necesita conocerla.
+    "ORIGEN_SECRETO",
 ]
 OBLIGATORIAS = ("DATABASE_URL", "SUPABASE_URL", "SUPABASE_SERVICE_KEY")   # sin ellas la función no arranca (app/config.py)
 # Tienen que venir en el archivo: el webhook (paso 6 de docs/despliegue.md) se registra con ese mismo archivo, y si
@@ -96,6 +102,15 @@ def avisar_version(valores: dict):
     if forzada and forzada != str(del_candado):
         print(f"Aviso: ASESOR_AGENTE_VERSION fuerza la versión {forzada} y el candado app/asesor_agente.json dice "
               f"{del_candado}. Si no es a propósito, retírala con --quitar ASESOR_AGENTE_VERSION.")
+
+
+def generar_origen(final: dict) -> bool:
+    """Si ni el archivo ni el secreto traen ORIGEN_SECRETO, lo genera. Uno que ya está no se cambia: CloudFront lo copió
+    al desplegar OperacionWeb, y cambiarlo exige volver a desplegarla (docs/despliegue.md)."""
+    if final.get("ORIGEN_SECRETO"):
+        return False
+    final["ORIGEN_SECRETO"] = secrets.token_urlsafe(32)
+    return True
 
 
 def leer(archivo: str) -> dict:
@@ -175,6 +190,8 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
         faltan = [k for k in OBLIGATORIAS if k not in valores]
         if faltan:
             print(f"No están en el archivo (tendrían que estar ya en el secreto): {', '.join(faltan)}.")
+        if "ORIGEN_SECRETO" not in valores:
+            print("ORIGEN_SECRETO: si el secreto no la tiene, se genera al subir (la cabecera de CloudFront hacia la API).")
         if x.sin_telegram:
             print("Telegram no se publica: se salta el paso 6; las claves de Telegram que ya tenga el secreto se conservan.")
         else:
@@ -195,6 +212,7 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
     faltan = [k for k in OBLIGATORIAS if not final.get(k)]
     if faltan:
         sys.exit(f"Faltan {', '.join(faltan)}: la función no arrancaría. No se cambió nada.")
+    generada = generar_origen(final)
     cliente.put_secret_value(SecretId=arn, SecretString=json.dumps(final))
 
     conservadas = sorted(set(antes) - set(valores) - set(RETIRADAS) - set(x.quitar))
@@ -204,6 +222,8 @@ def main(argv: list[str] | None = None, sesion=None) -> int:
         print(f"Conservadas del secreto: {', '.join(conservadas)}.")
     if retiradas:
         print(f"Retiradas: {', '.join(retiradas)}.")
+    if generada:
+        print("Generada: ORIGEN_SECRETO (la cabecera de CloudFront hacia la API). Despliega OperacionWeb para que la mande.")
     print("La función lo lee al arrancar: entra en las instancias nuevas (tras desplegar una versión nueva, o al apagarse las encendidas).")
     return 0
 

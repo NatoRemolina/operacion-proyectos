@@ -24,8 +24,32 @@ export function sinVersionar(raiz: string): string[] {
     return r.error || r.status !== 0 ? [] : r.stdout.split("\n").filter(Boolean);
   };
   const nuevos = git("ls-files", "--others", "--exclude-standard", "--", "app", "datos");
-  const cambiados = git("diff", "--name-only", "HEAD", "--", "app", "datos", "requirements.txt", "Dockerfile");
+  const cambiados = git("diff", "--name-only", "HEAD", "--", "app", "datos", "requirements.txt", "requirements.lock", "Dockerfile");
   return [...new Set([...nuevos, ...cambiados])];
+}
+
+/**
+ * Concurrencia reservada de la API: un pico o un ataque no se lleva la de toda la cuenta (400), y deja libre la del
+ * analizador, Tareas y la web. El guion de despliegue la lee de la salida `ConcurrenciaReservada` para quitar la pausa.
+ */
+export const CONCURRENCIA_API = 20;
+
+/**
+ * Rechazos (Throttles) de una función y una duración máxima que pasa del 85 % de su plazo; con `errores`, también sus
+ * fallos. Todas avisan al tema de OperacionBase. La usan la API (analizador y Tareas) y la web.
+ */
+export function vigilarFuncion(pila: Construct, nombre: string, funcion: lambda.IFunction, plazo: Duration,
+  aviso: cloudwatch.IAlarmAction, { errores }: { errores: boolean }) {
+  const periodo = Duration.minutes(5);
+  const alarma = (id: string, metrica: cloudwatch.IMetric, umbral: number) =>
+    new cloudwatch.Alarm(pila, `${id}${nombre}`, {
+      metric: metrica, threshold: umbral, evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(aviso);
+  if (errores) alarma("Fallos", funcion.metricErrors({ period: periodo }), 1);
+  alarma("Rechazos", funcion.metricThrottles({ period: periodo }), 1);
+  alarma("CercaDelPlazo", funcion.metricDuration({ period: periodo, statistic: "Maximum" }), Math.round(plazo.toMilliseconds() * 0.85));
 }
 
 export interface AppStackProps extends StackProps {
@@ -71,6 +95,7 @@ export class AppStack extends Stack {
       architecture: lambda.Architecture.ARM_64,
       memorySize: 2048,
       timeout: Duration.seconds(180),
+      reservedConcurrentExecutions: CONCURRENCIA_API,
       logGroup: registro,
       // Solo el ARN: el valor del secreto se lee al arrancar, nunca queda en la plantilla.
       environment: { SECRETO_ARN: props.secreto.secretArn, ENTORNO: "nube", ...origenesWeb },
@@ -145,6 +170,9 @@ export class AppStack extends Stack {
     alarma("PeticionesRechazadas", web.metricThrottles({ period: Duration.minutes(5) }), 1);
     alarma("Lentitud", web.metricDuration({ period: Duration.minutes(5), statistic: "p95" }), 20000, 2);
     alarma("FallosDelTrabajador", tareas.metricErrors({ period: Duration.minutes(15) }), 1);
+    // Analizador y Tareas: rechazos (sin turno) y una duración que roza el plazo (al pasarlo, Lambda corta sin aviso)
+    vigilarFuncion(this, "Analizador", analizador, Duration.seconds(60), aviso, { errores: true });
+    vigilarFuncion(this, "Tareas", tareas, Duration.minutes(15), aviso, { errores: false });   // los fallos ya los ve FallosDelTrabajador
 
     // Con el adaptador web, un 500 de la aplicación es una invocación correcta para Lambda: FallosDeLaFuncion no lo
     // ve. Se cuentan los errores que la propia aplicación escribe (app/web.py) y las respuestas 5xx de la dirección.
@@ -172,6 +200,7 @@ export class AppStack extends Stack {
 
     new CfnOutput(this, "Url", { value: url.url });
     new CfnOutput(this, "Funcion", { value: web.functionName });
+    new CfnOutput(this, "ConcurrenciaReservada", { value: String(CONCURRENCIA_API) });
     new CfnOutput(this, "FuncionAnalizador", { value: analizador.functionName });
     new CfnOutput(this, "FuncionTareas", { value: tareas.functionName });
   }

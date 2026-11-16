@@ -3,8 +3,17 @@ import { ErrorDeAplicacion, type TipoError } from "@/shared/domain/errores";
 
 /**
  * Único punto que conoce `fetch`. Envía la cookie de sesión, nunca usa caché del navegador,
- * añade `X-CSRF-Token` en toda escritura y traduce los errores HTTP a errores de aplicación.
+ * añade `X-CSRF-Token` en toda escritura, corta cada petición en su plazo y traduce los errores HTTP a errores de
+ * aplicación.
  */
+
+/** Plazo de una petición corriente: leer una lista, guardar un cambio. */
+export const PLAZO_MS = 30_000;
+/**
+ * Plazo de lo que espera a un servicio externo (buscador, modelo, asesor): el mismo minuto que CloudFront le da a la
+ * API. Pasado ese tiempo la respuesta ya no llegaría (CloudFront responde 504), pero lo pedido puede seguir en curso.
+ */
+export const PLAZO_LARGO_MS = 60_000;
 
 const errorSchema = z.object({
   error: z.object({
@@ -33,6 +42,12 @@ const POR_CODIGO: Record<string, TipoError> = {
   EDIT_CONFLICT: "cambio_ajeno",
   // El primer envío con esa clave aún no creó su gasto: se reintenta con la misma clave, no es un conflicto.
   REQUEST_IN_PROGRESS: "en_curso",
+  CONFLICT: "conflicto",
+  // El tope del día que explica la API (cotizaciones, lecturas): no es el exceso de peticiones del borde.
+  TOO_MANY_REQUESTS: "demasiados_intentos",
+  // El WAF de CloudFront, cuando una dirección pasa la tasa permitida (infra/lib/web-stack.ts).
+  RATE_LIMITED: "ocupado",
+  SERVICE_UNAVAILABLE: "no_disponible",
   INTERNAL_ERROR: "servidor",
 };
 
@@ -41,6 +56,7 @@ const CON_MENSAJE_DEL_SERVIDOR: readonly TipoError[] = [
   "autoaprobacion",
   "estado_invalido",
   "precio_por_confirmar",
+  "no_disponible",
 ];
 
 function tipoPorEstado(estado: number): TipoError {
@@ -51,7 +67,11 @@ function tipoPorEstado(estado: number): TipoError {
   if (estado === 413) return "demasiado_grande";
   if (estado === 415) return "tipo_no_admitido";
   if (estado === 422) return "validacion";
-  if (estado === 429) return "demasiados_intentos";
+  // Sin el JSON de la API, un 429 viene de delante de ella: la función en pausa o sin turno, o el WAF
+  if (estado === 429) return "ocupado";
+  if (estado === 502 || estado === 503) return "no_disponible";
+  // CloudFront corta a los 60 s: lo pedido puede seguir en curso en la API
+  if (estado === 504) return "tiempo_agotado";
   return "servidor";
 }
 
@@ -77,31 +97,67 @@ async function errorDesdeRespuesta(respuesta: Response): Promise<ErrorDeAplicaci
   });
 }
 
+/** `plazoMs`: cuánto se espera antes de cortar la petición con «tiempo_agotado» (por omisión, `PLAZO_MS`). */
+interface OpcionesPeticion {
+  signal?: AbortSignal;
+  plazoMs?: number;
+}
+
 export interface ClienteHttp {
-  get<T>(ruta: string, esquema: z.ZodType<T>, opciones?: { signal?: AbortSignal }): Promise<T>;
+  get<T>(ruta: string, esquema: z.ZodType<T>, opciones?: OpcionesPeticion): Promise<T>;
   postJson<T>(
     ruta: string,
     cuerpo: unknown,
     esquema: z.ZodType<T>,
     /** `cabeceras`: por ejemplo `Idempotency-Key` en una escritura que puede reintentarse. */
-    opciones?: { csrf?: boolean; cabeceras?: Record<string, string>; signal?: AbortSignal },
+    opciones?: OpcionesPeticion & { csrf?: boolean; cabeceras?: Record<string, string> },
   ): Promise<T>;
   postFormulario<T>(
     ruta: string,
     formulario: FormData,
     esquema: z.ZodType<T>,
-    opciones?: { cabeceras?: Record<string, string>; signal?: AbortSignal },
+    opciones?: OpcionesPeticion & { cabeceras?: Record<string, string> },
   ): Promise<T>;
-  postSinRespuesta(ruta: string): Promise<void>;
+  postSinRespuesta(ruta: string, opciones?: OpcionesPeticion): Promise<void>;
   url(ruta: string): string;
   fijarCsrf(token: string | null): void;
+}
+
+/**
+ * Corre `trabajo` con una señal que se cancela al cumplirse el plazo o si quien llama cancela (React Query al salir
+ * de la pantalla). El plazo cubre también la lectura del cuerpo. Solo el plazo se traduce a «tiempo_agotado»: una
+ * cancelación de quien llama sigue siendo una cancelación.
+ */
+async function conPlazo<T>(
+  plazoMs: number,
+  externa: AbortSignal | undefined,
+  trabajo: (senal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const control = new AbortController();
+  let agotado = false;
+  const reloj = setTimeout(() => {
+    agotado = true;
+    control.abort(new DOMException("Plazo agotado", "TimeoutError"));
+  }, plazoMs);
+  const alCancelar = () => control.abort(externa?.reason);
+  if (externa?.aborted) alCancelar();
+  else externa?.addEventListener("abort", alCancelar, { once: true });
+  try {
+    return await trabajo(control.signal);
+  } catch (causa) {
+    if (agotado) throw new ErrorDeAplicacion("tiempo_agotado");
+    throw causa;
+  } finally {
+    clearTimeout(reloj);
+    externa?.removeEventListener("abort", alCancelar);
+  }
 }
 
 export function crearClienteHttp(base: string): ClienteHttp {
   const raiz = base.replace(/\/+$/, "");
   let csrf: string | null = null;
 
-  async function pedir(ruta: string, init: RequestInit, escritura: boolean): Promise<Response> {
+  async function pedir(ruta: string, init: RequestInit & { signal: AbortSignal }, escritura: boolean): Promise<Response> {
     const cabeceras = new Headers(init.headers);
     cabeceras.set("Accept", "application/json");
     if (escritura && csrf) cabeceras.set("X-CSRF-Token", csrf);
@@ -114,18 +170,19 @@ export function crearClienteHttp(base: string): ClienteHttp {
         cache: "no-store",
       });
     } catch (causa) {
-      if (causa instanceof DOMException && causa.name === "AbortError") throw causa;
+      if (init.signal.aborted) throw causa;
       throw new ErrorDeAplicacion("red");
     }
     if (!respuesta.ok) throw await errorDesdeRespuesta(respuesta);
     return respuesta;
   }
 
-  async function leer<T>(respuesta: Response, esquema: z.ZodType<T>): Promise<T> {
+  async function leer<T>(respuesta: Response, esquema: z.ZodType<T>, senal: AbortSignal): Promise<T> {
     let cuerpo: unknown;
     try {
       cuerpo = await respuesta.json();
-    } catch {
+    } catch (causa) {
+      if (senal.aborted) throw causa;
       throw new ErrorDeAplicacion("contrato", {
         idPeticion: respuesta.headers.get("X-Peticion"),
       });
@@ -140,34 +197,37 @@ export function crearClienteHttp(base: string): ClienteHttp {
   }
 
   return {
-    async get(ruta, esquema, opciones = {}) {
-      const respuesta = await pedir(ruta, { method: "GET", signal: opciones.signal }, false);
-      return leer(respuesta, esquema);
-    },
-    async postJson(ruta, cuerpo, esquema, opciones = {}) {
-      const respuesta = await pedir(
-        ruta,
-        {
-          method: "POST",
-          body: JSON.stringify(cuerpo),
-          headers: { ...opciones.cabeceras, "Content-Type": "application/json" },
-          signal: opciones.signal,
-        },
-        opciones.csrf ?? true,
+    get(ruta, esquema, opciones = {}) {
+      return conPlazo(opciones.plazoMs ?? PLAZO_MS, opciones.signal, async (signal) =>
+        leer(await pedir(ruta, { method: "GET", signal }, false), esquema, signal),
       );
-      return leer(respuesta, esquema);
     },
-    async postFormulario(ruta, formulario, esquema, opciones = {}) {
-      // Sin Content-Type: el navegador pone el límite (boundary) del multipart.
-      const respuesta = await pedir(
-        ruta,
-        { method: "POST", body: formulario, headers: opciones.cabeceras, signal: opciones.signal },
-        true,
-      );
-      return leer(respuesta, esquema);
+    postJson(ruta, cuerpo, esquema, opciones = {}) {
+      return conPlazo(opciones.plazoMs ?? PLAZO_MS, opciones.signal, async (signal) => {
+        const respuesta = await pedir(
+          ruta,
+          {
+            method: "POST",
+            body: JSON.stringify(cuerpo),
+            headers: { ...opciones.cabeceras, "Content-Type": "application/json" },
+            signal,
+          },
+          opciones.csrf ?? true,
+        );
+        return leer(respuesta, esquema, signal);
+      });
     },
-    async postSinRespuesta(ruta) {
-      await pedir(ruta, { method: "POST" }, true);
+    postFormulario(ruta, formulario, esquema, opciones = {}) {
+      return conPlazo(opciones.plazoMs ?? PLAZO_MS, opciones.signal, async (signal) => {
+        // Sin Content-Type: el navegador pone el límite (boundary) del multipart.
+        const respuesta = await pedir(ruta, { method: "POST", body: formulario, headers: opciones.cabeceras, signal }, true);
+        return leer(respuesta, esquema, signal);
+      });
+    },
+    postSinRespuesta(ruta, opciones = {}) {
+      return conPlazo(opciones.plazoMs ?? PLAZO_MS, opciones.signal, async (signal) => {
+        await pedir(ruta, { method: "POST", signal }, true);
+      });
     },
     url(ruta) {
       return `${raiz}${ruta}`;

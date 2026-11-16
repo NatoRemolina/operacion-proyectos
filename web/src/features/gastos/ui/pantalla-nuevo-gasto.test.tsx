@@ -5,6 +5,7 @@ import { crearViajesMemoria } from "@/features/viajes/infrastructure/viajes-memo
 import { ErrorDeAplicacion } from "@/shared/domain/errores";
 import { gastoDePrueba, viajeDePrueba } from "@/test/fabricas";
 import { renderizarConFuente } from "@/test/renderizar";
+import type { ViajesRepository } from "@/features/viajes/domain/viajes";
 import type { EnvioRecibo, GastoDetalle, GastosRepository } from "../domain/gastos";
 import { PantallaNuevoGasto } from "./pantalla-nuevo-gasto";
 
@@ -228,6 +229,28 @@ describe("Cargar un gasto", () => {
     expect(screen.getByLabelText("Elegir otro archivo")).toBeInTheDocument();
     expect(screen.getByText("Elegir otro archivo").className).toMatch(/border-borde-campo/);
     expect(screen.getByRole("link", { name: "Ver mis gastos" }).className).not.toMatch(/border-borde-campo/);
+  });
+
+  it("si no cargan tus viajes lo dice, deja reintentar y el recibo igual se puede enviar con viaje automático (B7)", async () => {
+    const usuario = userEvent.setup();
+    const { repositorio } = repositorioQueResponde();
+    const listar = vi
+      .fn<ViajesRepository["listar"]>()
+      .mockRejectedValueOnce(new ErrorDeAplicacion("no_disponible"))
+      .mockResolvedValue({ items: [viajeDePrueba()], siguiente: null });
+    renderizarConFuente(<PantallaNuevoGasto />, { gastos: repositorio, viajes: { listar, obtener: () => Promise.reject(new Error("sin uso")) } });
+    expect(await screen.findByText("No pudimos cargar tus viajes")).toBeInTheDocument();
+    expect(screen.getByText(/El recibo igual se asigna solo/)).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByText("BOG → MIA")).toBeInTheDocument();
+    expect(listar).toHaveBeenCalledTimes(2);
+  });
+
+  it("sin viajes aprobados no ofrece un selector vacío: explica que se asigna solo (B7)", async () => {
+    const { repositorio } = repositorioQueResponde();
+    renderizarConFuente(<PantallaNuevoGasto />, { gastos: repositorio, viajes: crearViajesMemoria({ viajes: [] }) });
+    expect(await screen.findByText(/No tienes viajes aprobados/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cambiar viaje" })).toBeNull();
   });
 });
 

@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { esEnlaceGoogle } from "@/features/cotizar/domain/cotizar";
-import { conRutasEvidencia, evidenciaSchema } from "@/features/cotizar/infrastructure/cotizar-http";
+import { PLAZO_ANALISIS_MS, conRutasEvidencia, evidenciaSchema } from "@/features/cotizar/infrastructure/cotizar-http";
 import { dineroSchema, type ClienteHttp } from "@/shared/infrastructure/cliente-http";
 import type { Compra, CompraDetalle, ComprasRepository } from "../domain/compras";
+import { rutaPropiaSchema } from "@/shared/infrastructure/enlaces";
 
 const estado = z.enum(["solicitada", "en_analisis", "se_comprara", "no_se_comprara", "comprada", "cancelada"]);
 
@@ -33,7 +34,7 @@ const analisisSchema = z
     estado: z.enum(["pendiente", "listo", "fallido", "no_disponible"]),
     motivo: z.string().nullable(),
     leido: z.string().nullable(),
-    captura_url: z.string().nullable(),
+    captura_url: rutaPropiaSchema.nullable(),
     aviso_precio: z.string().nullable(),
   })
   .nullable();
@@ -47,7 +48,7 @@ const detalleSchema = compraSchema.extend({
       sale: z.string().nullable(),
       llega: z.string().nullable(),
       precio_usd: dineroSchema,
-      vendedor_url: z.string().nullable(),
+      vendedor_url: rutaPropiaSchema.nullable(),
       // como en cotizar: solo un enlace de Google (https, www.google.com o google.com) llega a un `href`
       fuente_url: z.string().nullable().transform((u) => (u && esEnlaceGoogle(u) ? u : null)),
     })
@@ -88,7 +89,8 @@ export function crearComprasHttp(cliente: ClienteHttp): ComprasRepository {
       return cliente.postJson(`/compras/${id}/registro`, { version, ...registro }, compraSchema);
     },
     async analizar(id) {
-      const a = await cliente.postJson(`/compras/${id}/analisis`, {}, analisisSchema);
+      // El mismo analizador que en cotizar: al agotarse, la pantalla vuelve a pedir la compra y ve cómo va la lectura
+      const a = await cliente.postJson(`/compras/${id}/analisis`, {}, analisisSchema, { plazoMs: PLAZO_ANALISIS_MS });
       return a ? { ...a, captura_url: absoluta(a.captura_url) } : null;
     },
   };
