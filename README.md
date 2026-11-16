@@ -158,8 +158,12 @@ Usa SQLite, precios reales guardados (Miami → Las Vegas, Miami → Moab) y lec
 ```bash
 make entorno         # PostgreSQL local y la plataforma en http://127.0.0.1:8000
 make entorno-web     # además la web nueva y el gateway en http://127.0.0.1:8088
+make entorno-completo  # todo junto: además el analizador de Google Flights
+make tareas          # una corrida del trabajador de capturas de evidencia
 make entorno-abajo   # detener (los datos de demostración se conservan)
 ```
+
+El buscador está apagado en este entorno. Para probar con precios en vivo (búsquedas pagas), `make entorno-completo ENV=.env`: toma solo `SERPAPI_KEY` de ese archivo, sin imprimirla. En la nube el trabajador corre cada 15 minutos; aquí se dispara con `make tareas`.
 
 Es el mismo motor de base que en la nube, con datos de demostración. **No lee `.env`**: ninguna variable de este entorno apunta a la base real.
 

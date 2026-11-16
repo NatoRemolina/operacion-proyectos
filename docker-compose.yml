@@ -4,6 +4,8 @@
 #   docker compose up -d db app                  base y plataforma actual (http://127.0.0.1:8000)
 #   docker compose --profile web up -d           además la web nueva y el gateway (http://127.0.0.1:8088)
 #   docker compose --profile analizador up -d    además el analizador de Google Flights (lectura de la página del vuelo)
+#   make entorno-completo                        todo junto: base, plataforma, web, gateway y analizador
+#   make tareas                                  una corrida del trabajador de capturas (en la nube corre cada 15 min)
 #   docker compose down                          detener (los datos se conservan en los volúmenes)
 #   docker compose down -v                       detener y borrar los datos de demostración
 #
@@ -37,8 +39,10 @@ services:
       PREPARAR_BASE_LOCAL: "1"            # esta base es desechable: se migra y se siembra al arrancar
       CUENTAS_DEMO: "1"                   # crea las cuentas de demostración en esta base local
       ORIGENES_WEB: http://localhost:8088,http://127.0.0.1:8088
-      # Servicios externos apagados: se trabaja con los datos guardados del repositorio
-      SERPAPI_KEY: ""
+      # Servicios externos apagados: se trabaja con los datos guardados del repositorio. El buscador se enciende solo a
+      # propósito, con `make entorno-completo ENV=<archivo>` (búsquedas pagas): toma SERPAPI_KEY de ese archivo y la
+      # pasa como SERPAPI_KEY_LOCAL, un nombre que ningún .env define, así que no se lee del .env por descuido.
+      SERPAPI_KEY: ${SERPAPI_KEY_LOCAL:-}
       MODELO_API_URL: ""
       MODELO_API_KEY: ""
       MODELO_NOMBRE: ""

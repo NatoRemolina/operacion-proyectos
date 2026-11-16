@@ -4,7 +4,7 @@ PY := .venv/bin/python
 # Con otro ejecutable: make instalar PYTHON=/ruta/a/python3.13
 PYTHON ?= python3.12
 
-.PHONY: bloquear desplegar ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-abajo demo-monitoreo respaldar verificar-respaldo ganchos
+.PHONY: bloquear desplegar ayuda instalar ejecutar probar probar-postgres revisar comprobar migrar geografia entorno entorno-web entorno-completo tareas entorno-abajo demo-monitoreo respaldar verificar-respaldo ganchos
 ayuda:            ## Lista las tareas
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
 
@@ -52,8 +52,15 @@ entorno:          ## Levanta PostgreSQL local y la plataforma en Docker (http://
 entorno-web:      ## Además la web nueva y el gateway (http://127.0.0.1:8088)
 	docker compose --profile web up -d --build
 
+entorno-completo: ## Todo junto: base, plataforma, web, gateway y analizador. Con ENV=<archivo>, enciende el buscador (búsquedas pagas)
+	SERPAPI_KEY_LOCAL="$$(test -n "$(ENV)" && $(PY) -c 'import sys; from dotenv import dotenv_values; print(dotenv_values(sys.argv[1]).get("SERPAPI_KEY") or "")' "$(ENV)")" \
+	  docker compose --profile web --profile analizador up -d --build
+
+tareas:           ## Una corrida del trabajador de capturas en el entorno local (en la nube, EventBridge cada 15 minutos)
+	docker compose exec app python -m app.tareas
+
 entorno-abajo:    ## Detiene el entorno local; los datos de demostración se conservan
-	docker compose --profile web down
+	docker compose --profile web --profile analizador down
 
 demo-monitoreo:   ## Prepara en el entorno local el viaje IB 5634 del 13 dic para ver el monitoreo (fijar MONITOREO_AHORA)
 	docker compose exec app python -m datos.demo_monitoreo
