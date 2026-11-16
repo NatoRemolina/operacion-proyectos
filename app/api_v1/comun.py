@@ -56,17 +56,24 @@ VERIFICACION_AEROLINEA = ("La página del vendedor puede pedir una verificación
 
 
 def pagina_envio(destino: dict) -> HTMLResponse:
-    """Página mínima con el pedido de un solo uso del vendedor: antes de enviarlo dice qué vuelo elegir allí, el aviso
-    si cambió el vendedor y que una verificación la resuelve la persona. Un clic en «Ir a {vendedor}» lo envía a
-    Google, que redirige a su página oficial. Sin scripts: el envío lo hace el botón.
+    """Página mínima con el pedido de un solo uso del vendedor, que envía a Google (redirige a su página oficial).
+
+    Envío directo (decisión de la responsable, 16 nov): la página envía sola; qué vuelo elegir y la nota de la verificación
+    se ven antes, en el desglose. Única pausa: si otro vendedor lleva ahora ese tramo (`aviso`), muestra el aviso, la guía
+    y la nota, y espera el clic en «Ir a {vendedor}», sin scripts.
 
     `form-action https:`: Chrome aplica la directiva también a las redirecciones que siguen al envío, y Google redirige a
     la aerolínea (otro dominio). El destino ya pasó la lista blanca del servidor (solo https://www.google.com/travel/clk…)."""
-    guia = precios.guia(destino.get("aviso"), destino.get("tiquete"))
+    datos = {"vendedor": destino["vendedor"], "url": destino["url"], "campos": destino["campos"]}
+    if destino.get("aviso"):
+        guia = precios.guia(destino.get("aviso"), destino.get("tiquete"))
+        return _pagina("api/envio_vendedor.html", 200,
+                       "default-src 'none'; form-action https:; base-uri 'none'; frame-ancestors 'none'",
+                       **datos, nonce=None, avisos=[t for t in (guia, VERIFICACION_AEROLINEA) if t])
+    nonce = secrets.token_urlsafe(16)
     return _pagina("api/envio_vendedor.html", 200,
-                   "default-src 'none'; form-action https:; base-uri 'none'; frame-ancestors 'none'",
-                   vendedor=destino["vendedor"], url=destino["url"], campos=destino["campos"],
-                   avisos=[t for t in (guia, VERIFICACION_AEROLINEA) if t])
+                   f"default-src 'none'; script-src 'nonce-{nonce}'; form-action https:; base-uri 'none'; frame-ancestors 'none'",
+                   **datos, nonce=nonce, avisos=[])
 
 
 def pagina_ir(titulo: str, google: str, datos: dict) -> HTMLResponse:

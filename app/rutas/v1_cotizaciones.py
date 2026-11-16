@@ -182,7 +182,7 @@ def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escr
 # ---------- página oficial del vendedor ----------
 @router.get("/cotizaciones/{id}/vuelos/{vuelo_id}/vendedor", response_class=HTMLResponse, responses={
     **errores_cotizacion(401, 403, 404, 422),
-    200: {"description": "Página mínima con qué vuelo elegir y el botón que envía el pedido del vendedor a Google (redirige a su página oficial)",
+    200: {"description": "Página mínima que envía el pedido del vendedor a Google (redirige a su página oficial)",
           "content": {"text/html": {}}},
     303: {"description": "Sin página oficial disponible: la página del vuelo en Google Flights"}})
 def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1, le=ENTERO_MAXIMO),

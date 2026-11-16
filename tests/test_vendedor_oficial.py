@@ -92,22 +92,18 @@ def test_lleva_a_la_pagina_oficial_de_la_aerolinea_sin_guardar_el_pedido(piloto,
     assert r.headers["Cache-Control"] == "no-store" and r.headers["Referrer-Policy"] == "no-referrer"
     csp = r.headers["Content-Security-Policy"]
     # Chrome aplica form-action también a las redirecciones que siguen al envío: con solo google.com cortaría el salto de
-    # Google a la aerolínea. El destino del envío ya lo valida el servidor (lista blanca) y la página no lleva scripts:
-    # el envío lo hace el clic de la persona.
+    # Google a la aerolínea. El destino del envío ya lo valida el servidor (lista blanca) y el único script va con nonce.
     assert re.search(r"form-action https:(;|$)", csp) and "default-src 'none'" in csp
-    assert "script-src" not in csp   # pieza 6: la página no envía sola; un clic de la persona en «Ir a American»
+    nonce = re.search(r"'nonce-([^']+)'", csp).group(1)
     pagina = r.text
     # el envío va a la dirección del vendedor oficial (la aerolínea, aunque una agencia sea más barata), con su cuerpo
     assert f'action="{SECRETO_URL}"' in pagina.replace("&amp;", "&") and 'method="post"' in pagina
     assert '<input type="hidden" name="u" value="SECRETOCUERPO456">' in pagina
     assert '<input type="hidden" name="adurl" value="SECRETOADURL789">' in pagina
-    assert "<script" not in pagina
+    # envío directo (decisión de la responsable, 16 nov): la página envía sola; el botón queda por si el script no corre.
+    # Qué vuelo elegir y la nota de la verificación se ven antes, en el desglose.
+    assert f'<script nonce="{nonce}">' in pagina and pagina.count("<script") == 1
     assert re.search(r'<button type="submit"[^>]*>Ir a American</button>', pagina)
-    # antes de enviar, qué vuelo elegir en el vendedor y que una verificación la resuelve la persona
-    # con el regreso conocido, la guía nombra cada tramo con su hora (prueba 15)
-    assert f"En American, elige la ida {' · '.join(vuelo['numeros'])}, sale " in pagina and "Main Cabin desde 458 USD" in pagina
-    assert ", y el regreso AA 1851, sale 1:43 pm; " in pagina
-    assert "puede pedir una verificación" in pagina
     assert any("booking_token" in p for p in llamadas)
     # el pedido de un solo uso no queda en ninguna parte: ni base, ni respaldo, ni registros
     salida = capfd.readouterr()   # salida estándar y de errores, también la de procesos hijos

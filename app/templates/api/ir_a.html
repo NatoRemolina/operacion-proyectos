@@ -29,9 +29,9 @@
       }
       document.body.appendChild(f); f.submit();
     }
-    // Lo que la persona debe saber antes de llegar (el aviso si cambió el vendedor, qué vuelo elegir, por qué se fue a
-    // Google Flights) se muestra como texto y espera su clic; sin nada que decir, se envía sola.
-    if (!e.guia && !e.motivo) return ir();
+    // Envío directo (decisión de la responsable, 16 nov): qué vuelo elegir y la nota de la verificación ya se vieron en
+    // el desglose. Única pausa: si otro vendedor lleva ahora ese tramo, se muestra el aviso como texto y se espera el clic.
+    if (!(e.vendedor && d.vendedor && e.vendedor.toLowerCase() !== d.vendedor.toLowerCase())) return ir();
     estado.textContent = "Tu enlace a " + e.vendedor + " está listo.";
     if (e.motivo && e.motivo !== e.guia) mostrar("motivo", e.motivo);
     if (e.guia) mostrar("guia", e.guia);

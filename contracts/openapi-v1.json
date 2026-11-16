@@ -631,7 +631,7 @@
           "cotizaciones"
         ],
         "summary": "Pagina Ir",
-        "description": "La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…» y pide `POST …/ir` con la sesión. Si la respuesta\ntrae `guia` o `motivo` (qué vuelo elegir, el aviso si cambió el vendedor, por qué se va a Google Flights), los muestra\ncon la nota de la verificación y espera el clic en «Ir a {vendedor}»; si no, envía el formulario a Google (o va a\nGoogle Flights) sin esperar. Si falla, lo explica y ofrece Google Flights. Con datos que no son\nválidos responde 422 con una página legible (no JSON): la pestaña la ve una persona.",
+        "description": "La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el\nformulario a Google (o va a Google Flights) sin esperar: qué vuelo elegir ya se vio en el desglose. Única pausa: si\notro vendedor lleva ahora ese tramo, muestra el aviso y la guía con la nota de la verificación y espera el clic en\n«Ir a {vendedor}». Si falla, lo explica y ofrece Google Flights. Con datos que no son\nválidos responde 422 con una página legible (no JSON): la pestaña la ve una persona.",
         "operationId": "pagina_ir_api_v1_cotizaciones__id__vuelos__opcion_id__ir_get",
         "parameters": [
           {
@@ -713,7 +713,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Página que prepara el envío al vendedor: muestra la guía si la hay y lo hace",
+            "description": "Página que prepara el envío al vendedor y lo hace; solo se detiene si cambió el vendedor",
             "content": {
               "text/html": {
                 "schema": {
@@ -2001,7 +2001,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Página mínima con qué vuelo elegir y el botón que envía el pedido del vendedor a Google (redirige a su página oficial)",
+            "description": "Página mínima que envía el pedido del vendedor a Google (redirige a su página oficial)",
             "content": {
               "text/html": {
                 "schema": {

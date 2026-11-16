@@ -250,7 +250,21 @@ def test_la_guia_del_tiquete():
     assert precios.guia_tiquete(None) is None
 
 
-def test_la_pagina_de_envio_muestra_la_guia_el_aviso_y_un_solo_boton():
+def test_la_pagina_de_envio_va_directo_al_vendedor():
+    """Decisión de la responsable (16 nov): sin cambio de vendedor, la página envía sola (script con nonce)."""
+    import re
+
+    from app.api_v1 import comun
+    r = comun.pagina_envio({"url": CLK, "campos": [("u", "IDA-COPA-SECRETA")], "vendedor": "COPA",
+                            "tiquete": {"vendedor": "COPA", "tramo": "ida", "numeros": ["CM 687"], "precio": 334}})
+    pagina = r.body.decode()
+    nonce = re.search(r"'nonce-([^']+)'", r.headers["Content-Security-Policy"]).group(1)
+    assert f'<script nonce="{nonce}">' in pagina and 'name="u" value="IDA-COPA-SECRETA"' in pagina
+    assert r.headers["Cache-Control"] == "no-store" and "form-action https:" in r.headers["Content-Security-Policy"]
+
+
+def test_si_cambio_el_vendedor_la_pagina_de_envio_espera_el_clic():
+    """La única pausa: otro vendedor lleva ahora ese tramo. La página muestra el aviso y la guía y espera el clic."""
     from app.api_v1 import comun
     r = comun.pagina_envio({"url": CLK, "campos": [("u", "IDA-COPA-SECRETA")], "vendedor": "eDreams",
                                        "aviso": "Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD",
