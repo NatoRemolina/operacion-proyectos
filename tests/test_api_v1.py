@@ -258,6 +258,8 @@ def test_el_documento_se_entrega_con_su_tipo_y_aislado(piloto, mundo):
 
 # ---------- paginación ----------
 def test_el_cursor_lleva_al_siguiente_y_el_ultimo_cierra(piloto, mundo):
+    # al menos dos gastos propios, aunque esta prueba corra antes que las que cargan otros
+    assert _enviar(piloto, "lisboa.png", mundo["foto"], mundo["viaje1"]["id"]).status_code == 201
     completos = [g["id"] for g in _todos(piloto, f"{V1}/gastos")]   # puede haber más de una página de 100
     assert len(completos) >= 2 and completos == sorted(completos, reverse=True)    # más reciente primero
     vistos, cursor = [], None

@@ -108,11 +108,15 @@ def test_el_presupuesto_con_lo_pagado_se_suma_con_decimal(piloto):
     lineas = [{"grupo": "vuelo", "concepto": "Precio del vuelo", "valor": 279.0},
               {"grupo": "hotel", "concepto": "Hotel", "valor": 100.005}]
     db.actualizar("viajes", v["id"], presupuesto_detalle=lineas, presupuesto_usd=379.01)
-    texto = viajes._presupuesto_con_lo_pagado(viajes.uno(v["id"]), {"precio_pagado": 300.0}, _admin())
-    assert "300.00 USD" in texto
-    guardado = viajes.uno(v["id"])
-    assert guardado["presupuesto_usd"] == 400.01
-    assert db.de_json(guardado["presupuesto_detalle"], [])[0]["valor"] == 300.0
+    try:
+        texto = viajes._presupuesto_con_lo_pagado(viajes.uno(v["id"]), {"precio_pagado": 300.0}, _admin())
+        assert "300.00 USD" in texto
+        guardado = viajes.uno(v["id"])
+        assert guardado["presupuesto_usd"] == 400.01
+        assert db.de_json(guardado["presupuesto_detalle"], [])[0]["valor"] == 300.0
+    finally:   # un presupuesto con medio centavo no debe sumar en el previsto que comparan otras pruebas
+        db.actualizar("viajes", v["id"], estado="rechazado", presupuesto_detalle=v["presupuesto_detalle"],
+                      presupuesto_usd=v["presupuesto_usd"])
 
 
 def test_aprobar_con_la_compra_en_se_comprara_lo_avisa(piloto):

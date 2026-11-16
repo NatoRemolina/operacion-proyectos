@@ -273,7 +273,12 @@ def test_un_fallo_de_pinecone_no_expone_la_clave_y_responde_el_local(monkeypatch
     with pytest.raises(memoria.ErrorIndice) as e:
         _pinecone(lambda r: httpx.Response(401, text=f"Invalid API key {CLAVE}")).borrar(["x"])
     assert CLAVE not in str(e.value) and "401" in str(e.value)
-    # Con el externo caído, la búsqueda sale del índice local y la indexación local sigue
+    # Con el externo caído, la búsqueda sale del índice local y la indexación local sigue. La nota que se busca es de
+    # esta prueba: no se cuenta con que otra la haya indexado antes
+    a = dos_pilotos["andres"]
+    piloto = db.uno("select * from usuarios where id=:i", i=a["id"])
+    gastos.guardar_evidencia(piloto, a["viaje"], "web", "nota", texto="El parqueadero del hotel no entregó recibo")
+    memoria.actualizar()
     monkeypatch.setattr(memoria, "pinecone_activo", lambda: True)
     monkeypatch.setattr(memoria, "externo", lambda: _pinecone(red_caida))
     fichas, adaptador = memoria.buscar("parqueadero", alcance=memoria.TODO)

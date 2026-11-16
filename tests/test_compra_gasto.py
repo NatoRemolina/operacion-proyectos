@@ -33,12 +33,28 @@ def _admin() -> dict:
     return db.uno("select * from usuarios where correo='admin@demo.local'")
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _sin_rastro():
+    """La base es de toda la sesión: los gastos que dejan estas pruebas (tiquetes y recibos del piloto) se borran al final,
+    para no correr de la lista ni de los totales los que preparan otras pruebas."""
+    antes = db.uno("select coalesce(max(id), 0) m from gastos")["m"]
+    yield
+    for g in db.todos("select id, documento_id from gastos where id>:m", m=antes):
+        db.ejecutar("update compras set gasto_id=null where gasto_id=:g", g=g["id"])
+        for sql in ("delete from envios_soporte where gasto_id=:g", "delete from justificaciones where gasto_id=:g",
+                    "delete from eventos where entidad='gasto' and entidad_id=:g", "delete from gastos where id=:g"):
+            db.ejecutar(sql, g=g["id"])
+        if g["documento_id"]:
+            db.ejecutar("delete from documentos where id=:d", d=g["documento_id"])
+
+
 @pytest.fixture(scope="module")
 def otra_admin() -> dict:
-    """Otra persona de administración, para aprobar lo que registró la primera."""
+    """Otra persona de administración, para aprobar lo que registró la primera. Al final queda inactiva."""
     correo = f"admin-dos-{uuid.uuid4().hex[:6]}@demo.local"
-    acceso.crear_usuario(correo, "Otra administración", "admin", "clave-de-otra-admin-2026")
-    return db.uno("select * from usuarios where correo=:c", c=correo)
+    acceso.crear_usuario(correo, "Yolanda Quibdó", "admin", "clave-de-otra-admin-2026")
+    yield db.uno("select * from usuarios where correo=:c", c=correo)
+    db.ejecutar("update usuarios set activo=0 where correo=:c", c=correo)
 
 
 @pytest.fixture()
