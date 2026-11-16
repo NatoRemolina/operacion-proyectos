@@ -168,6 +168,23 @@ def test_extrae_la_lectura_de_la_pagina_y_las_respuestas_guardadas():
     assert db.uno("select id from eventos where entidad='ofertas_tarifa' and paso='tarifas extraídas' order by id desc limit 1")
 
 
+def test_un_tiquete_de_billetes_separados_leido_de_la_pagina_es_solo_su_tramo():
+    """La pieza 6 lee el diálogo de billetes separados como un tiquete por tramo («ida», «regreso»): su precio no es el del
+    viaje completo y la fila lo dice."""
+    global LECTURA
+    original = LECTURA
+    tiquete = {"nombre": "ida", "precio": 334.0, "equipaje": [], "cambios": [], "reembolso": [], "otras": []}
+    LECTURA = {**original, "tarifas": [{**tiquete, "vendedor": "COPA", "tramo": "ida"},
+                                       {**tiquete, "nombre": "regreso", "precio": 323.0, "vendedor": "Avianca", "tramo": "regreso"}]}
+    try:
+        aid = _lectura_lista(clave="CM687CM240_2026-11-20_2026-11-20_2026-11-29", creado="2026-11-13 22:00:00")
+        ofertas.actualizar()
+        filas = db.todos("select vendedor, tramo, precio from ofertas_tarifa where analisis_id=:a order by ordinal", a=aid)
+        assert [(f["vendedor"], f["tramo"], f["precio"]) for f in filas] == [("COPA", "ida", 334.0), ("Avianca", "regreso", 323.0)]
+    finally:
+        LECTURA = original
+
+
 def test_correrlo_dos_veces_no_duplica():
     _lectura_lista(clave="AA1851_2026-12-08_2026-12-08_2026-12-11", creado="2026-11-12 16:00:00")
     ofertas.actualizar()

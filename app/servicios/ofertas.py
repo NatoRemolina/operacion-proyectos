@@ -326,8 +326,10 @@ def _de_lectura(a: dict) -> list[dict]:
     filas = []
     for ordinal, t in enumerate(tarifas):
         condiciones = (t.get("cambios") or []) + (t.get("reembolso") or []) + (t.get("otras") or [])
+        # un tiquete de billetes separados (pieza 6) cubre solo su tramo: su precio no es el del viaje completo
+        tramo = t.get("tramo") if t.get("tramo") in ("ida", "regreso") else "ida_vuelta"
         f = _fila(base, t.get("nombre"), t.get("precio"), t.get("vendedor"), de_aerolinea.get(t.get("vendedor")),
-                  t.get("equipaje"), condiciones, t, ordinal)
+                  t.get("equipaje"), condiciones, t, ordinal, tramo)
         filas += [f] if f else []
     return filas
 
