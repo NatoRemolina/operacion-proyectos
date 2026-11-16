@@ -45,6 +45,11 @@ FUERA_DEL_SECRETO = {
     "ANALIZADOR_URL": "solo en local: el servicio analizador de docker compose",
     "ANALIZADOR": "interruptor: variable de la función para apagarlo sin desplegar; no es un secreto",
 }
+# Variables nuevas del backend que el frente de plataforma añade a CLAVES (infra/, que este frente no toca). Cuando
+# llegue a CLAVES, la prueba de abajo pide quitarla de aquí: no queda una excepción olvidada.
+POR_AGREGAR_A_CLAVES = {
+    "ORIGEN_SECRETO": "valor de la cabecera X-Origen-CloudFront que exige app/main.py en la nube (puntos A3 y B1)",
+}
 
 
 class Nube:
@@ -223,7 +228,8 @@ def test_toda_variable_que_lee_la_aplicacion_va_en_el_secreto_o_tiene_su_razon()
     leidas = set()
     for archivo in (RAIZ / "app").rglob("*.py"):
         leidas |= set(re.findall(r'(?:_txt|os\.getenv|os\.environ\.get)\("([A-Z0-9_]+)"', archivo.read_text()))
-    sin_destino = leidas - set(ps.CLAVES) - set(FUERA_DEL_SECRETO)
+    assert not set(POR_AGREGAR_A_CLAVES) & set(ps.CLAVES), "ya está en CLAVES: quitarla de POR_AGREGAR_A_CLAVES"
+    sin_destino = leidas - set(ps.CLAVES) - set(FUERA_DEL_SECRETO) - set(POR_AGREGAR_A_CLAVES)
     assert not sin_destino, f"decidir si van en el secreto: {sorted(sin_destino)}"
     assert "APP_CLAVE" not in ps.CLAVES
 

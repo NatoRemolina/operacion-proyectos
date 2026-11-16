@@ -12,7 +12,7 @@ import time
 from datetime import date, timedelta
 
 from app import config, db
-from app.servicios import costo, eventos, precios, rutas_frecuentes
+from app.servicios import costo, eventos, precios, rutas_frecuentes, tiempo
 
 RUTAS = [
     ("MIA", "LAS"), ("JFK", "LAX"), ("LAX", "LAS"), ("DFW", "DEN"), ("ATL", "ORD"), ("MIA", "JFK"),
@@ -25,7 +25,7 @@ TOPE_DIA = 10   # valor inicial de la regla editable `recoleccion_busquedas_dia`
 
 
 def plan(rutas=RUTAS, hoy: date | None = None) -> list[tuple[str, str, str, str]]:
-    hoy = hoy or date.today()
+    hoy = hoy or tiempo.hoy()
     busquedas = []
     for dias in ANTICIPACIONES:  # por anticipación primero: si se corta, todas las rutas quedan cubiertas
         for origen, destino in rutas:
@@ -44,12 +44,12 @@ def asegurar_regla():
     if not db.uno("select id from reglas where ambito='supuesto' and clave='recoleccion_busquedas_dia'"):
         db.insertar("reglas", ambito="supuesto", entidad="", tarifa="", clave="recoleccion_busquedas_dia", valor=str(TOPE_DIA),
                     nota="Búsquedas pagas que el recolector de rutas frecuentes puede gastar al día (unas 300 al mes con 10).",
-                    fuente="Supuesto editable", confianza="supuesto", verificado=db.ahora()[:10])
+                    fuente="Supuesto editable", confianza="supuesto", verificado=tiempo.hoy().isoformat())
 
 
 def hechas_hoy() -> int:
     return db.uno("select count(*) n from eventos where entidad='recolector' and paso='búsqueda recolectada' and momento>=:d",
-                  d=db.ahora()[:10])["n"]
+                  d=tiempo.inicio_del_dia())["n"]
 
 
 def plan_frecuentes(hoy: date | None = None) -> list[tuple[str, str, str, str]]:

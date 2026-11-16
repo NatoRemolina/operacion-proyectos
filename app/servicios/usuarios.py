@@ -7,9 +7,7 @@ administración activa. Cambiar el permiso, desactivar o cambiar la contraseña 
 from contextlib import contextmanager
 from datetime import timedelta
 
-from sqlalchemy import text
-
-from .. import config, db
+from .. import db
 from . import acceso, eventos, telegram
 
 NO_QUITAR_ROL = "No puedes quitarte tu propio rol ni dejar la plataforma sin administradores."
@@ -97,9 +95,8 @@ def _en_fila_de_administracion(uid: int):
     """Comprueba y escribe en una sola transacción, en fila con los demás cambios que pueden quitar administración.
     Sin esto, dos administraciones que se quitan el permiso una a la otra a la vez verían «queda otra» y pasarían las dos.
     Entrega la cuenta releída dentro de la fila."""
-    with db.transaccion() as c:
-        if not config.ES_SQLITE:   # en SQLite la transacción ya toma el cerrojo de escritura
-            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_ADMINISTRACION})
+    with db.transaccion():
+        db.cerrojo(BLOQUEO_ADMINISTRACION)
         yield db.uno("select * from usuarios where id=:i", i=uid)
 
 

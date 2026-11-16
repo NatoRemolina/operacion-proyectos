@@ -105,6 +105,7 @@ def test_sin_lectura_guardada_la_lectura_original_es_nula(cliente, recibo):
         datos = _revision(cliente, gid).json()
         assert datos["lectura_original"] is None and datos["soporte"] is None
     finally:
+        db.ejecutar("delete from eventos where entidad='gasto' and entidad_id=:i", i=gid)
         db.ejecutar("delete from gastos where id=:i", i=gid)
 
 

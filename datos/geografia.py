@@ -22,9 +22,9 @@ import subprocess
 import tempfile
 import urllib.request
 import zipfile
-from datetime import UTC, datetime
 from pathlib import Path
 
+from app.servicios import tiempo
 from app.servicios.geografia import normalizar
 
 RAIZ = Path(__file__).resolve().parent
@@ -143,7 +143,7 @@ def zonas(cities1000: Path, archivo: Path = DESTINO / "lugares.csv.gz") -> int:
 
 
 def _fuentes(origen: Path, destino: Path, conteo: dict) -> None:
-    hoy = datetime.now(UTC).strftime("%Y-%m-%d")
+    hoy = tiempo.hoy().isoformat()
     lineas = [
         "# Fuentes de los datos geográficos",
         "",

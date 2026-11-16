@@ -10,13 +10,14 @@ import hashlib
 import json
 import math
 import re
+import zlib
 from email import policy
 from html.parser import HTMLParser
 
 import httpx
 
 from .. import config
-from . import llm
+from . import llm, topes
 
 CAMPOS = ["comercio", "fecha", "categoria", "subtotal", "impuesto", "propina", "total",
           "moneda", "metodo_pago", "canal_reserva", "ciudad"]
@@ -44,6 +45,49 @@ INSTRUCCION = f"""Eres un asistente de contabilidad. Lee el soporte de gasto adj
   si el soporte no las trae
 Si el soporte tiene varias páginas, lee todas las páginas: el total y los impuestos suelen ir en la última.
 No inventes valores: si algo no se lee, usa null y nómbralo en dudas."""
+
+
+MAX_PAGINAS_PDF = 15   # cada página se paga al leerla: un recibo cabe de sobra
+TOPE_LECTURA, TOPE_LECTURA_TOTAL = "lecturas_recibo_persona_dia", "lecturas_recibo_dia"
+ORIGEN_POR_TOPE = "pendiente por tope"   # `gastos.origen_dato`: distingue la lectura que no se hizo de la que falló
+PENDIENTE_POR_TOPE = ("Lectura pendiente por tope: hoy se alcanzó el tope de lecturas de recibos. El soporte quedó guardado; "
+                      "administración completa los datos o se vuelve a leer otro día.")
+_PAGINA = re.compile(rb"/Type\s*/Page(?![A-Za-z])")
+_FLUJO = re.compile(rb"stream\r?\n")
+MAX_DESCOMPRIMIDO = 20_000_000   # lo que se descomprime para contar páginas, en total: ningún PDF lo agota
+
+
+def paginas_pdf(contenido: bytes) -> int:
+    """Páginas de un PDF sin dependencias: los objetos /Type /Page, también los que van comprimidos en flujos de objetos
+    (PDF 1.5). Si no se encuentra ninguno, el /Count del árbol de páginas."""
+    n, presupuesto = len(_PAGINA.findall(contenido)), MAX_DESCOMPRIMIDO
+    for m in _FLUJO.finditer(contenido):
+        if presupuesto <= 0:
+            break
+        d = zlib.decompressobj()
+        try:
+            datos = d.decompress(contenido[m.end():m.end() + 5_000_000], presupuesto)
+        except zlib.error:
+            continue   # no es un flujo comprimido con Flate
+        presupuesto -= len(datos)
+        n += len(_PAGINA.findall(datos))
+    if n:
+        return n
+    cuentas = [int(c) for c in re.findall(rb"/Type\s*/Pages\b[^>]*?/Count\s+(\d+)", contenido)]
+    return max(cuentas, default=0)
+
+
+def en_vivo() -> bool:
+    """Si la lectura va al modelo (se paga) o sale de lo guardado."""
+    return config.modo()["extraccion"] == "en vivo"
+
+
+def reservar_lectura(usuario: dict | None, detalle: str = "") -> bool:
+    """Reserva una lectura con el modelo antes de llamarlo: del tope de la persona y del total de la empresa, en fila con
+    las demás (`topes.reservar`). Sin modelo configurado no se paga nada y no se reserva. False si no alcanza."""
+    if not en_vivo():
+        return True
+    return topes.reservar(TOPE_LECTURA, usuario, total=TOPE_LECTURA_TOTAL, detalle=detalle)
 
 
 def tipo_binario(contenido: bytes) -> str | None:
@@ -144,7 +188,7 @@ def _adjunto_util(msg) -> tuple[bytes, str] | None:
     return datos, tipo
 
 
-def _correo(contenido: bytes):
+def partes_del_correo(contenido: bytes):
     """Devuelve (texto del correo, adjunto o None, mime del adjunto)."""
     msg = email.message_from_bytes(contenido, policy=policy.default)
     adjunto = _adjunto_util(msg)
@@ -166,7 +210,7 @@ def _bloque(contenido: bytes, mime: str) -> dict:
 def _en_vivo(contenido: bytes, mime: str) -> dict:
     partes = []
     if mime == "message/rfc822":
-        texto, adjunto, mime_adjunto = _correo(contenido)
+        texto, adjunto, mime_adjunto = partes_del_correo(contenido)
         partes.append(_bloque(adjunto, mime_adjunto) if adjunto else {"type": "text", "text": texto[:20000]})
     elif mime == "text/plain":
         partes.append({"type": "text", "text": contenido.decode("utf-8", "replace")[:20000]})
@@ -198,7 +242,7 @@ ESQUEMA = {"type": "OBJECT", "properties": {
 def _con_cliente(contenido: bytes, mime: str, entidad_id: int | None, uso: str = "recibo") -> dict:
     """Lectura con el cliente único: salida con esquema fijo, de modo que siempre llega un JSON con los mismos campos."""
     if mime == "message/rfc822":
-        texto, adjunto, mime_adjunto = _correo(contenido)
+        texto, adjunto, mime_adjunto = partes_del_correo(contenido)
         parte = llm.parte_archivo(adjunto, mime_adjunto) if adjunto else llm.parte_texto(texto[:20000])
     elif mime == "text/plain":   # una confirmación HTML ya reducida a texto
         parte = llm.parte_texto(contenido.decode("utf-8", "replace")[:20000])

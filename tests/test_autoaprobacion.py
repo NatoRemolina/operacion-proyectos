@@ -6,7 +6,7 @@ from starlette.testclient import TestClient
 
 from app import db
 from app.main import _comparacion, app
-from app.servicios import acceso, viajes
+from app.servicios import acceso, revision, viajes
 
 FORM = dict(proyecto_id=1, origen="Miami (MIA)", destino="las vegas", ciudad="", ida="2026-12-08", regreso="2026-12-11",
             llegar_antes="2026-12-08T18:00", baterias_n=4, baterias_wh=77, maleta="on", prob_cambio=25, carro_dia=65)
@@ -97,6 +97,30 @@ def test_admin_no_revisa_su_propio_gasto(cliente, ejemplos):
     intentos = db.todos("select * from eventos where entidad='gasto' and entidad_id=:i and paso='autoaprobación impedida'", i=gid)
     assert len(intentos) == 3 and all(e["fuente"] == yo["nombre"] for e in intentos)
 
+
+def test_lo_que_administracion_sube_a_nombre_de_otra_persona_lo_revisa_otra(cliente, ejemplos, viaje_aprobado):
+    """Cuatro ojos: quien sube un recibo no lo revisa, aunque lo cargue al viaje de otra persona."""
+    yo, piloto = _cuenta("admin@demo.local"), _cuenta("piloto@demo.local")
+    gid = cliente.post("/gastos/cargar", data={"proyecto_id": 1, "viaje_id": viaje_aprobado["id"], "canal": "web"},
+                       headers={"X-Envio": "pagina"},
+                       files={"archivos": ("p.png", (ejemplos / "recibo_parqueo_borroso.png").read_bytes(), "image/png")}).json()["gastos"][0]
+    g = db.uno("select * from gastos where id=:i", i=gid)
+    assert g["usuario_id"] == yo["id"] and g["viajero_id"] == piloto["viajero_id"] and g["estado"] == "revision"
+    assert viajes.gasto_propio_de(g, yo)   # la pantalla y la API tampoco ofrecen revisarlo
+    with pytest.raises(revision.RevisionImpedida):
+        revision.guardar(gid, yo, g["version"], "excepcion", {"total": 12, "moneda": "USD"}, "Parqueo de la grabación")
+    assert db.uno("select estado, revisado_por from gastos where id=:i", i=gid) == {"estado": "revision", "revisado_por": None}
+    assert db.uno("select count(*) n from eventos where entidad='gasto' and entidad_id=:i and paso='autoaprobación impedida'",
+                  i=gid)["n"] == 1
+    # Otra persona de administración sí lo revisa
+    acceso.crear_usuario("admin3-cuatro-ojos@demo.local", "Tomasa Ibarra", "admin", "clave-admin-tres-2026")
+    try:
+        otra = _cuenta("admin3-cuatro-ojos@demo.local")
+        assert not viajes.gasto_propio_de(g, otra)
+        r = revision.guardar(gid, otra, g["version"], "excepcion", {"total": 12, "moneda": "USD"}, "Parqueo de la grabación")
+        assert r["estado"] == "aprobado"
+    finally:
+        db.ejecutar("update usuarios set activo=0 where correo='admin3-cuatro-ojos@demo.local'")
 
 def test_con_un_solo_admin_se_explica_en_pantalla(cliente):
     otros = db.todos("select id from usuarios where rol='admin' and activo=1 and correo<>'admin@demo.local'")

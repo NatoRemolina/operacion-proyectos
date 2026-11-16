@@ -4,20 +4,13 @@ La lógica es la misma de las pantallas (`app/servicios/cotizacion.py`). Ver una
 a quien viaja, al gestor del proyecto y a administración (`acceso.puede_ver`); decidirla, solo a los tres primeros
 sin el gestor (`acceso.es_propio`). Lo que no se ve responde 404.
 """
-import hashlib
-import hmac
-import html
-import re
-import secrets
-import time
 from decimal import Decimal
-from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .. import config, db
-from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona
+from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, comun, escritura, persona
 from ..api_v1.esquemas_cotizacion import (
     ENTERO_MAXIMO,
     Cotizacion,
@@ -30,7 +23,7 @@ from ..api_v1.esquemas_cotizacion import (
     NuevaDecision,
     errores_cotizacion,
 )
-from ..servicios import acceso, agente, compras, consultas, cotizacion, eventos, geografia, viajes
+from ..servicios import acceso, agente, compras, consultas, cotizacion, enlaces, envios, eventos, geografia, viajes
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
@@ -119,14 +112,14 @@ def crear(datos: NuevaCotizacion, response: Response, request: Request, yo: dict
     envio = None
     if clave:
         try:
-            envio, hecha = cotizacion.reclamar_envio(yo["id"], clave, cotizacion.huella_pedido(datos.model_dump(mode="json")))
-        except cotizacion.ConflictoEnvio as e:
+            envio, repetido = envios.reclamar(yo["id"], clave, envios.huella(b"", datos.model_dump(mode="json")), envios.COTIZACION)
+        except envios.ConflictoEnvio as e:
             raise ErrorApi(409, "IDEMPOTENCY_CONFLICT", str(e)) from e
-        except cotizacion.EnvioEnCurso as e:
+        except envios.EnvioEnCurso as e:
             raise ErrorApi(409, "REQUEST_IN_PROGRESS", str(e)) from e
-        if hecha:
+        if repetido:
             response.status_code = 200
-            return _cotizacion(yo, hecha, _sesion(request))
+            return _cotizacion(yo, envio["solicitud_id"], comun.sesion(request))
     try:
         sid = cotizacion.crear(yo, proyecto_id=datos.proyecto_id, viajero_id=viajero_id, para_otra_persona=para_otra,
                                ida=datos.ida.isoformat(), regreso=datos.regreso.isoformat(),
@@ -136,28 +129,28 @@ def crear(datos: NuevaCotizacion, response: Response, request: Request, yo: dict
                                canal="api v1", **campos)
     except cotizacion.CotizacionInvalida as e:
         if envio:
-            cotizacion.soltar_envio(envio)
+            envios.soltar(envio)
         raise _invalido(e.campo, str(e)) from e
     except cotizacion.FueraDeAlcance as e:
         if envio:
-            cotizacion.soltar_envio(envio)
+            envios.soltar(envio)
         raise ErrorApi(403, "FORBIDDEN", str(e)) from e
     except cotizacion.TopeAlcanzado as e:   # el tope lo aplica el servicio, igual que en el formulario
         if envio:
-            cotizacion.soltar_envio(envio)
+            envios.soltar(envio)
         raise ErrorApi(429, "TOO_MANY_REQUESTS", str(e)) from e
     except Exception:
         if envio:
-            cotizacion.soltar_envio(envio)
+            envios.soltar(envio)
         raise
     if envio:
-        cotizacion.completar_envio(envio, sid)
-    return _cotizacion(yo, sid, _sesion(request))
+        envios.completar(envio, sid)
+    return _cotizacion(yo, sid, comun.sesion(request))
 
 
 # ---------- ver ----------
 def _fila(sid: int) -> dict | None:
-    return db.uno("select usuario_id, viajero_id, proyecto_id from solicitudes where id=:i", i=sid)
+    return cotizacion.fila_de_acceso(sid)
 
 
 IdCotizacion = Path(ge=1, le=ENTERO_MAXIMO)
@@ -167,7 +160,7 @@ IdCotizacion = Path(ge=1, le=ENTERO_MAXIMO)
 def detalle(request: Request, id: int = IdCotizacion, yo: dict = Depends(persona)):
     if not acceso.puede_ver(yo, _fila(id)):
         raise _no_encontrado()
-    return _cotizacion(yo, id, _sesion(request))
+    return _cotizacion(yo, id, comun.sesion(request))
 
 
 # ---------- fuente de los precios ----------
@@ -187,89 +180,6 @@ def fuente(datos: FuenteAbierta, id: int = IdCotizacion, yo: dict = Depends(escr
 
 
 # ---------- página oficial del vendedor ----------
-SITIOS_PERMITIDOS = {"same-origin", "same-site", "none"}
-VIDA_ENLACE_S = 300   # 5 minutos: la web refresca la cotización antes de que venza
-
-
-def _sesion(request: Request) -> str:
-    return request.cookies.get(acceso.COOKIE) or ""
-
-
-def _firma(sesion: str, partes: tuple, vence: int) -> str:
-    mensaje = "|".join(str(p) for p in (*partes, vence)).encode()
-    return hmac.new(sesion.encode(), mensaje, hashlib.sha256).hexdigest()[:32]
-
-
-def _firmar(sesion: str, partes: tuple, ahora: float | None) -> str:
-    """`{vence}.{firma}`: HMAC con el token de la sesión como clave sobre `partes` y el vencimiento. No sirve en otra
-    sesión, para otras partes ni pasados 5 minutos; no se guarda nada."""
-    vence = int((time.time() if ahora is None else ahora) + VIDA_ENLACE_S)
-    return f"{vence}.{_firma(sesion, partes, vence)}"
-
-
-def _firmado(token: str | None, sesion: str, partes: tuple) -> bool:
-    vence, _, firma = (token or "").partition(".")
-    if not (sesion and re.fullmatch(r"[0-9]{1,12}", vence) and firma and int(vence) >= time.time()):
-        return False
-    return hmac.compare_digest(firma, _firma(sesion, partes, int(vence)))
-
-
-def token_vendedor(sesion: str, sid: int, vuelo_id: int, ahora: float | None = None) -> str:
-    return _firmar(sesion, ("vendedor-v1", sid, vuelo_id), ahora)
-
-
-def token_valido(token: str | None, sesion: str, sid: int, vuelo_id: int) -> bool:
-    return _firmado(token, sesion, ("vendedor-v1", sid, vuelo_id))
-
-
-def url_ir(sesion: str, sid: int, vuelo_id: int, vendedor: str, tarifa: str, ahora: float | None = None) -> str:
-    """La página de «Ir a…» de esa tarifa de ese vendedor, firmada: abrirla sin el token de esta sesión no hace el pedido."""
-    t = _firmar(sesion, ("ir-v1", sid, vuelo_id, vendedor, tarifa), ahora)
-    return f"{PREFIJO}/cotizaciones/{sid}/vuelos/{vuelo_id}/ir?{urlencode({'vendedor': vendedor, 'tarifa': tarifa, 't': t})}"
-
-
-def token_ir_valido(token: str | None, sesion: str, sid: int, vuelo_id: int, vendedor: str, tarifa: str) -> bool:
-    return _firmado(token, sesion, ("ir-v1", sid, vuelo_id, vendedor, tarifa))
-
-
-def url_vendedor(sesion: str, sid: int, vuelo_id: int) -> str:
-    return f"{PREFIJO}/cotizaciones/{sid}/vuelos/{vuelo_id}/vendedor?t={token_vendedor(sesion, sid, vuelo_id)}"
-
-
-def pagina_aviso(estado: int, titulo: str, texto: str) -> HTMLResponse:
-    """Lo que ve la persona en la pestaña nueva cuando no se puede seguir: una página legible, no JSON."""
-    cuerpo = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" '
-              f'content="width=device-width,initial-scale=1"><title>{html.escape(titulo)}</title></head><body>'
-              f"<main><h1>{html.escape(titulo)}</h1><p>{html.escape(texto)}</p>"
-              f"<p>Puedes cerrar esta pestaña y volver a la cotización.</p></main></body></html>")
-    return HTMLResponse(cuerpo, status_code=estado, headers={
-        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
-
-
-AJENO = ("No encontramos ese vuelo", "Puede que el enlace esté incompleto o que no tengas acceso a esa cotización.")
-OTRO_SITIO = ("Enlace no válido", "Abre la página del vendedor desde la plataforma.")
-
-
-def _pagina_envio(destino: dict) -> HTMLResponse:
-    """Página mínima que envía el pedido de un solo uso del vendedor a Google, que redirige a su página oficial."""
-    nonce = secrets.token_urlsafe(16)
-    vendedor = html.escape(destino["vendedor"])
-    campos = "".join(f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in destino["campos"])
-    cuerpo = (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">'
-              f"<title>Abriendo la página de {vendedor}…</title></head><body>"
-              f'<form id="envio" method="post" action="{html.escape(destino["url"])}">{campos}'
-              f'<p>Abriendo la página oficial de {vendedor}… <button type="submit">Continuar</button></p></form>'
-              f'<script nonce="{nonce}">document.getElementById("envio").submit();</script></body></html>')
-    # `form-action https:`: Chrome aplica la directiva también a las redirecciones que siguen al envío, y Google
-    # redirige a la aerolínea (otro dominio). El destino del envío ya pasó la lista blanca del servidor (solo
-    # https://www.google.com/travel/clk…) y el único script es el de esta página, con nonce.
-    return HTMLResponse(cuerpo, headers={
-        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": f"default-src 'none'; script-src 'nonce-{nonce}'; form-action https:; "
-                                   "base-uri 'none'; frame-ancestors 'none'"})
-
-
 @router.get("/cotizaciones/{id}/vuelos/{vuelo_id}/vendedor", response_class=HTMLResponse, responses={
     **errores_cotizacion(401, 403, 404, 422),
     200: {"description": "Página mínima que envía el pedido del vendedor a Google (redirige a su página oficial)",
@@ -283,15 +193,14 @@ def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1
     El pedido de un solo uso (`booking_request`) solo viaja en esta respuesta: no se guarda en ninguna parte. Sin clave
     del buscador, sin opciones de reserva o con el tope del día (`enlace_vendedor_persona_dia`), 303 a Google Flights.
     Una navegación desde otro sitio (`Sec-Fetch-Site: cross-site`) recibe 403: no gasta el cupo de nadie."""
-    if request.headers.get("sec-fetch-site", "none") not in SITIOS_PERMITIDOS:
-        return pagina_aviso(403, *OTRO_SITIO)
-    if not acceso.puede_ver(yo, _fila(id)) or \
-            not db.uno("select id from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=vuelo_id, s=id):
-        return pagina_aviso(404, *AJENO)
-    if not token_valido(t, _sesion(request), id, vuelo_id):
+    if request.headers.get("sec-fetch-site", "none") not in comun.SITIOS_PERMITIDOS:
+        return comun.pagina_aviso(403, *comun.OTRO_SITIO)
+    vuelo = cotizacion.vuelo_de(id, vuelo_id)
+    if not acceso.puede_ver(yo, _fila(id)) or vuelo is None:
+        return comun.pagina_aviso(404, *comun.AJENO)
+    if not enlaces.token_valido(t, comun.sesion(request), id, vuelo_id):
         # sin el token de esta sesión (enlace viejo, copiado o armado en otro sitio): Google Flights, sin buscar nada
-        sol = db.uno("select * from solicitudes where id=:i", i=id)
-        vuelo = db.de_json(db.uno("select datos from opciones where id=:o", o=vuelo_id)["datos"], {}) or {}
+        sol = cotizacion.solicitud(id)
         eventos.registrar("solicitud", id, "página oficial abierta", f"opción {vuelo_id}: enlace sin token válido · Google Flights",
                           f"api v1 · {yo['nombre']}")
         destino = cotizacion.fuente_vuelo(sol, vuelo)
@@ -300,7 +209,7 @@ def vendedor(request: Request, id: int = IdCotizacion, vuelo_id: int = Path(ge=1
     destino = cotizacion.enlace_vendedor(yo, id, vuelo_id)
     if destino["tipo"] == "google":
         return RedirectResponse(destino["url"], status_code=303, headers={"Cache-Control": "no-store"})
-    return _pagina_envio(destino)
+    return comun.pagina_envio(destino)
 
 
 # ---------- decidir ----------
@@ -326,7 +235,7 @@ def decidir(datos: NuevaDecision, request: Request, id: int = IdCotizacion, yo: 
         raise ErrorApi(409, "DECISION_LOCKED", str(e)) from e
     except cotizacion.DecisionInvalida as e:
         raise _invalido(e.campo, str(e)) from e
-    return _cotizacion(yo, id, _sesion(request))
+    return _cotizacion(yo, id, comun.sesion(request))
 
 
 # ---------- forma del contrato ----------
@@ -361,7 +270,7 @@ def _vuelo(o: dict, c: dict, sesion: str = "") -> dict:
             "mas_barata": bool(c["mas_barato"]) and c["mas_barato"]["id"] == o["id"], "origen_dato": o["origen_dato"],
             "esperado_usd": consultas.dinero(o.get("esperado")), "frente_esperado_pct": o.get("frente_esperado"),
             "total_con_hotel_usd": consultas.dinero(o.get("total_con_hotel")), "fuente_url": cotizacion.fuente_vuelo(c["sol"], v),
-            "vendedor_url": url_vendedor(sesion, c["sol"]["id"], o["id"])}
+            "vendedor_url": enlaces.url_vendedor(sesion, c["sol"]["id"], o["id"])}
 
 
 def _tipo_linea_hotel(concepto: str) -> str:
@@ -383,11 +292,6 @@ def _hotel(o: dict) -> dict:
 def _lado_salida(sol: dict, nombre: str) -> dict:
     return {"codigo": sol[nombre], "aeropuertos": cotizacion.codigos(sol, nombre),
             "lugar": cotizacion.lugar(sol[f"{nombre}_lugar"])}
-
-
-def _origen_vuelos(sid: int) -> str | None:
-    fila = db.uno("select origen from consultas_buscador where solicitud_id=:i and tipo='vuelos' order by id desc limit 1", i=sid)
-    return fila["origen"] if fila else None
 
 
 def _compra(viaje: dict | None) -> dict | None:
@@ -412,7 +316,7 @@ def _cotizacion(yo: dict, sid: int, sesion: str = "") -> dict:
         "baterias_n": sol["baterias_n"] or 0, "baterias_wh": sol["baterias_wh"] or 0, "maleta": bool(sol["maleta"]),
         "prob_cambio_pct": round((sol["prob_cambio"] or 0) * 100), "carro_usd": consultas.dinero(c["carro"]),
         "equipo": {"nivel": c["baterias"]["nivel"], "texto": c["baterias"]["texto"]},
-        "origen_dato": _origen_vuelos(sid), "aviso": c["aviso"], "fallos": [f["detalle"] for f in c["fallos"]],
+        "origen_dato": cotizacion.origen_de_los_vuelos(sid), "aviso": c["aviso"], "fallos": [f["detalle"] for f in c["fallos"]],
         "recomendacion": agente.recomendar(c, solo_determinista=True)["texto"],
         "vuelos": [_vuelo(o, c, sesion) for o in c["vuelos"]], "descartados": [_vuelo(o, c, sesion) for o in c["descartados"]],
         "hoteles": [_hotel(o) for o in c["hoteles"]], "hoteles_descartados": [_hotel(o) for o in c["hoteles_descartados"]],

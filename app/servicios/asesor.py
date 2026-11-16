@@ -24,16 +24,13 @@ import json
 import re
 import time
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
-from sqlalchemy import text
 
 from .. import config, db, validar_config
-from . import acceso, agente, asistente, costo, justificaciones, viajes
+from . import acceso, agente, asistente, costo, justificaciones, tiempo, viajes
 
 # Toda la sesión, medido con el reloj (los tiempos de espera de httpx son por fragmento). Cabe, con el cierre, dentro del
 # presupuesto de la pregunta (asistente.PRESUPUESTO_S), que a su vez cabe en la espera de CloudFront: lo comprueba
@@ -58,18 +55,9 @@ BLOQUEO_GASTO = 7_341_002   # bloqueo de PostgreSQL que pone en fila las reserva
 # Herramientas que ejecuta el propio servicio (consola, archivos, web, MCP): la plataforma no las permite
 AJENAS = ("agent.tool_use", "agent.mcp_tool_use", "agent.tool_result", "agent.mcp_tool_result")
 
-try:
-    ZONA_EMPRESA = ZoneInfo("America/Bogota")
-except ZoneInfoNotFoundError:   # sin base de zonas en el sistema: Bogotá no cambia de hora (UTC-5 todo el año)
-    ZONA_EMPRESA = timezone(timedelta(hours=-5), "America/Bogota")
-
 # Las pruebas sustituyen el transporte (un httpx.MockTransport), el reloj, la espera y la hora
 TRANSPORTE: httpx.BaseTransport | None = None
 _reloj, _dormir = time.monotonic, time.sleep
-
-
-def _ahora_utc() -> datetime:
-    return datetime.now(UTC)
 
 def lista_categorias() -> str:
     """Las categorías de gasto, de `config.CATEGORIAS`: una nueva llega a las instrucciones sin tocar el texto."""
@@ -367,18 +355,7 @@ def _nombre_agente() -> str:
     return f"agente {config.ASESOR_AGENTE_ID}" + (f" · versión {v}" if v else "")
 
 
-# ---------- día de la empresa, costo y tope ----------
-def hoy_empresa() -> str:
-    """Fecha de hoy en la zona de la empresa (Bogotá), no en UTC: a las 22:00 de Bogotá en UTC ya es mañana."""
-    return _ahora_utc().astimezone(ZONA_EMPRESA).date().isoformat()
-
-
-def inicio_del_dia() -> str:
-    """Comienzo del día de la empresa expresado en UTC, como se guardan los momentos en la base."""
-    local = _ahora_utc().astimezone(ZONA_EMPRESA).replace(hour=0, minute=0, second=0, microsecond=0)
-    return local.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
-
-
+# ---------- costo y tope (el día es el de la empresa: `tiempo.inicio_del_dia`) ----------
 def costo_usd(lista) -> Decimal | None:
     """Costo a precio de lista que informa el servicio: centavos de USD en una cadena («4» = 0,04 USD).
 
@@ -400,7 +377,7 @@ def gasto_hoy(colaboradores: bool = False) -> Decimal:
     total = Decimal(0)
     de_quien = " and entidad_id in (select id from usuarios where rol<>'admin')" if colaboradores else ""
     for f in db.todos("select costo_usd from llamadas_modelo where uso='asesor' and momento>=:d and costo_usd is not null"
-                      + de_quien, d=inicio_del_dia()):
+                      + de_quien, d=tiempo.inicio_del_dia()):
         with contextlib.suppress(InvalidOperation):
             total += Decimal(str(f["costo_usd"]))
     return total
@@ -435,9 +412,8 @@ def _reservar_gasto(usuario: dict) -> int:
     """Reserva el costo estimado de una sesión antes de abrirla, en fila con las demás reservas: varias sesiones
     simultáneas no pasan juntas el tope. Fuera de administración vale además el cupo de colaboradores, así
     administración conserva el suyo. Devuelve la fila de `llamadas_modelo` que se completa al cerrar."""
-    with db.transaccion() as c:
-        if not config.ES_SQLITE:   # en SQLite la transacción ya toma el cerrojo de escritura
-            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": BLOQUEO_GASTO})
+    with db.transaccion():
+        db.cerrojo(BLOQUEO_GASTO)
         gastado, tope = gasto_hoy(), tope_usd_dia()
         if gastado >= tope:
             raise ErrorAsesor(f"se alcanzó el tope de gasto del día ({gastado:.2f} de {tope:.2f} USD, supuesto asesor_usd_dia)", tope=True)
@@ -494,8 +470,8 @@ def _de_cotizacion(funcion):
         sid = _solicitud(cotizacion, usuario)
         if isinstance(sid, dict):
             return sid
-        from ..rutas.cotizaciones import _comparacion  # aquí y no arriba: las rutas importan los servicios
-        c = _comparacion(sid)
+        from . import cotizacion  # aquí: la cotización usa el agente, que este módulo también usa
+        c = cotizacion.comparacion(sid)
         if not c:
             return {"error": f"No existe la cotización #{sid}."}
         r.cotizacion(sid)
@@ -813,7 +789,7 @@ def preguntar(pregunta: str, r: asistente.Rastro, usuario: dict, *, conservar: b
             "title": f"Asistente de administración · {db.ahora()[:16]}",
             "metadata": {"marca": uuid.uuid4().hex},   # para ubicar la sesión si la respuesta de su creación no llega
             "initial_events": [{"type": "user.message", "content": [{"type": "text", "text":
-                f"Fecha de hoy: {hoy_empresa()}.\nTe escribe {r.para(usuario).alcance.quien()}\n\n"
+                f"Fecha de hoy: {tiempo.hoy().isoformat()}.\nTe escribe {r.para(usuario).alcance.quien()}\n\n"
                 + (f"{contexto}\n\n" if contexto else "") + pregunta}]}],
         }
         with _cliente() as cli:

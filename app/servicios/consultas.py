@@ -137,3 +137,35 @@ def contenido_documento(u: dict, documento_id: int) -> tuple[bytes, str] | None:
     if contenido is None:
         return None
     return contenido, d["mime"] if d["mime"] in TIPOS_EN_LINEA else "text/plain; charset=utf-8"
+
+
+# ---------- lo que la web necesita para no ofrecer botones que la API rechazaría ----------
+def marcar_viajes(items: list[dict], yo: dict) -> list[dict]:
+    """Añade lo que la web necesita para decidir: si el viaje es de quien mira y si su precio espera confirmación."""
+    if not items:
+        return items
+    admin = acceso.es_admin(yo)
+    filas = {f["id"]: f for f in db.todos(
+        f"select id, usuario_id, viajero_id from viajes where id in ({','.join(str(int(v['id'])) for v in items)})")}
+    for v in items:
+        v["propio"] = viajes.es_propio_de(filas.get(v["id"]), yo)
+        # Solo lo usa quien aprueba: a los demás no se les consulta la bitácora por cada viaje
+        v["precio_por_confirmar"] = (viajes.precio_por_confirmar(v["id"])
+                                     if admin and v["estado"] == "pendiente_aprobacion" else None)
+    return items
+
+
+def marcar_gastos_propios(items: list[dict], yo: dict) -> list[dict]:
+    """Añade de quién es cada gasto para quien mira: `propio` (nadie revisa lo suyo, la misma regla que la revisión)
+    y `puede_justificar` (solo quien lo hizo o quien viaja)."""
+    if not items:
+        return items
+    ids = ",".join(str(int(g["id"])) for g in items)
+    filas = {f["id"]: f for f in db.todos(
+        "select g.id, g.usuario_id, g.viajero_id, g.viaje_id, g.categoria, exists(select 1 from compras c where "  # noqa: S608
+        f"c.gasto_id=g.id and c.comprada_por=:yo) compra_propia from gastos g where g.id in ({ids})", yo=yo["id"])}
+    for g in items:
+        fila = filas.get(g["id"])
+        g["propio"] = viajes.gasto_propio_de(fila, yo)
+        g["puede_justificar"] = justificaciones.puede_justificar(yo, fila)
+    return items

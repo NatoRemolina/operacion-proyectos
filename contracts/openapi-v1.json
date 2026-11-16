@@ -935,7 +935,7 @@
           "auth"
         ],
         "summary": "Login",
-        "description": "Pública: no lleva token CSRF. El rol y la persona salen de la cuenta, nunca del cuerpo.",
+        "description": "Pública: no lleva token CSRF. El rol y la persona salen de la cuenta, nunca del cuerpo.\nCon demasiados fallos recientes desde la dirección o con el correo, 429 antes de mirar la contraseña.",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -2596,10 +2596,10 @@
                   "type": "null"
                 }
               ],
-              "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el 1 de enero del año en curso (hora de Nueva York).",
+              "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el 1 de enero del año en curso (zona de la empresa, America/Bogota).",
               "title": "Desde"
             },
-            "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el 1 de enero del año en curso (hora de Nueva York)."
+            "description": "AAAA-MM-DD, por la fecha del recibo. Por omisión, el 1 de enero del año en curso (zona de la empresa, America/Bogota)."
           },
           {
             "name": "hasta",
@@ -2614,10 +2614,10 @@
                   "type": "null"
                 }
               ],
-              "description": "AAAA-MM-DD, incluido. Por omisión, el 31 de diciembre del año en curso (hora de Nueva York).",
+              "description": "AAAA-MM-DD, incluido. Por omisión, el 31 de diciembre del año en curso (zona de la empresa, America/Bogota).",
               "title": "Hasta"
             },
-            "description": "AAAA-MM-DD, incluido. Por omisión, el 31 de diciembre del año en curso (hora de Nueva York)."
+            "description": "AAAA-MM-DD, incluido. Por omisión, el 31 de diciembre del año en curso (zona de la empresa, America/Bogota)."
           },
           {
             "name": "proyecto_id",
@@ -6822,6 +6822,18 @@
               }
             ],
             "description": "Solo con la compra registrada."
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Lo que administración debe mirar: el tiquete ya está comprado y el viaje se reabrió o se rechazó."
           }
         },
         "type": "object",
@@ -7052,6 +7064,18 @@
             ],
             "description": "Solo con la compra registrada."
           },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Lo que administración debe mirar: el tiquete ya está comprado y el viaje se reabrió o se rechazó."
+          },
           "vuelo": {
             "anyOf": [
               {
@@ -7141,7 +7165,9 @@
               "usuarios",
               "proyectos",
               "proyecto",
-              "mi_cuenta"
+              "mi_cuenta",
+              "compras",
+              "compra"
             ],
             "title": "Pantalla"
           },
@@ -7157,7 +7183,7 @@
               }
             ],
             "title": "Id",
-            "description": "Id del gasto, viaje, cotización, persona o proyecto."
+            "description": "Id del gasto, viaje, cotización, persona, proyecto o compra."
           }
         },
         "additionalProperties": false,
@@ -9024,7 +9050,7 @@
                 "type": "null"
               }
             ],
-            "description": "Frente a lo pagado, cuando hay compras registradas."
+            "description": "Lo pagado frente a lo cotizado al decidir, con las compras compradas y activas; vacío si no hay."
           }
         },
         "type": "object",
@@ -12037,7 +12063,7 @@
           "desde": {
             "type": "string",
             "title": "Desde",
-            "description": "1 de enero del año en curso (hora de Nueva York): el periodo que propone el Excel contable."
+            "description": "1 de enero del año en curso (zona de la empresa, America/Bogota): el periodo que propone el Excel contable."
           },
           "hasta": {
             "type": "string",
@@ -12233,6 +12259,15 @@
             ],
             "description": "La pantalla desde la que se pregunta."
           },
+          "anteriores": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Anteriores",
+            "description": "Los `id` de las respuestas anteriores de esta conversación (como mucho 3, de la más vieja a la más nueva). Las preguntas y respuestas se leen del servidor."
+          },
           "historial": {
             "items": {
               "$ref": "#/components/schemas/TurnoAsistente"
@@ -12240,7 +12275,7 @@
             "type": "array",
             "maxItems": 3,
             "title": "Historial",
-            "description": "Las últimas preguntas y respuestas (como mucho 3), para seguir la conversación."
+            "description": "Para clientes que aún no mandan `anteriores`: solo se usa si no hay conversación guardada con esos ids (como mucho 3 turnos, recortados). Con `anteriores` válidos se ignora."
           }
         },
         "additionalProperties": false,
@@ -12824,6 +12859,18 @@
       },
       "RespuestaAsistente": {
         "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "El id de esta respuesta: se manda en `anteriores` para seguir la conversación. Vacío con el tope del día."
+          },
           "texto": {
             "type": "string",
             "title": "Texto"

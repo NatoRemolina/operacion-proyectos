@@ -8,7 +8,6 @@ from functools import lru_cache
 from statistics import mean
 
 import numpy as np
-from sqlalchemy import inspect
 
 from .. import config, db
 
@@ -102,20 +101,19 @@ def _errores(pares: list[tuple[float, float]]) -> dict:
             "mape": round(mean(abs(r - e) / r for r, e in pares) * 100, 1)}
 
 
-def _pagados() -> dict[int, float]:
-    """Precio pagado por viaje, si ya existe la tabla de compras (la crea el frente de compras)."""
-    if not inspect(db.motor).has_table("compras"):
-        return {}
-    columnas = {c["name"] for c in inspect(db.motor).get_columns("compras")}
-    if not {"viaje_id", "precio_pagado"} <= columnas:
-        return {}
-    return {r["viaje_id"]: float(r["precio_pagado"])
-            for r in db.todos("select viaje_id, precio_pagado from compras where precio_pagado is not null and viaje_id is not null")}
+def _pagados() -> dict[int, tuple[float, float]]:
+    """(pagado, cotizado) por viaje: solo la compra activa y comprada, con los dos precios. Una cancelada, una inactiva
+    (la reemplazó otra al reabrir) o una que aún no se compra no dicen nada de lo pagado."""
+    return {r["viaje_id"]: (float(r["precio_pagado"]), float(r["precio_cotizado"]))
+            for r in db.todos("""select viaje_id, precio_pagado, precio_cotizado from compras where estado='comprada' and activa=1
+                                 and precio_pagado is not null and precio_cotizado is not null and viaje_id is not null""")}
 
 
 def exactitud(f: dict | None = None) -> dict:
-    """MAE y MAPE del precio esperado frente al precio del buscador al decidir (cada vuelo mostrado) y, si hay compras,
-    frente a lo pagado (el vuelo elegido). En total, por ruta y por mes. Filtros: proyecto, desde y hasta."""
+    """MAE y MAPE del precio esperado frente al precio del buscador al decidir (cada vuelo mostrado), en total, por ruta y
+    por mes; y, si hay compras, lo pagado frente a lo cotizado al decidir (la tarifa del vuelo elegido, la misma del
+    presupuesto: el precio esperado se calcula sobre otro precio y no se compara con lo pagado). Filtros: proyecto, desde
+    y hasta."""
     f = f or {}
     cond, par = ["e.tipo='vuelo'", "e.precio is not null"], {}
     if f.get("proyecto_id"):
@@ -130,6 +128,8 @@ def exactitud(f: dict | None = None) -> dict:
     pagados = _pagados()
     pares, por_ruta, por_mes, contra_pagado = [], {}, {}, []
     for r in filas:
+        if r["elegida"] and r["viaje_id"] in pagados:   # no depende del precio esperado
+            contra_pagado.append(pagados[r["viaje_id"]])
         esperado = _esperado(r["precio"], db.de_json(r["rasgos"], {}) or {})
         if not esperado:
             continue
@@ -137,8 +137,6 @@ def exactitud(f: dict | None = None) -> dict:
         pares.append(par_)
         por_ruta.setdefault(f"{r['origen']} → {r['destino']}", []).append(par_)
         por_mes.setdefault((r["creado"] or "")[:7], []).append(par_)
-        if r["elegida"] and r["viaje_id"] in pagados:
-            contra_pagado.append((pagados[r["viaje_id"]], esperado))
     return {**_errores(pares), "mensaje": None if pares else SIN_DATOS,
             "por_ruta": sorted(({"ruta": k, **_errores(v)} for k, v in por_ruta.items()), key=lambda x: (-x["filas"], x["ruta"])),
             "por_mes": [{"mes": k, **_errores(v)} for k, v in sorted(por_mes.items())],

@@ -8,15 +8,13 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, solo_admin
+from ..api_v1.comun import FILTRO_DESDE, FILTRO_HASTA, FILTRO_PROYECTO
 from ..api_v1.esquemas import errores
 from ..api_v1.esquemas_kpis import FichaPersona, TableroKpis
 from ..servicios import eventos, kpis, tablero, viajes
 
 router = APIRouter(prefix=PREFIJO + "/kpis", tags=["kpis"])
 
-FILTRO_PROYECTO = Query(0, ge=0, description="0 o ausente: todos los proyectos.")
-FILTRO_DESDE = Query("", max_length=40, description="AAAA-MM-DD. Una fecha no válida se ignora.")
-FILTRO_HASTA = Query("", max_length=40, description="AAAA-MM-DD. Una fecha no válida se ignora.")
 
 
 def pares(filas) -> list[dict]:

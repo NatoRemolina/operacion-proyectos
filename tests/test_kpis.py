@@ -28,7 +28,7 @@ def _gasto(viaje, usuario, estado, total, categoria, fecha, creado, moneda="USD"
 def caso(cliente):
     """Dos personas con una cotización, una decisión, un viaje aprobado y gastos cada una. Cifras calculables a mano."""
     if not db.uno("select id from proyectos where id=:i", i=PROYECTO):
-        db.insertar("proyectos", id=PROYECTO, nombre="Proyecto de indicadores", moneda="USD")
+        db.insertar("proyectos", id=PROYECTO, nombre="Proyecto Kappa Ochenta", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
     admin = _id_admin()
     a = acceso.crear_usuario("kpi-a@demo.local", "Persona A de indicadores", "colaborador", "clave-de-prueba-a")
     b = acceso.crear_usuario("kpi-b@demo.local", "Persona B de indicadores", "colaborador", "clave-de-prueba-b")
@@ -150,7 +150,8 @@ def test_kpis_de_gastos(caso):
     assert [(m["moneda"], m["gastos"], m["total"], m["total_usd"]) for m in g["por_moneda"]] == [("USD", 2, 700, 700), ("EUR", 1, 150, 162)]
     assert [x["id"] for x in g["revision_antiguas"]] == [caso["g"][3]]
     v = metricas.viajes({"proyecto_id": PROYECTO})
-    assert v["por_proyecto"] == [{"proyecto": "Proyecto de indicadores", "presupuesto": 1100, "gastado": 862, "pct": 78}]
+    nombre = db.uno("select nombre from proyectos where id=:i", i=PROYECTO)["nombre"]   # otras pruebas editan nombres
+    assert v["por_proyecto"] == [{"proyecto": nombre, "presupuesto": 1100, "gastado": 862, "pct": 78}]
     assert {c["grupo"]: (c["presupuesto"], c["gastado"]) for c in v["por_categoria"]} == {
         "Vuelo y equipaje": (600, 500), "Hotel": (100, 162), "Viáticos (comida, combustible, peajes, otros)": (400, 200)}
 
@@ -254,7 +255,7 @@ def test_tablero_api_csv_y_acceso(caso, cliente, piloto, gestor):
 def test_gasto_y_viajes_por_cargo(cliente):
     proyecto = 914   # proyecto propio: las cifras no se mezclan con las de otras pruebas
     if not db.uno("select id from proyectos where id=:i", i=proyecto):
-        db.insertar("proyectos", id=proyecto, nombre="Proyecto de cargos", moneda="USD")
+        db.insertar("proyectos", id=proyecto, nombre="Proyecto de cargos", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
     cargo = {c["nombre"]: c["id"] for c in acceso.cargos()}
     piloto = acceso.crear_usuario("cargo-p@demo.local", "Piloto de cargos", "colaborador", "clave-de-prueba-p", cargo_id=cargo["Pilotaje de dron"])
     editor = acceso.crear_usuario("cargo-e@demo.local", "Editora de cargos", "colaborador", "clave-de-prueba-e", cargo_id=cargo["Edición de video"])

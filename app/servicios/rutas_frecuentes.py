@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from statistics import median, quantiles
 
 from .. import db
-from . import ofertas
+from . import ofertas, tiempo
 
 TRAMOS = (("0-7", 0, 7), ("8-21", 8, 21), ("22-45", 22, 45), ("46+", 46, None))
 DIAS = 90
@@ -146,7 +146,7 @@ def detalle(origen: str, destino: str, tarifas: list[dict] | None = None) -> dic
 
 def top(n: int = 10, dias: int = DIAS, hoy: date | None = None) -> list[dict]:
     """Las `n` rutas con más cotizaciones y viajes en los últimos `dias`, con sus cifras de precio."""
-    desde = ((hoy or date.today()) - timedelta(days=dias)).isoformat()
+    desde = ((hoy or tiempo.hoy()) - timedelta(days=dias)).isoformat()
     cuentas = sorted(_cuentas(desde).items(), key=lambda x: (-(x[1]["cotizaciones"] + x[1]["viajes"]), x[0]))[:n]
     todas, _ = ofertas.limpias()
     salida = []

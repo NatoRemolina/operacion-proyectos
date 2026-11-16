@@ -5,11 +5,12 @@ persona -> cotización -> decisión -> VIAJE (presupuesto, estado) -> gastos y e
 """
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
-from . import acceso, costo, eventos
+from . import acceso, costo, dinero, eventos, tiempo
 
 ESTADOS = {"pendiente_aprobacion": "Pendiente de aprobación", "aprobado": "Aprobado", "rechazado": "Rechazado", "cerrado": "Cerrado"}
 APROBADOS = ("aprobado", "aprobado_auto")
@@ -71,7 +72,8 @@ def lista(donde: str = "1=1", **parametros) -> list[dict]:
 
 
 def en_curso(v: dict, hoy: date | None = None) -> bool:
-    hoy = hoy or date.today()
+    """Aprobado y dentro de sus fechas (con margen), contando hoy en la zona de la empresa."""
+    hoy = hoy or tiempo.hoy()
     try:
         return v["estado"] == "aprobado" and \
             date.fromisoformat(v["ida"]) - timedelta(days=MARGEN_ANTES) <= hoy <= date.fromisoformat(v["regreso"]) + timedelta(days=MARGEN_DESPUES)
@@ -217,11 +219,39 @@ def _reconfirmar_precio(v: dict, quien: dict, confirmado: bool) -> tuple[bool, s
     return True, f" El precio cambió: {texto}."
 
 
+def _lineas_y_tiquete(v: dict) -> tuple[list[dict], dict | None]:
+    """Las líneas del presupuesto del viaje y la del precio del tiquete, si la hay."""
+    lineas = db.de_json(v.get("presupuesto_detalle"), []) if isinstance(v.get("presupuesto_detalle"), str) else v.get("presupuesto_detalle") or []
+    return lineas, next((l for l in lineas if l.get("grupo") == "vuelo" and l["concepto"].startswith("Precio")), None)
+
+
+LO_PAGADO = " · lo pagado al comprar el tiquete"
+
+
+def _presupuesto_con_lo_pagado(v: dict, compra: dict, quien: dict) -> str:
+    """Con el tiquete ya comprado, el precio no se reconfirma (no se paga otra búsqueda): la línea del tiquete pasa a lo
+    pagado y el presupuesto se recalcula. Devuelve el texto para el mensaje."""
+    pagado = dinero.decimal(compra["precio_pagado"])   # se calcula con Decimal; a coma flotante solo al guardar
+    lineas, linea = _lineas_y_tiquete(v)
+    texto = f" El tiquete ya está comprado: el presupuesto usa lo pagado ({pagado:.2f} USD) y no se consultó el buscador."
+    if not linea:
+        return texto
+    antes = linea["valor"]
+    linea["valor"] = float(pagado)
+    linea["concepto"] = linea["concepto"].split(LO_PAGADO)[0] + LO_PAGADO
+    total = dinero.decimal(sum((Decimal(str(l["valor"])) for l in lineas), Decimal(0)))
+    db.actualizar("viajes", v["id"], presupuesto_usd=float(total), presupuesto_detalle=lineas)
+    eventos.registrar("viaje", v["id"], "presupuesto con lo pagado del tiquete",
+                      f"{v['codigo']} · tiquete {antes:.2f} → {pagado:.2f} USD · presupuesto {v['presupuesto_usd']:.2f} → {total:.2f} USD",
+                      quien["nombre"])
+    v["presupuesto_usd"] = float(total)
+    return texto
+
+
 def _ajustar_presupuesto(v: dict, cambio: str, quien: dict) -> str:
     """Al confirmar un precio nuevo, el presupuesto del viaje pasa a ese precio (la línea del tiquete) y queda el evento."""
     precios_ = re.findall(r"(?:antes|ahora) ([\d.]+) USD", cambio)
-    lineas = db.de_json(v.get("presupuesto_detalle"), []) if isinstance(v.get("presupuesto_detalle"), str) else v.get("presupuesto_detalle") or []
-    linea = next((l for l in lineas if l.get("grupo") == "vuelo" and l["concepto"].startswith("Precio")), None)
+    lineas, linea = _lineas_y_tiquete(v)
     if len(precios_) != 2 or not linea:
         return ""
     antes, ahora = float(precios_[0]), float(precios_[1])
@@ -254,14 +284,25 @@ def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict, confirm
     motivo = (motivo or "").strip()[:300]
     if accion == "rechazar" and len(motivo) < 5:
         return False, "Para rechazar un presupuesto hay que escribir el motivo."
+    from . import compras  # aquí: compras usa este servicio
     aprobado, aviso_precio = hacia == "aprobado", ""
     if aprobado:
-        se_puede, aviso_precio = _reconfirmar_precio(v, quien, confirmar_precio)
-        if not se_puede:
-            return False, aviso_precio
-    db.actualizar("viajes", viaje_id, estado=hacia, motivo=motivo or None,
-                  aprobado_por=quien["id"] if aprobado else None, aprobado_en=db.ahora() if aprobado else None)
-    eventos.registrar("viaje", viaje_id, paso, f"{v['codigo']}" + (f" · {motivo}" if motivo else ""), quien["nombre"])
+        compra = compras.de_viaje(viaje_id)
+        if compra and compra["estado"] == "comprada" and compra["precio_pagado"] is not None:
+            aviso_precio = _presupuesto_con_lo_pagado(v, compra, quien)
+        else:
+            se_puede, aviso_precio = _reconfirmar_precio(v, quien, confirmar_precio)
+            if not se_puede:
+                return False, aviso_precio
+            if compra and compra["estado"] == "se_comprara":
+                aviso_precio += (" La compra del tiquete está «Se va a comprar»: revisa que el precio siga igual antes "
+                                 "de comprarlo.")
+    # El viaje y su compra cambian juntos: «Se va a comprar» no queda con un viaje que ya no está aprobado
+    with db.transaccion():
+        db.actualizar("viajes", viaje_id, estado=hacia, motivo=motivo or None,
+                      aprobado_por=quien["id"] if aprobado else None, aprobado_en=db.ahora() if aprobado else None)
+        eventos.registrar("viaje", viaje_id, paso, f"{v['codigo']}" + (f" · {motivo}" if motivo else ""), quien["nombre"])
+        compras.al_cambiar_el_viaje(viaje_id, hacia, paso, quien)
     from . import telegram  # el titular se entera por su chat, si lo tiene vinculado
     telegram.avisar(v["usuario_id"], f"Viaje {v['codigo']} ({v['origen']} → {v['destino']}, {v['ida']}): {paso}."
                     + (f"\nMotivo: {motivo}" if motivo else "")
@@ -270,6 +311,11 @@ def cambiar_estado(viaje_id: int, accion: str, motivo: str, quien: dict, confirm
 
 
 # ---------- a qué viaje pertenece un gasto ----------
+def asignables(yo: dict, donde: str) -> list[dict]:
+    """Viajes a los que se puede cargar un gasto, marcando los propios de quien mira (cargarlo ahí lo haría suyo)."""
+    return [{**v, "propio": es_propio_de(v, yo)} for v in lista(donde)]
+
+
 def de_persona(usuario: dict, estados: tuple = ("aprobado",)) -> list[dict]:
     marcas = ",".join(f"'{e}'" for e in estados if e in ESTADOS)
     return lista(f"(v.usuario_id=:u or (v.viajero_id is not null and v.viajero_id=:vj)) and v.estado in ({marcas})",
@@ -281,8 +327,9 @@ def resolver_para_gasto(usuario: dict, viaje_id: int | None = None, hoy: date | 
 
     Orden: el que la persona indica; el que fijó como activo; el aprobado que está en curso hoy;
     el próximo aprobado (los tiquetes se compran antes); y si no hay ninguno aprobado, el único pendiente.
+    «Hoy» es el de la zona de la empresa.
     """
-    hoy = hoy or date.today()
+    hoy = hoy or tiempo.hoy()
     if viaje_id:
         v = uno(viaje_id)   # cargar un gasto a un viaje es escribir en él: ver no basta
         return (v, []) if v and acceso.es_propio(usuario, v) else (None, [])
@@ -310,21 +357,32 @@ NO_AUTORREVISAR = "Nadie revisa sus propios gastos: debe hacerlo otra persona de
 
 
 def gasto_propio_de(gasto: dict | None, u: dict | None) -> bool:
-    """El gasto es de la persona: se carga a su perfil de viajero, a un viaje suyo, o lo subió sin cargarlo a nadie más.
+    """El gasto es de la persona para la revisión: lo subió ella, se carga a su perfil de viajero o a un viaje suyo.
 
-    Un recibo que administración sube a nombre de otra persona es de esa persona, no de quien lo subió.
+    Quien sube un recibo nunca lo revisa (cuatro ojos), aunque sea de administración y lo cargue a nombre de otra
+    persona o lo lea del buzón: lo revisa otra persona de administración. Tampoco revisa el gasto de un tiquete quien
+    registró su compra, aunque el recibo lo haya subido quien viaja.
     """
     if not gasto or not u:
         return False
+    if gasto.get("usuario_id") == u["id"]:
+        return True
     if u.get("viajero_id") and gasto.get("viajero_id") == u["viajero_id"]:
         return True
-    if not gasto.get("viajero_id") and gasto.get("usuario_id") == u["id"]:
+    # La compra enlaza su gasto por id: no se mira la categoría, que la revisión puede corregir.
+    # Las listas ya traen `compra_propia` y no consultan por cada gasto.
+    if "compra_propia" in gasto:
+        if gasto["compra_propia"]:
+            return True
+    elif gasto.get("id") and db.uno("select 1 from compras where gasto_id=:g and comprada_por=:u",
+                                    g=gasto["id"], u=u["id"]):
         return True
     return es_propio_de(uno(gasto.get("viaje_id")), u)
 
 
 def revision_permitida(gid: int, antes: dict, despues: dict, quien: dict, accion: str) -> str | None:
-    """Nadie revisa sus propios gastos, ni los que la revisión le asignaría a sí mismo. Devuelve el aviso si se impide."""
+    """Nadie revisa sus propios gastos (los que subió, aunque sean de otra persona), ni los que la revisión le
+    asignaría a sí mismo. Devuelve el aviso si se impide."""
     if gasto_propio_de(antes, quien) or gasto_propio_de(despues, quien):
         impedir_autoaprobacion("gasto", gid, quien, f"{accion} su propio gasto #{gid} en la revisión")
         return NO_AUTORREVISAR

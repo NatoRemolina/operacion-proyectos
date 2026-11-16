@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import Column, Integer, Text
 
 from .. import db
-from . import eventos, gastos, llm
+from . import eventos, extraccion, gastos, llm
 
 justificaciones = db._tabla(
     "justificaciones",
@@ -87,6 +87,11 @@ def transcribir(jid: int, audio: bytes | None = None) -> str:
     if not audio or not d:
         db.actualizar("justificaciones", jid, transcripcion="fallida")
         return "fallida"
+    # Transcribir se paga como una lectura: cuenta para el mismo tope. Pasado el tope, el audio queda por transcribir
+    if not extraccion.reservar_lectura({"id": j["usuario_id"]}, f"nota de voz del gasto {j['gasto_id']}"):
+        eventos.registrar("gasto", j["gasto_id"], "transcripción pendiente por tope", extraccion.PENDIENTE_POR_TOPE[:120],
+                          "reglas editables")
+        return "pendiente"
     try:
         r = llm.generar([{"role": "user", "parts": [llm.parte_archivo(audio, d["mime"]), llm.parte_texto(TRANSCRIBIR)]}],
                         uso="transcripcion", entidad_id=j["gasto_id"], tope_salida=2048)

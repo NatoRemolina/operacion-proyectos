@@ -8,22 +8,9 @@ La misma lógica para la pantalla de administración (`/reglas`) y la API v1 (`/
 """
 import math
 import re
-from datetime import UTC, datetime
 
 from .. import db
-from . import eventos
-
-try:
-    from zoneinfo import ZoneInfo
-    ZONA_EMPRESA = ZoneInfo("America/Bogota")
-except Exception:   # sin base de zonas: Bogotá no tiene horario de verano, UTC−5 todo el año
-    from datetime import timedelta, timezone
-    ZONA_EMPRESA = timezone(timedelta(hours=-5), "America/Bogota")
-
-
-def hoy_empresa(ahora: datetime | None = None) -> str:
-    """El día en la zona de la empresa (AAAA-MM-DD): después de las 19:00 de Bogotá, en UTC ya es el día siguiente."""
-    return (ahora or datetime.now(UTC)).astimezone(ZONA_EMPRESA).date().isoformat()
+from . import eventos, tiempo
 
 PREFIJO_CUENTA = "cuenta_contable_"   # el mismo de `contable.PREFIJO_CUENTA`: son supuestos con su propio grupo
 # Orden y nombre de los grupos; un ámbito que no esté aquí va al final con su propio nombre
@@ -91,6 +78,6 @@ def editar(rid: int, valor: str, quien: str) -> dict:
         if not NUMERO.fullmatch(valor):
             raise ReglaInvalida(f"«{valor[:30]}» no es un número válido para {actual['clave']}. No se guardó.")
         valor = valor.replace(",", ".")
-    db.actualizar("reglas", rid, valor=valor, verificado=hoy_empresa())
+    db.actualizar("reglas", rid, valor=valor, verificado=tiempo.hoy().isoformat())
     eventos.registrar("regla", rid, "regla editada", f"{actual['clave']}: {actual['valor']} → {valor[:80]}", quien)
     return _con_tipo(db.uno("select * from reglas where id=:i", i=rid))

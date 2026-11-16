@@ -1,11 +1,11 @@
 """Reglas que deciden si un gasto entra solo o va a revisión humana."""
 import re
 import unicodedata
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from .. import config, db
-from . import costo, dinero
+from . import costo, dinero, tiempo
 
 AGENCIAS = ("booking", "expedia", "hotels.com", "travelnow", "agoda", "priceline", "kayak", "trip.com")
 
@@ -17,6 +17,14 @@ MOTIVOS = {"importe_invalido": "Importe no válido", "fecha_invalida": "Fecha no
            "sin_puntos": "Fidelización perdida", "compra_anticipada": "Compra anticipada", "lectura_fallida": "Lectura fallida",
            "sin_viaje": "Sin viaje asignado", "viaje_no_aprobado": "Viaje sin presupuesto aprobado", "viaje_cerrado": "Viaje cerrado",
            "fuera_del_viaje": "Fecha fuera del viaje", "presupuesto_superado": "Presupuesto del viaje superado"}
+# Los que pone la compra del tiquete (`compras`), no `revisar`: siempre van a revisión
+MOTIVOS_DE_COMPRA = {"tiquete_sobre_cotizado": "Tiquete por encima de lo cotizado", "compra_cancelada": "Compra cancelada",
+                     "tiquete_importe_distinto": "Mismo localizador, otro importe"}
+
+
+def etiqueta(codigo: str) -> str:
+    """El texto en pantalla de un motivo, de las reglas o de la compra del tiquete; el código si no se conoce."""
+    return MOTIVOS.get(codigo) or MOTIVOS_DE_COMPRA.get(codigo) or codigo
 # Lo que se compra antes de salir: tiquetes, reservas y los insumos del proyecto (hélices, baterías). Un taxi o un bus
 # se pagan durante el viaje: fuera de sus fechas siguen yendo a revisión.
 SE_COMPRAN_ANTES = ("vuelo", "hotel", "alquiler_carro", "compras_proyecto")
@@ -41,7 +49,7 @@ def _normal(texto: str) -> str:
     return re.sub(r"[^a-z0-9]", "", sin_tildes.lower())
 
 
-def _mismo_comercio(a: str | None, b: str | None) -> bool:
+def mismo_comercio(a: str | None, b: str | None) -> bool:
     """Compara normalizado; si un nombre no tiene letras latinas (japonés, griego, cirílico…) la normalización lo deja
     vacío, y entonces se compara el nombre en minúsculas y sin espacios en los extremos."""
     def clave(texto: str | None) -> str:
@@ -68,7 +76,7 @@ def a_usd(total, moneda, cat: dict):
 
 def _hoy_en_algun_lugar() -> date:
     """La fecha más adelantada del planeta (UTC+14): un recibo de hoy en Asia no se toma por futuro."""
-    return (datetime.now(UTC) + timedelta(hours=14)).date()
+    return (tiempo.ahora() + timedelta(hours=14)).date()
 
 
 def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict, alertas: "_Alertas") -> bool:
@@ -106,6 +114,17 @@ def _del_viaje(g: dict, viaje: dict | None, total_usd, gasto_id: int, cat: dict,
                                                     f"sobre un presupuesto de {viaje['presupuesto_usd']:.2f} USD.")
             bloquea = True
     return bloquea
+
+
+MEDIO_CENTAVO = Decimal("0.005")
+
+
+def _centavos(valor) -> Decimal | None:
+    """Un importe guardado, redondeado a centavos; None si no es un importe."""
+    try:
+        return dinero.decimal(valor)
+    except ValueError:
+        return None
 
 
 def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: dict | None = None) -> dict:
@@ -176,12 +195,15 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
     if g.get("comercio") and g.get("fecha") and g.get("total") is not None:
         # Mismo importe en otra moneda no es el mismo gasto; dos gastos sin moneda leída sí se comparan entre sí
         misma_moneda = "moneda=:m" if g.get("moneda") else "moneda is null"
-        # El comercio se compara normalizado en Python: `lower()` de la base no quita tildes
+        # El importe se compara a centavos: la columna es de coma flotante y 0,1 + 0,2 no es 0,3. La base acota con medio
+        # centavo de banda y la igualdad se decide con Decimal. El comercio se compara normalizado en Python: `lower()`
+        # de la base no quita tildes
+        total = dinero.decimal(g["total"])
         mismos = db.todos(
-            f"""select id, comercio from gastos where fecha=:f and total=:t and {misma_moneda}
+            f"""select id, comercio, total from gastos where fecha=:f and total between :desde and :hasta and {misma_moneda}
                 and id<>:i and estado<>'rechazado' order by id""",
-            f=g["fecha"], t=g["total"], m=g.get("moneda"), i=gasto_id or 0)
-        repetido = next((c for c in mismos if _mismo_comercio(c["comercio"], g["comercio"])), None)
+            f=g["fecha"], desde=float(total - MEDIO_CENTAVO), hasta=float(total + MEDIO_CENTAVO), m=g.get("moneda"), i=gasto_id or 0)
+        repetido = next((c for c in mismos if mismo_comercio(c["comercio"], g["comercio"]) and _centavos(c["total"]) == total), None)
         if repetido:
             alertas.agregar("duplicado", f"Posible duplicado del gasto #{repetido['id']}.")
             bloquea = True
@@ -193,8 +215,8 @@ def revisar(g: dict, proyecto: dict | None, gasto_id: int | None = None, viaje: 
                                      and estado<>'rechazado' and total is not null and {misma_moneda}""",
                                  a=(dia - timedelta(days=1)).isoformat(), b=(dia + timedelta(days=1)).isoformat(),
                                  m=g.get("moneda"), i=gasto_id or 0)
-                parecido = next((c for c in cerca if _mismo_comercio(c["comercio"], g["comercio"])
-                                 and abs(c["total"] - g["total"]) <= 0.01 * max(abs(g["total"]), 1)), None)
+                parecido = next((c for c in cerca if mismo_comercio(c["comercio"], g["comercio"]) and _centavos(c["total"]) is not None
+                                 and abs(_centavos(c["total"]) - total) <= Decimal("0.01") * max(abs(total), 1)), None)
                 if parecido:
                     alertas.agregar("duplicado_aproximado", f"Muy parecido al gasto #{parecido['id']} (mismo comercio, fecha cercana, importe casi igual).")
                     bloquea = True

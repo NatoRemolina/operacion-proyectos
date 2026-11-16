@@ -1,5 +1,24 @@
 """Preparador de la demostración del monitoreo: solo en local, idempotente y sin consultas en vivo."""
+import pytest
+
 from app import config, db
+
+
+@pytest.fixture(autouse=True)
+def _sin_demostracion():
+    """Cada prueba empieza sin el viaje de la demostración ni otro de la colaboradora ese día: el orden no importa."""
+    from datos import demo_monitoreo
+    laura = db.uno("select id from usuarios where correo='piloto2@demo.local'")
+    viajes = [f["id"] for f in db.todos("select id from viajes where usuario_id=:u and ida=:ida", u=laura["id"], ida=demo_monitoreo.IDA)]
+    for vid in viajes:
+        sid = db.uno("select solicitud_id from viajes where id=:v", v=vid)["solicitud_id"]
+        db.ejecutar("delete from tramos_vuelo where viaje_id=:v", v=vid)
+        db.ejecutar("update gastos set viaje_id=null where viaje_id=:v", v=vid)
+        db.ejecutar("delete from eventos where entidad='viaje' and entidad_id=:v", v=vid)
+        db.ejecutar("delete from viajes where id=:v", v=vid)
+        if sid:
+            db.ejecutar("delete from solicitudes where id=:s", s=sid)
+    yield
 
 
 def _conteos():

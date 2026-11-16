@@ -9,7 +9,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from app import api_v1, db
-from app.servicios import acceso, analizador, compras
+from app.servicios import acceso, analizador, compras, tiempo
 
 V1 = "/api/v1"
 
@@ -115,7 +115,7 @@ def test_el_registro_guarda_el_localizador_y_lo_compara_con_el_presupuesto(pilot
     assert hecha["frente_presupuesto"]["presupuesto_usd"] and hecha["frente_presupuesto"]["diferencia_usd"]
     fila = _compra(cot)
     assert fila["localizador"] == "QX7Z2P" and fila["comprada_por"]
-    assert fila["anticipacion_dias"] == (date(2026, 12, 8) - date.fromisoformat(fila["comprada"][:10])).days
+    assert fila["anticipacion_dias"] == (date(2026, 12, 8) - tiempo.hoy()).days   # días contados en la zona de la empresa
     assert _estado(cliente, c["id"], "cancelada", 4, motivo="La grabación se movió").json()["estado"] == "cancelada"
 
 

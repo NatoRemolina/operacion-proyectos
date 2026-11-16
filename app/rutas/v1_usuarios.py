@@ -2,15 +2,15 @@
 
 La regla vive en `app/servicios/usuarios.py`, la misma que usa la pantalla actual: mismas protecciones y mismos eventos.
 """
-import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from fastapi import Path as PathParam
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, solo_admin
+from ..api_v1.comun import pagina_estricta
 from ..api_v1.esquemas import errores
 from ..api_v1.esquemas_usuarios import (
     CambioCargo,
@@ -32,17 +32,6 @@ from ..servicios import acceso, consultas, contable, usuarios, viajes
 Id = Annotated[int, PathParam(ge=1, le=contable.MAXIMO_ID)]
 
 router = APIRouter(prefix=PREFIJO, tags=["usuarios"])
-
-
-def pagina_estricta(limite: int = Query(20, ge=1, le=100, description="Cuántos elementos devolver (1 a 100)."),
-                    cursor: str | None = Query(None, description="El valor de `siguiente` de la página anterior.")) -> tuple[int, int | None]:
-    """La misma paginación que `api_v1.pagina`, con el cursor solo de dígitos ASCII: «²» o «٣» pasan `isdigit` y harían
-    fallar `int` con un 500. Va aquí para no cambiar el borde común de la API."""
-    if not cursor:
-        return limite, None
-    if not re.fullmatch(r"[1-9][0-9]{0,17}", cursor):
-        raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {"cursor": "El cursor no es válido. Usa el valor de `siguiente`."})
-    return limite, int(cursor)
 
 
 def _admin_que_escribe(yo: dict = Depends(escritura)) -> dict:

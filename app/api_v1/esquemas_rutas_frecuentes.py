@@ -66,7 +66,7 @@ class ExactitudModelo(ErrorPrecioEsperado):
     mensaje: str | None = Field(description="«sin datos todavía» cuando no hay decisiones con precio esperado.")
     por_ruta: list[ErrorPrecioPorRuta]
     por_mes: list[ErrorPrecioPorMes]
-    contra_pagado: ErrorPrecioEsperado | None = Field(description="Frente a lo pagado, cuando hay compras registradas.")
+    contra_pagado: ErrorPrecioEsperado | None = Field(description="Lo pagado frente a lo cotizado al decidir, con las compras compradas y activas; vacío si no hay.")
 
 
 class RutasFrecuentes(BaseModel):

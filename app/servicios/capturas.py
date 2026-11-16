@@ -13,11 +13,11 @@ import base64
 import hashlib
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Column, Integer, Text, text
+from sqlalchemy import Column, Integer, Text
 from sqlalchemy.exc import IntegrityError
 
-from .. import config, db
-from . import almacen, analizador, costo, eventos, precios
+from .. import db
+from . import almacen, analizador, costo, eventos, precios, tiempo
 
 capturas = db._tabla(
     "capturas",
@@ -120,10 +120,21 @@ def seguimiento_encendido() -> bool:
     return costo.supuesto(costo.catalogo(), "seguimiento_diario", 1) >= 1
 
 
+def de_la_decision_vigente(sid: int) -> list[dict]:
+    """Las capturas de la decisión vigente de la cotización (al decidir, el seguimiento y la compra)."""
+    d = db.uno("select id from decisiones where solicitud_id=:s order by id desc limit 1", s=sid)
+    return [f for f in de_la_cotizacion(sid) if d and f["decision_id"] == d["id"]]
+
+
+def lista(sid: int, captura_id: int) -> dict | None:
+    """Una captura terminada de la cotización; None si no es de ella o no está lista."""
+    return db.uno("select * from capturas where id=:c and solicitud_id=:s and estado='lista'", c=captura_id, s=sid)
+
+
 def encolar_seguimiento(hoy: str | None = None) -> int:
     """Una captura del día por cada vuelo decidido cuya compra sigue abierta (ni comprada, ni descartada, ni cancelada)
     y cuya ida no pasó. Idempotente en el día. Devuelve cuántas encoló."""
-    hoy = hoy or datetime.now(UTC).astimezone(analizador.ZONA_EMPRESA).date().isoformat()
+    hoy = hoy or tiempo.hoy().isoformat()
     if not seguimiento_encendido():
         return 0
     hechas = 0
@@ -155,16 +166,15 @@ def tope_dia() -> int:
 def tomar() -> dict | None:
     """La siguiente captura pendiente, con el turno del analizador (mismo cerrojo que las lecturas: una a la vez) y dentro
     del tope del día. La deja `en_curso` con un intento más. None si no hay, si se alcanzó el tope o si está ocupado."""
-    with db.transaccion() as c:
-        if not config.ES_SQLITE:
-            c.execute(text("select pg_advisory_xact_lock(:k)"), {"k": analizador.BLOQUEO_TURNO})
+    with db.transaccion():
+        db.cerrojo(analizador.BLOQUEO_TURNO)
         # una captura que se quedó a medias (caída del trabajador) vuelve a la cola o se da por fallida
         for f in db.todos("select id, intentos from capturas where estado='en_curso' and empezado<:h", h=_hace(EN_CURSO_MAX)):
             db.actualizar("capturas", f["id"], estado="fallida" if f["intentos"] >= INTENTOS else "pendiente",
                           fallo=NO_TERMINO, terminado=db.ahora())
         if analizador._ocupado():
             return None
-        if db.uno("select count(*) n from capturas where empezado>=:h", h=analizador.inicio_del_dia())["n"] >= tope_dia():
+        if db.uno("select count(*) n from capturas where empezado>=:h", h=tiempo.inicio_del_dia())["n"] >= tope_dia():
             return None
         f = db.uno("""select * from capturas where estado='pendiente' and (proximo is null or proximo<=:a)
                       order by id limit 1""", a=db.ahora())

@@ -5,9 +5,12 @@ Uso: python -m datos.comprobar_supabase
 Lee `DATABASE_URL` del entorno o de `.env`. Todo es lectura, salvo una tabla TEMPORAL que se escribe, se lee y se
 revierte: ninguna tabla del negocio se toca. Informa en JSON:
 - conexión, versión del servidor y la prueba de escritura y reversión;
-- si están las tablas y columnas que espera esta versión (`envios_soporte`, `gastos.version` obligatoria...);
+- si están las tablas y columnas que espera esta versión (`envios_soporte`, `compras`, `capturas`, `ofertas_tarifa`,
+  `claves_servicio`, `avisos_salientes`, `gastos.version` obligatoria...);
 - las tablas del esquema `public` sin seguridad por filas;
-- qué pueden hacer los roles públicos del proveedor (`anon`, `authenticated`) sobre tablas y vistas de `public`.
+- qué pueden hacer los roles públicos del proveedor (`anon`, `authenticated`) sobre tablas y vistas de `public`;
+- las vistas de `public` que no corren con los permisos de quien consulta (`security_invoker`);
+- qué concede por omisión el rol con que se entra a esos roles sobre lo que cree en `public`.
 
 Nunca imprime la cadena de conexión: si algo falla, solo el tipo de error y su código SQLSTATE.
 Sale con 0 si todo está en orden, 1 si la base responde pero algo no está como debe, 2 si falta configuración.
@@ -23,10 +26,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
-TABLAS = ("usuarios", "sesiones", "viajes", "gastos", "documentos", "eventos", "envios_soporte")
+TABLAS = ("usuarios", "sesiones", "viajes", "gastos", "documentos", "eventos", "envios_soporte",
+          "compras", "capturas", "ofertas_tarifa", "ofertas_origenes", "claves_servicio", "avisos_salientes")
 LOCALES = ("127.0.0.1", "localhost", "::1")   # la base de `docker compose` no usa SSL; cualquier otra lo exige
 ROLES_PUBLICOS = ("anon", "authenticated")
 PRIVILEGIOS = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+CLASES = {"r": "tablas", "S": "secuencias", "f": "funciones", "T": "tipos", "n": "esquemas"}   # pg_default_acl.defaclobjtype
 
 
 def _cadena(entorno: dict) -> str:
@@ -76,13 +81,28 @@ def _revisar(conexion) -> dict:
                  and has_table_privilege(r.oid, c.oid, p.privilegio)
                order by 1, 2, 3"""), {"p": list(PRIVILEGIOS), "r": list(ROLES_PUBLICOS)}):
         permisos.setdefault(fila.rol, {}).setdefault(fila.tabla, []).append(fila.privilegio)
+    sin_invoker = [fila.relname for fila in conexion.execute(text(
+        """select c.relname, c.reloptions from pg_class c join pg_namespace n on n.oid=c.relnamespace
+           where n.nspname='public' and c.relkind='v' order by 1"""))
+        if not any(o.lower() in ("security_invoker=on", "security_invoker=true", "security_invoker=1", "security_invoker=yes")
+                   for o in fila.reloptions or [])]
+    # Solo las del rol con que se entra: es el que crea las tablas. Las de otros roles del proveedor no se pueden cambiar
+    por_omision: dict[str, dict[str, list[str]]] = {}
+    for fila in conexion.execute(text(
+            """select r.rolname rol, d.defaclobjtype clase, a.privilege_type privilegio
+               from pg_default_acl d join pg_namespace n on n.oid=d.defaclnamespace
+               cross join lateral aclexplode(d.defaclacl) a join pg_roles r on r.oid=a.grantee
+               where n.nspname='public' and d.defaclrole=current_user::regrole and r.rolname = any(:r)
+               order by 1, 2, 3"""), {"r": list(ROLES_PUBLICOS)}):
+        por_omision.setdefault(fila.rol, {}).setdefault(CLASES.get(fila.clase, fila.clase), []).append(fila.privilegio)
     # Tabla TEMPORARY: ningún INSERT toca tablas del negocio. La reversión deshace toda la prueba.
     conexion.execute(text("create temporary table sonda_comprobacion (importe numeric(14,2)) on commit drop"))
     conexion.execute(text("insert into sonda_comprobacion values (:i)"), {"i": Decimal("12.34")})
     escrita = conexion.execute(text("select importe from sonda_comprobacion")).scalar_one() == Decimal("12.34")
     return {"postgresql": version, "escritura_temporal": "correcta" if escrita else "no coincide", "tablas": tablas,
             "columnas": {c: ("obligatoria" if v == "NO" else "admite vacíos" if v == "YES" else "falta") for c, v in columnas.items()},
-            "tablas_sin_seguridad_por_filas": sin_rls, "roles_publicos": roles, "permisos_publicos": permisos}
+            "tablas_sin_seguridad_por_filas": sin_rls, "roles_publicos": roles, "permisos_publicos": permisos,
+            "vistas_sin_security_invoker": sin_invoker, "privilegios_por_omision_publicos": por_omision}
 
 
 def main(entorno: dict | None = None) -> int:
@@ -106,7 +126,8 @@ def main(entorno: dict | None = None) -> int:
         en_orden = (revertida and informe["escritura_temporal"] == "correcta" and all(informe["tablas"].values())
                     and set(informe["columnas"].values()) <= {"obligatoria", "admite vacíos"}
                     and informe["columnas"]["gastos.version"] == "obligatoria"
-                    and not informe["tablas_sin_seguridad_por_filas"] and not informe["permisos_publicos"])
+                    and not informe["tablas_sin_seguridad_por_filas"] and not informe["permisos_publicos"]
+                    and not informe["vistas_sin_security_invoker"] and not informe["privilegios_por_omision_publicos"])
         informe["en_orden"] = en_orden
         print(json.dumps(informe, ensure_ascii=False, indent=2))
         return 0 if en_orden else 1

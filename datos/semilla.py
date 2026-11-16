@@ -42,7 +42,27 @@ REGLAS = [
 ]
 
 
+def _atomica() -> bool:
+    """En PostgreSQL la siembra completa va en una transacción. SQLite rehace tablas con su propio procedimiento (otra
+    conexión), que no cabe en una transacción abierta: ahí son pasos que comprueban antes de actuar."""
+    from app import config
+    return not config.ES_SQLITE
+
+
 def sembrar():
+    """Crea lo que falte, siembra, migra y recrea las vistas. En PostgreSQL todo junto, con el cerrojo de la migración y
+    los privilegios por omisión de los roles públicos retirados antes de crear nada: si un paso falla no queda ninguna
+    tabla nueva ni ningún permiso, y se repite desde el principio."""
+    if not _atomica():
+        return _sembrar()
+    from datos import migracion
+    with db.transaccion():
+        db.cerrojo("migración")
+        migracion.privilegios_por_omision()
+        return _sembrar()
+
+
+def _sembrar():
     db.crear_tablas()
     if not db.uno("select id from proyectos limit 1"):
         db.insertar("proyectos", nombre="Residencial Summerlin (aéreo)", cliente="Inmobiliaria Ejemplo Oeste",
@@ -73,7 +93,6 @@ def sembrar():
     sembrar_cuentas()
     hechos = migracion.migrar()
     crear_vistas()
-    migracion.permisos_de_vistas(VISTAS)
     return hechos
 
 
@@ -122,6 +141,8 @@ SUPUESTOS_NUEVOS = [
     ("traslado_usd_km", "0.35", "Traslado por carretera sin carro de alquiler (taxi o transfer), ida y vuelta (USD por km)."),
     ("combustible_usd_km", "0.12", "Con carro de alquiler el traslado solo suma combustible y peajes, ida y vuelta (USD por km)."),
     ("costo_cambio_usd", "75", "Cargo por cambiar la fecha cuando el buscador dice «Ticket changes for a fee» (USD)."),
+    ("tolerancia_tiquete_pct", "10", "Si lo pagado por el tiquete supera lo cotizado al decidir en más de este porcentaje (10 = 10 %), "
+                                     "su gasto va a revisión y lo aprueba otra persona de administración; si no, queda aprobado."),
     ("tolerancia_precio_aprobacion", "0.05", "Si al aprobar el precio reconfirmado del vuelo sube más que esto (0.05 = 5 %), administración lo confirma antes de aprobar."),
     # Monitoreo del vuelo el día del viaje
     ("monitoreo_horas_antes", "3", "El estado del vuelo se consulta desde estas horas antes de la salida programada hasta la llegada."),
@@ -133,6 +154,12 @@ SUPUESTOS_NUEVOS = [
     ("cupo_minimo_monitoreo", "25", "Si al plan del buscador le quedan menos búsquedas que esto, el monitoreo del vuelo se suspende."),
     ("tope_autocompletado_persona_dia", "15", "Consultas de autocompletado a Google por persona y día. Alcanzado, solo datos locales."),
     # Cotizar (pantallas, web y API v1): cada cotización nueva puede pagar dos búsquedas y cada decisión otras dos
+    # Lectura de recibos y notas de voz con el modelo (cada lectura se paga): se reserva antes de llamarlo
+    ("lecturas_recibo_persona_dia", "40", "Lecturas con el modelo por persona y día (recibos y notas de voz), por cualquier vía: web, "
+                                          "API, buzón y Telegram. Alcanzado, el soporte se guarda y el gasto queda en revisión "
+                                          "«lectura pendiente por tope»."),
+    ("lecturas_recibo_dia", "400", "Lecturas con el modelo por día en toda la empresa (recibos y notas de voz). Alcanzado, el "
+                                   "soporte se guarda y el gasto queda en revisión «lectura pendiente por tope»."),
     ("tope_cotizaciones_persona_dia", "20", "Cotizaciones nuevas por persona y día, por cualquier canal. Alcanzado, se retoma una que ya existe."),
     ("decisiones_en_vivo_dia", "10", "Decisiones por persona y día que consultan en vivo el regreso y las opciones de reserva del vuelo "
                                      "(dos búsquedas cada una). Alcanzado, se decide con lo guardado y se dice."),
@@ -228,9 +255,17 @@ def asegurar_fidelizacion_hotel():
 
 
 def crear_vistas():
-    for nombre, consulta in VISTAS.items():
-        db.ejecutar(f"drop view if exists {nombre}")
-        db.ejecutar(f"create view {nombre} as {consulta}")
+    """Recrea las vistas y les retira los permisos de los roles públicos en una sola transacción: ninguna queda a medio
+    crear ni un instante a la vista de esos roles. En PostgreSQL corren con los permisos de quien consulta
+    (`security_invoker`), así que también respetan la seguridad por filas de las tablas que leen."""
+    from app import config
+    from datos import migracion
+    opciones = "" if config.ES_SQLITE else " with (security_invoker = on)"
+    with db.transaccion():
+        for nombre, consulta in VISTAS.items():
+            db.ejecutar(f"drop view if exists {nombre}")
+            db.ejecutar(f"create view {nombre}{opciones} as {consulta}")
+        migracion.permisos_de_vistas(VISTAS)
 
 
 # Cuentas de demostración para ejecutar en local sin configurar nada. Nunca se crean en una base compartida.

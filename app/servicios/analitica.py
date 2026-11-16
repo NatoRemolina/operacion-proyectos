@@ -11,6 +11,18 @@ def _semana(fecha_iso: str) -> str:
     return (d - timedelta(days=d.weekday())).isoformat()
 
 
+def _historiales(claves: set[str]) -> dict[str, list[dict]]:
+    """El historial de precio de varias búsquedas en una sola consulta (antes, una por cotización)."""
+    if not claves:
+        return {}
+    marcas = {f"c{i}": c for i, c in enumerate(sorted(claves))}
+    salida: dict[str, list[dict]] = {}
+    for f in db.todos(f"""select busqueda, fecha, precio from historial_ruta where busqueda in ({", ".join(":" + m for m in marcas)})
+                         order by busqueda, fecha""", **marcas):  # noqa: S608  solo marcas de parámetros
+        salida.setdefault(f["busqueda"], []).append(f)
+    return salida
+
+
 def resumen() -> dict:
     sols = db.todos("""select s.*, v.nombre viajero, p.nombre proyecto from solicitudes s
                        left join viajeros v on v.id=s.viajero_id left join proyectos p on p.id=s.proyecto_id order by s.id""")
@@ -34,9 +46,10 @@ def resumen() -> dict:
 
     # Historial de precio de las rutas consultadas: cuánto costaba en su mejor momento
     historiales = []
+    por_clave = _historiales({f"{s['origen']}_{s['destino']}_{s['ida']}_{s['regreso']}" for s in sols})
     for s in sols:
         clave = f"{s['origen']}_{s['destino']}_{s['ida']}_{s['regreso']}"
-        filas = db.todos("select fecha, precio from historial_ruta where busqueda=:b order by fecha", b=clave)
+        filas = por_clave.get(clave)
         if filas and not any(h["clave"] == clave for h in historiales):
             precios = [f["precio"] for f in filas]
             historiales.append({"clave": clave, "ruta": f"{s['origen']} → {s['destino']} ({s['ida']})",

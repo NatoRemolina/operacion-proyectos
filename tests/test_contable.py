@@ -10,7 +10,7 @@ import pytest
 from openpyxl import load_workbook
 
 from app import config, db
-from app.servicios import acceso, contable, viajes
+from app.servicios import acceso, contable, tiempo, viajes
 
 DESDE, HASTA = "2031-03-01", "2031-03-31"
 P_A, P_B = 9301, 9302
@@ -488,18 +488,20 @@ def test_las_consultas_del_libro_no_crecen_con_las_filas(mundo):
         assert _consultas_al_generar(mundo["g"], "2032-04-01", "2032-04-30") == \
             _consultas_al_generar(mundo["g"], "2032-05-01", "2032-05-31")
     finally:
-        db.ejecutar(f"delete from gastos where id in ({', '.join(str(int(i)) for i in ids)})")
+        lista = ", ".join(str(int(i)) for i in ids)
+        db.ejecutar(f"delete from eventos where entidad='gasto' and entidad_id in ({lista})")  # noqa: S608  ids enteros propios
+        db.ejecutar(f"delete from gastos where id in ({lista})")  # noqa: S608
 
 
-@pytest.mark.parametrize("ahora_utc", [datetime(2026, 12, 31, 23, 30, tzinfo=UTC),   # 18:30 en Nueva York
-                                       datetime(2027, 1, 1, 3, 0, tzinfo=UTC)])      # 22:00 del 31 en Nueva York
+@pytest.mark.parametrize("ahora_utc", [datetime(2026, 12, 31, 23, 30, tzinfo=UTC),   # 18:30 en Bogotá
+                                       datetime(2027, 1, 1, 3, 0, tzinfo=UTC)])      # 22:00 del 31 en Bogotá
 def test_el_periodo_en_curso_se_cuenta_en_la_zona_de_la_empresa(monkeypatch, sesiones, ahora_utc):
-    monkeypatch.setattr(contable, "_ahora", lambda: ahora_utc)
-    assert contable.ZONA_EMPRESA.key == "America/New_York"
+    monkeypatch.setattr(tiempo, "ahora", lambda: ahora_utc)
     assert contable.mes_en_curso() == ("2026-12-01", "2026-12-31")
     assert contable.anio_en_curso() == ("2026-01-01", "2026-12-31")
     r = sesiones["a"].get(f"{V1}/gastos/contable")
     assert r.status_code == 200 and "libro_contable_2026-01-01_2026-12-31.xlsx" in r.headers["content-disposition"]
+    assert _parametros(r.content)["Zona de las fechas"] == "America/Bogota (zona de la empresa)"   # el libro la declara
 
 
 def test_el_proyecto_del_filtro_se_lee_una_sola_vez(mundo):

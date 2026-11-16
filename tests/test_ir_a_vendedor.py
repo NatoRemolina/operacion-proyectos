@@ -145,8 +145,8 @@ def test_permisos_y_entrada(piloto, piloto2, anonimo, entorno):
 
 def _url_ir(c: TestClient, sid: int, vuelo: int, vendedor="American", tarifa="Main Cabin", **k) -> str:
     """La dirección firmada de «Ir a…», como la entrega la API en cada tarifa (`ir_url`)."""
-    from app.rutas import v1_cotizaciones
-    return v1_cotizaciones.url_ir(c.cookies.get(acceso.COOKIE) or "", sid, vuelo, vendedor, tarifa, **k)
+    from app.servicios import enlaces
+    return enlaces.url_ir(c.cookies.get(acceso.COOKIE) or "", sid, vuelo, vendedor, tarifa, **k)
 
 
 def test_la_pagina_de_envio_prepara_el_enlace_con_la_sesion(piloto, piloto2, entorno):

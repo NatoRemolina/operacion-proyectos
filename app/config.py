@@ -1,8 +1,10 @@
 """Configuración leída del entorno. Ninguna clave es obligatoria."""
 import json
 import os
+from datetime import timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
@@ -73,12 +75,16 @@ TELEGRAM_BOT_TOKEN = _txt("TELEGRAM_BOT_TOKEN")
 TELEGRAM_WEBHOOK_SECRETO = _txt("TELEGRAM_WEBHOOK_SECRETO")
 TELEGRAM_BOT_NOMBRE = _txt("TELEGRAM_BOT_NOMBRE").lstrip("@")
 
+# Valor de la cabecera `X-Origen-CloudFront` que CloudFront añade al pedirle a la función. En la nube, lo que llega sin
+# ella (directo a la dirección de la función) se rechaza con 403 (app/main.py), salvo el webhook de Telegram.
+ORIGEN_SECRETO = _txt("ORIGEN_SECRETO")
+
 # Orígenes desde los que la web nueva puede escribir en la API v1 (separados por comas), por ejemplo
 # http://localhost:8080. El mismo origen de la plataforma siempre está permitido.
 ORIGENES_WEB = [o.strip().rstrip("/") for o in _txt("ORIGENES_WEB").split(",") if o.strip()]
 
 # «redirige»: las pantallas de la plataforma anterior llevan a su equivalente en la web (la primera de ORIGENES_WEB).
-# Vacío: siguen disponibles, como en local y en las pruebas.
+# Vacío: siguen disponibles, como en local y en las pruebas. En la nube vale siempre «redirige» (más abajo).
 INTERFAZ_ANTIGUA = _txt("INTERFAZ_ANTIGUA").lower()
 
 # Recolector diario de precios de las rutas frecuentes (datos/recolectar.py --frecuentes): gasta búsquedas pagas.
@@ -97,6 +103,11 @@ ES_SQLITE = not DATABASE_URL or DATABASE_URL.startswith("sqlite")
 # Conectar un PostgreSQL existente (por ejemplo, la base publicada desde .env) no autoriza a
 # migrarlo ni sembrarlo al arrancar: hace falta PREPARAR_BASE_LOCAL=1, como en docker-compose.yml.
 PREPARAR_BASE_LOCAL = LOCAL and (ES_SQLITE or _txt("PREPARAR_BASE_LOCAL") == "1")
+if not LOCAL:
+    INTERFAZ_ANTIGUA = "redirige"   # en la nube las pantallas anteriores siempre llevan a la web (app/servicios/interfaz.py)
+if not LOCAL and not ORIGEN_SECRETO:
+    # No impide arrancar (sin ella CloudFront no podría entrar), pero queda como error de configuración y avisa la alarma
+    PROBLEMAS.append("ORIGEN_SECRETO vacía: la función acepta peticiones directas a su dirección, sin pasar por CloudFront.")
 
 # Falla cerrado: un despliegue sin base, almacenamiento o control de acceso no arranca.
 if not LOCAL:
@@ -104,6 +115,12 @@ if not LOCAL:
                               ("SUPABASE_SERVICE_KEY", SUPABASE_SERVICE_KEY)) if not v]
     if _faltan:
         raise RuntimeError("Configuración incompleta para un despliegue: faltan " + ", ".join(_faltan))
+
+# La zona de la empresa: el «día» de todos los topes, la fecha de hoy y los periodos (app/servicios/tiempo.py)
+try:
+    ZONA_EMPRESA = ZoneInfo("America/Bogota")
+except ZoneInfoNotFoundError:   # sin base de zonas: Bogotá no tiene horario de verano, UTC−5 todo el año
+    ZONA_EMPRESA = timezone(timedelta(hours=-5), "America/Bogota")
 
 # Topes de una subida
 MAX_BYTES_SOPORTE = 4_500_000

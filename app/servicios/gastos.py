@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from .. import config, db
-from . import almacen, avisos, dinero, envios, eventos, extraccion, llm, revision, validacion
+from . import almacen, avisos, compras, dinero, envios, eventos, extraccion, llm, revision, validacion
 
 
 class SoporteRechazado(ValueError):
@@ -20,6 +20,8 @@ EXTENSIONES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "a
 FORMATOS_DE_CORREO = ("message/rfc822", "text/html")
 TIPOS_ADMITIDOS = "Se aceptan fotos (JPG, PNG, WebP), PDF, correos (.eml) y confirmaciones en HTML (.html)."
 CANALES_DE_SUBIDA = ("web", "celular")
+# Motivos que no salen de las reglas del recibo: volver a validarlo no los quita
+CONSERVAN_REVISION = ("lectura_fallida", compras.SOBRE_COTIZADO, compras.COMPRA_CANCELADA, compras.IMPORTE_DISTINTO)
 
 
 def tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
@@ -45,12 +47,26 @@ def preparar(contenido: bytes, nombre: str) -> tuple[bytes, str, str]:
     if not tipo:
         raise SoporteRechazado("Tipo de archivo no admitido. " + TIPOS_ADMITIDOS)
     mime, extension = tipo
+    pdf = contenido if mime == "application/pdf" else _pdf_adjunto(contenido) if mime == "message/rfc822" else None
+    if pdf and (paginas := extraccion.paginas_pdf(pdf)) > extraccion.MAX_PAGINAS_PDF:
+        donde = "El PDF adjunto al correo" if mime == "message/rfc822" else "El PDF"
+        raise SoporteRechazado(f"{donde} tiene {paginas} páginas; se leen hasta {extraccion.MAX_PAGINAS_PDF}. "
+                               "Envía solo las páginas del recibo.")
     if mime == "text/html":
         texto = extraccion.html_a_texto(contenido)
         if not texto:
             raise SoporteRechazado("La confirmación en HTML no tiene texto legible.")
         return texto.encode(), "text/plain", "txt"
     return contenido, mime, extension
+
+
+def _pdf_adjunto(contenido: bytes) -> bytes | None:
+    """El PDF que el modelo leería de un correo (su adjunto), para contar sus páginas como las de un PDF suelto."""
+    try:
+        _, adjunto, tipo = extraccion.partes_del_correo(contenido)
+    except Exception:  # noqa: BLE001  un correo mal formado se guarda y se lee como texto
+        return None
+    return adjunto if tipo == "application/pdf" else None
 
 
 def tipo_audio(contenido: bytes) -> tuple[str, str] | None:
@@ -83,6 +99,25 @@ def disposicion(mime: str | None, nombre: str | None) -> str:
         return "inline"
     base = re.sub(r"[^A-Za-z0-9._-]", "_", Path(nombre or "soporte").stem)[:80] or "soporte"
     return f'attachment; filename="{base}.txt"'
+
+
+TIPOS_EN_LINEA = ("image/jpeg", "image/png", "image/webp", "application/pdf")
+
+
+def original_legible(contenido: bytes, mime: str | None) -> tuple[bytes, str]:
+    """El original tal como se muestra, con su tipo. Un correo (.eml) no se entrega crudo (MIME con base64): se muestra
+    su adjunto si es un PDF o una foto (el que se leyó), y si no, el texto del correo con De, Asunto y Fecha."""
+    if mime == "message/rfc822":
+        try:
+            texto, adjunto, tipo = extraccion.partes_del_correo(contenido)   # la misma lectura que el gasto
+        except Exception:   # un correo mal formado se sigue viendo, como texto
+            texto, adjunto, tipo = None, None, None
+        if adjunto and tipo in TIPOS_EN_LINEA:
+            return adjunto, tipo
+        if texto is not None:
+            return texto.encode("utf-8"), "text/plain; charset=utf-8"
+    # Solo se sirven en línea tipos inertes; el resto se muestra como texto
+    return contenido, mime if mime in TIPOS_EN_LINEA else "text/plain; charset=utf-8"
 
 
 def correo_de(texto: str | None) -> dict | None:
@@ -171,7 +206,7 @@ def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, 
         if op:
             envios.enlazar(op, gid)   # desde aquí, un reintento con la misma clave recibe este gasto
     try:
-        _leer_y_decidir(gid, contenido, mime, nombre, viaje, proyecto_id, rapido, huella, op)
+        gid = _leer_y_decidir(gid, contenido, mime, nombre, viaje, proyecto_id, rapido, huella, op, usuario)
     except envios.EnvioEnCurso:
         raise   # otro proceso recuperó el envío y ya dejó el gasto en revisión
     except Exception:
@@ -183,15 +218,20 @@ def _registrar(contenido: bytes, nombre: str, canal: str, usuario: dict | None, 
 
 
 def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: dict | None, proyecto_id: int | None,
-                    rapido: bool, huella: str, op: dict | None):
+                    rapido: bool, huella: str, op: dict | None, usuario: dict | None = None) -> int:
+    """Lee el soporte y decide el gasto. Devuelve el gasto que quedó: el mismo, o el del tiquete comprado si el recibo es
+    de ese tiquete (entonces el gasto provisional se borra y el soporte queda en el de la compra)."""
     # Un archivo idéntico ya leído no se vuelve a pagar: se reutiliza su lectura
     previo = db.uno("""select g.extraido from gastos g join documentos d on d.id=g.documento_id
                        where d.huella=:h and g.id<>:i and g.extraido is not null order by g.id limit 1""", h=huella, i=gid)
+    # La lectura con el modelo se paga: se reserva antes, del tope de la persona y del de la empresa, por cualquier vía
+    por_tope = not previo and not extraccion.reservar_lectura(usuario, f"gasto {gid}")
     marca = llm.RAPIDO.set(rapido)
     try:
         with eventos.cronometro() as t:
             try:
                 x = {**db.de_json(previo["extraido"], {}), "origen_dato": "reutilizado", "error": None} if previo else \
+                    {**_sin_lectura(extraccion.PENDIENTE_POR_TOPE), "origen_dato": extraccion.ORIGEN_POR_TOPE} if por_tope else \
                     extraccion.extraer(contenido, mime, nombre, gid)
             except Exception as e:   # un fallo inesperado de la lectura manda el gasto a revisión, como una lectura fallida
                 x = _sin_lectura(f"La lectura del recibo falló ({type(e).__name__}). Administración completará los datos.")
@@ -208,13 +248,19 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         viaje = _vigente(conexion, viaje)
         actual = db.uno("select estado from gastos where id=:i" + ("" if config.ES_SQLITE else " for update"), i=gid)
         if not actual or actual["estado"] != "procesando":
-            return   # mientras se leía, alguien lo recuperó o lo decidió: la lectura tardía no lo pisa
+            return gid   # mientras se leía, alguien lo recuperó o lo decidió: la lectura tardía no lo pisa
+        if (del_tiquete := compras.tiquete_por_enlazar(viaje, x)):
+            return _enlazar_al_tiquete(gid, del_tiquete, x, op)
         proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
         r = validacion.revisar(x, proyecto, gid, viaje)
         if x.get("error"):
-            # Una lectura fallida nunca se aprueba sola
+            # Una lectura fallida (o pendiente por el tope, que lo dice en su aviso y en su origen) nunca se aprueba sola
             r["alertas"].insert(0, x["error"])
             r["motivos"].insert(0, "lectura_fallida")
+            r["estado"] = "revision"
+        elif compras.localizador_con_otro_importe(viaje, x):   # del mismo tiquete, pero no es el tiquete (el equipaje)
+            r["alertas"].insert(0, compras.IMPORTE_DISTINTO_TEXTO)
+            r["motivos"].insert(0, compras.IMPORTE_DISTINTO)
             r["estado"] = "revision"
         # La lectura original tal cual, salvo NaN e infinito, que no son JSON válido: quedan vacíos
         original = {c: None if isinstance(x.get(c), float) and not math.isfinite(x[c]) else x.get(c) for c in extraccion.CAMPOS} \
@@ -229,6 +275,25 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
                           " ".join(r["alertas"]) or "Todas las validaciones en verde", "reglas de validación")
         if op:
             envios.terminar(op, "completado")
+    return gid
+
+
+def _enlazar_al_tiquete(gid: int, del_tiquete: int, x: dict, op: dict | None) -> int:
+    """Dentro de la decisión: el recibo es del tiquete ya comprado. Su soporte y su lectura pasan al gasto de la compra y
+    el gasto provisional se borra, así el tiquete no se cuenta dos veces. Un reintento con la misma clave recibe ese gasto."""
+    provisional = db.uno("select documento_id from gastos where id=:i", i=gid)
+    original = {c: x.get(c) for c in extraccion.CAMPOS} | extraccion.datos_de_factura(x) \
+        | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
+    db.actualizar("gastos", del_tiquete, documento_id=provisional["documento_id"], extraido=original)
+    revision.subir_version(del_tiquete)
+    db.ejecutar("update envios_soporte set gasto_id=:t where gasto_id=:g", t=del_tiquete, g=gid)
+    db.ejecutar("delete from gastos where id=:i", i=gid)
+    eventos.registrar("gasto", del_tiquete, "recibo del tiquete enlazado",
+                      f"{x.get('comercio') or ''} · {x.get('total')} {x.get('moneda') or ''} · el gasto provisional #{gid} no se guarda",
+                      f"modelo ({x['origen_dato']})")
+    if op:
+        envios.terminar(op, "completado")
+    return del_tiquete
 
 
 IMPORTES = ("subtotal", "impuesto", "propina", "total")
@@ -278,9 +343,13 @@ def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
         cambios = {"viaje_id": viaje["id"], "proyecto_id": viaje["proyecto_id"], "viajero_id": viaje["viajero_id"] or g["viajero_id"]}
         if g["estado"] in ("revision", "aprobado_auto"):
             r = validacion.revisar(_campos_de(g), proyecto, gasto_id, viaje)
-            if "lectura_fallida" in (db.de_json(g["motivos"], []) or []):
-                r["estado"], r["motivos"] = "revision", ["lectura_fallida"] + r["motivos"]
-                r["alertas"] = (db.de_json(g["alertas"], []) or [])[:1] + r["alertas"]
+            # Lo que no sale de las reglas (la lectura fallida, lo del tiquete comprado) sigue pidiendo revisión
+            conservar = [(m, a) for m, a in zip(db.de_json(g["motivos"], []) or [], db.de_json(g["alertas"], []) or [], strict=False)
+                         if m in CONSERVAN_REVISION]
+            if conservar:
+                r["estado"] = "revision"
+                r["motivos"] = [m for m, _ in conservar] + r["motivos"]
+                r["alertas"] = [a for _, a in conservar] + r["alertas"]
             cambios.update(estado=r["estado"], alertas=r["alertas"], motivos=r["motivos"], total_usd=r["total_usd"])
         elif g["estado"] == "aprobado" and g["viaje_id"] != viaje["id"]:
             # Lo aprobado por una persona conserva su estado, pero no puede llevarse a un viaje que no lo admite

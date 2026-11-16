@@ -22,8 +22,38 @@ os.environ.update({
     "GEOGRAFIA_DIR": str(Path(__file__).parent / "datos" / "geografia_mini"),
 })
 
+import random  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
+
 import pytest  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
+
+
+def pytest_addoption(parser):
+    parser.addoption("--orden-aleatorio", action="store", default=None, metavar="SEMILLA",
+                     help="Corre las pruebas en un orden aleatorio repetible (una semilla entera): comprueba que ninguna "
+                          "dependa de otra. Sin dependencias nuevas.")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Como pytest-randomly: baraja los módulos y, dentro de cada uno, sus pruebas (los datos de un módulo se preparan
+    una vez por módulo)."""
+    semilla = config.getoption("--orden-aleatorio")
+    if semilla is None:
+        return
+    azar, modulos = random.Random(int(semilla)), {}  # noqa: S311  barajar pruebas, no cifrar
+    for item in items:
+        modulos.setdefault(item.module.__name__, []).append(item)
+    orden = list(modulos.values())
+    azar.shuffle(orden)
+    for grupo in orden:
+        azar.shuffle(grupo)
+    items[:] = [item for grupo in orden for item in grupo]
+
+
+def pytest_report_header(config):
+    semilla = config.getoption("--orden-aleatorio")
+    return f"orden aleatorio con la semilla {semilla}" if semilla is not None else None
 
 from app import config  # noqa: E402
 
@@ -31,13 +61,29 @@ config.DIR_ARCHIVOS = _tmp / "archivos"
 
 from app.main import app  # noqa: E402
 
+# El «hoy» de las pruebas: las cotizaciones y recibos de ejemplo son de diciembre de 2026 y las respuestas guardadas del
+# buscador van atadas a esas fechas. Con el reloj único fijo en este día, las fechas de ejemplo siempre quedan en el futuro
+# cercano y la suite no caduca. Las pruebas del reloj fijan el suyo con monkeypatch, que manda sobre este.
+HOY_DE_LAS_PRUEBAS = datetime(2026, 11, 13, 15, 0, tzinfo=UTC)
+
 
 @pytest.fixture(autouse=True, scope="session")
-def _tope_de_cotizaciones_amplio():
-    """Las pruebas cotizan muchas veces al día con las mismas cuentas: el tope diario por persona
-    (`tope_cotizaciones_persona_dia`) no debe depender de cuántas llevan. Las pruebas del tope fijan el suyo."""
+def _reloj_de_las_pruebas():
+    from app.servicios import tiempo
+    real = tiempo.ahora
+    tiempo.ahora = lambda: HOY_DE_LAS_PRUEBAS
+    yield
+    tiempo.ahora = real
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _topes_diarios_amplios():
+    """Las pruebas cotizan y leen recibos muchas veces al día con las mismas cuentas: los topes diarios
+    (`tope_cotizaciones_persona_dia` y los de lecturas de recibos) no deben depender de cuántas llevan.
+    Las pruebas de cada tope fijan el suyo."""
     from app import db
-    db.ejecutar("update reglas set valor='100000' where ambito='supuesto' and clave='tope_cotizaciones_persona_dia'")
+    db.ejecutar("""update reglas set valor='100000' where ambito='supuesto'
+                   and clave in ('tope_cotizaciones_persona_dia', 'lecturas_recibo_persona_dia', 'lecturas_recibo_dia')""")
 
 
 @pytest.fixture(scope="session")
@@ -91,6 +137,17 @@ def piloto2():
 def gestor():
     """Gestor de demostración: gestiona el proyecto 1, sin aprobar nada."""
     return _con_sesion("gestor@demo.local", "demo-gestor-2026")
+
+
+@pytest.fixture(scope="session")
+def revisor():
+    """Segunda cuenta de administración: revisa lo que sube la primera, porque nadie revisa lo que subió (cuatro ojos)."""
+    from app import db
+    from app.servicios import acceso
+    if not db.uno("select id from usuarios where correo='revisor@demo.local'"):
+        acceso.crear_usuario("revisor@demo.local", "Rosalba Quintana", "admin", "demo-revisor-2026")
+    db.ejecutar("update usuarios set activo=1 where correo='revisor@demo.local'")
+    return _con_sesion("revisor@demo.local", "demo-revisor-2026")
 
 
 @pytest.fixture()

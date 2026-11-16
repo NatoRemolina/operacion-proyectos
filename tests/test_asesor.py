@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from app import config, db
-from app.servicios import acceso, asesor, asistente, llm, metricas, viajes
+from app.servicios import acceso, asesor, asistente, llm, metricas, tiempo, viajes
 
 CLAVE = "clave-secreta-de-prueba"
 _ids = itertools.count(1)
@@ -464,11 +464,11 @@ def test_si_la_creacion_vence_se_ubica_la_sesion_y_se_corta(con_asesor):
 
 
 def test_la_fecha_del_agente_es_la_de_la_empresa(con_asesor, monkeypatch):
-    monkeypatch.setattr(asesor, "_ahora_utc", lambda: datetime(2026, 11, 13, 3, 0, tzinfo=UTC))   # 12 de noviembre, 22:00 en Bogotá
+    monkeypatch.setattr(tiempo, "ahora", lambda: datetime(2026, 11, 13, 3, 0, tzinfo=UTC))   # 12 de noviembre, 22:00 en Bogotá
     s = con_asesor(Servicio([corriendo(), mensaje("Hoy es 12 de noviembre."), fin()]))
     asistente.responder("¿Qué día es hoy?", _admin())
     assert s.enviados[0]["initial_events"][0]["content"][0]["text"].startswith("Fecha de hoy: 2026-11-12.")
-    assert asesor.inicio_del_dia() == "2026-11-12 05:00:00"   # el día de la empresa empieza a las 5:00 UTC
+    assert tiempo.inicio_del_dia() == "2026-11-12 05:00:00"   # el día de la empresa empieza a las 5:00 UTC
 
 
 def test_respeta_el_tope_de_herramientas_por_pregunta(con_asesor, piloto_con_gastos):
@@ -731,11 +731,14 @@ def test_el_asesor_responde_al_colaborador_solo_con_lo_suyo(con_asesor, piloto_c
     inicial = s.enviados[0]["initial_events"][0]["content"][0]["text"]
     assert f"Te escribe {piloto_con_gastos['codigo']}, colaborador" in inicial
     resultados = [json.loads(e["content"][0]["text"]) for e in s.resultados()]
-    assert resultados[0] == {"error": f"No existe el gasto #{ajeno}."}
-    assert resultados[1] == {"error": "Ese viaje no existe o no nació de una cotización."}
-    assert resultados[2] == {"error": f"No existe la cotización #{vl['solicitud_id']}."}
-    assert "error" in resultados[3]
-    assert {f"#{g}" for g in piloto_con_gastos["gastos"]} <= {g["gasto"] for g in resultados[4]["gastos"]}   # sin nombrar a nadie, lo suyo
+    # el orden en que llegan las respuestas de las herramientas no está garantizado: se miran todas
+    errores = [x["error"] for x in resultados if "error" in x]
+    assert f"No existe el gasto #{ajeno}." in errores
+    assert "Ese viaje no existe o no nació de una cotización." in errores
+    assert f"No existe la cotización #{vl['solicitud_id']}." in errores
+    assert len(errores) == 4                                                       # también el de los indicadores
+    suyos = next(x for x in resultados if "gastos" in x)
+    assert {f"#{g}" for g in piloto_con_gastos["gastos"]} <= {g["gasto"] for g in suyos["gastos"]}   # sin nombrar a nadie, lo suyo
     enviado = json.dumps(resultados, ensure_ascii=False)
     assert "Hotel Ajeno" not in enviado and "444.44" not in enviado and "secreta" not in enviado
     (cg, pg), (cv, pv) = acceso.alcance(piloto, "g"), acceso.alcance(piloto, "v")
@@ -846,9 +849,12 @@ def test_el_asesor_recibe_la_pantalla_y_la_conversacion_reciente(con_asesor, cli
     gid = piloto_con_gastos["gastos"][0]
     s = Servicio([corriendo(), mensaje("Ese gasto está en revisión por el importe."), fin()])
     con_asesor(s)
+    # la conversación se lee del servidor por sus ids: la respuesta anterior es la que quedó guardada
+    anterior = db.insertar("asistente_consultas", usuario_id=_admin()["id"], pregunta="¿Qué gastos hay en revisión?",
+                           respuesta="Hay dos.", modo="determinista", momento=db.ahora())
     r = cliente.post("/api/v1/asistente", headers={"X-CSRF-Token": api_v1.token_csrf(cliente.cookies.get(acceso.COOKIE))},
                      json={"pregunta": "¿Por qué está en revisión este gasto?", "contexto": {"pantalla": "gasto", "id": gid},
-                           "historial": [{"pregunta": "¿Qué gastos hay en revisión?", "respuesta": "Hay dos."}]})
+                           "anteriores": [anterior]})
     assert r.status_code == 200, r.text
     texto = s.enviados[0]["initial_events"][0]["content"][0]["text"]
     assert f"Está viendo el gasto #{gid}" in texto and "«este»" in texto

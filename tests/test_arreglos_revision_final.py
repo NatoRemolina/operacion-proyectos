@@ -36,6 +36,7 @@ def test_leer_y_decidir_bloquea_el_viaje_antes_que_el_gasto(viaje_aprobado, monk
     finally:   # la base es de toda la sesión de pruebas: este recibo no debe contar como duplicado en otras
         doc = db.uno("select documento_id from gastos where id=:g", g=gid)["documento_id"]
         for sql in ("delete from envios_soporte where gasto_id=:g", "delete from justificaciones where gasto_id=:g",
+                    "delete from eventos where entidad='gasto' and entidad_id=:g",
                     "delete from gastos where id=:g"):
             db.ejecutar(sql, g=gid)
         if doc:

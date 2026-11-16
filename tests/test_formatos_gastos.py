@@ -35,6 +35,7 @@ def _sin_rastro():
     yield
     for g in db.todos("select id, documento_id from gastos where id>:m", m=antes):
         for sql in ("delete from envios_soporte where gasto_id=:g", "delete from justificaciones where gasto_id=:g",
+                    "delete from eventos where entidad='gasto' and entidad_id=:g",
                     "delete from gastos where id=:g"):
             db.ejecutar(sql, g=g["id"])
         if g["documento_id"]:
@@ -282,10 +283,10 @@ def test_una_compra_del_proyecto_hecha_antes_del_viaje_solo_avisa_y_un_taxi_no(v
     assert "fuera_del_viaje" in taxi["motivos"] and taxi["estado"] == "revision"
 
 
-def test_la_ficha_y_la_lista_muestran_las_categorias_nuevas(cliente, viaje_aprobado, modelo):
+def test_la_ficha_y_la_lista_muestran_las_categorias_nuevas(cliente, revisor, viaje_aprobado, modelo):
     modelo["respuesta"] = {"categoria": "compras_proyecto"}
     gid = _subir_web(cliente, viaje_aprobado["id"], "helices.png", PNG + uuid.uuid4().bytes)
-    ficha = cliente.get(f"/gastos/{gid}").text
+    ficha = revisor.get(f"/gastos/{gid}").text   # quien lo subió no lo revisa: el formulario lo ve otra persona
     assert '<option value="transporte_terrestre"' in ficha and '<option value="compras_proyecto" selected' in ficha
     assert "Compras del proyecto" in cliente.get("/gastos").text
 

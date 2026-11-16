@@ -48,6 +48,13 @@ cotización ──► decisión (opción elegida + porqué)
 - Rechazar exige un motivo de 5 caracteres o más.
 - Cada cambio avisa al titular por Telegram si tiene el chat vinculado.
 
+**La compra del tiquete frente al estado del viaje** (`compras.al_cambiar_el_viaje`, en la misma transacción que el cambio de estado):
+
+- «Se va a comprar» exige el viaje aprobado. Si el viaje deja de estarlo (se reabre o se cierra), la compra vuelve a «En análisis» en ese momento, con su evento. Leer la compra nunca la cambia ni le sube la versión. Con el viaje cerrado, desde «En análisis» la salida es «No se va a comprar»; una compra que hubiera quedado en «Se va a comprar» se puede cancelar.
+- **Excepción: el tiquete ya comprado.** Rechazar o reabrir un viaje cuya compra está `comprada` se permite, porque el viaje puede cambiar después de comprar (la grabación se mueve, el cliente cancela), pero el tiquete no desaparece en silencio: queda el evento «viaje reabierto (o rechazado) con el tiquete comprado» y la compra muestra un aviso en Compras hasta que el viaje vuelve a aprobarse o administración decide cancelarla. Cambiar el vuelo exige cancelar antes la compra (`DECISION_LOCKED`).
+- **Lo comprado cuenta en el gasto del viaje** («Aprobado si cuadra», decisión de la responsable). Registrar la compra crea el gasto del tiquete (categoría `vuelo`, origen «compra registrada», enlazado en `compras.gasto_id`, sin revisor). Queda `aprobado` si lo pagado no supera lo cotizado al decidir en más de la regla `tolerancia_tiquete_pct` (10 %, editable): suma en lo gastado del viaje y entra al Excel contable. Si lo supera, o no hubo precio cotizado, queda en `revision` con «Tiquete por encima de lo cotizado (X USD frente a Y USD)» (`tiquete_sobre_cotizado`) y lo aprueba otra persona de administración, nunca quien registró la compra. Si el recibo del tiquete ya estaba cargado (de vuelo, con el mismo localizador o el mismo comercio y el importe a un 1 % o un dólar), se enlaza ese gasto en vez de crear otro. Si llega después, se une al gasto del tiquete como su soporte solo si el importe coincide (±1 % o 1 USD; `compras.tiquete_por_enlazar`); con el mismo localizador y otro importe (el recibo del equipaje, por ejemplo) queda como gasto aparte en revisión («Mismo localizador que el tiquete, importe distinto», `tiquete_importe_distinto`). Cancelar una compra ya comprada devuelve su gasto a `revision` («Compra cancelada: revisar reembolso», `compra_cancelada`): volver a comprar no deja dos tiquetes aprobados.
+- Volver a aprobar con el tiquete comprado no reconfirma el precio en el buscador (no se paga otra búsqueda): la línea del tiquete del presupuesto pasa a lo pagado y el presupuesto se recalcula («presupuesto con lo pagado del tiquete»). Si la compra está en «Se va a comprar», el precio se reconfirma como siempre y el mensaje lo avisa.
+
 ### Estados del gasto
 
 | Estado | Qué significa | Quién lo pone |
@@ -68,7 +75,7 @@ El **permiso** (`usuarios.rol`, restricción `ck_usuarios_rol`) decide qué se p
 |---|---|---|
 | Colaborador | Lo suyo: lo que creó o donde es quien viaja (`acceso.alcance`) | Cotizar y decidir sus viajes, cargar y justificar sus gastos, descargar el Excel contable de lo suyo, preguntar al asistente por lo suyo |
 | Gestor de proyecto | Lo suyo y todo lo de los proyectos que gestiona (`proyecto_miembros`) | Lo mismo que el colaborador y, **en los proyectos que gestiona, cotizar y decidir por otras personas** (`cotizacion.puede_decidir`, `cotizacion.para_otros_en`). Descarga el Excel contable de sus proyectos y pregunta al asistente por ellos. No aprueba viajes ni revisa gastos |
-| Administración | Todo | Además: aprobar, rechazar, reabrir y cerrar viajes; revisar gastos; cargar recibos a nombre de otra persona; administrar cuentas, cargos, proyectos y reglas; indicadores, monitoreo y la pantalla completa del asistente |
+| Administración | Todo | Además: aprobar, rechazar, reabrir y cerrar viajes; revisar gastos; cargar recibos a nombre de otra persona; administrar cuentas, cargos, proyectos y reglas; indicadores, monitoreo, la analítica de precios y el asistente con todo el alcance |
 
 Detalles que el código hace cumplir:
 
@@ -88,7 +95,7 @@ Detalles que el código hace cumplir:
 | Revisar un gasto ajeno y, al hacerlo, asignárselo a sí mismo (moverlo a un viaje suyo) | Sí | `viajes.revision_permitida` compara el antes y el después | Igual que el anterior |
 | Reabrir o cerrar su propio viaje | **No** | `viajes.cambiar_estado` solo bloquea `aprobar` y `rechazar` | Se permite |
 
-- **Qué es «lo suyo».** Un viaje es propio si la persona es su titular o quien viaja; ser administración no cuenta (`viajes.es_propio_de`). Un gasto es propio si se carga a su perfil de viajero, a un viaje suyo, o si lo subió sin cargarlo a otra persona (`viajes.gasto_propio_de`). Un recibo que administración sube a nombre de otra persona es de esa persona.
+- **Qué es «lo suyo».** Un viaje es propio si la persona es su titular o quien viaja; ser administración no cuenta (`viajes.es_propio_de`). Un gasto es propio para la revisión si la persona lo subió, si se carga a su perfil de viajero o si va a un viaje suyo (`viajes.gasto_propio_de`). Quien sube un recibo nunca lo revisa (cuatro ojos): aunque administración lo cargue a nombre de otra persona o lo lea del buzón, lo revisa otra persona de administración.
 - **Cada intento queda en la bitácora** con el paso «autoaprobación impedida» (`viajes.impedir_autoaprobacion`), con quién lo intentó y sobre qué.
 - **Lo propio de administración** lo aprueba otra cuenta de administración. Con una sola cuenta, sus viajes y sus gastos esperan hasta que exista otra (`viajes.hay_otro_admin` lo dice en pantalla).
 - **Dos códigos de error para la misma regla.** El contrato de la API v1 usa `SELF_APPROVAL` para el viaje propio y `FORBIDDEN` para el gasto propio. Los dos responden 403 y dejan el mismo evento; quien consuma la API debe tratar ambos como «no se puede decidir sobre lo propio».
@@ -113,14 +120,16 @@ Detalles que el código hace cumplir:
 | `atipico` | Importe atípico | Bloquea | Con al menos 4 gastos aprobados de la misma categoría y moneda, el total supera la mediana + 3,5 desviaciones robustas (tres veces la mediana si todos los importes son iguales) y el doble de la mediana (`inteligencia.es_atipico`). Con menos historia no opina |
 | `sin_puntos` | Fidelización perdida | **Solo avisa** | Un hotel reservado por una agencia (Booking, Expedia, Hotels.com…): esa estadía no acumula puntos en el programa del hotel |
 | `compra_anticipada` | Compra anticipada | **Solo avisa** | Con viaje: vuelo, hotel, alquiler de carro o compras del proyecto con fecha anterior al viaje (`validacion.SE_COMPRAN_ANTES`). Sin viaje: un vuelo anterior al inicio del proyecto |
-| `lectura_fallida` | Lectura fallida | Bloquea | La lectura del recibo falló, o el gasto quedó en `procesando` más de 5 minutos. Una lectura fallida nunca se aprueba sola |
+| `lectura_fallida` | Lectura fallida | Bloquea | La lectura del recibo falló, o el gasto quedó en `procesando` más de 5 minutos, o la lectura quedó pendiente porque se alcanzó el tope de lecturas del día (`lecturas_recibo_persona_dia`, 40 por persona, y `lecturas_recibo_dia`, 400 en total): entonces el aviso dice «Lectura pendiente por tope», el origen del dato es «pendiente por tope» y el soporte queda guardado. Una lectura fallida nunca se aprueba sola |
 | `sin_viaje` | Sin viaje asignado | Bloquea | No se pudo asignar el gasto a un viaje (ver sección 6) |
 | `viaje_no_aprobado` | Viaje sin presupuesto aprobado | Bloquea | El viaje está pendiente de aprobación o rechazado |
 | `viaje_cerrado` | Viaje cerrado | Bloquea | El viaje ya se cerró |
 | `fuera_del_viaje` | Fecha fuera del viaje | Bloquea | La fecha cae fuera del viaje con su margen (un día antes de la ida, dos después del regreso), salvo una `compra_anticipada` |
 | `presupuesto_superado` | Presupuesto del viaje superado | Bloquea | Lo aprobado del viaje más este gasto supera el presupuesto más la tolerancia del 10 % |
 
-En resumen: de los 20 códigos, **17 bloquean**, **3 solo avisan** (`fecha_futura`, `sin_puntos`, `compra_anticipada`) y `ilegible` bloquea por la confianza baja, no por las dudas solas.
+Además, la compra del tiquete pone tres códigos que bloquean y que volver a validar el gasto no quita (como `lectura_fallida`): `tiquete_sobre_cotizado` (Tiquete por encima de lo cotizado), `compra_cancelada` (Compra cancelada) y `tiquete_importe_distinto` (Mismo localizador, otro importe); ver §1.
+
+En resumen: de los 20 códigos de las reglas, **17 bloquean**, **3 solo avisan** (`fecha_futura`, `sin_puntos`, `compra_anticipada`) y `ilegible` bloquea por la confianza baja, no por las dudas solas.
 
 **Revisión por una persona** (`revision.guardar`, la misma regla en la web y en la API v1):
 
@@ -137,6 +146,7 @@ En resumen: de los 20 códigos, **17 bloquean**, **3 solo avisan** (`fecha_futur
 | Margen del viaje para un gasto | 1 día antes de la ida y 2 después del regreso | `app/servicios/viajes.py`, `MARGEN_ANTES` y `MARGEN_DESPUES` | No: constante del código |
 | Tolerancia sobre el presupuesto del viaje | 10 % | Regla `tolerancia_presupuesto` (0.10) | Sí |
 | Tolerancia de subida del precio al aprobar | 5 % | Regla `tolerancia_precio_aprobacion` (0.05) | Sí |
+| Cuánto puede pasar lo pagado por el tiquete de lo cotizado al decidir antes de ir a revisión | 10 % | Regla `tolerancia_tiquete_pct` (10) | Sí |
 | Motivo para rechazar un viaje o un gasto | 5 caracteres o más | `viajes.cambiar_estado`; `revision.MINIMO_RECHAZO` | No |
 | Motivo para aprobar un gasto con excepción | 8 caracteres o más | `revision.MINIMO_EXCEPCION` | No |
 | Porqué de la decisión | Obligatorio (5 caracteres o más) **solo si no se elige el vuelo recomendado** | `cotizacion.decidir` | No |

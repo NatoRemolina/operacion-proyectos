@@ -143,6 +143,10 @@ interface ResumenAdmin {
 ### `POST /auth/login` (pública)
 Cuerpo JSON `{"correo": string, "clave": string}`. Respuesta 200 `{"persona": Persona, "csrf_token": string, "demostracion": boolean}` y la cookie de sesión. `demostracion` dice si la plataforma corre en local con cuentas de demostración (la web lo muestra en la barra). Errores: 401 `INVALID_CREDENTIALS`, 429 `TOO_MANY_ATTEMPTS`, 403 `ORIGIN_NOT_ALLOWED`. No lleva `X-CSRF-Token` (todavía no hay sesión).
 
+Límite de intentos (`app/servicios/intentos.py`): con 10 fallos en 15 minutos con un mismo correo desde una misma dirección, 20 desde una dirección con cualquier correo, o 50 con un mismo correo desde cualquier dirección (exista o no la cuenta), responde 429 `TOO_MANY_ATTEMPTS` sin mirar la contraseña, aunque sea la buena. El umbral solo por correo es holgado para que fallar con el correo de otra persona no la deje por fuera. Se suma al bloqueo progresivo de cada cuenta. Un ingreso bueno borra los fallos de su correo. El evento «ingreso limitado» se escribe una vez por ventana para cada correo y dirección, no en cada intento. La dirección es la de quien pide; detrás de CloudFront, la de `CloudFront-Viewer-Address`. El formulario `/entrar` aplica el mismo límite.
+
+En la nube, toda petición que no traiga la cabecera secreta `X-Origen-CloudFront` (la añade CloudFront; valor en `ORIGEN_SECRETO`) llegó directo a la dirección de la función y recibe 403 `FORBIDDEN`. La única excepción es `/telegram/webhook`, que trae su propio secreto.
+
 ### `GET /auth/me`
 200 `{"persona": Persona, "csrf_token": string, "demostracion": boolean}`. Sin sesión: 401. La web lo llama al cargar para saber quién es y para aislar su caché por persona.
 
@@ -174,7 +178,7 @@ Parámetros: `viaje_id`, `estado` (opcionales), `limite`, `cursor`. Mismo alcanc
 ### `GET /gastos/contable`
 El Excel contable: un `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) con `Content-Disposition: attachment; filename="libro_contable_<desde>_<hasta>[_proyecto_<id>].xlsx"`, `X-Content-Type-Options: nosniff` y `Cache-Control: private, no-store`. Lo genera `app/servicios/contable.py`.
 
-- Parámetros: `desde` y `hasta` (`AAAA-MM-DD`, por la fecha del recibo, ambos incluidos; por omisión, el año en curso, del 1 de enero al 31 de diciembre, en la hora de Nueva York, `America/New_York`: es un supuesto, la zona de la empresa, para que la nube, que corre en UTC, no proponga el año siguiente desde las 19:00 o 20:00 del 31 de diciembre) y `proyecto_id` (opcional, de 1 a 2147483647; fuera de ese rango, 422).
+- Parámetros: `desde` y `hasta` (`AAAA-MM-DD`, por la fecha del recibo, ambos incluidos; por omisión, el año en curso, del 1 de enero al 31 de diciembre, en la zona de la empresa, `America/Bogota`, la misma de todos los topes y fechas de la plataforma y declarada en la hoja «Resumen»: así la nube, que corre en UTC, no propone el año siguiente desde las 19:00 del 31 de diciembre) y `proyecto_id` (opcional, de 1 a 2147483647; fuera de ese rango, 422).
 - Entran los gastos `aprobado` y `aprobado_auto` que la persona puede ver: administración, todos; quien gestiona, los de sus proyectos y los suyos; el resto, solo los suyos.
 - Hoja «Gastos», una fila por gasto: n.º, fecha, viaje, proyecto, código y nombre de la persona, proveedor, categoría, cuenta contable, base, impuesto (vacío si la lectura no lo trae), propina, total, moneda, tasa a USD, total USD, estado, quién aprobó y cuándo (UTC), alertas o excepción y el enlace al gasto en la plataforma. Hoja «Resumen»: totales por proyecto, por cuenta y por moneda, y los parámetros del libro (fechas, filtros, quién lo generó y cuándo).
 - La cuenta contable sale de un mapa categoría → cuenta editable en «Reglas y supuestos» (claves `cuenta_contable_<categoría>`, ámbito `supuesto`).
@@ -192,6 +196,9 @@ El Excel contable: un `.xlsx` (`application/vnd.openxmlformats-officedocument.sp
 - 201 `GastoDetalle` con su estado real tras leer y validar: `aprobado_auto` o `revision`. La web muestra ese estado, no «aprobado» por haber recibido 201.
 - Misma clave y mismo archivo (y mismo `viaje_id`): 200 con el mismo gasto, aunque siga `procesando`; no se vuelve a leer. Misma clave con otro archivo u otro `viaje_id`: 409 `IDEMPOTENCY_CONFLICT`. Si el primer envío aún no creó el gasto: 409 `REQUEST_IN_PROGRESS`. La clave es de cada persona: la misma clave de dos personas son dos envíos.
 - Si la lectura se interrumpe, el gasto no queda `procesando`: pasa a `revision` con el motivo `lectura_fallida`, y el reintento con la misma clave lo devuelve.
+- Cada lectura con el modelo se reserva antes de llamarlo, del tope de la persona (`lecturas_recibo_persona_dia`) y del total de la empresa (`lecturas_recibo_dia`), igual por la web, la API, el buzón y Telegram. Pasado el tope no se llama al modelo: 201 con el gasto en `revision`, motivo `lectura_fallida`, el aviso «Lectura pendiente por tope» y `origen_dato` «pendiente por tope». El soporte queda guardado.
+- Si el recibo es del tiquete ya comprado del viaje (de vuelo, con el localizador de la compra o con su mismo importe), se enlaza como soporte del gasto de la compra y la respuesta trae ese gasto: no se crea otro.
+- Un PDF de más de 15 páginas no se lee ni se guarda, tampoco el que llega adjunto a un correo (`.eml`): 422 con el número de páginas en `fields.archivo`.
 - Errores: 413, 415, 422.
 
 ### `POST /gastos/{id}/revision`
@@ -216,11 +223,12 @@ El archivo original, con su tipo (`image/jpeg`, `image/png`, `image/webp`, `appl
 ### `POST /asistente`
 Para los tres permisos, cada uno con el alcance de su sesión: el colaborador ve sus viajes y sus gastos; el gestor, además, los de los proyectos que gestiona; administración, todo. El alcance lo pone la sesión, nunca la pregunta: un viaje, un gasto o una persona fuera de él se responde como si no existiera y no aparece entre las fuentes, y los indicadores de toda la empresa son solo para administración. Sin sesión, 401; 403 solo por `CSRF_INVALID`, `ORIGIN_NOT_ALLOWED` o una sesión sin un permiso válido (`FORBIDDEN`). Cuerpo `{"pregunta": "..."}` (1 a 500 caracteres; solo espacios es 422) y `X-CSRF-Token`. Sigue la misma vía que la plataforma: asesor (agente con herramientas), modelo con herramientas o consultas directas, con el mismo tope diario por persona y el mismo rastro en `asistente_consultas`. Con el asesor puede tardar hasta un minuto.
 
-200 `RespuestaAsistente`: `texto`, `modo` (`asesor`, `modelo`, `determinista` o `tope`), `modo_texto` (el modo en palabras), `fuentes` (`tipo`, `codigo` y `destino`: `{"tipo": "viaje" | "gasto" | "cotizacion", "id"}` o `null` si no tiene pantalla, como una persona), `herramientas`, `duracion_ms`, `usadas` y `tope`. Llegar al tope diario no es un error: responde 200 con `modo: "tope"` y el texto lo explica.
+200 `RespuestaAsistente`: `id` (el de esta respuesta, para seguir la conversación; vacío con el tope), `texto`, `modo` (`asesor`, `modelo`, `determinista` o `tope`), `modo_texto` (el modo en palabras), `fuentes` (`tipo`, `codigo` y `destino`: `{"tipo": "viaje" | "gasto" | "cotizacion", "id"}` o `null` si no tiene pantalla, como una persona), `herramientas`, `duracion_ms`, `usadas` y `tope`. Llegar al tope diario no es un error: responde 200 con `modo: "tope"` y el texto lo explica.
 
 Opcionales en el cuerpo, para una conversación más personal:
-- `contexto`: `{"pantalla": "gasto", "id": 123}`, la pantalla desde la que se pregunta. `pantalla` es una de `resumen`, `viajes`, `viaje`, `gastos`, `gasto`, `buzon`, `nuevo_gasto`, `cotizar`, `cotizacion`, `kpis`, `persona`, `monitoreo`, `vuelos`, `reglas`, `usuarios`, `proyectos`, `proyecto` o `mi_cuenta`; `id` (1 a 2³¹−1) solo en las de un registro. Solo viajan el tipo y el id: el servidor busca el registro y lo describe al asistente («Está viendo el gasto #123, en estado revision») solo si está en el alcance de la sesión; si no existe o no se puede ver, no lo menciona. Así «¿por qué está en revisión este gasto?» se entiende sin repetir el número.
-- `historial`: como mucho 3 turnos `{"pregunta", "respuesta"}` (500 y 4.000 caracteres como máximo), los últimos de la conversación. El servidor los recorta y los marca como contexto, no como instrucciones; sirven para «¿y el anterior?» o «explícame más».
+- `contexto`: `{"pantalla": "gasto", "id": 123}`, la pantalla desde la que se pregunta. `pantalla` es una de `resumen`, `viajes`, `viaje`, `gastos`, `gasto`, `buzon`, `nuevo_gasto`, `cotizar`, `cotizacion`, `kpis`, `persona`, `monitoreo`, `vuelos`, `reglas`, `usuarios`, `proyectos`, `proyecto`, `mi_cuenta`, `compras` o `compra` (esta, solo para administración); `id` (1 a 2³¹−1) solo en las de un registro. Solo viajan el tipo y el id: el servidor busca el registro y lo describe al asistente («Está viendo el gasto #123, en estado revision») solo si está en el alcance de la sesión; si no existe o no se puede ver, no lo menciona. Así «¿por qué está en revisión este gasto?» se entiende sin repetir el número.
+- `anteriores`: los `id` de las respuestas anteriores de la conversación (como mucho 3, de la más vieja a la más nueva). El servidor lee esas preguntas y respuestas de `asistente_consultas`, solo las de la misma persona, y las marca como contexto, no como instrucciones; sirven para «¿y el anterior?» o «explícame más». El cliente nunca manda el texto de lo que respondió el asistente: así nadie le pone en la boca algo que no dijo.
+- `historial` (de transición): la forma de antes (como mucho 3 turnos `{"pregunta", "respuesta"}`). Se usa solo si no hay conversación guardada con los `anteriores` que se mandan (o no se mandan), con el mismo recorte y la misma marca de «contexto, no instrucciones»; con `anteriores` válidos se ignora. Así un cliente que aún manda el texto no pierde el hilo.
 
 Cualquier otro campo, una pantalla desconocida, un `id` fuera de rango o más de 3 turnos: 422.
 
@@ -578,7 +586,7 @@ Solo administración, como la pantalla `/admin/kpis`: otra cuenta recibe 403 `FO
 El mismo CSV de la pantalla con los filtros comunes, `text/csv` con BOM y `no-store`. Deja el evento «exportación». Otro valor de `que`: 422.
 
 ### `GET /kpis/rutas-frecuentes?n=10`
-200 `RutasFrecuentes`: las `n` rutas (1 a 50; otro valor: 422) con más cotizaciones y viajes de los últimos 90 días. Por ruta: `por_anticipacion` (mediana en USD por tramo de días: `0-7`, `8-21`, `22-45`, `46+`), `mediana`, `volatilidad` (desviación absoluta mediana), `tendencia` (`sube`, `baja` o `estable` según el historial diario), `prima_flexibilidad` (tarifa con cambio gratis o maleta incluida menos la básica del mismo itinerario, en USD y %), `aerolinea_agencia` y `senal` (`por debajo`, `dentro` o `por encima` del rango habitual; orientativa, no predice). `null` donde no hay datos. Además `exactitud` (MAE y MAPE del precio esperado, en total, por ruta y por mes, y `contra_pagado` cuando hay compras; sin datos, `mensaje` «sin datos todavía»), `tarifas_vistas`, `pocos_datos` y `aviso`. Antes de responder pone al día las tarifas vistas, como mucho cada 10 minutos. Solo administración.
+200 `RutasFrecuentes`: las `n` rutas (1 a 50; otro valor: 422) con más cotizaciones y viajes de los últimos 90 días. Por ruta: `por_anticipacion` (mediana en USD por tramo de días: `0-7`, `8-21`, `22-45`, `46+`), `mediana`, `volatilidad` (desviación absoluta mediana), `tendencia` (`sube`, `baja` o `estable` según el historial diario), `prima_flexibilidad` (tarifa con cambio gratis o maleta incluida menos la básica del mismo itinerario, en USD y %), `aerolinea_agencia` y `senal` (`por debajo`, `dentro` o `por encima` del rango habitual; orientativa, no predice). `null` donde no hay datos. Además `exactitud` (MAE y MAPE del precio esperado, en total, por ruta y por mes, y `contra_pagado`: lo pagado frente a lo cotizado al decidir, solo con compras `comprada` y activas; sin datos, `mensaje` «sin datos todavía»), `tarifas_vistas`, `pocos_datos` y `aviso`. Antes de responder pone al día las tarifas vistas, como mucho cada 10 minutos. Solo administración.
 
 ## Monitoreo
 
@@ -633,7 +641,7 @@ interface TableroProyecto {
   faltantes: string[];               // categorías con previsto y sin gasto aprobado
   viajes: ViajeResumen[];            // los que no se rechazaron
   gastos: (GastoResumen & { viajero: string | null })[];   // todos, por fecha del recibo
-  periodo_contable: { desde: string; hasta: string };    // el año en curso (1 ene–31 dic, hora de Nueva York) que propone el Excel contable
+  periodo_contable: { desde: string; hasta: string };    // el año en curso (1 ene–31 dic, zona de la empresa, America/Bogota) que propone el Excel contable
 }
 ```
 
@@ -768,6 +776,7 @@ interface Compra {
   anticipacion_dias: number | null;                          // días entre la compra y la ida
   creado: string | null; decidido: string | null; comprada: string | null;
   frente_presupuesto: { presupuesto_usd: Dinero; cotizado_usd: Dinero; diferencia_usd: Dinero } | null;   // con la compra registrada
+  aviso: string | null;   // con el tiquete comprado y el viaje reabierto o rechazado: decidir si se conserva o se cancela
 }
 interface CompraDetalle extends Compra {
   vuelo: { opcion_id: number | null; numeros: string[]; aerolinea: string | null; sale: string | null; llega: string | null;
@@ -779,7 +788,7 @@ interface CompraDetalle extends Compra {
 ```
 
 ### `GET /compras?estado=…`
-200 `{"items": Compra[]}`: las compras activas, la más reciente primero (hasta 200).
+200 `{"items": Compra[]}`: las compras activas, la más reciente primero (hasta 200). Leer una compra nunca la cambia ni le sube la versión: lo que el estado del viaje le hace a la compra pasa al cambiar el estado del viaje (`POST /viajes/{id}/estado`): «Se va a comprar» vuelve a «En análisis» si el viaje se reabre o se cierra; con el tiquete comprado, reabrir o rechazar deja un evento y `aviso`; volver a aprobar con el tiquete comprado no consulta el buscador y el presupuesto usa lo pagado.
 
 ### `GET /compras/{id}`
 200 `CompraDetalle`: el vuelo con el mismo enlace a la página oficial que usa «Ver desglose» («Comprar en {vendedor}»), los clics a las fuentes (`clics_fuente`) y la última lectura de la página.
@@ -788,7 +797,7 @@ interface CompraDetalle extends Compra {
 Cuerpo `{"accion": "en_analisis" | "se_comprara" | "no_se_comprara" | "cancelada", "version": 2, "motivo": ""}` con `X-CSRF-Token`. «Se va a comprar» exige el viaje **aprobado**; «No se va a comprar» y «Cancelada» exigen motivo (5 caracteres o más; 422 con `fields.motivo`). Cada decisión avisa al viajero en la bitácora de su viaje (`aviso al viajero`). 200 `Compra` con la versión nueva.
 
 ### `POST /compras/{id}/registro`
-Cuerpo `{"version": 3, "localizador": "QX7Z2P", "precio_pagado": "461.30", "vendedor": "American"}` con `X-CSRF-Token`, solo desde `se_comprara`. Guarda localizador (5 a 8 letras o números), precio pagado y vendedor, calcula `anticipacion_dias` y responde 200 `Compra` en `comprada` con `frente_presupuesto`.
+Cuerpo `{"version": 3, "localizador": "QX7Z2P", "precio_pagado": "461.30", "vendedor": "American"}` con `X-CSRF-Token`, solo desde `se_comprara`. Guarda localizador (5 a 8 letras o números), precio pagado y vendedor, calcula `anticipacion_dias` y responde 200 `Compra` en `comprada` con `frente_presupuesto`. Crea además el gasto del tiquete (categoría `vuelo`, `origen_dato` «compra registrada»): `aprobado` si lo pagado no supera lo cotizado al decidir en más de la regla `tolerancia_tiquete_pct` (10 %); si lo supera o no hubo precio cotizado, `revision` con el motivo `tiquete_sobre_cotizado`, y lo aprueba otra persona de administración. Lo aprobado suma en lo gastado del viaje y entra al Excel contable. Si el recibo de ese tiquete ya estaba cargado (mismo localizador o mismo comercio, con el importe a un 1 % o un dólar), se enlaza ese gasto en vez de crear otro. Cancelar una compra `comprada` devuelve su gasto a `revision` con el motivo `compra_cancelada` («Compra cancelada: revisar reembolso»).
 
 ### `POST /compras/{id}/analisis`
 Con `X-CSRF-Token`. Pide (o reutiliza) la lectura de la página del vuelo de la compra: 200 `AnalisisVuelo`.

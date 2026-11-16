@@ -3,6 +3,7 @@
 Para que las consultas sean idénticas en los dos motores, las fechas se guardan como
 texto ISO y los campos compuestos como texto JSON.
 """
+import hashlib
 import json
 import time
 from contextlib import contextmanager
@@ -11,20 +12,28 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, CheckConstraint, Column, Float, ForeignKey, Integer, MetaData, Table, Text, create_engine, event, inspect, text
+from sqlalchemy.engine import URL, make_url
 
 from . import config
 
+# Servidores del equipo o de Docker: el contenedor de PostgreSQL de Compose no usa SSL
+SERVIDORES_LOCALES = ("localhost", "127.0.0.1", "::1", "db", "host.docker.internal")
 
-def _url() -> str:
-    url = config.DATABASE_URL
-    if not url:
+
+def _url(cadena: str) -> str | URL:
+    """La conexión para SQLAlchemy. PostgreSQL en un servidor que no es local va cifrado: `sslmode=require` si la cadena
+    no trae su propio `sslmode` (que se respeta, por ejemplo `verify-full`). Decide el servidor de la cadena, no dónde
+    corre la aplicación: la migración que corre el guion desde el equipo contra Supabase también lo exige."""
+    if not cadena:
         (config.RAIZ / "datos").mkdir(exist_ok=True)
         return f"sqlite:///{config.RAIZ / 'datos' / 'local.db'}"
-    if url.startswith("sqlite"):
-        return url
-    for prefijo in ("postgresql://", "postgres://"):
-        if url.startswith(prefijo):
-            return "postgresql+psycopg://" + url[len(prefijo):]
+    if cadena.startswith("sqlite"):
+        return cadena
+    url = make_url(cadena)
+    if url.drivername in ("postgresql", "postgres"):
+        url = url.set(drivername="postgresql+psycopg")
+    if url.get_backend_name() == "postgresql" and url.host not in SERVIDORES_LOCALES and "sslmode" not in url.query:
+        url = url.update_query_dict({"sslmode": "require"})
     return url
 
 
@@ -38,7 +47,7 @@ if not config.ES_SQLITE:
         # En la nube cada instancia mantiene pocas conexiones y las comprueba al reanudar tras una pausa
         _args.update(pool_size=2, max_overflow=2, pool_recycle=120, pool_pre_ping=True)
 # Un error de la base no lleva los valores enviados (por ejemplo, la huella de una contraseña) a los registros
-motor = create_engine(_url(), hide_parameters=True, **_args)
+motor = create_engine(_url(config.DATABASE_URL), hide_parameters=True, **_args)
 
 if config.ES_SQLITE:
     @event.listens_for(motor, "connect")
@@ -48,8 +57,10 @@ if config.ES_SQLITE:
 meta = MetaData()
 
 
-def _tabla(nombre, *columnas):
-    return Table(nombre, meta, Column("id", Integer, primary_key=True, autoincrement=True), *columnas)
+def _tabla(nombre, *columnas, **opciones):
+    """`sqlite_autoincrement=True` en las tablas cuyas filas se borran: sin AUTOINCREMENT, SQLite vuelve a dar el id más
+    alto que se borró, y la fila nueva hereda lo que apunta a ese número sin clave foránea (los eventos de un gasto)."""
+    return Table(nombre, meta, Column("id", Integer, primary_key=True, autoincrement=True), *columnas, **opciones)
 
 
 def _ref(tabla: str, columna: str, destino: str) -> Column:
@@ -137,6 +148,7 @@ gastos = _tabla(
     Column("motivos", Text),  # códigos de las alertas, para contar por qué se revisa sin buscar en el texto
     Column("extraido", Text),  # lectura original del modelo, intacta, para medir cuánto se corrige
     _ref("gastos", "viaje_id", "viajes"),
+    sqlite_autoincrement=True,   # el gasto provisional del recibo de un tiquete se borra (`gastos._enlazar_al_tiquete`)
 )
 eventos = _tabla(
     "eventos",
@@ -226,21 +238,30 @@ def ahora() -> str:
 
 
 def crear_tablas():
-    """Crea las tablas que falten y añade las columnas nuevas a las que ya existen."""
+    """Crea las tablas que falten y añade las columnas nuevas a las que ya existen. Dentro de `transaccion()` lo hace en
+    ella (así la migración de PostgreSQL crea y altera en una sola transacción); fuera, en una propia."""
     import importlib
     import pkgutil
 
     from . import servicios
     for m in pkgutil.iter_modules(servicios.__path__):   # cada servicio puede declarar sus propias tablas
         importlib.import_module(f"{servicios.__name__}.{m.name}")
-    meta.create_all(motor)
-    existentes = inspect(motor)
-    with motor.begin() as c:
+    with _conexion(escritura=True) as c:
+        meta.create_all(c)
+        existentes = inspect(c)
         for t in meta.sorted_tables:
             presentes = {col["name"] for col in existentes.get_columns(t.name)}
             for col in t.columns:
                 if col.name not in presentes:
                     c.execute(text(f"alter table {t.name} add column {col.name} {col.type.compile(motor.dialect)}"))
+
+
+@contextmanager
+def catalogo():
+    """El inspector de SQLAlchemy sobre la transacción en curso (o una conexión propia): dentro de la migración ve las
+    tablas y columnas que esa misma transacción acaba de crear."""
+    with _conexion() as c:
+        yield inspect(c)
 
 
 # ---------- transacción de verdad ----------
@@ -278,6 +299,27 @@ def transaccion():
         finally:
             _en_transaccion.reset(marca)
             _cache.clear()
+
+
+def _numero_de_cerrojo(clave) -> int:
+    """Un número de 64 bits estable para cualquier clave: un número se usa tal cual; lo demás, por su huella."""
+    if isinstance(clave, int) and not isinstance(clave, bool):
+        return clave
+    return int.from_bytes(hashlib.sha256(repr(clave).encode()).digest()[:8], "big", signed=True)
+
+
+def cerrojo(clave) -> None:
+    """Pone en fila, hasta el final de la transacción en curso, a quien pida la misma clave. Va dentro de `transaccion()`.
+
+    Es la única forma de ordenar escrituras que compiten (reservar un tope, una decisión a la vez...). En PostgreSQL es
+    un cerrojo de transacción (`pg_advisory_xact_lock`), que se suelta solo al confirmar o revertir; en SQLite,
+    `transaccion()` ya tomó el cerrojo de escritura de toda la base con BEGIN IMMEDIATE.
+    """
+    conexion = _en_transaccion.get()
+    if conexion is None:
+        raise RuntimeError("db.cerrojo va dentro de db.transaccion(): fuera de ella no ordenaría nada")
+    if not config.ES_SQLITE:
+        conexion.execute(text("select pg_advisory_xact_lock(:k)"), {"k": _numero_de_cerrojo(clave)})
 
 
 def bloquear_viaje(conexion, viaje_id: int | None) -> dict | None:

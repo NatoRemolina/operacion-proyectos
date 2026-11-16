@@ -15,12 +15,11 @@ queda en `llamadas_modelo` con uso `exactitud`; de ahí sale el costo estimado, 
 import argparse
 import json
 import sys
-from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from app import config, db
-from app.servicios import costo, extraccion, gastos, llm, validacion
+from app.servicios import costo, extraccion, gastos, llm, tiempo, validacion
 
 DESTINO = config.RAIZ / "docs" / "exactitud-lectura.md"
 USO = "exactitud"
@@ -45,7 +44,7 @@ def comparar(campo: str, leido, esperado) -> bool | None:
         except InvalidOperation:
             return False
     if campo == "comercio":
-        return validacion._mismo_comercio(leido, esperado) or (leido is None and esperado is None)
+        return validacion.mismo_comercio(leido, esperado) or (leido is None and esperado is None)
     if campo == "moneda":
         return (leido or "").upper() == (esperado or "").upper()
     return leido == esperado
@@ -85,7 +84,7 @@ def medir(tope_usd: float = TOPE_USD, directorio: Path = config.DIR_EJEMPLOS) ->
         campos = {c: {"ok": comparar(c, lectura.get(c), esperado.get(c)), "leido": lectura.get(c),
                       "esperado": esperado.get(c)} for c in CAMPOS}
         archivos.append({"nombre": nombre, "medido": True, "campos": campos, "error": lectura.get("error")})
-    return {"modelo": config.MODELO_NOMBRE, "fecha": datetime.now(UTC).date().isoformat(), "tope_usd": tope_usd,
+    return {"modelo": config.MODELO_NOMBRE, "fecha": tiempo.hoy().isoformat(), "tope_usd": tope_usd,
             "detenido": detenido, "archivos": archivos, "uso": _uso_desde(id_antes)}
 
 

@@ -48,7 +48,7 @@ def caso(nuevo_viaje):
 
 # ---------- herramientas ----------
 def test_cada_motivo_de_la_validacion_tiene_una_explicacion_para_quien_reporta():
-    assert set(asistente.EXPLICACION) == set(validacion.MOTIVOS)
+    assert set(asistente.EXPLICACION) == set(validacion.MOTIVOS) | set(validacion.MOTIVOS_DE_COMPRA)
     for que_paso, que_hacer in asistente.EXPLICACION.values():
         assert que_paso.endswith(".") and que_hacer.endswith(".")
 

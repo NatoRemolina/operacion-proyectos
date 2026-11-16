@@ -73,3 +73,37 @@ def test_variables_pg_para_eval_sin_mostrar_la_clave_partida(tmp_path):
     guion = f"{orden}; printf '%s|%s|%s|%s' \"$PGHOST\" \"$PGPORT\" \"$PGUSER\" \"$PGPASSWORD\""
     salida = subprocess.run(["/bin/sh", "-c", guion], capture_output=True, text=True, check=True).stdout  # noqa: S603  orden fija de esta prueba
     assert salida == f"servidor.example|5432|postgres.proyecto|{clave}"
+
+
+# ---------- pedidos del frente de la plataforma ----------
+def test_variables_pg_usa_postgres_por_omision_y_acepta_otra_base(tmp_path, capsys):
+    """La vuelta atrás de la publicada restaura en `postgres`; en el Supabase de pruebas se ensaya en una base aparte."""
+    import shlex
+    archivo = _env(tmp_path, OTRO)
+
+    def base(orden: str) -> str:
+        return dict(p.split("=", 1) for p in shlex.split(orden.removeprefix("export ")))["PGDATABASE"]
+
+    assert base(respaldar.variables_pg(archivo)) == "postgres"
+    assert base(respaldar.variables_pg(archivo, "ensayo_vuelta")) == "ensayo_vuelta"
+    assert respaldar.main(["variables-pg", "--env", archivo, "--base", "ensayo_vuelta"]) == 0
+    assert base(capsys.readouterr().out.strip()) == "ensayo_vuelta"
+    with pytest.raises(SystemExit):   # el nombre de la base va a la terminal: solo letras, números y guion bajo
+        respaldar.variables_pg(archivo, "x; rm -rf /")
+
+
+def test_docker_alcanza_el_equipo_tambien_en_linux(monkeypatch):
+    """En Linux, `host.docker.internal` no existe sin `--add-host`: el respaldo de una base local fallaba."""
+    vistos = []
+
+    class Hecho:
+        returncode, stderr = 0, b""
+
+    monkeypatch.setattr(respaldar.subprocess, "run", lambda cmd, **_: vistos.append(cmd) or Hecho())
+    partes = {"host": "127.0.0.1", "puerto": "5433", "usuario": "u", "clave": "c", "base": "b"}
+    respaldar._docker(partes, ["pg_dump", "--version"])
+    cmd = vistos[0]
+    assert cmd[:4] == ["docker", "run", "--rm", "-i"]
+    assert "--add-host=host.docker.internal:host-gateway" in cmd
+    assert cmd.index("--add-host=host.docker.internal:host-gateway") < cmd.index(respaldar.IMAGEN)
+    assert "c" not in cmd   # la clave viaja en el entorno, no en la línea

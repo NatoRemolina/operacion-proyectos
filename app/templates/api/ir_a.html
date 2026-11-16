@@ -1,0 +1,27 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Preparando tu enlace a {{ titulo }}</title></head>
+<body><main><p id="estado" role="status">Preparando tu enlace a {{ titulo }}…</p>
+<p id="alterna" hidden><a href="{{ google }}" rel="noopener noreferrer">Abrir el vuelo en Google Flights</a></p></main>
+<script nonce="{{ nonce }}">
+(async function () {
+  const d = {{ datos | tojson }};
+  const estado = document.getElementById("estado");
+  function fallo(texto) { estado.textContent = texto; document.getElementById("alterna").hidden = false; }
+  try {
+    const r = await fetch(d.api, { method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": d.csrf },
+      body: JSON.stringify({ vendedor: d.vendedor, tarifa: d.tarifa }) });
+    if (!r.ok) return fallo("No se pudo preparar el enlace al vendedor. Puedes abrir el vuelo en Google Flights.");
+    const e = await r.json();
+    if (!e.url) return fallo("No hay un enlace para esta tarifa. Puedes abrir el vuelo en Google Flights.");
+    if (!e.campos.length) return location.replace(e.url);
+    estado.textContent = "Abriendo la página de " + e.vendedor + "…";
+    const f = document.createElement("form");
+    f.method = "post"; f.action = e.url;
+    for (const [k, v] of e.campos) {
+      const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = v; f.appendChild(i);
+    }
+    document.body.appendChild(f); f.submit();
+  } catch (_) { fallo("No hubo conexión con el servidor. Puedes abrir el vuelo en Google Flights."); }
+})();
+</script></body></html>

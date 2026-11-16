@@ -79,7 +79,12 @@ def test_leer_carga_los_correos_al_viaje_por_el_canal_correo(cliente, viaje_apro
     for g in resultado["leidos"]:
         assert g["estado"] in ("aprobado_auto", "revision") and g["viaje"]["id"] == viaje_aprobado["id"]
         detalle = cliente.get(f"{V1}/gastos/{g['id']}").json()
-        assert detalle["canal"] == "correo" and detalle["propio"] is False   # es del viaje del piloto: administración lo revisa
+        # Va al viaje del piloto, pero lo subió esta cuenta de administración: lo revisa otra persona (cuatro ojos)
+        assert detalle["canal"] == "correo" and detalle["propio"] is True
+        r = cliente.post(f"{V1}/gastos/{g['id']}/revision", json={"version": detalle["version"], "accion": "rechazar",
+                                                                  "motivo": "No corresponde al viaje"}, headers=_csrf(cliente))
+        _error(r, 403, "FORBIDDEN")
+        assert db.uno("select estado from gastos where id=:i", i=g["id"])["estado"] == g["estado"]
     eml = cliente.get(f"{V1}/gastos/{resultado['leidos'][0]['id']}").json()
     assert eml["correo"]["remitente"]
 

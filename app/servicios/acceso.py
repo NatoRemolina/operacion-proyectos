@@ -242,6 +242,29 @@ def usuario_de(token: str | None, tocar: bool = True) -> dict | None:
     return u
 
 
+CABECERA_CLOUDFRONT = "x-origen-cloudfront"
+# Llegan directo a la dirección de la función, no por CloudFront, y traen su propio secreto
+DIRECTAS = ("/telegram/webhook",)
+
+
+def exige_cloudfront() -> bool:
+    """En la nube, con el secreto configurado, solo entra lo que pasa por CloudFront."""
+    return not config.LOCAL and bool(config.ORIGEN_SECRETO)
+
+
+def viene_de_cloudfront(cabeceras) -> bool:
+    return bool(config.ORIGEN_SECRETO) and secrets.compare_digest(cabeceras.get(CABECERA_CLOUDFRONT, "").encode(),
+                                                                 config.ORIGEN_SECRETO.encode())
+
+
+def direccion(cabeceras, conexion: str | None) -> str:
+    """La dirección de quien pide. Detrás de CloudFront, la que CloudFront pone en `CloudFront-Viewer-Address` (el
+    navegador no la puede fingir: CloudFront la reescribe); la de la conexión sería la de CloudFront."""
+    if viene_de_cloudfront(cabeceras) and (visitante := cabeceras.get("cloudfront-viewer-address", "")):
+        return visitante.rsplit(":", 1)[0]
+    return conexion or ""
+
+
 def mismo_origen(cabeceras) -> bool:
     """Toda petición de escritura debe venir de la propia página (defensa frente a falsificación de peticiones)."""
     sitio = cabeceras.get("sec-fetch-site")

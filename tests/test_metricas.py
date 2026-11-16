@@ -1,6 +1,8 @@
 """Cada métrica contra un conjunto conocido: si una definición cambia, una cifra cambia y la prueba falla."""
 import json
 
+import pytest
+
 from app import db
 from app.servicios import inteligencia, metricas
 
@@ -9,17 +11,22 @@ PROYECTO = 901   # proyecto exclusivo de estas pruebas: aísla las cifras de lo 
 
 def _gasto(estado, total, categoria="comidas", moneda="USD", proyecto=PROYECTO, **extra):
     if not db.uno("select id from proyectos where id=:i", i=proyecto):   # las claves foráneas exigen que el proyecto exista
-        db.insertar("proyectos", id=proyecto, nombre=f"Proyecto de pruebas {proyecto}", moneda="USD")
+        db.insertar("proyectos", id=proyecto, nombre=f"Proyecto de pruebas {proyecto}", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
     return db.insertar("gastos", proyecto_id=proyecto, viajero_id=1, comercio="Prueba", fecha="2026-11-01", categoria=categoria,
                        total=total, moneda=moneda, total_usd=total, estado=estado, confianza=0.95, creado=db.ahora(), **extra)
 
 
-def test_metricas_de_gastos_sobre_un_conjunto_conocido():
+@pytest.fixture(scope="module", autouse=True)
+def _conjunto_conocido():
+    """Los cuatro gastos del proyecto de estas pruebas, una vez por módulo: las pruebas los leen en cualquier orden."""
     leido = {"comercio": "Prueba", "fecha": "2026-11-01", "categoria": "comidas", "total": 10.0, "moneda": "USD"}
     _gasto("aprobado_auto", 10.0, extraido=json.dumps(leido))
     _gasto("aprobado_auto", 20.0, extraido=json.dumps({**leido, "total": 20.0}))
     _gasto("aprobado", 35.0, extraido=json.dumps({**leido, "total": 53.0}), motivos=json.dumps(["no_cuadra"]))   # se corrigió el total
     _gasto("revision", 99.0, motivos=json.dumps(["duplicado", "duplicado"]))
+
+
+def test_metricas_de_gastos_sobre_un_conjunto_conocido():
     m = metricas.gastos({"proyecto_id": PROYECTO})
     assert m["recibidos"] == 4 and m["tasa_sin_intervencion"] == 50 and m["pendientes"] == 1
     assert m["real_total"] == 65.0                                   # el que espera revisión no cuenta como gasto real
@@ -52,7 +59,7 @@ def test_consola_y_api(cliente, piloto):
 
 
 def test_calidad_de_datos_en_cero():
-    assert all(p["casos"] == 0 for p in metricas.calidad_de_datos() if "sesiones" not in p["prueba"].lower())
+    assert [p for p in metricas.calidad_de_datos() if p["casos"] and "sesiones" not in p["prueba"].lower()] == []
 
 
 def test_un_error_queda_registrado_con_identificador(cliente, monkeypatch):
@@ -95,7 +102,7 @@ def test_las_exportaciones_neutralizan_formulas_que_alguien_sin_cuenta_puede_sem
 def test_el_csv_del_proyecto_deja_vacias_las_celdas_vacias_y_dice_quien_viaja(cliente):
     proyecto = 905   # proyecto propio: no cambia las cifras de los demás
     if not db.uno("select id from proyectos where id=:i", i=proyecto):
-        db.insertar("proyectos", id=proyecto, nombre="Proyecto de exportación", moneda="USD")
+        db.insertar("proyectos", id=proyecto, nombre="Proyecto de exportación", moneda="USD", fecha_inicio="2020-01-01", fecha_fin="2035-12-31")
     db.insertar("gastos", proyecto_id=proyecto, viajero_id=1, comercio="=1+1", estado="revision", creado=db.ahora())
     r = cliente.get(f"/proyectos/{proyecto}/exportar.csv")
     assert r.status_code == 200 and r.text.startswith("\ufeff")   # con BOM, la hoja de cálculo lee bien las tildes

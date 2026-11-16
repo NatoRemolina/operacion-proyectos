@@ -251,12 +251,17 @@ Lista que se ajusta al integrar cada pantalla de la web.
 
 | Publicado | En publicación |
 |---|---|
-| Ingreso | Proyectos y su tablero |
-| Cotizar: buscar, comparar y decidir | Usuarios y cargos |
-| Viajes: los propios y, para administración, por aprobar con la reconfirmación del precio | Mi cuenta |
-| Gastos: cargar recibo (foto, PDF, correo, HTML), justificación, lista y detalle | Retiro de las pantallas anteriores |
-| Revisión completa de gastos: corregir, reasignar viaje, aprobar, aprobar con excepción, rechazar | |
+| Ingreso | Retiro de las pantallas anteriores: en la nube cada dirección anterior lleva a la web; en `admin.software.` solo quedan la analítica de precios y el flujo de la información, con su propio ingreso |
+| Cotizar: buscar, comparar y decidir | Tope de lecturas de recibos y notas de voz (40 por persona y 400 por día) y PDF de hasta 15 páginas |
+| Viajes: los propios y, para administración, por aprobar con la reconfirmación del precio | Lo comprado cuenta en el gasto del viaje: el tiquete registrado crea su gasto y su recibo se enlaza a él |
+| Gastos: cargar recibo (foto, PDF, correo, HTML), justificación, lista y detalle | Límite de intentos de ingreso y acceso solo por CloudFront |
+| Revisión completa de gastos: corregir, reasignar viaje, aprobar, aprobar con excepción, rechazar | El asistente lee la conversación del servidor (la web manda los `id` de las respuestas anteriores) |
 | Excel contable | |
 | Reglas y supuestos | |
 | KPIs, Monitoreo y estado de los vuelos | |
 | Resumen de administración y asistente | |
+| Proyectos y su tablero | |
+| Usuarios y cargos | |
+| Mi cuenta | |
+| Compras: la solicitud de compra de cada viaje, su análisis, el registro con localizador y la evidencia | |
+| Buzón de gastos por correo (simulado con los correos de ejemplo) | |

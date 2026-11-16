@@ -4,28 +4,17 @@ Lo usan las pantallas (`app/rutas/cotizaciones.py`) y la API v1 (`app/rutas/v1_c
 comprueba antes el permiso sobre la cotización: `acceso.puede_ver` para leerla y `acceso.es_propio` para decidirla.
 Los errores de datos salen como excepciones con el texto para la persona; cada canal los presenta a su manera.
 """
-import hashlib
-import json
 import math
 import re
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import parse_qsl, urlsplit
 
-from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint, text
 from sqlalchemy.exc import IntegrityError
 
 from .. import aeropuertos, config, db
-from . import acceso, analizador, capturas, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, viajes
+from . import acceso, analizador, capturas, compras, costo, eventos, geografia, modelo, monitoreo_vuelos, precios, tiempo, topes, viajes
 
 # Un pedido de cotización con `Idempotency-Key` por la API: la misma clave de la misma persona da la misma cotización
-envios_cotizacion = db._tabla(
-    "envios_cotizacion",  # una fila por (persona, clave); solo la usa el servidor
-    Column("usuario_id", Integer, ForeignKey("usuarios.id", name="fk_envios_cotizacion_usuario_id"), nullable=False),
-    Column("clave", Text, nullable=False), Column("huella", Text, nullable=False), Column("estado", Text, nullable=False),
-    db._ref("envios_cotizacion", "solicitud_id", "solicitudes"), Column("expira", Text), Column("creado", Text),
-    UniqueConstraint("usuario_id", "clave", name="ux_envios_cotizacion_persona_clave"),
-)
-VIGENCIA_ENVIO = timedelta(minutes=5)   # más que una búsqueda en vivo; pasado esto, quien la tenía ya no va a terminar
 DECISIONES_EN_VIVO_DIA = 10   # la regla `decisiones_en_vivo_dia` lo cambia
 # El buscador trae unos 20 por página: se guardan todos y se recorta solo después de ordenar por costo total
 TOPE_HOTELES_GUARDADOS = 40
@@ -53,14 +42,6 @@ class DecisionBloqueada(ValueError):
     """El viaje ya tiene el presupuesto aprobado o está cerrado: la decisión no cambia sin reabrirlo."""
 
 
-class ConflictoEnvio(ValueError):
-    """La clave ya se usó con otro pedido."""
-
-
-class EnvioEnCurso(ValueError):
-    """El primer pedido con esa clave todavía está buscando."""
-
-
 class FueraDeAlcance(PermissionError):
     """Cotizar o decidir para otra persona fuera de los proyectos que se gestionan."""
 
@@ -69,17 +50,18 @@ class TopeAlcanzado(ValueError):
     """La persona ya hizo hoy las cotizaciones nuevas que permite la regla `tope_cotizaciones_persona_dia`."""
 
 
-TOPE_COTIZACIONES_DIA = 20   # si la regla no existe
+TOPE_COTIZACIONES = "tope_cotizaciones_persona_dia"   # regla editable; si no existe, `topes.LIMITES`
 AVISO_TOPE_COTIZACIONES = ("Llegaste al tope de cotizaciones nuevas de hoy. Retoma una de las que ya tienes o pide a "
                            "administración que amplíe el tope.")
 
 
 def tope_cotizaciones_dia() -> int:
-    return int(costo.supuesto(costo.catalogo(), "tope_cotizaciones_persona_dia", TOPE_COTIZACIONES_DIA))
+    return topes.limite(TOPE_COTIZACIONES)
 
 
 def cotizaciones_de_hoy(usuario: dict) -> int:
-    return db.uno("select count(*) n from solicitudes where usuario_id=:u and creado>=:h", u=usuario["id"], h=db.ahora()[:10])["n"]
+    """Cotizaciones nuevas que la persona reservó hoy (día de la empresa)."""
+    return topes.usadas(TOPE_COTIZACIONES, usuario)
 
 
 # ---------- quién cotiza y decide para otra persona (la misma regla en las pantallas y en la API) ----------
@@ -175,7 +157,7 @@ def primer_dia_posible() -> date:
     """La ida más temprana que se puede cotizar: hoy. El buscador rechaza fechas pasadas y la consulta se perdería.
     Se toma «hoy» con 12 horas de margen hacia atrás sobre la hora universal, para que en América el día local siga
     valiendo aunque en UTC ya sea mañana."""
-    return (datetime.now(UTC) - timedelta(hours=12)).date()
+    return (tiempo.ahora() - timedelta(hours=12)).date()
 
 
 def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id: int = 0, origen: str = "",
@@ -185,7 +167,8 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
           origen_lugar=None, destino_lugar=None, canal: str = "formulario") -> int:
     """Guarda la solicitud, busca vuelos y hoteles (una consulta para todos los aeropuertos marcados) y deja las
     opciones listas para comparar. `prob_cambio` va en porcentaje (0 a 100). Devuelve el id de la solicitud."""
-    if cotizaciones_de_hoy(usuario) >= tope_cotizaciones_dia():   # cada cotización nueva puede gastar dos búsquedas pagas
+    # Cada cotización nueva puede gastar dos búsquedas pagas. Aquí solo se avisa pronto; la reserva que cuenta va abajo
+    if cotizaciones_de_hoy(usuario) >= tope_cotizaciones_dia():
         raise TopeAlcanzado(AVISO_TOPE_COTIZACIONES)
     sale, llega = lado(origen, origen_aeropuertos, origen_lugar), lado(destino, destino_aeropuertos, destino_lugar)
     if "malo" in sale or "malo" in llega:
@@ -229,13 +212,17 @@ def crear(usuario: dict, *, proyecto_id: int, ida: str, regreso: str, viajero_id
         raise CotizacionInvalida("viajero_id", "Elige quién viaja.")
     if viajero_id != usuario.get("viajero_id") and not para_otros_en(usuario, proyecto_id):
         raise FueraDeAlcance("Para cotizar para otra persona elige uno de los proyectos que gestionas.")
-    sid = db.insertar("solicitudes", proyecto_id=proyecto_id, viajero_id=viajero_id, origen=origen,
-                      destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
-                      llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,
-                      maleta=1 if maleta else 0, prob_cambio=prob_cambio / 100, carro_dia=carro_dia,
-                      estado="buscando", creado=db.ahora(), solicitado_por=solicitado_por, usuario_id=usuario["id"],
-                      origen_lugar=sale["lugar"], destino_lugar=llega["lugar"],
-                      origen_aeropuertos=sale["lista"], destino_aeropuertos=llega["lista"])
+    # La reserva del tope y la solicitud, juntas y en fila: varias cotizaciones a la vez no pasan juntas el tope
+    with db.transaccion():
+        if not topes.reservar(TOPE_COTIZACIONES, usuario, detalle=f"{origen}-{destino} {ida}"):
+            raise TopeAlcanzado(AVISO_TOPE_COTIZACIONES)
+        sid = db.insertar("solicitudes", proyecto_id=proyecto_id, viajero_id=viajero_id, origen=origen,
+                          destino=destino, ciudad=ciudad, ida=ida, regreso=regreso,
+                          llegar_antes=llegar_antes or None, baterias_n=baterias_n, baterias_wh=baterias_wh,
+                          maleta=1 if maleta else 0, prob_cambio=prob_cambio / 100, carro_dia=carro_dia,
+                          estado="buscando", creado=db.ahora(), solicitado_por=solicitado_por, usuario_id=usuario["id"],
+                          origen_lugar=sale["lugar"], destino_lugar=llega["lugar"],
+                          origen_aeropuertos=sale["lista"], destino_aeropuertos=llega["lista"])
     eventos.registrar("solicitud", sid, "solicitud recibida", f"{origen}-{destino} {ida} a {regreso} · "
                       f"origen: {texto_lado(sale)} · destino: {texto_lado(llega)}", f"{canal} · {solicitado_por}")
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
@@ -274,48 +261,49 @@ def completar_ahorros():
         registrar_ahorro(s["id"])
 
 
-# ---------- pedidos repetidos (Idempotency-Key) ----------
-def huella_pedido(pedido: dict) -> str:
-    return hashlib.sha256(json.dumps(pedido, sort_keys=True, default=str).encode()).hexdigest()
+# ---------- lecturas que usan la API y las pantallas ----------
+def fila_de_acceso(sid: int) -> dict | None:
+    """Lo que decide quién ve una cotización: quien la creó, quien viaja y su proyecto (`acceso.puede_ver`)."""
+    return db.uno("select usuario_id, viajero_id, proyecto_id from solicitudes where id=:i", i=sid)
 
 
-def _vence() -> str:
-    return (datetime.now(UTC) + VIGENCIA_ENVIO).strftime("%Y-%m-%d %H:%M:%S")
+def solicitud(sid: int) -> dict | None:
+    return db.uno("select * from solicitudes where id=:i", i=sid)
 
 
-def reclamar_envio(usuario_id: int, clave: str, huella: str) -> tuple[dict, int | None]:
-    """Devuelve (envío, cotización). Con cotización, el pedido ya se atendió y no se vuelve a buscar.
-
-    ConflictoEnvio si la clave se usó con otro pedido; EnvioEnCurso si el primero todavía está buscando.
-    Un envío que quedó a medias más allá de su vigencia se retoma.
-    """
-    with db.transaccion() as c:
-        try:
-            with c.begin_nested():   # la clave puede existir ya: el error se atrapa y la transacción sigue
-                nuevo = db.insertar("envios_cotizacion", usuario_id=usuario_id, clave=clave, huella=huella,
-                                    estado="procesando", expira=_vence(), creado=db.ahora())
-            return {"id": nuevo}, None
-        except IntegrityError:
-            pass
-        fila = db.uno("select * from envios_cotizacion where usuario_id=:u and clave=:c" + ("" if config.ES_SQLITE else " for update"),
-                      u=usuario_id, c=clave)
-        if fila["huella"] != huella:
-            raise ConflictoEnvio("Esa clave ya se usó con otra cotización.")
-        if fila["solicitud_id"]:
-            return fila, fila["solicitud_id"]
-        if (fila["expira"] or "") > db.ahora():
-            raise EnvioEnCurso("Esa cotización todavía se está buscando. Reintenta en un momento con la misma clave.")
-        db.actualizar("envios_cotizacion", fila["id"], expira=_vence())
-        return fila, None
+def opcion(opcion_id: int) -> dict | None:
+    return db.uno("select * from opciones where id=:o", o=opcion_id)
 
 
-def completar_envio(envio: dict, sid: int):
-    db.actualizar("envios_cotizacion", envio["id"], estado="completado", solicitud_id=sid)
+def vuelo_de(sid: int, opcion_id: int) -> dict | None:
+    """Los datos de un vuelo de la cotización; None si esa opción no es un vuelo de ella."""
+    o = db.uno("select datos from opciones where id=:o and solicitud_id=:s and tipo='vuelo'", o=opcion_id, s=sid)
+    return (db.de_json(o["datos"], {}) or {}) if o else None
 
 
-def soltar_envio(envio: dict):
-    """El pedido no creó nada (datos que no sirven o un fallo): la clave queda libre para reintentar."""
-    db.ejecutar("delete from envios_cotizacion where id=:i and solicitud_id is null", i=envio["id"])
+def precio_de_opcion(opcion_id: int):
+    return (db.uno("select precio from opciones where id=:o", o=opcion_id) or {}).get("precio")
+
+
+def origen_de_los_vuelos(sid: int) -> str | None:
+    """De dónde salieron los vuelos de la cotización: en vivo, guardado…, según la última consulta."""
+    fila = db.uno("select origen from consultas_buscador where solicitud_id=:i and tipo='vuelos' order by id desc limit 1", i=sid)
+    return fila["origen"] if fila else None
+
+
+def opciones_de_reserva(sid: int, opcion_id: int) -> dict | None:
+    """Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo), y cada
+    vendedor con su precio más bajo. None si la opción no es un vuelo de la cotización."""
+    sol, vuelo = solicitud(sid), vuelo_de(sid, opcion_id)
+    if not sol or vuelo is None:
+        return None
+    lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
+    tarifas, creado = precios.opciones_guardadas(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"])
+    vendedores: dict[str, dict] = {}
+    for t in tarifas:
+        v = vendedores.setdefault(t["vendedor"], {"vendedor": t["vendedor"], "aerolinea": t["aerolinea"], "precio_desde": t["precio"]})
+        v["precio_desde"] = min(v["precio_desde"], t["precio"])
+    return {"tarifas": tarifas, "creado": creado, "vendedores": list(vendedores.values())}
 
 
 # ---------- comparar ----------
@@ -538,13 +526,16 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
 
 
 # ---------- decidir ----------
+def decisiones_en_vivo_hoy(usuario: dict) -> int:
+    """Decisiones de hoy de la persona que consultaron el regreso en vivo (o lo intentaron)."""
+    return db.uno("""select count(*) n from consultas_buscador where tipo='regreso' and origen in ('en vivo', 'fallida')
+                     and usuario_id=:u and momento>=:h""", u=usuario["id"], h=tiempo.inicio_del_dia())["n"]
+
+
 def _tope_decisiones_alcanzado(usuario: dict) -> bool:
-    """Decisiones de hoy de la persona que consultaron el regreso en vivo (o lo intentaron), frente a la regla."""
     if not config.SERPAPI_KEY:
         return False
-    hechas = db.uno("""select count(*) n from consultas_buscador where tipo='regreso' and origen in ('en vivo', 'fallida')
-                       and usuario_id=:u and momento>=:h""", u=usuario["id"], h=db.ahora()[:10])["n"]
-    return hechas >= int(costo.supuesto(costo.catalogo(), "decisiones_en_vivo_dia", DECISIONES_EN_VIVO_DIA))
+    return decisiones_en_vivo_hoy(usuario) >= int(costo.supuesto(costo.catalogo(), "decisiones_en_vivo_dia", DECISIONES_EN_VIVO_DIA))
 
 
 def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: str = "", razones=()) -> dict:
@@ -581,7 +572,8 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     razones = [r for r in razones if r in config.RAZONES]
     if not siguio and len(motivo.strip()) < 5:
         # Cuando la persona se aparta de la recomendación, el porqué es el dato más valioso
-        raise DecisionInvalida("motivo", "Elegiste una opción distinta a la recomendada: cuéntanos por qué.")
+        raise DecisionInvalida("motivo", "Elegiste una opción distinta a la recomendada: cuéntanos por qué." if recomendado
+                               else "Ningún vuelo cumple las condiciones: cuéntanos por qué te sirve este.")
     posicion = orden.index(vuelo) + 1
     # La opción elegida se carga completa: el regreso real y sus opciones de reserva (dos búsquedas; lo ya guardado no se paga)
     sol = c["sol"]
@@ -625,9 +617,8 @@ def decidir(usuario: dict, sid: int, vuelo_id: int, hotel_id: int = 0, motivo: s
     # Todo o nada: la decisión, sus elecciones, el viaje, sus tramos y la solicitud de compra. Un choque con otra
     # decisión al mismo tiempo (o con la compra activa del viaje) responde 409 y no deja nada a medias.
     try:
-        with db.transaccion() as conexion:
-            if not config.ES_SQLITE:   # en SQLite, BEGIN IMMEDIATE ya pone en fila
-                conexion.execute(text("select pg_advisory_xact_lock(:k, :s)"), {"k": BLOQUEO_DECISION, "s": sid})
+        with db.transaccion():
+            db.cerrojo((BLOQUEO_DECISION, sid))
             bloqueo = viajes.bloquea_decision(sid) or compras.bloqueo(sid)   # releído bajo el cerrojo
             if bloqueo:
                 raise DecisionBloqueada(bloqueo)

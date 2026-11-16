@@ -7,11 +7,12 @@ Estado de la plataforma publicada y cómo se opera. Para publicar o actualizar, 
 | Qué | Dirección |
 |---|---|
 | Web nueva (Next.js) | https://software.nataliaremolinarodriguez.com |
-| Pantallas de administración (Jinja) | https://admin.software.nataliaremolinarodriguez.com |
+| Analítica de precios y flujo de la información (pantallas anteriores, con su propio ingreso) | https://admin.software.nataliaremolinarodriguez.com/analitica y `/flujo` |
 | API v1 | `/api/v1/*` en el mismo origen de la web |
 
 - **El dominio** está registrado en Route 53, con bloqueo de transferencia y renovación automática. La zona DNS es de la cuenta y no la maneja CDK. El dominio raíz y `www` quedan libres para otro sitio; las pilas solo escriben los registros de `software.` y `admin.software.`.
 - **Las sesiones van por subdominio:** la de `software.` no vale en `admin.software.`, porque las cookies `__Host-` son de un solo nombre. Pasar a administración pide entrar otra vez (ADR 0002).
+- **En `admin.software.` solo quedan la analítica de precios y el flujo de la información** (decisión del 13 de noviembre): el ingreso (`/entrar`) lleva a `/analitica`. Cualquier otra pantalla anterior, también `/admin/asistente`, lleva a su equivalente en la web (`INTERFAZ_ANTIGUA=redirige`, fijado siempre en la nube; `app/servicios/interfaz.py`).
 
 ## Qué corre
 

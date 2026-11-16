@@ -57,6 +57,8 @@ def test_sin_sesion_responde_401(anonimo):
 
 
 def test_mis_datos_salen_de_la_sesion(piloto, gestor, cliente):
+    # Las pruebas de Telegram vinculan un chat a esta cuenta: aquí se mira la cuenta sin vincular
+    db.ejecutar("update usuarios set telegram_chat_id=null, telegram_usuario=null where correo='piloto@demo.local'")
     r = piloto.get(f"{V1}/cuenta")
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     cuenta = r.json()

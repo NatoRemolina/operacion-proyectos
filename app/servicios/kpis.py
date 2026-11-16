@@ -11,7 +11,7 @@ from statistics import median
 from sqlalchemy import Column, Float, Integer, Text
 
 from .. import db
-from . import acceso, costo, metricas, ofertas, viajes
+from . import acceso, costo, metricas, ofertas, tiempo, viajes
 
 consultas_buscador = db._tabla(
     "consultas_buscador",  # una fila por consulta al buscador de precios; la respuesta completa está en `busquedas` con la misma clave
@@ -110,7 +110,7 @@ def asegurar_metas():
                 ("umbral_alerta", k["alerta"], f"Umbral de alerta de «{titulo}» ({mejor}). Pasado este valor el semáforo está en rojo.")):
             if ("kpi", nombre, "", clave) not in cat:
                 db.insertar("reglas", ambito="kpi", entidad=nombre, tarifa="", clave=clave, valor=f"{valor:g}", nota=nota,
-                            fuente="Supuesto editable", confianza="supuesto", verificado=db.ahora()[:10])
+                            fuente="Supuesto editable", confianza="supuesto", verificado=tiempo.hoy().isoformat())
 
 
 def _numero(cat: dict, nombre: str, clave: str, defecto: float) -> float:
@@ -164,9 +164,9 @@ def evaluar(f: dict, nombres: list[str] | None = None) -> list[dict]:
 def tendencia(f: dict, semanas: int = 8) -> dict:
     """Los indicadores principales semana a semana, calculados sobre los hechos de cada semana (lunes a domingo)."""
     try:
-        fin = date.fromisoformat(f["hasta"]) if f.get("hasta") else date.today()
+        fin = date.fromisoformat(f["hasta"]) if f.get("hasta") else tiempo.hoy()
     except ValueError:
-        fin = date.today()
+        fin = tiempo.hoy()
     lunes = fin - timedelta(days=fin.weekday())
     inicios = [lunes - timedelta(weeks=i) for i in range(semanas - 1, -1, -1)]
     principales = [n for n, k in KPIS.items() if k.get("principal")]

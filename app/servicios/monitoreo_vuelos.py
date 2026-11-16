@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import Column, Integer, Text, text
 
 from .. import config, db
-from . import costo, eventos, geografia, precios, telegram, viajes
+from . import costo, eventos, geografia, precios, telegram, tiempo, viajes
 
 tramos_vuelo = db._tabla(
     "tramos_vuelo",  # un tramo por número de vuelo; guarda el último estado conocido
@@ -24,6 +24,7 @@ tramos_vuelo = db._tabla(
     Column("ultimo_aviso", Text),
     Column("omitida", Text),   # último motivo para no consultar: se registra una vez, no en cada refresco del tablero
     Column("ultima_consulta", Text),   # «con datos» o «sin datos»: una respuesta sin el bloque no borra el estado conocido
+    sqlite_autoincrement=True,   # los tramos de un viaje se borran y se vuelven a crear al cambiar el vuelo
 )
 
 
@@ -156,7 +157,7 @@ def _motivo(t: dict, ahora: datetime, forzar: bool, r: dict) -> str | None:
         return f"tope de {tope} consultas del {'regreso' if t['sentido'] == 'regreso' else 'viaje de ida'}"
     tope = int(r["monitoreo_tope_dia"])
     if db.uno("select count(*) n from consultas_buscador where tipo='estado_vuelo' and origen='en vivo' and momento>=:d and momento<:h",
-              d=ahora.strftime("%Y-%m-%d"), h=(ahora + timedelta(days=1)).strftime("%Y-%m-%d"))["n"] >= tope:
+              d=tiempo.inicio_del_dia(ahora), h=tiempo.inicio_del_dia(ahora + timedelta(days=1)))["n"] >= tope:
         return f"tope de {tope} consultas del día"
     try:
         cupo = precios.cupo()

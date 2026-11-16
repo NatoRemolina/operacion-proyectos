@@ -12,9 +12,17 @@ Reglas:
 - Personas, proyectos y viajeros no se copian: se emparejan por correo y por nombre. Si alguno no existe en el
   destino, no se carga nada.
 - Cotizaciones, opciones, decisiones, elecciones, viajes y tramos conservan su id, así el viaje V-2026-0001 sigue
-  siéndolo. Si un id ya existe con otro contenido, no se carga nada.
+  siéndolo. Cada fila se reconoce por lo que no cambia después de creada (`IDENTIDAD`); si un id ya existe y es otra
+  fila, no se carga nada.
+- De una cotización ya cargada entra lo que el destino todavía no tiene. Si trae una decisión nueva, la cotización y
+  su viaje quedan como en el origen (estado, aeropuertos del vuelo elegido, presupuesto) y los tramos del viaje se
+  reemplazan por los del origen, como hace la plataforma al decidir.
 - Respuestas del buscador, consultas registradas, aeropuertos que solo conoce Google y los eventos de lo cargado
   entran con id nuevo y sin repetirse. Los eventos de ingreso o de la semilla son de cada entorno y no se llevan.
+- De las respuestas con la misma clave se usa la de id mayor: entran, en orden, las del origen más nuevas (por
+  `creado`) que la última del destino, y así la más nueva de las dos bases es la que se usa.
+- Consultas y eventos se comparan por la fila entera, salvo el id: dos distintas del mismo segundo entran las dos, y
+  una repetida entra tantas veces como falte en el destino.
 - Una segunda corrida no duplica nada. Cada carga queda en `cargas_datos` y en un evento «datos importados».
 - Nunca escribe en la base publicada: la reconoce por su proyecto (el de `.env.supabase-publicada`), se
   conecte como se conecte, y se detiene. Si el destino es remoto y no hay con qué comprobarlo, tampoco escribe.
@@ -55,6 +63,13 @@ FUENTE = "otro entorno de la plataforma"
 CON_ID = ("solicitudes", "opciones", "decisiones", "elecciones", "viajes", "tramos_vuelo")
 SIN_ID = ("busquedas", "consultas_buscador", "aeropuertos_google", "eventos")
 ENTIDADES_DE_EVENTO = ("solicitud", "viaje", "aeropuerto", "lugares")
+# Lo que no cambia después de creada cada fila: así se reconoce la misma fila en las dos bases. Lo demás sí cambia
+# (estados, tarifas, el último estado de un tramo), y al decidir la cotización pasa a los aeropuertos del vuelo elegido.
+IDENTIDAD = {"solicitudes": ("creado", "ida", "regreso"), "opciones": ("solicitud_id", "tipo", "titulo"),
+             "decisiones": ("solicitud_id", "creado"), "elecciones": ("decision_id", "opcion_id", "tipo", "posicion"),
+             "viajes": ("solicitud_id", "creado"), "tramos_vuelo": ("viaje_id", "sentido", "orden", "numero")}
+NOMBRES = {"solicitudes": "la cotización", "opciones": "la opción", "decisiones": "la decisión", "elecciones": "la elección",
+           "viajes": "el viaje", "tramos_vuelo": "el tramo"}
 
 
 class ImportacionImpedida(RuntimeError):
@@ -139,7 +154,8 @@ def _leer(url: str) -> dict:
 
 
 def importar(origen: str, destino: str, aplicar: bool = False, fuente: str = FUENTE) -> dict:
-    """Devuelve {"filas": por tabla, "ya_cargadas": ids de cotizaciones de una corrida anterior, "viajes": códigos}."""
+    """Devuelve {"filas": insertadas por tabla, "ya_cargadas": ids de cotizaciones de una corrida anterior,
+    "puestas_al_dia": las ya cargadas que recibieron una decisión nueva, "viajes": códigos de los viajes cargados}."""
     _comprobar_destino(origen, destino)
     datos = _leer(origen)
     huella = hashlib.sha256(json.dumps({k: v for k, v in datos.items() if k not in ("usuarios", "proyectos", "viajeros")},
@@ -174,69 +190,112 @@ def importar(origen: str, destino: str, aplicar: bool = False, fuente: str = FUE
                 raise ImportacionImpedida(f"No se carga nada: {que} {valor} del origen no existe en el destino.")
             return m[valor]
 
-        def insertar(tabla: str, fila: dict, con_id: bool):
+        def valores(tabla: str, fila: dict, con_id: bool) -> dict:
             columnas = {c.name for c in meta.tables[tabla].columns}
-            d.execute(meta.tables[tabla].insert().values(**{k: v for k, v in fila.items() if k in columnas and (con_id or k != "id")}))
+            return {k: v for k, v in fila.items() if k in columnas and (con_id or k != "id")}
+
+        def insertar(tabla: str, fila: dict, con_id: bool):
+            d.execute(meta.tables[tabla].insert().values(**valores(tabla, fila, con_id)))
             filas[tabla] = filas.get(tabla, 0) + 1
 
-        def hay(sql: str, **p) -> bool:
-            return d.execute(text(sql), p).first() is not None
+        def poner_al_dia(tabla: str, fila: dict):
+            t = meta.tables[tabla]
+            d.execute(t.update().where(t.c.id == fila["id"]).values(**valores(tabla, fila, con_id=False)))
+
+        def ya_esta(tabla: str, fila: dict) -> bool:
+            """Si el id ya está en el destino y es la misma fila. Si es otra, no se carga nada."""
+            claves = IDENTIDAD[tabla]
+            previa = _filas(d, f"select {', '.join(claves)} from {tabla} where id=:i", i=fila["id"])
+            if not previa:
+                return False
+            if previa[0] == {k: fila[k] for k in claves}:
+                return True
+            raise ImportacionImpedida(f"No se carga nada: {NOMBRES[tabla]} {fila['id']} ya existe en el destino con otro contenido.")
+
+        def de_la_persona(fila: dict) -> dict:
+            return {**fila, "usuario_id": exigir(persona, fila["usuario_id"], "la persona"),
+                    "proyecto_id": exigir(proyecto, fila["proyecto_id"], "el proyecto"),
+                    **({"viajero_id": exigir(viajero, fila["viajero_id"], "el viajero")} if "viajero_id" in fila else {})}
+
+        def del_viaje(v: dict) -> dict:
+            return {**de_la_persona(v), "aprobado_por": exigir(persona, v.get("aprobado_por"), "quien aprobó")}
 
         # ---------- cotizaciones y lo que cuelga de ellas, con su id ----------
+        # De una cotización ya cargada entra lo que el destino todavía no tiene, como una decisión posterior
         ya = set()
         for s in datos["solicitudes"]:
-            previa = _filas(d, "select creado, origen, destino from solicitudes where id=:i", i=s["id"])
-            if previa:
-                if previa[0] == {k: s[k] for k in ("creado", "origen", "destino")}:
-                    ya.add(s["id"])
-                    continue
-                raise ImportacionImpedida(f"No se carga nada: la cotización {s['id']} ya existe en el destino con otro contenido.")
-            insertar("solicitudes", {**s, "usuario_id": exigir(persona, s["usuario_id"], "la persona"),
-                                     "viajero_id": exigir(viajero, s["viajero_id"], "el viajero"),
-                                     "proyecto_id": exigir(proyecto, s["proyecto_id"], "el proyecto")}, con_id=True)
-        nuevas = {s["id"] for s in datos["solicitudes"]} - ya
+            if ya_esta("solicitudes", s):
+                ya.add(s["id"])
+            else:
+                insertar("solicitudes", de_la_persona(s), con_id=True)
+        cotizaciones = {s["id"]: s for s in datos["solicitudes"]}
         for o in datos["opciones"]:
-            if o["solicitud_id"] in nuevas:
+            if o["solicitud_id"] in cotizaciones and not ya_esta("opciones", o):
                 insertar("opciones", o, con_id=True)
-        decisiones = [x for x in datos["decisiones"] if x["solicitud_id"] in nuevas]
+        decisiones, decididas = [x for x in datos["decisiones"] if x["solicitud_id"] in cotizaciones], set()
         for x in decisiones:
-            insertar("decisiones", {**x, "usuario_id": exigir(persona, x["usuario_id"], "la persona"),
-                                    "proyecto_id": exigir(proyecto, x["proyecto_id"], "el proyecto")}, con_id=True)
+            if not ya_esta("decisiones", x):
+                insertar("decisiones", de_la_persona(x), con_id=True)
+                decididas.add(x["solicitud_id"])
+        de_decisiones = {x["id"] for x in decisiones}
         for e in datos["elecciones"]:
-            if e["decision_id"] in {x["id"] for x in decisiones}:
+            if e["decision_id"] in de_decisiones and not ya_esta("elecciones", e):
                 insertar("elecciones", e, con_id=True)
-        viajes = [v for v in datos["viajes"] if v["solicitud_id"] in nuevas]
+        # Al decidir cambian el estado y los aeropuertos de la cotización, el viaje pasa a la decisión nueva y sus tramos
+        # se reemplazan: una cotización ya cargada que recibe una decisión queda como en el origen
+        al_dia = sorted(decididas & ya)
+        for sid in al_dia:
+            poner_al_dia("solicitudes", de_la_persona(cotizaciones[sid]))
+        viajes, cargados = [v for v in datos["viajes"] if v["solicitud_id"] in cotizaciones], []
         for v in viajes:
-            if hay("select 1 from viajes where id=:i", i=v["id"]):
-                raise ImportacionImpedida(f"No se carga nada: el viaje {v['id']} ya existe en el destino.")
-            insertar("viajes", {**v, "usuario_id": exigir(persona, v["usuario_id"], "la persona"),
-                                "viajero_id": exigir(viajero, v["viajero_id"], "el viajero"),
-                                "proyecto_id": exigir(proyecto, v["proyecto_id"], "el proyecto"),
-                                "aprobado_por": exigir(persona, v.get("aprobado_por"), "quien aprobó")}, con_id=True)
+            if not ya_esta("viajes", v):
+                insertar("viajes", del_viaje(v), con_id=True)
+                cargados.append(v)
+            elif v["solicitud_id"] in al_dia:
+                poner_al_dia("viajes", del_viaje(v))
+                d.execute(text("delete from tramos_vuelo where viaje_id=:v"), {"v": v["id"]})
+        de_viajes = {v["id"] for v in viajes}
         for t in datos["tramos_vuelo"]:
-            if t["viaje_id"] in {v["id"] for v in viajes}:
+            if t["viaje_id"] in de_viajes and not ya_esta("tramos_vuelo", t):
                 insertar("tramos_vuelo", t, con_id=True)
 
         # ---------- buscador y eventos, sin repetir ----------
         igual = "(({c} = :{p}) or ({c} is null and :{p} is null))"   # «no distinto de», también en SQLite
+        # Con la misma clave se usa la respuesta de id mayor (`precios._leer`). Entran, de la más vieja a la más nueva,
+        # las del origen posteriores a la última del destino: la más nueva de las dos bases queda de última.
+        por_clave: dict = {}
         for b in datos["busquedas"]:
-            if not hay("select 1 from busquedas where clave=:c", c=b["clave"]):
-                insertar("busquedas", b, con_id=False)
-        for q in datos["consultas_buscador"]:
-            if not hay(f"select 1 from consultas_buscador where momento=:m and tipo=:t and {igual.format(c='clave', p='c')}",
-                       m=q["momento"], t=q["tipo"], c=q["clave"]):
-                insertar("consultas_buscador", {**q, "usuario_id": persona.get(q["usuario_id"])}, con_id=False)
+            por_clave.setdefault(b["clave"], []).append(b)
+        for clave, respuestas in por_clave.items():
+            en_destino = [f["creado"] or "" for f in _filas(d, f"select creado from busquedas where {igual.format(c='clave', p='clave')}",
+                                                             clave=clave)]
+            ultima = max(en_destino) if en_destino else None
+            for b in sorted(respuestas, key=lambda r: (r["creado"] or "", r["id"])):
+                if ultima is None or (b["creado"] or "") > ultima:
+                    insertar("busquedas", b, con_id=False)
+
+        def sin_repetir(tabla: str, filas_origen: list[dict]):
+            """Entra lo que falte comparando la fila entera salvo el id: dos filas distintas del mismo segundo entran las
+            dos, y una fila repetida en el origen entra tantas veces como falte en el destino."""
+            restan: dict[tuple, int] = {}
+            for f in filas_origen:
+                v = valores(tabla, f, con_id=False)
+                llave = tuple(sorted(v.items()))
+                if llave not in restan:
+                    donde = " and ".join(igual.format(c=c, p=c) for c in v)
+                    restan[llave] = d.execute(text(f"select count(*) from {tabla} where {donde}"), v).scalar()
+                if restan[llave]:
+                    restan[llave] -= 1
+                else:
+                    insertar(tabla, v, con_id=False)
+
+        sin_repetir("consultas_buscador", [{**q, "usuario_id": persona.get(q["usuario_id"])} for q in datos["consultas_buscador"]])
         for a in datos["aeropuertos_google"]:
-            if not hay("select 1 from aeropuertos_google where iata=:i", i=a["iata"]):
+            if d.execute(text("select 1 from aeropuertos_google where iata=:i"), {"i": a["iata"]}).first() is None:
                 insertar("aeropuertos_google", a, con_id=False)
-        de_viajes = {v["id"] for v in datos["viajes"] if v["solicitud_id"] in nuevas | ya}
-        for ev in datos["eventos"]:
-            if (ev["entidad"] == "solicitud" and ev["entidad_id"] not in nuevas | ya) or \
-                    (ev["entidad"] == "viaje" and ev["entidad_id"] not in de_viajes):
-                continue
-            if not hay(f"select 1 from eventos where momento=:m and entidad=:e and paso=:p and {igual.format(c='entidad_id', p='i')}",
-                       m=ev["momento"], e=ev["entidad"], p=ev["paso"], i=ev["entidad_id"]):
-                insertar("eventos", {**ev, "usuario_id": persona.get(ev["usuario_id"])}, con_id=False)
+        sin_repetir("eventos", [{**ev, "usuario_id": persona.get(ev["usuario_id"])} for ev in datos["eventos"]
+                                if not (ev["entidad"] == "solicitud" and ev["entidad_id"] not in cotizaciones)
+                                and not (ev["entidad"] == "viaje" and ev["entidad_id"] not in de_viajes)])
 
         # ---------- el siguiente id sigue después de lo cargado (PostgreSQL) ----------
         if aplicar and d.dialect.name == "postgresql":   # `setval` no se revierte: en el ensayo no se toca
@@ -248,14 +307,15 @@ def importar(origen: str, destino: str, aplicar: bool = False, fuente: str = FUE
         total = sum(filas.values())
         if total:
             ahora = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
-            resumen = json.dumps({k: v for k, v in filas.items() if k != "eventos"}, ensure_ascii=False)
+            resumen = json.dumps({**{k: v for k, v in filas.items() if k != "eventos"},
+                                  **({"cotizaciones puestas al día": al_dia} if al_dia else {})}, ensure_ascii=False)
             insertar("cargas_datos", {"fuente": fuente, "archivo": "cotizaciones, viajes y respuestas del buscador", "url": None,
                                       "huella": huella, "filas": total, "resultado": "cargada", "momento": ahora,
                                       "quien": "datos.importar_entorno"}, con_id=False)
             insertar("eventos", {"momento": ahora, "entidad": "carga", "entidad_id": None, "paso": "datos importados",
                                  "detalle": resumen[:500], "fuente": fuente, "duracion_ms": 0, "usuario_id": None}, con_id=False)
-        resultado = {"filas": filas, "ya_cargadas": sorted(ya),
-                     "viajes": [f"V-{(v['creado'] or '0000')[:4]}-{v['id']:04d}" for v in viajes]}
+        resultado = {"filas": filas, "ya_cargadas": sorted(ya), "puestas_al_dia": al_dia,
+                     "viajes": [f"V-{(v['creado'] or '0000')[:4]}-{v['id']:04d}" for v in cargados]}
         if aplicar:
             d.commit()
         else:
