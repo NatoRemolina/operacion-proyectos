@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from app.servicios import cotizacion
+from app.servicios import cotizacion, tiempo
 
 
 def test_la_ida_pasada_se_rechaza_antes_de_buscar(monkeypatch):
@@ -18,5 +18,5 @@ def test_la_ida_pasada_se_rechaza_antes_de_buscar(monkeypatch):
 
 
 def test_el_primer_dia_posible_tolera_el_huso_de_america():
-    hoy_utc = date.today()
+    hoy_utc = tiempo.ahora().date()   # el reloj único, el mismo que lee el servicio, no la fecha del equipo
     assert cotizacion.primer_dia_posible() in (hoy_utc, hoy_utc - timedelta(days=1))

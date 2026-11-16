@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app import config, db
-from app.servicios import dinero, validacion
+from app.servicios import dinero, tiempo, validacion
 
 
 def _sin_rastro(*ids):
@@ -46,8 +46,9 @@ def test_fecha_imposible_va_a_revision(viaje_aprobado):
 
 
 def test_fecha_futura_se_avisa():
-    futura = (datetime.now(UTC) + timedelta(days=3)).date().isoformat()
-    hoy = datetime.now(UTC).date().isoformat()
+    ahora = tiempo.ahora()   # el reloj único con el que valida el servicio, no la fecha del equipo
+    futura = (ahora + timedelta(days=3)).date().isoformat()
+    hoy = ahora.date().isoformat()
     g = {"comercio": "Sonda futura", "fecha": futura, "total": 12.5, "moneda": "USD", "confianza": 1, "categoria": "otros"}
     assert "fecha_futura" in validacion.revisar(g, {"id": 1})["motivos"] and validacion.MOTIVOS["fecha_futura"]
     assert "fecha_futura" not in validacion.revisar({**g, "fecha": hoy}, {"id": 1})["motivos"]
