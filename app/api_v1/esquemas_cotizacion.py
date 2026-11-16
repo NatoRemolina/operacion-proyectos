@@ -445,8 +445,9 @@ class EnvioVendedor(BaseModel):
     """Adónde enviar a la persona. Con `campos`, un formulario POST a `url` (Google redirige al vendedor); sin ellos, ir a
     `url`. Los campos son de un solo uso: no se guardan."""
     camino: Literal["pagina", "buscador", "google"] = Field(
-        description="`pagina`: el analizador pulsó «Continue» en Google Flights; `buscador`: el pedido de esa tarifa en "
-                    "las opciones de reserva del buscador; `google`: la página del vuelo en Google Flights.")
+        description="En este orden: `buscador`: el pedido de esa tarifa (o ese tiquete) en las opciones de reserva del "
+                    "buscador; `pagina`: el analizador pulsó «Continue» en Google Flights; `google`: la página del vuelo "
+                    "en Google Flights.")
     url: str | None
     campos: list[tuple[str, str]]
     vendedor: str
@@ -456,8 +457,9 @@ class EnvioVendedor(BaseModel):
                                            "lo vende eDreams a 316 USD»); por Google Flights, por qué no se llegó al "
                                            "vendedor (tope, sin analizador, la página pidió verificación...). Vacío "
                                            "por la página.")
-    guia: str | None = Field(None, description="Qué vuelo elegir en la página del vendedor, para mostrarlo antes del "
-                                               "envío: «En COPA, elige CM 687 · CM 240, sale 12:40 pm, desde 334 USD.» "
+    guia: str | None = Field(None, description="Qué vuelo elegir en la página del vendedor: «En COPA, elige CM 687 · CM "
+                                               "240, sale 12:40 pm, desde 334 USD.» La página de «Ir a…» la muestra solo "
+                                               "si cambió el vendedor; si no, envía directo. "
                                                "Si otro vende ahora ese tramo, empieza con el aviso: «Avianca ya no "
                                                "vende este tramo; ahora lo vende eDreams a 316 USD.» Solo por el "
                                                "camino `buscador`, que trae el tiquete.")

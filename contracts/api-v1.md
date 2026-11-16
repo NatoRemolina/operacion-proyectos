@@ -398,28 +398,33 @@ Primera capa del desglose (aparece en 2 a 5 s, sin esperar a la lectura de la p�
 ```json
 {"estado": "listo", "consultado": "2026-11-13T15:10:00Z",
  "tarifas": [{"vendedor": "American", "nombre": "Basic Economy", "precio": 458, "equipaje": ["1 free carry-on", "1st checked bag: 110"],
-              "cambios": ["No ticket changes"], "reembolso": ["No refunds"], "otras": ["Seat selection for a fee"]}],
+              "cambios": ["No ticket changes"], "reembolso": ["No refunds"], "otras": ["Seat selection for a fee"],
+              "elige": "la ida AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm"}],
  "vendedores": [{"vendedor": "American", "aerolinea": true, "precio_desde": 458}]}
 ```
 
-`estado: sin_datos` mientras no haya nada guardado: la web reintenta cada segundo, hasta 5 veces. La ve quien ve la cotización; lo ajeno, 404.
+`elige` dice qué vuelos elegir en la página del vendedor, con su hora de salida (algunos vendedores abren la lista del día sin el vuelo elegido); con billetes separados, cada tiquete trae el suyo y su `nombre` es `ida` o `regreso`. `estado: sin_datos` mientras no haya nada guardado: la web reintenta cada segundo, hasta 5 veces. La ve quien ve la cotización; lo ajeno, 404.
 
 ### `POST /cotizaciones/{id}/vuelos/{opcion_id}/ir`
 Cuerpo JSON `{"vendedor": "American", "tarifa": "Main Cabin"}` (los nombres como los muestra el desglose; «Tarifa» si el vendedor no la nombra) y `X-CSRF-Token`. Responde 200, `no-store`:
 
 ```json
-{"camino": "pagina", "url": "https://www.google.com/travel/clk/f?...", "campos": [["u", "…"], ["adurl", ""]],
- "vendedor": "American", "tarifa": "Main Cabin", "motivo": null}
+{"camino": "buscador", "url": "https://www.google.com/travel/clk/f?...", "campos": [["u", "…"], ["adurl", ""]],
+ "vendedor": "American", "tarifa": "Main Cabin", "motivo": null,
+ "guia": "En American, elige la ida AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm; Main Cabin desde 694 USD."}
 ```
 
-- Tres caminos, en orden: **`pagina`**: el analizador abre la página del vuelo, elige el mismo regreso de la cotización (si la página lo muestra; si no, el más barato), despliega el vendedor, pulsa el «Continue» de esa tarifa e intercepta el envío que Google iba a hacer, sin que salga del servidor. **`buscador`**: el pedido de un solo uso de esa tarifa en las opciones de reserva del buscador. **`google`**: la página del vuelo en Google Flights (sin `campos`).
+- Con billetes separados, `tarifa` es el tramo del tiquete: `ida` o `regreso` (`{"vendedor": "COPA", "tarifa": "ida"}`).
+- Tres caminos, en orden: **`buscador`**: el pedido de un solo uso de esa tarifa o de ese tiquete en las opciones de reserva del buscador (el mismo enlace del «Continue» de Google; 2 a 5 s, contado en `enlace_vendedor_persona_dia`). Con billetes separados el buscador puede no traer opciones (prueba del 16 nov, MDE → MIA). **`pagina`**: el analizador abre la página del vuelo, elige el mismo regreso de la cotización (si la página lo muestra; si no, el más barato), despliega el vendedor (o el diálogo de billetes separados), pulsa el «Continue» de esa tarifa o tiquete e intercepta el envío que Google iba a hacer, sin que salga del servidor. **`google`**: la página del vuelo en Google Flights (sin `campos`).
+- Si otro vendedor lleva ahora ese tramo, `vendedor` es el actual y `motivo` lo dice («Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD»); `guia` empieza con ese aviso.
+- Cada clic encola una captura completa con motivo `clic` si la tarifa la confirmó el buscador o la página, o está en lo guardado del vuelo; hasta `capturas_clic_persona_dia` (10) por persona y día.
 - Con `campos`, el navegador de la persona hace un POST a `url` (siempre `https://www.google.com/travel/clk…`) y Google lo lleva al vendedor. Los `campos` viajan **solo en esta respuesta**: no se guardan ni se registran.
 - Topes por día: regla `ir_a_persona_dia` (20, por persona) y `ir_a_dia` (60, en total). Alcanzado uno, `camino: google` con el motivo. Comparte con las lecturas el turno del analizador (una a la vez) y el cerrojo.
 - Bitácora `ir a vendedor`: quién, opción, vendedor, tarifa, camino, dominio y duración; la captura previa al clic queda en `analisis_vuelo` (`accion: ir_a`).
 - Lo ajeno o un vuelo de otra cotización: 404. Sin CSRF: 403. Un vendedor o tarifa con caracteres raros, o un campo `url`: 422.
 
 ### `GET /cotizaciones/{id}/vuelos/{opcion_id}/ir?vendedor=…&tarifa=…&t=…`
-Navegación en otra pestaña (la abre «Ir a…»), siempre con la dirección que trae cada tarifa en `ir_url` (en `…/reserva` y en `AnalisisVuelo.datos.tarifas`): el token `t` está firmado con la sesión, la cotización, el vuelo, el vendedor y la tarifa, y vence a los 5 minutos. Sin él (un enlace enviado por correo, viejo o de otra tarifa): 403 con una página legible, sin hacer el pedido ni gastar nada. Con `vendedor` o `tarifa` ausentes o fuera de forma (1 a 60 caracteres) o un `t` de más de 64: 422 con una página legible, no JSON. Con todo en regla, una página mínima que muestra «Preparando tu enlace a {vendedor} · {tarifa}…», llama a `POST …/ir` con la sesión y envía el formulario (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. CSP con `default-src 'none'`, script por `nonce`, `connect-src 'self'` y `form-action https:`; `no-store`. Abrirla no gasta el tope; desde otro sitio (`Sec-Fetch-Site: cross-site`), 403.
+Navegación en otra pestaña (la abre «Ir a…»), siempre con la dirección que trae cada tarifa en `ir_url` (en `…/reserva` y en `AnalisisVuelo.datos.tarifas`): el token `t` está firmado con la sesión, la cotización, el vuelo, el vendedor y la tarifa, y vence a los 5 minutos. Sin él (un enlace enviado por correo, viejo o de otra tarifa): 403 con una página legible, sin hacer el pedido ni gastar nada. Con `vendedor` o `tarifa` ausentes o fuera de forma (1 a 60 caracteres) o un `t` de más de 64: 422 con una página legible, no JSON. Con todo en regla, una página mínima que muestra «Preparando tu enlace a {vendedor} · {tarifa}…», llama a `POST …/ir` con la sesión y envía el formulario directo, sin clic intermedio (o va a Google Flights). Única pausa: si `POST …/ir` entrega otro vendedor que el pedido, muestra `guia` (que empieza con el aviso) y espera un clic en «Ir a {vendedor}». Si falla, lo explica y ofrece Google Flights. CSP con `default-src 'none'`, script por `nonce`, `connect-src 'self'` y `form-action https:`; `no-store`. Abrirla no gasta el tope; desde otro sitio (`Sec-Fetch-Site: cross-site`), 403.
 
 ### `POST /cotizaciones/{id}/vuelos/{opcion_id}/analisis`
 Con `X-CSRF-Token` y sin cuerpo. Lee la página del vuelo en Google Flights (la búsqueda de la cotización con la ida de ese vuelo elegida; el analizador elige el regreso más barato para llegar a las opciones de reserva) y responde 200 `AnalisisVuelo`. Tarda unos segundos (hasta 55); la web muestra «Leyendo la página del vuelo…» mientras tanto.

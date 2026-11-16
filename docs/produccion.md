@@ -20,6 +20,7 @@ Estado de la plataforma publicada y cómo se opera. Para publicar o actualizar, 
 |---|---|
 | `OperacionBase` | El secreto de configuración (Secrets Manager) y el tema de avisos (SNS), con la suscripción por correo |
 | `OperacionApp` | La API y las pantallas Jinja en una función Lambda con imagen de contenedor (arm64, 2 GB, 180 s) y su dirección de función. Cinco alarmas: fallos de la función, peticiones rechazadas, lentitud, líneas `ERROR peticion=` y respuestas 5xx |
+| `OperacionApp` (desde el 13 nov) | Dos funciones más: `Analizador` (lectura de Google Flights con un navegador, imagen propia, 60 s) y `Tareas` (el trabajador de las capturas de evidencia, la imagen de la API con otro comando), que EventBridge invoca cada 15 minutos (regla `CapturasCadaQuinceMinutos`), con la alarma `FallosDelTrabajador`; y la alarma `CaidasDelAsesor` |
 | `OperacionWeb` | La web en una función Lambda (arm64, 1 GB), los estáticos en un bucket S3 privado (solo CloudFront lo lee, con OAC), dos distribuciones de CloudFront (web y administración), el certificado de ACM y los cuatro registros A y AAAA de los subdominios. La web sale con cabeceras de seguridad (HSTS, nosniff, `X-Frame-Options SAMEORIGIN` y Referrer-Policy) |
 
 **La base de datos** es el proyecto publicado de Supabase (PostgreSQL 17). La función se conecta por el agrupador de transacción (puerto 6543); la migración se corre por el de sesión (5432). Todas las tablas tienen seguridad por filas y ninguna da permisos a los roles públicos (`python -m datos.comprobar_supabase`).
