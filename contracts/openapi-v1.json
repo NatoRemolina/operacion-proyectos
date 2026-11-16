@@ -13242,6 +13242,18 @@
             ],
             "title": "Ir Url",
             "description": "«Ir a…» de esta tarifa: la página de envío firmada para esta sesión (5 min)."
+          },
+          "elige": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elige",
+            "description": "Qué vuelos elegir en la página del vendedor, con su hora de salida («la ida AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm»); algunos vendedores abren la lista del día sin el vuelo elegido. Solo en las opciones del buscador."
           }
         },
         "type": "object",

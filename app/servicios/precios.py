@@ -506,8 +506,9 @@ def _vendedor(t: dict) -> str:
 def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str | list[str], ida: str,
                        regreso: str) -> tuple[list[dict], str | None]:
     """Las opciones de reserva del itinerario que ya están guardadas (las trajo el enlace a la página oficial o una
-    decisión), sin consultar: [(vendedor, tarifa, precio, equipaje, cambios, reembolso, otras)], y cuándo se guardaron
-    (None si vienen de un archivo de respaldo). Lo guardado nunca trae el pedido de un solo uso."""
+    decisión), sin consultar: [(vendedor, tarifa, precio, equipaje, cambios, reembolso, otras, elige)], y cuándo se
+    guardaron (None si vienen de un archivo de respaldo). `elige` dice qué vuelos elegir en la página del vendedor. Lo
+    guardado nunca trae el pedido de un solo uso."""
     _, _, n_origen, n_destino = ruta(origenes, destinos)
     clave = _clave_vuelo(vuelo_ida)
     nombre = f"reserva_{n_origen}_{n_destino}_{ida}_{regreso}_{clave}.json"
@@ -518,6 +519,7 @@ def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str
     if not isinstance(datos, dict):
         return [], None
     fila = db.uno("select creado from busquedas where clave=:c order by id desc limit 1", c=nombre)
+    vuelta = regreso_guardado(vuelo_ida, origenes, destinos, ida, regreso)   # para decir qué vuelos elegir
     salida = []
     for o in datos.get("booking_options") if isinstance(datos.get("booking_options"), list) else []:
         # con billetes separados, un tiquete por tramo con su precio («ida» y «regreso» como nombre de la tarifa)
@@ -531,7 +533,9 @@ def opciones_guardadas(vuelo_ida: dict, origenes: str | list[str], destinos: str
                            "nombre": tramo if tramo != "ambos" else str(t.get("option_title") or "Tarifa")[:60],
                            "precio": float(t["price"]), "tramo": tramo, "numeros": _textos(t.get("marketed_as")),
                            "equipaje": _textos(t.get("baggage_prices")),
-                           "cambios": cambios, "reembolso": reembolso, "otras": [x for x in notas if x not in cambios + reembolso]})
+                           "cambios": cambios, "reembolso": reembolso, "otras": [x for x in notas if x not in cambios + reembolso],
+                           "elige": vuelos_a_elegir(tiquete({"tramo": tramo, "numeros": _textos(t.get("marketed_as"))},
+                                                            vuelo_ida, vuelta))})
     return salida, fila["creado"] if fila else None
 
 
@@ -617,8 +621,13 @@ def tiquete(opcion: dict, vuelo: dict, regreso: dict | None = None) -> dict:
     tramo = opcion.get("tramo") or "ambos"
     de = regreso if tramo == "regreso" else vuelo
     numeros = opcion.get("numeros") or (de or {}).get("numeros") or []
-    return {"tramo": tramo, "numeros": [str(x)[:12] for x in numeros][:6], "tarifa": opcion.get("tarifa"),
-            "precio": opcion.get("precio"), "vendedor": opcion.get("vendedor"), "sale": (de or {}).get("sale")}
+    salida = {"tramo": tramo, "numeros": [str(x)[:12] for x in numeros][:6], "tarifa": opcion.get("tarifa"),
+              "precio": opcion.get("precio"), "vendedor": opcion.get("vendedor"), "sale": (de or {}).get("sale")}
+    if tramo == "ambos" and (vuelo or {}).get("numeros") and (regreso or {}).get("numeros"):
+        # el itinerario completo: cada tramo con sus vuelos y su hora (prueba 15: una sola hora confundía ida y regreso)
+        salida["tramos"] = [{"tramo": t, "numeros": [str(x)[:12] for x in d["numeros"]][:6], "sale": d.get("sale")}
+                            for t, d in (("ida", vuelo), ("regreso", regreso))]
+    return salida
 
 
 def _hora(sale) -> str | None:
@@ -630,20 +639,35 @@ def _hora(sale) -> str | None:
     return f"{h % 12 or 12}:{m[2]} {'am' if h < 12 else 'pm'}"
 
 
-def guia_tiquete(tiquete: dict | None) -> str | None:
-    """Qué vuelo elegir en el vendedor: «En COPA, elige CM 687 · CM 240, sale 12:40 pm, Economy desde 334 USD.»
-    COPA, por ejemplo, abre la lista del día sin el vuelo preseleccionado. None sin vuelos."""
+def _vuelos_del_tramo(nombre: str, numeros: list, sale) -> str:
+    texto = f"{nombre}{' · '.join(numeros)}"
+    return f"{texto}, sale {_hora(sale)}" if _hora(sale) else texto
+
+
+def vuelos_a_elegir(tiquete: dict | None) -> str | None:
+    """Los vuelos que hay que elegir en el vendedor, con su hora de salida: «la ida AA 1851, sale 9:48 am, y el regreso
+    AA 3321, sale 11:06 pm» (itinerario completo), «CM 687 · CM 240, sale 12:40 pm» (un tiquete de ida) o «el regreso
+    AV 9, sale 1:35 am». COPA, por ejemplo, abre la lista del día sin el vuelo preseleccionado. None sin vuelos."""
     if not isinstance(tiquete, dict) or not tiquete.get("numeros"):
         return None
-    partes = [f"En {tiquete.get('vendedor') or 'el vendedor'}, elige "
-              f"{'el regreso ' if tiquete.get('tramo') == 'regreso' else ''}{' · '.join(tiquete['numeros'])}"]
-    if _hora(tiquete.get("sale")):
-        partes.append(f"sale {_hora(tiquete['sale'])}")
+    if tiquete.get("tramos"):
+        return ", y ".join(_vuelos_del_tramo("la ida " if t["tramo"] == "ida" else "el regreso ", t["numeros"], t.get("sale"))
+                           for t in tiquete["tramos"])
+    return _vuelos_del_tramo("el regreso " if tiquete.get("tramo") == "regreso" else "", tiquete["numeros"], tiquete.get("sale"))
+
+
+def guia_tiquete(tiquete: dict | None) -> str | None:
+    """Qué vuelo elegir en el vendedor: «En COPA, elige CM 687 · CM 240, sale 12:40 pm, Economy desde 334 USD.»; con
+    los dos tramos, «…, y el regreso AA 3321, sale 11:06 pm; Main Cabin desde 694 USD.». None sin vuelos."""
+    vuelos = vuelos_a_elegir(tiquete)
+    if not vuelos:
+        return None
+    texto = f"En {tiquete.get('vendedor') or 'el vendedor'}, elige {vuelos}"
     precio = tiquete.get("precio")
     if isinstance(precio, int | float) and not isinstance(precio, bool):
         tarifa = tiquete.get("tarifa") if tiquete.get("tarifa") not in (None, "", "Tarifa") else None
-        partes.append(f"{tarifa + ' ' if tarifa else ''}desde {precio:,.0f} USD")
-    return ", ".join(partes) + "."
+        texto += f"{'; ' if tiquete.get('tramos') else ', '}{tarifa + ' ' if tarifa else ''}desde {precio:,.0f} USD"
+    return texto + "."
 
 
 def guia(aviso: str | None, tiquete: dict | None) -> str | None:

@@ -105,7 +105,9 @@ def test_lleva_a_la_pagina_oficial_de_la_aerolinea_sin_guardar_el_pedido(piloto,
     assert "<script" not in pagina
     assert re.search(r'<button type="submit"[^>]*>Ir a American</button>', pagina)
     # antes de enviar, qué vuelo elegir en el vendedor y que una verificación la resuelve la persona
-    assert f"En American, elige {' · '.join(vuelo['numeros'])}, sale " in pagina and "Main Cabin desde 458 USD" in pagina
+    # con el regreso conocido, la guía nombra cada tramo con su hora (prueba 15)
+    assert f"En American, elige la ida {' · '.join(vuelo['numeros'])}, sale " in pagina and "Main Cabin desde 458 USD" in pagina
+    assert ", y el regreso AA 1851, sale 1:43 pm; " in pagina
     assert "puede pedir una verificación" in pagina
     assert any("booking_token" in p for p in llamadas)
     # el pedido de un solo uso no queda en ninguna parte: ni base, ni respaldo, ni registros

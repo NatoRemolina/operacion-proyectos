@@ -368,3 +368,52 @@ def test_con_el_enlace_no_valido_ir_a_sigue_por_la_pagina_con_el_vendedor_pedido
     e = _ir(piloto, c["id"], c["vuelos"][0]["id"], "Avianca", "regreso").json()
     assert (e["camino"], e["vendedor"], e["motivo"]) == ("pagina", "Avianca", None)
     assert [p["vendedor"] for p in pedidos] == ["Avianca"]
+
+
+# ---------- integración (16 nov), hallazgo de la prueba 15: la guía separa la ida y el regreso ----------
+IDA_AA = {"numeros": ["AA 1851"], "sale": "2026-12-08 09:48", "hasta": "LAS"}
+REGRESO_AA = {"numeros": ["AA 3321"], "sale": "2026-12-11 23:06"}
+
+
+def test_la_guia_del_itinerario_completo_separa_ida_y_regreso():
+    t = precios.tiquete({"tramo": "ambos", "vendedor": "American", "tarifa": "Main Cabin", "precio": 694,
+                         "numeros": ["AA 1851", "AA 3321"]}, IDA_AA, REGRESO_AA)
+    assert precios.vuelos_a_elegir(t) == "la ida AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm"
+    assert precios.guia_tiquete(t) == ("En American, elige la ida AA 1851, sale 9:48 am, y el regreso AA 3321, "
+                                       "sale 11:06 pm; Main Cabin desde 694 USD.")
+
+
+def test_sin_el_regreso_la_guia_del_itinerario_completo_queda_como_antes():
+    t = precios.tiquete({"tramo": "ambos", "vendedor": "American", "tarifa": "Main Cabin", "precio": 694,
+                         "numeros": ["AA 1851", "AA 3321"]}, IDA_AA, None)
+    assert precios.guia_tiquete(t) == "En American, elige AA 1851 · AA 3321, sale 9:48 am, Main Cabin desde 694 USD."
+
+
+def test_un_tiquete_de_billetes_separados_nombra_solo_su_tramo():
+    ida = precios.tiquete({"tramo": "ida", "vendedor": "COPA", "precio": 334, "numeros": ["CM 687", "CM 240"]},
+                          {"numeros": ["CM 687", "CM 240"], "sale": "2026-11-20 12:40"}, {"numeros": ["AV 9"], "sale": "2026-11-29 01:35"})
+    vuelta = precios.tiquete({"tramo": "regreso", "vendedor": "eDreams", "precio": 316, "numeros": ["AV 9"]},
+                             {"numeros": ["CM 687", "CM 240"], "sale": "2026-11-20 12:40"}, {"numeros": ["AV 9"], "sale": "2026-11-29 01:35"})
+    assert precios.vuelos_a_elegir(ida) == "CM 687 · CM 240, sale 12:40 pm"
+    assert precios.vuelos_a_elegir(vuelta) == "el regreso AV 9, sale 1:35 am"
+
+
+def test_las_opciones_guardadas_dicen_que_vuelos_elegir(buscador, monkeypatch):
+    monkeypatch.setattr(precios, "regreso_guardado", lambda *a, **k: {"numeros": ["AV 9"], "sale": "2026-11-29 01:35"})
+    _en_vivo()
+    vuelo = {**IDA, "sale": "2026-11-20 12:40"}
+    tarifas, _ = precios.opciones_guardadas(vuelo, "MDE", "MIA", "2026-11-20", "2026-11-29")
+    assert [(t["nombre"], t["elige"]) for t in tarifas] == [
+        ("ida", "CM 687 · CM 240, sale 12:40 pm"), ("regreso", "el regreso AV 9, sale 1:35 am")]
+
+
+def test_la_api_de_opciones_del_buscador_dice_que_vuelos_elegir(piloto, con_regreso, monkeypatch):
+    """GET …/reserva lleva `elige` en cada tarifa: la web lo muestra bajo los botones «Ir a…»."""
+    from app.servicios import cotizacion
+    monkeypatch.setattr(precios, "regreso_guardado", lambda *a, **k: {"numeros": ["AV 9"], "sale": "2026-11-29 01:35"})
+    c = _cotizacion(piloto)
+    vuelo = c["vuelos"][0]
+    cotizacion.enlace_vendedor(_yo(), c["id"], vuelo["id"], vendedor="COPA", tarifa="ida")   # guarda las opciones
+    r = piloto.get(f"/api/v1/cotizaciones/{c['id']}/vuelos/{vuelo['id']}/reserva")
+    assert r.status_code == 200, r.text
+    assert [(t["nombre"], t["elige"]) for t in r.json()["tarifas"]][-1] == ("regreso", "el regreso AV 9, sale 1:35 am")

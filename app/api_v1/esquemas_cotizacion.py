@@ -331,6 +331,10 @@ class TarifaLeida(BaseModel):
     reembolso: list[str]
     otras: list[str] = Field(description="Lo demás que incluye: asiento, embarque, espacio para las piernas...")
     ir_url: str | None = Field(None, description="«Ir a…» de esta tarifa: la página de envío firmada para esta sesión (5 min).")
+    elige: str | None = Field(None, description="Qué vuelos elegir en la página del vendedor, con su hora de salida («la ida "
+                                                 "AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm»); algunos "
+                                                 "vendedores abren la lista del día sin el vuelo elegido. Solo en las "
+                                                 "opciones del buscador.")
 
 
 class VendedorLeido(BaseModel):
