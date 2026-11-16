@@ -149,6 +149,18 @@ def _url_ir(c: TestClient, sid: int, vuelo: int, vendedor="American", tarifa="Ma
     return enlaces.url_ir(c.cookies.get(acceso.COOKIE) or "", sid, vuelo, vendedor, tarifa, **k)
 
 
+def test_la_pagina_ir_muestra_la_guia_y_el_motivo_antes_de_enviar(piloto, entorno):
+    # Con guía o motivo (el vuelo que hay que elegir, el aviso de cambio de vendedor, por qué se fue a Google Flights),
+    # la página los muestra como texto y espera el clic de la persona; sin ellos, envía sola como antes.
+    c = _vegas(piloto)
+    r = piloto.get(_url_ir(piloto, c["id"], c["vuelos"][0]["id"]), headers={"Sec-Fetch-Site": "same-origin"})
+    assert r.status_code == 200
+    assert 'id="guia"' in r.text and 'id="motivo"' in r.text and 'id="seguir"' in r.text
+    assert "e.guia" in r.text and "e.motivo" in r.text
+    assert "innerHTML" not in r.text                                         # lo que viene de afuera va como texto
+    assert "resuélvela tú en esa página" in r.text                            # la verificación la resuelve la persona
+
+
 def test_la_pagina_de_envio_prepara_el_enlace_con_la_sesion(piloto, piloto2, entorno):
     c = _vegas(piloto)
     vuelo = c["vuelos"][0]

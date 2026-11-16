@@ -1,12 +1,17 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Preparando tu enlace a {{ titulo }}</title></head>
 <body><main><p id="estado" role="status">Preparando tu enlace a {{ titulo }}…</p>
+<p id="motivo" hidden></p><p id="guia" hidden></p>
+<p id="verificacion" hidden>La página del vendedor puede pedir una verificación (por ejemplo, deslizar una barra o marcar
+«No soy un robot»): resuélvela tú en esa página. La plataforma no la resuelve.</p>
+<p><button id="seguir" type="button" hidden></button></p>
 <p id="alterna" hidden><a href="{{ google }}" rel="noopener noreferrer">Abrir el vuelo en Google Flights</a></p></main>
 <script nonce="{{ nonce }}">
 (async function () {
   const d = {{ datos | tojson }};
   const estado = document.getElementById("estado");
   function fallo(texto) { estado.textContent = texto; document.getElementById("alterna").hidden = false; }
+  function mostrar(id, texto) { const p = document.getElementById(id); p.textContent = texto; p.hidden = false; }
   try {
     const r = await fetch(d.api, { method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": d.csrf },
@@ -14,14 +19,26 @@
     if (!r.ok) return fallo("No se pudo preparar el enlace al vendedor. Puedes abrir el vuelo en Google Flights.");
     const e = await r.json();
     if (!e.url) return fallo("No hay un enlace para esta tarifa. Puedes abrir el vuelo en Google Flights.");
-    if (!e.campos.length) return location.replace(e.url);
-    estado.textContent = "Abriendo la página de " + e.vendedor + "…";
-    const f = document.createElement("form");
-    f.method = "post"; f.action = e.url;
-    for (const [k, v] of e.campos) {
-      const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = v; f.appendChild(i);
+    function ir() {
+      estado.textContent = "Abriendo la página de " + e.vendedor + "…";
+      if (!e.campos.length) return location.replace(e.url);
+      const f = document.createElement("form");
+      f.method = "post"; f.action = e.url;
+      for (const [k, v] of e.campos) {
+        const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = v; f.appendChild(i);
+      }
+      document.body.appendChild(f); f.submit();
     }
-    document.body.appendChild(f); f.submit();
+    // Lo que la persona debe saber antes de llegar (el aviso si cambió el vendedor, qué vuelo elegir, por qué se fue a
+    // Google Flights) se muestra como texto y espera su clic; sin nada que decir, se envía sola.
+    if (!e.guia && !e.motivo) return ir();
+    estado.textContent = "Tu enlace a " + e.vendedor + " está listo.";
+    if (e.motivo && e.motivo !== e.guia) mostrar("motivo", e.motivo);
+    if (e.guia) mostrar("guia", e.guia);
+    if (e.campos.length) document.getElementById("verificacion").hidden = false;
+    const b = document.getElementById("seguir");
+    b.textContent = "Ir a " + e.vendedor; b.hidden = false;
+    b.addEventListener("click", ir, { once: true });
   } catch (_) { fallo("No hubo conexión con el servidor. Puedes abrir el vuelo en Google Flights."); }
 })();
 </script></body></html>

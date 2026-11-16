@@ -154,13 +154,15 @@ NOMBRE_ENLACE = re.compile(r"[\w .,&'()+/-]{1,60}")
 
 @router.get("/cotizaciones/{id}/vuelos/{opcion_id}/ir", response_class=HTMLResponse, responses={
     **errores_cotizacion(401, 403, 404, 422),
-    200: {"description": "Página que prepara el envío al vendedor y lo hace", "content": {"text/html": {}}}})
+    200: {"description": "Página que prepara el envío al vendedor: muestra la guía si la hay y lo hace", "content": {"text/html": {}}}})
 def pagina_ir(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona),
               vendedor: str | None = Query(None, description="Vendedor (1 a 60 caracteres: letras, números y . , & ' ( ) + / -)."),
               tarifa: str | None = Query(None, description="Tarifa (mismas reglas que el vendedor)."),
               t: str | None = Query(None, description="Token firmado del enlace (vence en 5 minutos).")):
-    """La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…», pide `POST …/ir` con la sesión y envía el
-    formulario a Google (o va a Google Flights). Si falla, lo explica y ofrece Google Flights. Con datos que no son
+    """La abre «Ir a…» en otra pestaña. Muestra «Preparando tu enlace…» y pide `POST …/ir` con la sesión. Si la respuesta
+    trae `guia` o `motivo` (qué vuelo elegir, el aviso si cambió el vendedor, por qué se va a Google Flights), los muestra
+    con la nota de la verificación y espera el clic en «Ir a {vendedor}»; si no, envía el formulario a Google (o va a
+    Google Flights) sin esperar. Si falla, lo explica y ofrece Google Flights. Con datos que no son
     válidos responde 422 con una página legible (no JSON): la pestaña la ve una persona."""
     if request.headers.get("sec-fetch-site", "none") not in comun.SITIOS_PERMITIDOS:
         return comun.pagina_aviso(403, *comun.OTRO_SITIO)
