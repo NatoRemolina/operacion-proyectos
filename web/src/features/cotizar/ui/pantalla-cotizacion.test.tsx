@@ -521,7 +521,7 @@ describe("Comparación de una cotización", () => {
       expect(within(tarjeta).getByText("Leyendo la página del vuelo…")).toBeInTheDocument();
       expect(within(tarjeta).queryByText(/No se pudo leer/)).toBeNull();
       await vi.advanceTimersByTimeAsync(3000);
-      expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las/)).toBeInTheDocument();
+      expect(await within(tarjeta).findByText(/^Tarifas de la aerolínea leídas a las/)).toBeInTheDocument();
       expect(verAnalisis).toHaveBeenCalledWith(12, RECOMENDADA.id, expect.anything());
       expect(analizarVuelo).toHaveBeenCalledTimes(1);
     } finally {
