@@ -327,3 +327,152 @@ def test_ir_a_pulsa_la_tarifa_por_su_etiqueta_aunque_la_pagina_cambie(monkeypatc
 def test_la_etiqueta_con_comillas_se_busca_tal_cual():
     assert navegador._selector_etiqueta('Continue to book with "A", B') == '[aria-label="Continue to book with \\"A\\", B"]'
     assert navegador._selector_etiqueta("a\\b") == '[aria-label="a\\\\b"]'
+
+
+# ---------- producción, cotización 12 y prueba 12: billetes separados, un «Ir a…» por tiquete ----------
+SEPARADOS = {"https://www.google.com/travel/flights?": "billetes_separados.html"}
+
+
+def test_la_lectura_con_billetes_separados_abre_el_dialogo_y_lee_cada_tiquete():
+    r = navegador.analizar(URL, servir=_servir(dict(SEPARADOS), []))
+    assert r["estado"] == "listo", r["motivo"]
+    d = r["datos"]
+    assert d["billetes_separados"] is True
+    assert [(t["vendedor"], t["nombre"], t["precio"]) for t in d["tarifas"]] == [("COPA", "ida", 334.0), ("Avianca", "regreso", 323.0)]
+    assert d["por_telefono"][0]["telefono"] == "1 (786) 840-2672"
+
+
+@pytest.mark.parametrize("vendedor, tramo, cuerpo", [("COPA", "ida", "u=COPA-IDA-UNSOLOUSO"),
+                                                     ("Avianca", "regreso", "u=AVIANCA-REGRESO-UNSOLOUSO")])
+def test_ir_a_cada_aerolinea_por_su_tiquete_sin_mandarlo(vendedor, tramo, cuerpo):
+    pedidos = []
+    r = navegador.ir_a(URL, vendedor, tramo, servir=_servir(dict(SEPARADOS), pedidos))
+    assert r["estado"] == "listo", r["motivo"]
+    assert r["url"].startswith("https://www.google.com/travel/clk/f") and r["cuerpo"].startswith(cuerpo)
+    assert (r["vendedor"], r["tarifa"]) == (vendedor, tramo)
+    assert not any("/travel/clk" in p for p in pedidos)          # el envío no salió del navegador del servidor
+
+
+def test_si_otro_vendedor_lleva_el_tramo_ir_a_lo_dice_y_no_pulsa():
+    """Google cambia el vendedor de un tramo entre cargas (14 nov: el regreso de Avianca pasó a eDreams)."""
+    pedidos = []
+    r = navegador.ir_a(URL, "eDreams", "regreso", servir=_servir(dict(SEPARADOS), pedidos))
+    assert (r["estado"], r["motivo"]) == ("fallido", "eDreams ya no vende este tramo; ahora lo vende Avianca a 323 USD")
+    assert r["vendedor_actual"] == {"vendedor": "Avianca", "precio": 323.0}
+    assert not any("/travel/clk" in p for p in pedidos)
+
+
+def test_ir_a_con_billetes_separados_sin_tramo_no_pulsa():
+    pedidos = []
+    r = navegador.ir_a(URL, "COPA", "Main Cabin", servir=_servir(dict(SEPARADOS), pedidos))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_TARIFA)
+    assert not any("/travel/clk" in p for p in pedidos)
+
+
+def test_la_captura_completa_del_tiquete_trae_el_envio():
+    r = navegador.captura_vuelo(URL, "Avianca", "regreso", servir=_servir(dict(SEPARADOS), []))
+    assert r["estado"] == "listo" and r["envio"]["cuerpo"].startswith("u=AVIANCA-REGRESO"), r.get("motivo_envio")
+    assert "Purchase separate tickets" in r["texto"]
+
+
+def test_continuar_reconoce_la_marca_airline_y_no_confunde_la_opcion_de_dos_tiquetes():
+    assert navegador._es_continuar("Continue to book with COPA airline for 334 US dollars (Equivalent to 1102610 Colombian pesos)",
+                                   "COPA", "Tarifa")
+    assert not navegador._es_continuar("Continue to book with COPA, Avianca airline for 657 US dollars. The 2 tickets…",
+                                       "COPA", "Avianca airline")
+    assert navegador._es_continuar("Continue to book with American, Main Cabin for 1014 US dollars", "American", "Main Cabin")
+
+
+# ---------- prueba 13: la página de error de Google («Oops, something went wrong») ----------
+def test_la_pagina_de_error_de_google_falla_enseguida_con_su_motivo():
+    pedidos = []
+    r = navegador.analizar(URL, servir=_servir({"https://www.google.com/travel/flights?": "sin_resultados.html"}, pedidos))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+    assert r["duracion_ms"] < 15_000                                 # no espera a que se agote el plazo
+    assert "Oops, something went wrong" in r["extracto"]
+    r = navegador.ir_a(URL, "COPA", "ida", servir=_servir({"https://www.google.com/travel/flights?": "sin_resultados.html"}, []))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+
+
+def _servir_con_error(veces_error: int, cargas: list):
+    """Google responde la página de error las primeras `veces_error` cargas y después la reserva completa."""
+    def registrar(pagina):
+        def atender(ruta):
+            url = ruta.request.url
+            if url.startswith("https://www.google.com/travel/flights?") and ruta.request.is_navigation_request():
+                cargas.append(url)
+                archivo = "sin_resultados.html" if len(cargas) <= veces_error else "reserva_completa.html"
+                return ruta.fulfill(status=200, content_type="text/html; charset=utf-8",
+                                    body=(EJEMPLO / archivo).read_text(encoding="utf-8"))
+            return ruta.fallback() if ruta.request.is_navigation_request() else ruta.abort()
+        pagina.route("**/*", atender)
+    return registrar
+
+
+def test_con_la_pagina_de_error_reintenta_una_vez_con_reload_y_lee():
+    cargas = []
+    r = navegador.analizar(URL, servir=_servir_con_error(1, cargas))
+    assert r["estado"] == "listo", r["motivo"]
+    assert len(cargas) == 2 and r["datos"]["tarifas"]
+
+
+def test_nunca_mas_de_un_reintento():
+    cargas = []
+    r = navegador.analizar(URL, servir=_servir_con_error(5, cargas))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+    assert len(cargas) == 2                                          # la carga y un solo «Reload»
+
+
+def test_el_error_de_google_despues_de_elegir_el_regreso_tambien_se_reconoce():
+    """Prueba 13, Avianca: la lista de regresos cargó, y al elegir el regreso Google mostró su página de error."""
+    paginas = {"https://www.google.com/travel/flights/reserva": "sin_resultados.html",
+               "https://www.google.com/travel/flights?": "regresos.html"}
+    r = navegador.ir_a(URL, "Avianca", "regreso", servir=_servir(dict(paginas), []))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+    assert r["duracion_ms"] < 20_000                                 # no espera los 45 s
+    r = navegador.analizar(URL, servir=_servir(dict(paginas), []))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_RESULTADOS)
+
+
+# ---------- pieza 6, ronda 1: el tiquete se elige por el encabezado de su tramo, no por su orden ----------
+SOLO_IDA = {"https://www.google.com/travel/flights?": "billetes_separados_solo_ida.html"}
+
+
+@pytest.mark.parametrize("vendedor", ["Avianca", "eDreams", "COPA"])
+def test_sin_tiquete_de_regreso_no_nombra_al_vendedor_de_la_ida_ni_pulsa(vendedor):
+    """El diálogo solo trae el tiquete de la ida (COPA): pedir el regreso no dice que «ahora lo vende COPA» ni pulsa el
+    «Continue» de la ida, aunque se pida COPA."""
+    pedidos = []
+    r = navegador.ir_a(URL, vendedor, "regreso", servir=_servir(dict(SOLO_IDA), pedidos))
+    assert (r["estado"], r["motivo"]) == ("fallido", navegador.SIN_TIQUETE_TRAMO.format(tramo="regreso"))
+    assert "COPA" not in r["motivo"] and not r.get("vendedor_actual")
+    assert not any("/travel/clk" in p for p in pedidos)
+
+
+def test_con_solo_la_ida_el_tiquete_de_la_ida_sigue_funcionando():
+    r = navegador.ir_a(URL, "COPA", "ida", servir=_servir(dict(SOLO_IDA), []))
+    assert r["estado"] == "listo" and r["cuerpo"].startswith("u=COPA-IDA"), r["motivo"]
+
+
+CONTINUAR_COPA = "Continue to book with COPA airline for 334 US dollars"
+CONTINUAR_AVIANCA = "Continue to book with Avianca airline for 323 US dollars"
+
+
+def test_el_tiquete_del_tramo_por_su_encabezado():
+    tiquetes = [("regreso", CONTINUAR_AVIANCA), ("ida", CONTINUAR_COPA)]   # en otro orden que el de siempre
+    assert navegador._tiquete_del_tramo(tiquetes, "COPA", "ida") == (CONTINUAR_COPA, None)
+    assert navegador._tiquete_del_tramo(tiquetes, "Avianca", "regreso") == (CONTINUAR_AVIANCA, None)
+    _, cambio = navegador._tiquete_del_tramo(tiquetes, "eDreams", "ida")
+    assert cambio == {"motivo": "eDreams ya no vende este tramo; ahora lo vende COPA a 334 USD",
+                      "vendedor_actual": {"vendedor": "COPA", "precio": 334.0}}
+    # sin encabezados reconocibles, el orden del diálogo (ida y regreso) solo si hay dos tiquetes
+    assert navegador._tiquete_del_tramo([(None, CONTINUAR_COPA), (None, CONTINUAR_AVIANCA)], "Avianca", "regreso") == \
+        (CONTINUAR_AVIANCA, None)
+    assert navegador._tiquete_del_tramo([], "COPA", "ida") == (None, None)
+
+
+def test_un_precio_ilegible_no_rompe_el_aviso_del_cambio():
+    _, cambio = navegador._tiquete_del_tramo([("regreso", "Continue to book with eDreams for 3.1.6 US dollars")],
+                                             "Avianca", "regreso")
+    assert cambio == {"motivo": "Avianca ya no vende este tramo; ahora lo vende eDreams",
+                      "vendedor_actual": {"vendedor": "eDreams", "precio": None}}

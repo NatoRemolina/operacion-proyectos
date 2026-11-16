@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { Distintivo } from "@/shared/ui/distintivo";
+import { clasesBoton } from "@/shared/ui/boton";
 import { Alerta } from "@/shared/ui/estado";
 import { formatearDinero } from "@/shared/ui/formato";
 import { GIRO, PRESIONAR } from "@/shared/ui/movimiento";
@@ -398,6 +399,8 @@ function CapaBuscador({
   opciones: OpcionesBuscador | null;
 }) {
   const listo = opciones?.estado === "listo" && opciones.tarifas.length > 0;
+  const tiquetes = listo ? opciones.tarifas.filter(esTiquete) : [];
+  const juntas = listo ? opciones.tarifas.filter((t) => !esTiquete(t)) : [];
   return (
     <section aria-label="Opciones del buscador" className="flex flex-col gap-3 border-t border-linea pt-3">
       <p role="status" className={`text-sm ${listo ? "font-semibold" : "text-texto-secundario"}`}>
@@ -409,16 +412,51 @@ function CapaBuscador({
               ? "No se pudieron traer las opciones del buscador."
               : "El buscador no trajo opciones de reserva para este vuelo."}
       </p>
-      {listo
-        ? tablasPorVendedor(opciones.tarifas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} />)
+      {listo && tiquetes.length ? (
+        <>
+          <p className="text-sm">Billetes separados: un tiquete por tramo, cada uno con su vendedor.</p>
+          <BotonesIrA tarifas={tiquetes} />
+        </>
+      ) : null}
+      {listo && juntas.length
+        ? tablasPorVendedor(juntas, "buscador").map((t) => <TablaDeVendedor key={t.vendedor} tabla={t} />)
         : null}
     </section>
   );
 }
 
+/** Con billetes separados el buscador trae un tiquete por tramo («ida», «regreso»), cada uno con su vendedor. */
+function esTiquete(t: { nombre: string }): boolean {
+  return t.nombre === "ida" || t.nombre === "regreso";
+}
+
+/** Un botón por tarifa con «Ir a…» firmado: vendedor, tarifa (o tramo) y precio; se abre en otra pestaña. */
+function BotonesIrA({ tarifas }: { tarifas: readonly { vendedor: string; nombre: string; precio: number; ir_url?: string | null }[] }) {
+  return (
+    <ul className="flex flex-wrap gap-2">
+      {tarifas.filter((t) => t.ir_url).map((t) => (
+        <li key={`${t.vendedor}-${t.nombre}-${t.precio}`}>
+          <a
+            href={t.ir_url!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${clasesBoton("secundario")} ${PRESIONAR}`}
+          >
+            Ir a {t.vendedor} · {t.nombre}{" "}
+            <span className="font-normal tabular-nums">{formatearDinero(t.precio.toFixed(2))}</span>
+            <span aria-hidden="true"> ↗</span>
+            <span className="sr-only">, se abre en otra pestaña</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
- * Lo leído de la página del vuelo en Google Flights, como complemento del desglose: no reemplaza el precio del
- * buscador (si difiere, lo dice). El texto de la página va tal como lo muestra Google, en inglés.
+ * Lo esencial de la página del vuelo en Google Flights: un botón por tarifa de la aerolínea, que lleva a su página (el
+ * servidor deja guardado todo lo leído, con su captura, como evidencia). Si el precio de la página no es el del
+ * buscador, lo dice; la comparación sigue con el del buscador.
  */
 function DetalleGoogle({
   pendiente,
@@ -434,7 +472,7 @@ function DetalleGoogle({
 }) {
   if (agotado) {
     return (
-      <section aria-label="Detalle de Google Flights" className="flex flex-col gap-3 border-t border-linea pt-3">
+      <section aria-label="Ir a la aerolínea" className="flex flex-col gap-3 border-t border-linea pt-3">
         <p role="status" className="text-sm text-texto-secundario">
           La lectura sigue en curso; vuelve a abrir el desglose en un momento.
         </p>
@@ -442,112 +480,38 @@ function DetalleGoogle({
     );
   }
   const lectura = pendiente || analisis?.estado === "pendiente";
+  const tarifas = !lectura && analisis?.estado === "listo" && analisis.datos ? tarifasDeLaAerolinea(analisis.datos) : [];
   return (
-    <section aria-label="Detalle de Google Flights" className="flex flex-col gap-3 border-t border-linea pt-3">
-      <p role="status" className={`text-sm ${lectura ? "text-texto-secundario" : "font-semibold"}`}>
+    <section aria-label="Ir a la aerolínea" className="flex flex-col gap-3 border-t border-linea pt-3">
+      <p role="status" className={`text-sm ${lectura || analisis?.estado !== "listo" ? "text-texto-secundario" : "font-semibold"}`}>
         {lectura
           ? "Leyendo la página del vuelo…"
           : error
-            ? `No se pudo leer: ${error}`
+            ? `No se pudo leer la página: ${error}`
             : !analisis
               ? ""
               : analisis.estado === "listo"
-                ? `Detalle leído de Google Flights a las ${horaLocal(analisis.leido)}`
+                ? analisis.datos?.tarifas.length
+                  ? `Tarifas de la aerolínea leídas a las ${horaLocal(analisis.leido)}`
+                  : "La página no mostró tarifas de la aerolínea: puedes verla en Google Flights."
                 : analisis.estado === "fallido"
-                  ? `No se pudo leer: ${analisis.motivo ?? "sin motivo"}.`
+                  ? `No se pudo leer la página: ${analisis.motivo ?? "sin motivo"}.`
                   : analisis.motivo}
       </p>
-      {!lectura && analisis?.estado === "listo" && analisis.datos ? <Leido a={analisis} /> : null}
-      {!lectura && analisis?.estado === "fallido" && analisis.captura_url ? (
-        <a href={analisis.captura_url} target="_blank" rel="noopener noreferrer" className="self-start text-sm underline underline-offset-3">
-          Ver lo que mostró la página
-        </a>
+      {!lectura && analisis?.aviso_precio ? (
+        <Alerta tono="aviso" titulo="El precio de la página no es el del buscador">
+          <p>{analisis.aviso_precio}</p>
+        </Alerta>
       ) : null}
+      {tarifas.length ? <BotonesIrA tarifas={tarifas} /> : null}
     </section>
   );
 }
 
-function Leido({ a }: { a: AnalisisVuelo }) {
-  const d = a.datos!;
-  return (
-    <>
-      {a.aviso_precio ? (
-        <Alerta tono="aviso" titulo="El precio de la página no es el del buscador">
-          <p>{a.aviso_precio}</p>
-        </Alerta>
-      ) : null}
-      {d.tarifas.length ? (
-        <div className="flex flex-col gap-3">
-          <h4 className="font-semibold">Tarifas y qué incluye cada una</h4>
-          {tablasPorVendedor(d.tarifas, "página").map((t) => (
-            <TablaDeVendedor key={t.vendedor} tabla={t} />
-          ))}
-        </div>
-      ) : null}
-      {d.vendedores.length ? (
-        <div className="flex flex-col gap-1">
-          <h4 className="font-semibold">Precio por vendedor</h4>
-          <ul className="flex flex-col gap-1 text-sm">
-            {d.vendedores.map((v) => (
-              <li key={v.vendedor} className="flex flex-wrap justify-between gap-x-3">
-                <span>
-                  {v.vendedor} <span className="text-texto-secundario">({v.aerolinea ? "aerolínea" : "agencia"})</span>
-                </span>
-                <span className="tabular-nums">
-                  {v.precio_desde === null ? "sin precio" : `desde ${formatearDinero(v.precio_desde.toFixed(2))}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {d.tramos.length ? (
-        <div className="flex flex-col gap-1">
-          <h4 className="font-semibold">Escalas</h4>
-          <ul className="flex flex-col gap-1 text-sm">
-            {d.tramos.map((t, i) => (
-              <li key={`${t.ruta}-${i}`}>
-                <span className="font-semibold">{t.ruta ?? "Tramo"}</span>
-                {t.fecha ? ` · ${t.fecha}` : ""}
-                {t.sale && t.llega ? ` · ${t.sale} – ${t.llega}` : ""}
-                {t.escalas ? ` · ${t.escalas}` : ""}
-                {t.detalle_escalas.length ? ` (${t.detalle_escalas.join(", ")})` : ""}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {d.regreso_elegido ? (
-        <p className="text-sm text-texto-secundario">
-          Para ver las opciones de reserva, la lectura eligió el regreso más barato que mostró la página
-          {d.regreso_elegido.sale ? ` (sale ${d.regreso_elegido.sale}` : " ("}
-          {d.regreso_elegido.aerolinea ? `, ${d.regreso_elegido.aerolinea}` : ""}, {formatearDinero(d.regreso_elegido.precio.toFixed(2))} ida y vuelta).
-        </p>
-      ) : null}
-      {d.avisos.map((x) => (
-        <p key={x} className="text-sm text-texto-secundario">
-          {x}
-        </p>
-      ))}
-      {a.captura_url ? (
-        <a href={a.captura_url} target="_blank" rel="noopener noreferrer" className="block self-start">
-          {/* eslint-disable-next-line @next/next/no-img-element -- la captura viene de la API con la sesión: no pasa por el optimizador */}
-          <img
-            src={a.captura_url}
-            alt="Captura de la página de Google Flights leída, como evidencia"
-            loading="lazy"
-            className="max-h-72 w-full max-w-xl rounded-tarjeta border border-linea object-cover object-top"
-          />
-        </a>
-      ) : null}
-      <p className="text-xs text-texto-secundario">
-        Lo leído no reemplaza el precio del buscador: es una verificación.{" "}
-        {a.url ? (
-          <a href={a.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-3">
-            Página leída
-          </a>
-        ) : null}
-      </p>
-    </>
-  );
+/** Las tarifas con «Ir a…» de la aerolínea; si la página no muestra la aerolínea como vendedor, las que haya. */
+function tarifasDeLaAerolinea(d: NonNullable<AnalisisVuelo["datos"]>) {
+  const aerolineas = new Set(d.vendedores.filter((v) => v.aerolinea).map((v) => v.vendedor));
+  const conEnlace = d.tarifas.filter((t) => t.ir_url);
+  const propias = conEnlace.filter((t) => aerolineas.has(t.vendedor));
+  return propias.length ? propias : conEnlace;
 }

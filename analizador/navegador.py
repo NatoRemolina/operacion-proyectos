@@ -16,6 +16,7 @@ import os
 import re
 import threading
 import time
+from collections.abc import Callable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import lector
@@ -28,10 +29,15 @@ EN_LAMBDA = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 # En Lambda no hay /dev/shm grande ni varios procesos: Chromium corre en uno solo
 ARGUMENTOS = ["--disable-gpu", "--disable-dev-shm-usage", "--single-process", "--no-zygote"] if EN_LAMBDA else []
 # Una lista cuenta como cargada solo con precios a la vista: el título «Returning flights» sale antes que los resultados
+# La página de error de Google («No results returned. Oops, something went wrong. Reload»: prueba 13) también termina
+# la espera: no hay precios que esperar
+ERROR_GOOGLE = re.compile(r"Oops, something went wrong|No results returned")
+SIN_RESULTADOS = "Google no devolvió resultados; vuelve a intentarlo en unos minutos"
 LISTO = re.compile(r"Booking options[\s\S]*\$\d|(Returning|Departing) flights[\s\S]*\$\d|unusual traffic|not a robot|"
-                   r"Before you continue")
+                   r"Before you continue|Oops, something went wrong|No results returned")
 PARAMETROS_FIJOS = {"hl": "en", "gl": "us", "curr": "USD"}   # lo que sabe leer el lector: inglés, EE. UU. y dólares
 RESERVA = re.compile(r"Booking options[\s\S]*\$\d")
+RESERVA_O_ERROR = re.compile(RESERVA.pattern + r"|Oops, something went wrong|No results returned")
 
 ALTO_CAPTURA = 4000          # px: la reserva entera cabe; lo de más abajo (historia de precios) no hace falta
 TOPE_CAPTURA = 3_000_000     # bytes en base64: con los datos, la respuesta queda bajo 4 MB
@@ -47,7 +53,10 @@ SIN_REGRESO = "no se pudo elegir el regreso"
 RESERVA_IR_MS = 20_000
 RESERVA_LEER_MS = 10_000
 SIN_ENVIO = "Google no respondió al elegir la tarifa"
-CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for [\d,.]+ US dollars")
+# Con billetes separados («Separate tickets») cada tiquete se compra aparte: «Continue» de la opción abre un diálogo
+# con un tiquete por tramo, cada uno con su «Continue» (prueba 12). «Ir a {aerolínea} · ida|regreso» pulsa ese.
+TRAMOS_TIQUETE = ("ida", "regreso")
+CONTINUAR = re.compile(r"^Continue to book with (?P<vendedor>.+?)(?:, (?P<tarifa>.+?))? for (?P<precio>[\d,.]+) US dollars")
 VENDEDOR_O_TARIFA = re.compile(r"^[\w .,&'()+/-]{1,60}$")
 OTRA_PESTANA = "la página quiso abrir otra pestaña"
 
@@ -212,6 +221,12 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
             if texto is None:
                 return _resultado("fallido", inicio, "la página tardó demasiado en mostrar los precios", url_final=pagina.url,
                                   **_evidencia(pagina))
+            if ERROR_GOOGLE.search(texto) and restante() > reserva + 5000:
+                texto = _recargar(pagina, restante, reserva) or texto   # un solo reintento, con el «Reload» de Google
+            if salida():
+                return _resultado("fallido", inicio, salida())
+            if ERROR_GOOGLE.search(texto):
+                return _resultado("fallido", inicio, SIN_RESULTADOS, url_final=pagina.url, **_evidencia(pagina))
             motivo = lector.bloqueo(pagina.url, texto)
             if motivo:   # una verificación no se fotografía: no se guarda nada de ella
                 return _resultado("fallido", inicio, motivo, url_final=pagina.url)
@@ -220,11 +235,19 @@ def _leer(url: str, inicio: float, elegir_regreso: bool, servir, espera_ms: int,
                 regreso = _elegir_regreso(pagina, min(5000, restante()), regreso_cotizacion)
                 if regreso:
                     # sin opciones de reserva a tiempo se lee lo que haya: `avisos` dirá que no las hubo
-                    texto = _esperar(pagina, RESERVA, min(espera_ms, restante())) or pagina.inner_text("body")
+                    texto = _esperar(pagina, RESERVA_O_ERROR, min(espera_ms, restante())) or pagina.inner_text("body")
             if salida():   # antes de leer y de capturar: nunca otro sitio ni una pestaña que se abrió
                 return _resultado("fallido", inicio, salida())
+            if ERROR_GOOGLE.search(texto) and not RESERVA.search(texto):   # el error de Google al elegir el regreso
+                return _resultado("fallido", inicio, SIN_RESULTADOS, url_final=pagina.url, regreso_elegido=regreso,
+                                  **_evidencia(pagina))
             if RESERVA.search(texto) and _desplegar(pagina, restante):
                 texto = pagina.inner_text("body")
+            if salida():
+                return _resultado("fallido", inicio, salida())
+            if RESERVA.search(texto) and lector.DIALOGO_SEPARADOS not in texto and lector.leer(texto)["billetes_separados"] \
+                    and _abrir_separados(pagina, restante):
+                texto = pagina.inner_text("body")   # el diálogo con un tiquete por tramo (no envía nada)
             if salida():
                 return _resultado("fallido", inicio, salida())
             if pedido_ir:
@@ -297,7 +320,20 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     def sin_tarifa():
         return _resultado("fallido", inicio, SIN_TARIFA, url_final=pagina.url, regreso_elegido=regreso, **_evidencia(pagina))
 
-    etiqueta = next((e for e in _etiquetas(pagina) if _es_continuar(e, pedido["vendedor"], pedido["tarifa"])), None)
+    if pedido["tarifa"].strip().lower() in TRAMOS_TIQUETE:   # billetes separados: el «Continue» del tiquete de ese tramo
+        def es_el(e):
+            return _es_tiquete(e, pedido["vendedor"])
+        etiqueta, otro = _tiquete_del_tramo(_tiquetes_con_tramo(pagina), pedido["vendedor"], pedido["tarifa"].strip().lower())
+        if otro:
+            # Google cambia el vendedor de un tramo entre cargas (si otro lleva ese tramo, se dice quién) o no muestra
+            # el tiquete de ese tramo: no se pulsa nada
+            return _resultado("fallido", inicio, otro["motivo"], url_final=pagina.url, regreso_elegido=regreso,
+                              **({"vendedor_actual": otro["vendedor_actual"]} if otro.get("vendedor_actual") else {}),
+                              **_evidencia(pagina))
+    else:
+        def es_el(e):
+            return _es_continuar(e, pedido["vendedor"], pedido["tarifa"])
+        etiqueta = next((e for e in _etiquetas(pagina) if es_el(e)), None)
     if etiqueta is None:
         return sin_tarifa()
     previa = _captura(pagina, restante)
@@ -305,8 +341,7 @@ def _ir(pagina, pedido: dict, envio: dict, regreso, restante, salida, inicio) ->
     # antes de pulsar: el clic solo va al «Continue» de esa tarifa
     boton = pagina.locator(_selector_etiqueta(etiqueta)).first
     try:
-        if not _es_continuar(boton.get_attribute("aria-label", timeout=min(3000, restante())), pedido["vendedor"],
-                             pedido["tarifa"]):
+        if not es_el(boton.get_attribute("aria-label", timeout=min(3000, restante()))):
             return sin_tarifa()
     except Error:
         return sin_tarifa()
@@ -404,6 +439,8 @@ def captura_aerolinea(url: str, cuerpo: str, *, servir=None, presupuesto_ms: int
         _turno.release()
 
 
+
+
 def _aerolinea(url: str, cuerpo: str, servir, presupuesto_ms: int, inicio: float) -> dict:
     import html as html_
     from urllib.parse import parse_qsl as campos_de
@@ -461,7 +498,10 @@ def _aerolinea(url: str, cuerpo: str, servir, presupuesto_ms: int, inicio: float
                 pagina.wait_for_timeout(250)
             if not destino:
                 return _resultado("fallido", inicio, SIN_AEROLINEA, **_evidencia(pagina))
-            _esperar(pagina, re.compile(r"\$\d"), max(min(15_000, restante() - 8_000), 1))
+            texto = _esperar(pagina, lector.precio_o_bloqueo_aerolinea, max(min(15_000, restante() - 8_000), 1)) or _texto(pagina)
+            if lector.bloqueo(pagina.url, texto, aerolinea=True):
+                # una verificación no se resuelve ni se fotografía: la captura de Google vale igual
+                return _resultado("fallido", inicio, lector.VERIFICACION_AEROLINEA, url_final=f"https://{destino['host']}/")
             # un clic que solo despliega el precio y los impuestos: un enlace o botón con ese nombre, fuera de formularios
             try:
                 for el in pagina.get_by_role("button", name=PRECIO_E_IMPUESTOS).all() + \
@@ -565,13 +605,113 @@ def _selector_etiqueta(etiqueta: str) -> str:
     return '[aria-label="' + etiqueta.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\a ") + '"]'
 
 
+def _sin_marca(nombre: str | None) -> str:
+    """«COPA airline» → «COPA»: Google añade la marca a la etiqueta cuando vende la aerolínea (prueba 12)."""
+    nombre = (nombre or "").strip()
+    return nombre[:-len(" airline")].strip() if nombre.lower().endswith(" airline") else nombre
+
+
+def vendedor_cambio(pedido: str, actual: str, precio: float | None) -> str:
+    """«Avianca ya no vende este tramo; ahora lo vende eDreams a 316 USD»."""
+    return f"{pedido} ya no vende este tramo; ahora lo vende {actual}" + (f" a {precio:,.0f} USD" if precio is not None else "")
+
+
 def _es_continuar(etiqueta, vendedor: str, tarifa: str) -> bool:
-    """«Continue to book with American, Main Cabin for 1014 US dollars»; sin nombre de tarifa, vale «Tarifa»."""
-    m = CONTINUAR.match(lector.normal(etiqueta or ""))
-    if not m:
+    """«Continue to book with American, Main Cabin for 1014 US dollars»; sin nombre de tarifa, vale «Tarifa». La opción
+    de dos tiquetes («…COPA, Avianca airline… must be booked individually») nunca es una tarifa."""
+    texto = lector.normal(etiqueta or "")
+    m = CONTINUAR.match(texto)
+    if not m or "booked individually" in texto:
         return False
-    return (m["vendedor"].strip().lower() == vendedor.strip().lower()
-            and (m["tarifa"] or "Tarifa").strip().lower() == tarifa.strip().lower())
+    return (_sin_marca(m["vendedor"]).lower() == vendedor.strip().lower()
+            and (_sin_marca(m["tarifa"]) or "Tarifa").lower() == tarifa.strip().lower())
+
+
+def _es_tiquete(etiqueta, vendedor: str) -> bool:
+    """El «Continue» de un tiquete del diálogo de billetes separados: «Continue to book with COPA airline for 334 US
+    dollars…» (un vendedor, sin tarifa)."""
+    texto = lector.normal(etiqueta or "")
+    m = CONTINUAR.match(texto)
+    return bool(m) and "booked individually" not in texto and not m["tarifa"] \
+        and _sin_marca(m["vendedor"]).lower() == vendedor.strip().lower()
+
+
+SIN_TIQUETE_TRAMO = "Google no muestra un tiquete de {tramo} para este vuelo"
+# El tramo de cada tiquete del diálogo: el último encabezado («Departing flight» / «Returning flight») antes de su
+# «Continue», en el orden del documento (el mismo criterio de `lector.TRAMO_IDA` y `lector.TRAMO_REGRESO`).
+_JS_TIQUETES = r"""() => {
+  const ida = /^(Departing|Departure|Outbound)( flights?)?\b/i, regreso = /^(Return|Returning)( flights?)?\b/i;
+  const salida = []; let tramo = null;
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    if (n.nodeType === Node.TEXT_NODE) {
+      const t = n.textContent.trim();
+      if (ida.test(t)) tramo = "ida"; else if (regreso.test(t)) tramo = "regreso";
+    } else if ((n.getAttribute("aria-label") || "").startsWith("Continue to book with")) {
+      salida.push([tramo, n.getAttribute("aria-label")]);
+    }
+  }
+  return salida;
+}"""
+
+
+def _tiquetes_con_tramo(pagina) -> list[tuple[str | None, str]]:
+    """Los «Continue» de los tiquetes de billetes separados, cada uno con el tramo de su encabezado (None si no hay)."""
+    from playwright.sync_api import Error
+
+    try:
+        return [(t, e) for t, e in pagina.evaluate(_JS_TIQUETES) if _es_un_tiquete(e)]
+    except Error:
+        return []
+
+
+def _es_un_tiquete(etiqueta) -> bool:
+    m = CONTINUAR.match(lector.normal(etiqueta or ""))
+    return bool(m) and not m["tarifa"] and "booked individually" not in m.string
+
+
+def _precio_etiqueta(etiqueta: str) -> float | None:
+    m = CONTINUAR.match(lector.normal(etiqueta or ""))
+    try:
+        return float(m["precio"].replace(",", "")) if m else None
+    except ValueError:
+        return None   # un precio ilegible no impide decir quién vende ahora
+
+
+def _tiquete_del_tramo(tiquetes: list[tuple[str | None, str]], vendedor: str, tramo: str) -> tuple[str | None, dict | None]:
+    """El «Continue» del tiquete de ese vendedor en ese tramo, elegido por el encabezado del tramo (no por su orden).
+    Si ese tramo lo lleva otro vendedor, (None, {"motivo", "vendedor_actual"}); si el diálogo no trae un tiquete de ese
+    tramo, (None, {"motivo"}); sin tiquetes, (None, None). Sin ningún encabezado reconocible, dos tiquetes se toman en
+    el orden del diálogo (ida y regreso)."""
+    if len(tiquetes) == 2 and all(t is None for t, _ in tiquetes):
+        tiquetes = [(TRAMOS_TIQUETE[i], e) for i, (_, e) in enumerate(tiquetes)]
+    if not tiquetes:
+        return None, None
+    del_tramo = [e for t, e in tiquetes if t == tramo]
+    propia = next((e for e in del_tramo if _es_tiquete(e, vendedor)), None)
+    if propia:
+        return propia, None
+    if not del_tramo:
+        return None, {"motivo": SIN_TIQUETE_TRAMO.format(tramo=tramo)}
+    m = CONTINUAR.match(lector.normal(del_tramo[0]))
+    otro, precio = _sin_marca(m["vendedor"]), _precio_etiqueta(del_tramo[0])
+    return None, {"motivo": vendedor_cambio(vendedor, otro, precio), "vendedor_actual": {"vendedor": otro, "precio": precio}}
+
+
+def _abrir_separados(pagina, restante) -> bool:
+    """Pulsa el «Continue» de la opción de billetes separados, que solo abre el diálogo con un tiquete por tramo (no
+    envía nada: prueba 12), y espera ese diálogo. False si no se pudo."""
+    from playwright.sync_api import Error
+
+    etiqueta = next((e for e in _etiquetas(pagina) if e and e.startswith("Continue to book with ")
+                     and "booked individually" in lector.normal(e)), None)
+    if not etiqueta:
+        return False
+    try:
+        pagina.locator(_selector_etiqueta(etiqueta)).first.click(timeout=min(3000, restante()))
+    except Error:
+        return False
+    return _esperar(pagina, re.compile(re.escape(lector.DIALOGO_SEPARADOS)), min(5000, restante())) is not None
 
 
 def _captura(pagina, restante, alto_max: int = ALTO_CAPTURA) -> bytes:
@@ -591,16 +731,40 @@ def _primera_linea(error: Exception) -> str:
     return (str(error).strip().splitlines() or ["error del navegador"])[0][:160]
 
 
-def _esperar(pagina, patron: re.Pattern, plazo_ms: int = ESPERA_MS) -> str | None:
-    """El texto visible en cuanto cumple `patron`; None si no llega a tiempo. Tolera que la página se recargue o cambie
-    de dirección mientras carga (Google lo hace): se vuelve a leer en vez de fallar."""
+def _recargar(pagina, restante, reserva: int) -> str | None:
+    """Un clic en el botón «Reload» de la página de error de Google (no es un formulario) y la espera de los precios
+    otra vez. Devuelve el texto nuevo, o None si no hubo botón o no llegó nada. Se llama una sola vez por lectura."""
     from playwright.sync_api import Error
 
+    try:
+        boton = pagina.get_by_role("button", name="Reload", exact=True).first
+        if (boton.inner_text(timeout=min(2000, restante())) or "").strip() != "Reload":
+            return None
+        boton.click(timeout=min(3000, restante()))
+    except Error:
+        return None
+    fin = time.monotonic() + 3   # que la página deje el aviso de error antes de volver a esperar los precios
+    while time.monotonic() < fin:
+        try:
+            if not ERROR_GOOGLE.search(pagina.inner_text("body", timeout=1000)):
+                break
+        except Error:
+            break   # está recargando
+        pagina.wait_for_timeout(200)
+    return _esperar(pagina, LISTO, max(restante() - reserva, 1))
+
+
+def _esperar(pagina, patron: re.Pattern | Callable[[str], bool], plazo_ms: int = ESPERA_MS) -> str | None:
+    """El texto visible en cuanto cumple `patron` (una expresión o una función del texto); None si no llega a tiempo.
+    Tolera que la página se recargue o cambie de dirección mientras carga (Google lo hace): se vuelve a leer."""
+    from playwright.sync_api import Error
+
+    cumple = patron.search if isinstance(patron, re.Pattern) else patron
     fin = time.monotonic() + plazo_ms / 1000
     while time.monotonic() < fin:
         try:
             texto = pagina.inner_text("body", timeout=max(min(2000, int((fin - time.monotonic()) * 1000)), 1))
-            if patron.search(texto):
+            if cumple(texto):
                 return texto
         except Error:
             pass   # contexto destruido por una navegación: se reintenta

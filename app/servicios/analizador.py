@@ -415,24 +415,29 @@ def _reservar_ir(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict
 
 
 def _por_buscador(sol: dict, vuelo: dict, vendedor: str, tarifa: str, sid: int) -> dict | None:
-    """El pedido de un solo uso de esa tarifa de ese vendedor, de las opciones de reserva del buscador."""
+    """El pedido de un solo uso de esa tarifa de ese vendedor (o de ese tiquete, con «ida» o «regreso»), de las opciones
+    de reserva del buscador. Si otro vende ahora ese tramo, el suyo, con el `aviso` (`precios.elegir_tiquete`)."""
     lado = lambda nombre: precios.codigos(sol.get(f"{nombre}_aeropuertos") or sol[nombre])  # noqa: E731
     regreso = precios.vuelo_regreso(vuelo, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid,
                                     tipo="vendedor_regreso")
     if not regreso:
         return None
-    for o in precios.reserva_en_vivo(vuelo, regreso, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid):
-        if (o["vendedor"].lower(), o["tarifa"].lower()) == (vendedor.lower(), tarifa.lower()) and _es_envio(o["url"]):
-            return {"url": o["url"], "campos": parse_qsl(o["post_data"] or "", keep_blank_values=True)}
-    return None
+    opciones = precios.reserva_en_vivo(vuelo, regreso, lado("origen"), lado("destino"), sol["ida"], sol["regreso"], sid)
+    o, aviso = precios.elegir_tiquete(opciones, vendedor, tarifa)
+    if not o:
+        return None
+    return {"url": o["url"], "campos": parse_qsl(o["post_data"] or "", keep_blank_values=True), "vendedor": o["vendedor"],
+            "aviso": aviso, "tiquete": precios.tiquete(o, vuelo, regreso)}
 
 
 def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, canal: str = "api v1") -> dict:
-    """Adónde enviar a la persona para comprar esa tarifa de ese vendedor. Tres caminos, en orden:
-    `pagina` (el analizador pulsa «Continue» en Google Flights y devuelve el envío que Google iba a hacer), `buscador`
-    (el pedido de un solo uso de esa tarifa) y `google` (la página del vuelo en Google Flights).
+    """Adónde enviar a la persona para comprar esa tarifa de ese vendedor (o ese tiquete, con «ida» o «regreso»).
+    Tres caminos, en orden: `buscador` (el pedido de un solo uso de esa tarifa, el mismo del «Continue» de Google),
+    `pagina` (el analizador pulsa «Continue» en Google Flights y devuelve el envío que Google iba a hacer) y `google`
+    (la página del vuelo en Google Flights). Si otro vende ahora ese tramo, el `motivo` lo dice.
 
-    Devuelve `{"camino", "url", "campos", "vendedor", "tarifa", "motivo"}`. Los `campos` del envío viajan solo en esta
+    Devuelve `{"camino", "url", "campos", "vendedor", "tarifa", "motivo", "tiquete", "guia"}`: la `guia` dice qué vuelo
+    elegir en el vendedor y empieza con el aviso si cambió el vendedor (solo por el buscador, que da el tiquete). Los `campos` del envío viajan solo en esta
     respuesta: no se guardan ni se registran. Quien llama comprueba antes que la persona ve la cotización.
     LookupError si el vuelo no es de ella."""
     sol, _, vuelo = _opcion(sid, opcion_id)   # LookupError si el vuelo no es de la cotización: solo aquí
@@ -443,23 +448,47 @@ def ir_a(usuario: dict, sid: int, opcion_id: int, vendedor: str, tarifa: str, ca
         url = None
     turno = _reservar_ir(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa)
     try:
-        return _ir_con_turno(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa, turno, inicio, canal)
+        destino = _ir_con_turno(usuario, sid, opcion_id, sol, vuelo, url, vendedor, tarifa, turno, inicio, canal)
     finally:
         _no_dejar_pendiente(turno.get("id"))
+    # El mismo clic deja encolada una captura completa (Google y la aerolínea) del momento en que la persona abrió el
+    # enlace: la hace el trabajador, la persona no la espera y, si no se puede encolar, va igual. Con el tope de «Ir a…»
+    # alcanzado no se encola nada; por el buscador, con el vendedor que lo vende ahora. Ruling (pieza 6, ronda 1): el
+    # buscador y la página confirman la tarifa (Google la entregó o la página pulsó su «Continue»); por Google Flights,
+    # solo si está en lo guardado del vuelo — si está mal, basta con quitar «pagina» de esta tupla.
+    try:
+        if not turno.get("tope"):
+            from . import capturas  # aquí: capturas usa este módulo
+            capturas.al_clic(usuario, sid, opcion_id, destino["vendedor"] if destino["camino"] == "buscador" else vendedor,
+                             tarifa, confirmada=destino["camino"] in ("buscador", "pagina"))
+    except Exception as e:  # noqa: BLE001
+        eventos.registrar("solicitud", sid, "evidencia del clic no encolada", f"opción {opcion_id} · {type(e).__name__}",
+                          "sistema")
+    return destino
 
 
 def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dict, url: str | None, vendedor: str,
                   tarifa: str, turno: dict, inicio: datetime, canal: str) -> dict:
     destino, camino, motivo, captura, aid = None, None, turno.get("motivo"), None, turno.get("id")
     extracto = None
-    if turno.get("turno"):
+    # Ruling (pieza 6): el buscador va primero — responde en 2 a 5 s, Google no lo frena, da el mismo enlace del
+    # «Continue» y ya lo cuenta `reservar_cupo` — si está mal, basta con invertir este bloque y el de la página.
+    if not turno.get("tope") and config.SERPAPI_KEY:
+        # el camino del buscador gasta búsquedas pagas: el cupo del enlace se reserva antes de buscar
+        if reservar_cupo(usuario, f"ir_a_{clave(sol, vuelo)}", unidades_busqueda(sol, vuelo)):
+            destino = _por_buscador(sol, vuelo, vendedor, tarifa, sid)
+            if destino:
+                camino, motivo = "buscador", destino.get("aviso")
+        else:
+            motivo = motivo or "se alcanzó el tope de búsquedas del día"
+    if not destino and turno.get("turno"):
         r = _invocar({"accion": "ir_a", "url": url, "vendedor": vendedor, "tarifa": tarifa, "regreso": regreso_de(sol, vuelo)})
         if not isinstance(r, dict):
             motivo = RESPUESTA_RARA
         elif r.get("no_disponible"):
             motivo = r["no_disponible"]   # la fila queda: el pedido ya contó para el tope
         elif r.get("estado") == "listo" and _es_envio(r.get("url")) and isinstance(r.get("cuerpo"), str):
-            destino, camino = {"url": r["url"], "campos": parse_qsl(r["cuerpo"], keep_blank_values=True)}, "pagina"
+            destino, camino, motivo = {"url": r["url"], "campos": parse_qsl(r["cuerpo"], keep_blank_values=True)}, "pagina", None
             try:
                 captura = _guardar_captura(r.get("captura_previa_png_b64"))
             except Exception:  # noqa: BLE001 (la captura es evidencia: sin ella, el envío sigue valiendo)
@@ -472,13 +501,6 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
             except Exception:  # noqa: BLE001 (la evidencia es secundaria)
                 captura = None
             extracto = str(r["extracto"])[:500] if r.get("extracto") else None
-    if not destino and not turno.get("tope") and config.SERPAPI_KEY:
-        # el camino del buscador gasta búsquedas pagas: el cupo del enlace se reserva antes de buscar
-        if reservar_cupo(usuario, f"ir_a_{clave(sol, vuelo)}", unidades_busqueda(sol, vuelo)):
-            destino = _por_buscador(sol, vuelo, vendedor, tarifa, sid)
-            camino = "buscador" if destino else None
-        else:
-            motivo = motivo or "se alcanzó el tope de búsquedas del día"
     if not destino:
         try:
             google = url or precios.enlace_vuelos(precios.codigos(sol.get("origen_aeropuertos") or sol["origen"]),
@@ -488,7 +510,7 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
             google = None
         destino, camino = {"url": google, "campos": []}, "google"
     ms = int((datetime.now(UTC) - inicio).total_seconds() * 1000)
-    cambios = {"estado": "listo" if camino == "pagina" else "fallido", "terminado": db.ahora(), "duracion_ms": ms,
+    cambios = {"estado": "fallido" if camino == "google" else "listo", "terminado": db.ahora(), "duracion_ms": ms,
                "camino": camino, "captura": captura, "motivo": None if camino == "pagina" else motivo,
                "datos": {"extracto": extracto} if extracto else None}
     if aid:
@@ -499,8 +521,9 @@ def _ir_con_turno(usuario: dict, sid: int, opcion_id: int, sol: dict, vuelo: dic
                       f"{' + '.join(vuelo.get('numeros') or [])} (opción {opcion_id}): {vendedor} · {tarifa} · camino {camino} · "
                       f"{dominio} · {ms} ms{' · ' + motivo if motivo and camino != 'pagina' else ''}"[:500],
                       f"{canal} · {usuario['nombre']}", ms)
-    return {"camino": camino, "url": destino["url"], "campos": destino["campos"], "vendedor": vendedor, "tarifa": tarifa,
-            "motivo": None if camino == "pagina" else motivo}
+    return {"camino": camino, "url": destino["url"], "campos": destino["campos"], "vendedor": destino.get("vendedor") or vendedor,
+            "tarifa": tarifa, "motivo": None if camino == "pagina" else motivo, "tiquete": destino.get("tiquete"),
+            "guia": precios.guia(destino.get("aviso"), destino.get("tiquete"))}
 
 
 def aviso_precio(analisis: dict | None, precio_buscador) -> str | None:

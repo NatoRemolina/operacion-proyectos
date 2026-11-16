@@ -331,6 +331,10 @@ class TarifaLeida(BaseModel):
     reembolso: list[str]
     otras: list[str] = Field(description="Lo demás que incluye: asiento, embarque, espacio para las piernas...")
     ir_url: str | None = Field(None, description="«Ir a…» de esta tarifa: la página de envío firmada para esta sesión (5 min).")
+    elige: str | None = Field(None, description="Qué vuelos elegir en la página del vendedor, con su hora de salida («la ida "
+                                                 "AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm»); algunos "
+                                                 "vendedores abren la lista del día sin el vuelo elegido. Solo en las "
+                                                 "opciones del buscador.")
 
 
 class VendedorLeido(BaseModel):
@@ -447,7 +451,16 @@ class EnvioVendedor(BaseModel):
     campos: list[tuple[str, str]]
     vendedor: str
     tarifa: str
-    motivo: str | None = Field(description="Por qué no se llegó por la página, si es el caso.")
+    motivo: str | None = Field(description="Lo que la persona debe saber del camino, si hay algo: por el buscador, el "
+                                           "aviso si otro vende ahora ese tramo («Avianca ya no vende este tramo; ahora "
+                                           "lo vende eDreams a 316 USD»); por Google Flights, por qué no se llegó al "
+                                           "vendedor (tope, sin analizador, la página pidió verificación...). Vacío "
+                                           "por la página.")
+    guia: str | None = Field(None, description="Qué vuelo elegir en la página del vendedor, para mostrarlo antes del "
+                                               "envío: «En COPA, elige CM 687 · CM 240, sale 12:40 pm, desde 334 USD.» "
+                                               "Si otro vende ahora ese tramo, empieza con el aviso: «Avianca ya no "
+                                               "vende este tramo; ahora lo vende eDreams a 316 USD.» Solo por el "
+                                               "camino `buscador`, que trae el tiquete.")
 
 
 # ---------- errores ----------

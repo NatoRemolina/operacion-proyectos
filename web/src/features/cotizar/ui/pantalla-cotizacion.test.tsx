@@ -387,7 +387,7 @@ describe("Comparación de una cotización", () => {
     expect(screen.getByRole("radio", { name: `Tru by Hilton Moab, costo total ${dinero("243.00")}` })).not.toBeChecked();
   });
 
-  it("al abrir el desglose abre la página oficial del vendedor con el mismo enlace y muestra lo leído de la página", async () => {
+  it("al abrir el desglose abre la página oficial del vendedor y deja solo lo esencial: el costo y los botones a la aerolínea", async () => {
     const usuario = userEvent.setup();
     const registrarFuente = vi.fn<CotizarRepository["registrarFuente"]>().mockResolvedValue(undefined);
     let responder: (a: typeof ANALISIS_EJEMPLO) => void = () => {};
@@ -413,7 +413,7 @@ describe("Comparación de una cotización", () => {
     expect(registrarFuente).toHaveBeenLastCalledWith(12, "vuelos", { vueloId: RECOMENDADA.id });
     // el desglose del buscador se ve enseguida; la lectura llega después
     expect(within(tarjeta).getByRole("table", { name: /Desglose del costo total esperado/ })).toBeInTheDocument();
-    expect(within(within(tarjeta).getByRole("region", { name: "Detalle de Google Flights" })).getByRole("status"))
+    expect(within(within(tarjeta).getByRole("region", { name: "Ir a la aerolínea" })).getByRole("status"))
       .toHaveTextContent("Leyendo la página del vuelo…");
     // primera capa: lo del buscador aparece sin esperar a la lectura de la página
     const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
@@ -425,32 +425,65 @@ describe("Comparación de una cotización", () => {
     // cada tarifa trae su «Ir a…» firmado por la API
     const datos = { ...ANALISIS_EJEMPLO.datos!, tarifas: ANALISIS_EJEMPLO.datos!.tarifas.map((t) => ({ ...t, ir_url: `/api/v1/ir/${t.nombre}` })) };
     responder({ ...ANALISIS_EJEMPLO, datos, opcion_id: RECOMENDADA.id, leido: "2026-11-13T15:10:00Z", captura_url: "/api/v1/captura.png" });
-    expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las \d\d:\d\d$/)).toBeInTheDocument();
-    const detalle = within(tarjeta).getByRole("region", { name: "Detalle de Google Flights" });
-    expect(within(detalle).getByText("El precio de la página no es el del buscador")).toBeInTheDocument();
-    expect(within(detalle).getByText(/La comparación sigue usando el precio del buscador/)).toBeInTheDocument();
-    expect(within(detalle).getByText("Basic Economy")).toBeInTheDocument();
-    // una tabla por vendedor, una fila por tarifa, con su «Ir a…» (en otra pestaña, sin acceso a esta)
-    const tabla = within(detalle).getByRole("table", { name: "American (según la página)" });
-    const filas = within(tabla).getAllByRole("row").slice(1);
-    expect(filas.map((f) => within(f).getByRole("rowheader").textContent)).toEqual(["Basic Economy", "Main Cabin", "Main Plus", "Main Select"]);
-    const main = filas[1]!;
-    expect(within(main).getByText("1st checked bag: $100")).toBeInTheDocument();
-    expect(within(main).getByText("Free change, possible fare difference")).toBeInTheDocument();
-    expect(within(main).getByText("Free seat selection")).toBeInTheDocument();
-    expect(within(main).getByText("página")).toBeInTheDocument();
-    const ir = within(main).getByRole("link", { name: "Ir a American, Main Cabin, se abre en otra pestaña" });
+    const aerolinea = within(tarjeta).getByRole("region", { name: "Ir a la aerolínea" });
+    expect(await within(aerolinea).findByText(/^Tarifas de la aerolínea leídas a las \d\d:\d\d$/)).toBeInTheDocument();
+    expect(within(aerolinea).getByText("El precio de la página no es el del buscador")).toBeInTheDocument();
+    // un botón por tarifa de la aerolínea, con el enlace firmado que da la API tal cual (en otra pestaña)
+    const ir = within(aerolinea).getByRole("link", { name: /^Ir a American · Main Cabin/ });
+    expect(ir).toHaveAttribute("href", "/api/v1/ir/Main Cabin");
     expect(ir).toHaveAttribute("target", "_blank");
     expect(ir).toHaveAttribute("rel", "noopener noreferrer");
-    expect(ir).toHaveAttribute("href", "/api/v1/ir/Main Cabin");   // el enlace firmado que da la API, tal cual
-    expect(within(detalle).getAllByText(/1st checked bag: \$110/).length).toBeGreaterThan(0);
-    expect(within(detalle).getAllByText(/Full refunds/).length).toBe(1);
-    expect(within(detalle).getByText("Precio por vendedor").nextElementSibling).toHaveTextContent(/American \(aerolínea\)desde/);
-    expect(within(detalle).getByRole("img", { name: /Captura de la página de Google Flights/ })).toHaveAttribute("src", "/api/v1/captura.png");
+    expect(within(aerolinea).getAllByRole("link").map((a) => a.textContent)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^Ir a American · Basic Economy/)]));
+    // lo largo ya no se muestra: ni la tabla de lo leído, ni la captura, ni «Página leída»
+    expect(within(tarjeta).queryByText("Tarifas y qué incluye cada una")).toBeNull();
+    expect(within(tarjeta).queryByRole("table", { name: "American (según la página)" })).toBeNull();
+    expect(within(tarjeta).queryByRole("img")).toBeNull();
+    expect(within(tarjeta).queryByText("Página leída")).toBeNull();
+    expect(within(tarjeta).queryByText("Precio por vendedor")).toBeNull();
     // el precio del buscador no cambia en la tarjeta
     expect(within(tarjeta).getAllByText(dinero(RECOMENDADA.precio_usd)).length).toBeGreaterThan(0);
     // cerrar no abre otra pestaña: es un botón
     expect(within(tarjeta).getByRole("button", { name: "Ocultar desglose" })).toBeInTheDocument();
+  });
+
+  it("con billetes separados hay un botón por tiquete, cada uno a su aerolínea (prueba 12)", async () => {
+    const usuario = userEvent.setup();
+    const tiquete = (vendedor: string, nombre: string, precio: number) => ({ vendedor, nombre, precio, equipaje: [], cambios: [],
+      reembolso: [], otras: [], ir_url: `/api/v1/ir/${vendedor}/${nombre}` });
+    const datos = { ...ANALISIS_EJEMPLO.datos!, tarifas: [tiquete("COPA", "ida", 334), tiquete("Avianca", "regreso", 323)],
+      vendedores: [{ vendedor: "COPA", aerolinea: true, precio_desde: 334 }, { vendedor: "Avianca", aerolinea: true, precio_desde: 323 }] };
+    const analizarVuelo = vi.fn<CotizarRepository["analizarVuelo"]>()
+      .mockResolvedValue({ ...ANALISIS_EJEMPLO, datos, aviso_precio: null, leido: "2026-11-13T22:00:00Z" });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo }) });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+    const aerolinea = within(tarjeta).getByRole("region", { name: "Ir a la aerolínea" });
+    expect(await within(aerolinea).findByRole("link", { name: /^Ir a COPA · ida/ })).toHaveAttribute("href", "/api/v1/ir/COPA/ida");
+    expect(within(aerolinea).getByRole("link", { name: /^Ir a Avianca · regreso/ })).toHaveAttribute("href", "/api/v1/ir/Avianca/regreso");
+  });
+
+  it("con billetes separados en el buscador hay un botón por tiquete con su vendedor y su precio (pieza 6)", async () => {
+    const usuario = userEvent.setup();
+    const tiquete = (vendedor: string, nombre: string, precio: number) => ({ vendedor, nombre, precio,
+      equipaje: ["1 free carry-on"], cambios: [], reembolso: [], otras: [], ir_url: `/api/v1/ir/${vendedor}/${nombre}` });
+    const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue({
+      estado: "listo", consultado: "2026-11-14T15:00:00Z", tarifas: [tiquete("COPA", "ida", 334), tiquete("eDreams", "regreso", 316)],
+      vendedores: [{ vendedor: "COPA", aerolinea: true, precio_desde: 334 }, { vendedor: "eDreams", aerolinea: false, precio_desde: 316 }],
+    });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { opcionesBuscador }) });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+    const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+    expect(await within(capa).findByText("Billetes separados: un tiquete por tramo, cada uno con su vendedor.")).toBeInTheDocument();
+    const ida = within(capa).getByRole("link", { name: `Ir a COPA · ida ${dinero("334.00")}, se abre en otra pestaña` });
+    expect(ida).toHaveAttribute("href", "/api/v1/ir/COPA/ida");
+    expect(ida).toHaveAttribute("target", "_blank");
+    expect(ida).toHaveAttribute("rel", "noopener noreferrer");
+    expect(within(capa).getByRole("link", { name: `Ir a eDreams · regreso ${dinero("316.00")}, se abre en otra pestaña` }))
+      .toHaveAttribute("href", "/api/v1/ir/eDreams/regreso");
+    // los tiquetes no se pintan como tarifas de una tabla por vendedor
+    expect(within(capa).queryByRole("table")).toBeNull();
   });
 
   it("si la lectura falla o no está disponible, el desglose lo dice y muestra solo lo del buscador", async () => {
@@ -463,8 +496,8 @@ describe("Comparación de una cotización", () => {
     renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { analizarVuelo }) });
     const [primera, segunda] = (await screen.findAllByRole("link", { name: /^Ver desglose/ })).map((a) => a.closest("[role=group]") as HTMLElement);
     await usuario.click(within(primera!).getByRole("link", { name: /^Ver desglose/ }));
-    expect(await within(primera!).findByText("No se pudo leer: la página tardó demasiado en mostrar los precios.")).toBeInTheDocument();
-    expect(within(primera!).getByRole("link", { name: "Ver lo que mostró la página" })).toHaveAttribute("href", "/api/v1/captura.png");
+    expect(await within(primera!).findByText("No se pudo leer la página: la página tardó demasiado en mostrar los precios.")).toBeInTheDocument();
+    expect(within(primera!).queryByRole("link", { name: "Ver lo que mostró la página" })).toBeNull();   // la captura no se muestra aquí
     await usuario.click(within(segunda!).getByRole("link", { name: /^Ver desglose/ }));
     expect(await within(segunda!).findByText(/Llegaste al tope de lecturas de Google Flights de hoy/)).toBeInTheDocument();
     expect(within(segunda!).queryByText("Tarifas y qué incluye cada una")).toBeNull();
@@ -526,7 +559,7 @@ describe("Comparación de una cotización", () => {
       expect(await within(tarjeta).findByText("Leyendo la página del vuelo…")).toBeInTheDocument();
       await vi.advanceTimersByTimeAsync(3000);
       await vi.advanceTimersByTimeAsync(3000);
-      expect(await within(tarjeta).findByText(/^Detalle leído de Google Flights a las/)).toBeInTheDocument();
+      expect(await within(tarjeta).findByText(/^Tarifas de la aerolínea leídas a las/)).toBeInTheDocument();
       expect(verAnalisis).toHaveBeenCalledTimes(2);
       expect(verAnalisis).toHaveBeenCalledWith(12, RECOMENDADA.id, expect.anything());
 

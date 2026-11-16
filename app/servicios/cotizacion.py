@@ -466,11 +466,13 @@ def asegurar_reglas_vendedor() -> int:
     return 1
 
 
-def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int) -> dict:
+def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int, vendedor: str | None = None, tarifa: str | None = None) -> dict:
     """Adónde lleva «Ver desglose»: la página oficial del vendedor del itinerario (`{"tipo": "envio", "url", "campos",
-    "vendedor"}`) o, si no se puede, la página del vuelo en Google Flights (`{"tipo": "google", "url"}`).
+    "vendedor", "aviso", "tiquete"}`) o, si no se puede, la página del vuelo en Google Flights (`{"tipo": "google", "url"}`).
 
-    Elige la aerolínea si vende el itinerario; si no, el primer vendedor. La dirección sale siempre del buscador y
+    Sin `vendedor`, elige la aerolínea si vende el itinerario; si no, el primer vendedor. Con `vendedor` y `tarifa`
+    («ida» o «regreso» para un tiquete de billetes separados), esa opción; si otro vende ahora ese tramo, la suya con
+    el `aviso` (`precios.elegir_tiquete`). `tiquete` dice qué vuelo elegir en el vendedor (vuelos, precio, tarifa). La dirección sale siempre del buscador y
     solo hacia la lista blanca. El `booking_request` no se guarda: la bitácora dice quién, qué opción, qué vendedor y
     a qué dominio. Quien llama comprueba antes que la persona ve la cotización. LookupError si el vuelo no es de ella."""
     sol = db.uno("select * from solicitudes where id=:i", i=sid)
@@ -486,7 +488,7 @@ def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int) -> dict:
                           f"api v1 · {usuario['nombre']}")
 
     try:
-        destino = _destino_vendedor(usuario, sol, vuelo, sid, vuelo_id, google, anotar)
+        destino = _destino_vendedor(usuario, sol, vuelo, sid, vuelo_id, google, anotar, vendedor, tarifa)
     except Exception as e:  # noqa: BLE001 (una respuesta rara o un fallo no deja a la persona en un 500: va a Google Flights)
         anotar(f"error al preparar el enlace ({type(e).__name__}) · Google Flights")
         destino = google
@@ -494,7 +496,8 @@ def enlace_vendedor(usuario: dict, sid: int, vuelo_id: int) -> dict:
     return destino
 
 
-def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id: int, google: dict, anotar) -> dict:
+def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id: int, google: dict, anotar,
+                      vendedor: str | None = None, tarifa: str | None = None) -> dict:
     """El cuerpo de `enlace_vendedor`: tope, regreso, opciones de reserva y la elegida (aerolínea primero)."""
     if not config.SERPAPI_KEY:
         anotar("sin clave del buscador · Google Flights")
@@ -515,14 +518,23 @@ def _destino_vendedor(usuario: dict, sol: dict, vuelo: dict, sid: int, vuelo_id:
         return google
     regreso = precios.vuelo_regreso(vuelo, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid, tipo="vendedor_regreso")
     opciones = precios.reserva_en_vivo(vuelo, regreso, desde_todos, hacia_todos, sol["ida"], sol["regreso"], sid) if regreso else []
-    validas = [x for x in opciones if precios.es_envio_google(x["url"]) and isinstance(x["post_data"], str)]
-    elegida = next((x for x in validas if x["aerolinea"]), validas[0] if validas else None)
+    aviso = None
+    if vendedor and tarifa:
+        elegida, aviso = precios.elegir_tiquete(opciones, vendedor, tarifa)
+    else:
+        # sin vendedor pedido, el itinerario completo: un tiquete de billetes separados solo compraría un tramo
+        validas = [x for x in opciones if x["tramo"] == "ambos" and precios.es_envio_google(x["url"])
+                   and isinstance(x["post_data"], str)]
+        elegida = next((x for x in validas if x["aerolinea"]), validas[0] if validas else None)
     if not elegida:
         anotar(f"{'sin opciones de reserva' if not opciones else 'vendedor fuera de la lista blanca'} · Google Flights")
         return google
-    anotar(f"{elegida['vendedor']}, {'aerolínea' if elegida['aerolinea'] else 'agencia'} · {urlsplit(elegida['url']).hostname}")
+    anotar(f"{elegida['vendedor']}, {'aerolínea' if elegida['aerolinea'] else 'agencia'} · {urlsplit(elegida['url']).hostname}"
+           + (f" · {aviso}" if aviso else ""))
     campos = parse_qsl(elegida["post_data"] or "", keep_blank_values=True)
-    return {"tipo": "envio", "url": elegida["url"], "campos": campos, "vendedor": elegida["vendedor"]}
+    return {"tipo": "envio", "url": elegida["url"], "campos": campos, "vendedor": elegida["vendedor"], "aviso": aviso,
+            "tiquete": precios.tiquete(elegida, vuelo, regreso)}
+
 
 
 # ---------- decidir ----------

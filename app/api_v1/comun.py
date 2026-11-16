@@ -8,7 +8,7 @@ import secrets
 from fastapi import Query, Request
 from fastapi.responses import HTMLResponse
 
-from ..servicios import acceso
+from ..servicios import acceso, precios
 from ..web import plantillas
 from . import MENSAJE_HTTP, ErrorApi
 
@@ -51,16 +51,22 @@ def pagina_aviso(estado: int, titulo: str, texto: str) -> HTMLResponse:
     return _pagina("api/aviso.html", estado, "default-src 'none'; base-uri 'none'; frame-ancestors 'none'", titulo=titulo, texto=texto)
 
 
+VERIFICACION_AEROLINEA = ("La página del vendedor puede pedir una verificación (por ejemplo, deslizar una barra o "
+                          "marcar «No soy un robot»): resuélvela tú en esa página. La plataforma no la resuelve.")
+
+
 def pagina_envio(destino: dict) -> HTMLResponse:
-    """Página mínima que envía el pedido de un solo uso del vendedor a Google, que redirige a su página oficial.
+    """Página mínima con el pedido de un solo uso del vendedor: antes de enviarlo dice qué vuelo elegir allí, el aviso
+    si cambió el vendedor y que una verificación la resuelve la persona. Un clic en «Ir a {vendedor}» lo envía a
+    Google, que redirige a su página oficial. Sin scripts: el envío lo hace el botón.
 
     `form-action https:`: Chrome aplica la directiva también a las redirecciones que siguen al envío, y Google redirige a
-    la aerolínea (otro dominio). El destino ya pasó la lista blanca del servidor (solo https://www.google.com/travel/clk…)
-    y el único script es el de la página, con nonce."""
-    nonce = secrets.token_urlsafe(16)
+    la aerolínea (otro dominio). El destino ya pasó la lista blanca del servidor (solo https://www.google.com/travel/clk…)."""
+    guia = precios.guia(destino.get("aviso"), destino.get("tiquete"))
     return _pagina("api/envio_vendedor.html", 200,
-                   f"default-src 'none'; script-src 'nonce-{nonce}'; form-action https:; base-uri 'none'; frame-ancestors 'none'",
-                   nonce=nonce, vendedor=destino["vendedor"], url=destino["url"], campos=destino["campos"])
+                   "default-src 'none'; form-action https:; base-uri 'none'; frame-ancestors 'none'",
+                   vendedor=destino["vendedor"], url=destino["url"], campos=destino["campos"],
+                   avisos=[t for t in (guia, VERIFICACION_AEROLINEA) if t])
 
 
 def pagina_ir(titulo: str, google: str, datos: dict) -> HTMLResponse:

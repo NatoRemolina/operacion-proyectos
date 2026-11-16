@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- Pieza 6, ronda 1: la misma página de pasajeros con el pie «protected by reCAPTCHA» que llevan muchas páginas
+     buenas (no es una verificación). Pieza 5: la página de pasajeros de la aerolínea a la que llega el envío de Google (forma de aa.com, 13 nov 2026,
+     prueba 10): total, tramos con cabina y números de vuelo, y «Price and tax information», que despliega la tarifa y
+     los impuestos sin formularios. Marcado propio; sin red. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Passengers - Passenger details for your trip - American Airlines</title>
+<style>#impuestos { display: none; } #impuestos.abierto { display: block; }</style></head>
+<body><main>
+  <h1>Passengers</h1>
+  <div>ROUND TRIP</div><div>Miami, United States to Las Vegas, United States</div>
+  <div>Tuesday, December 8, 2026 to Friday, December 11, 2026</div>
+  <div>Your trip total</div><div>$748.80</div><div>Price for all passengers</div>
+  <a href="#" id="abrir" role="button">Price and tax information</a>
+  <div id="impuestos" role="dialog" aria-label="Price and tax information">
+    <div>Fare</div><div>$669.50</div>
+    <div>Taxes and carrier-imposed fees</div><div>$79.30</div>
+    <div>Total</div><div>$748.80</div>
+  </div>
+  <div>DEPART</div><div>MIA</div><div>9:48 AM</div><div>LAS</div><div>12:24 PM</div><div>5h 36m · Nonstop</div><div>Main</div>
+  <div>MIA - LAS · AA 1851</div>
+  <div>RETURN</div><div>LAS</div><div>6:00 AM</div><div>MIA</div><div>1:43 PM</div><div>4h 43m · Nonstop</div><div>Main</div>
+  <div>LAS - MIA · AA 1597</div>
+  <h2>Passenger information</h2>
+  <form><input name="nombre" aria-label="First name"><button type="submit">Continue</button></form>
+  <footer><p>This site is protected by reCAPTCHA and the Google Privacy Policy and Terms of Service apply.</p>
+  <p>Need help? Contact us if you see unusual charges.</p></footer>
+</main>
+<script>
+  document.getElementById("abrir").addEventListener("click", function (e) {
+    e.preventDefault(); document.getElementById("impuestos").classList.add("abierto");
+  });
+  document.querySelector("form").addEventListener("submit", function () { document.title = "ENVIADO"; });
+</script>
+</body></html>
