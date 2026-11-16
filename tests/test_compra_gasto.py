@@ -18,7 +18,7 @@ from openpyxl import load_workbook
 from starlette.testclient import TestClient
 
 from app import api_v1, config, db
-from app.servicios import acceso, compras, contable, gastos, llm, revision, tiempo, viajes
+from app.servicios import acceso, compras, consultas, contable, gastos, llm, revision, tiempo, viajes
 
 V1 = "/api/v1"
 PEDIDO = {"proyecto_id": 1, "origen": {"texto": "Miami (MIA)"}, "destino": {"texto": "Las Vegas (LAS)"},
@@ -255,6 +255,26 @@ def test_un_recibo_anterior_de_otro_importe_no_se_enlaza(piloto, modelo):
     recibo = _subir(piloto, v["id"]).json()
     hecho = _registrar(c, Decimal(str(c["precio_cotizado"])), localizador)
     assert hecho["compra"]["gasto_id"] != recibo["id"]
+
+
+def test_el_recibo_anterior_por_encima_de_lo_cotizado_no_lo_aprueba_quien_registro_la_compra(piloto, modelo, otra_admin):
+    _, v = _decidir(piloto)
+    c = _por_comprar(v["id"])
+    cotizado = Decimal(str(c["precio_cotizado"]))
+    pagado = (cotizado * Decimal("1.20")).quantize(Decimal("0.01"))
+    localizador = "S" + uuid.uuid4().hex[:5].upper()
+    modelo["respuesta"] = {"numero_factura": localizador, "total": float(pagado)}
+    recibo = _subir(piloto, v["id"]).json()
+    g = _gasto(_registrar(c, pagado, localizador)["compra"]["gasto_id"])
+    assert g["id"] == recibo["id"] and g["estado"] == "revision" and compras.SOBRE_COTIZADO in g["motivos"]
+    # El recibo lo subió quien viaja, pero la compra la registró esta persona: tampoco lo revisa
+    assert viajes.gasto_propio_de(g, _admin()) and not viajes.gasto_propio_de(g, otra_admin)
+    assert consultas.marcar_gastos_propios([{"id": g["id"]}], _admin())[0]["propio"]       # y así lo marcan las listas
+    with pytest.raises(revision.RevisionImpedida):
+        revision.guardar(g["id"], _admin(), g["version"], "excepcion", motivo="Se confirmó el precio con la aerolínea")
+    hecho = revision.guardar(g["id"], otra_admin, _gasto(g["id"])["version"], "excepcion",
+                             motivo="Se confirmó el precio con la aerolínea")
+    assert hecho["estado"] == "aprobado"
 
 
 # ---------- el recibo que llega después ----------

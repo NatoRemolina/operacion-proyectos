@@ -360,13 +360,17 @@ def gasto_propio_de(gasto: dict | None, u: dict | None) -> bool:
     """El gasto es de la persona para la revisión: lo subió ella, se carga a su perfil de viajero o a un viaje suyo.
 
     Quien sube un recibo nunca lo revisa (cuatro ojos), aunque sea de administración y lo cargue a nombre de otra
-    persona o lo lea del buzón: lo revisa otra persona de administración.
+    persona o lo lea del buzón: lo revisa otra persona de administración. Tampoco revisa el gasto de un tiquete quien
+    registró su compra, aunque el recibo lo haya subido quien viaja.
     """
     if not gasto or not u:
         return False
     if gasto.get("usuario_id") == u["id"]:
         return True
     if u.get("viajero_id") and gasto.get("viajero_id") == u["viajero_id"]:
+        return True
+    if gasto.get("id") and gasto.get("categoria") == "vuelo" and db.uno(
+            "select 1 from compras where gasto_id=:g and comprada_por=:u", g=gasto["id"], u=u["id"]):
         return True
     return es_propio_de(uno(gasto.get("viaje_id")), u)
 
