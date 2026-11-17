@@ -249,7 +249,8 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         actual = db.uno("select estado from gastos where id=:i" + ("" if config.ES_SQLITE else " for update"), i=gid)
         if not actual or actual["estado"] != "procesando":
             return gid   # mientras se leía, alguien lo recuperó o lo decidió: la lectura tardía no lo pisa
-        if (del_tiquete := compras.tiquete_por_enlazar(viaje, x)):
+        # El mismo archivo no sostiene dos gastos: si ya es el soporte de otro, no se une al tiquete y queda aparte
+        if not _mismo_archivo(huella, gid) and (del_tiquete := compras.tiquete_por_enlazar(viaje, x)):
             return _enlazar_al_tiquete(gid, del_tiquete, x, op)
         proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
         r = validacion.revisar(x, proyecto, gid, viaje)
@@ -261,6 +262,10 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         elif compras.localizador_con_otro_importe(viaje, x):   # del mismo tiquete, pero no es el tiquete (el equipaje)
             r["alertas"].insert(0, compras.IMPORTE_DISTINTO_TEXTO)
             r["motivos"].insert(0, compras.IMPORTE_DISTINTO)
+            r["estado"] = "revision"
+        elif (tiquete := _tiquete_del_mismo_importe(viaje, x)) and compras.DUPLICADO not in r["motivos"]:
+            r["alertas"].insert(0, compras.DUPLICADO_TEXTO.format(tiquete))
+            r["motivos"].insert(0, compras.DUPLICADO)
             r["estado"] = "revision"
         # La lectura original tal cual, salvo NaN e infinito, que no son JSON válido: quedan vacíos
         original = {c: None if isinstance(x.get(c), float) and not math.isfinite(x[c]) else x.get(c) for c in extraccion.CAMPOS} \
@@ -276,6 +281,22 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         if op:
             envios.terminar(op, "completado")
     return gid
+
+
+def _mismo_archivo(huella: str, gid: int) -> int | None:
+    """Otro gasto vivo (no rechazado) que ya tiene este mismo archivo como soporte."""
+    fila = db.uno("""select g.id from gastos g join documentos d on d.id=g.documento_id
+                     where d.huella=:h and g.id<>:i and g.estado<>'rechazado' order by g.id limit 1""", h=huella, i=gid)
+    return fila["id"] if fila else None
+
+
+def _tiquete_del_mismo_importe(viaje: dict | None, x: dict) -> int | None:
+    """El gasto del tiquete comprado (no rechazado) cuando un recibo de vuelo que no se unió a él tiene su mismo importe:
+    puede ser el mismo tiquete contado dos veces, así que el recibo no se aprueba en silencio."""
+    c = compras._compra_del_viaje(viaje, x)
+    if not c or not c["coincide"]:
+        return None
+    return c["gasto_id"] if db.uno("select estado from gastos where id=:i", i=c["gasto_id"])["estado"] != "rechazado" else None
 
 
 def _enlazar_al_tiquete(gid: int, del_tiquete: int, x: dict, op: dict | None) -> int:
