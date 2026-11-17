@@ -325,17 +325,24 @@ export function useOpcionesBuscador(id: number, vueloId: number, clic: number | 
     },
     enabled: clic !== null,
     retry: false,
-    refetchInterval: (q) => (esperaMas(q.state.data) ? OPCIONES_REINTENTO_MS : false),
+    // Se deja de preguntar al llegar lo nuevo, al pasar los 40 s (más un intento, que marca el agotado) o si el servidor
+    // falla: con error, TanStack conserva la lectura anterior y, sin este corte, la espera no terminaría nunca.
+    refetchInterval: (q) =>
+      q.state.status !== "error" && esperaMas(q.state.data) && clic !== null
+        && Date.now() - clic < OPCIONES_ESPERA_MS + OPCIONES_REINTENTO_MS
+        ? OPCIONES_REINTENTO_MS
+        : false,
   });
   const lectura = consulta.data;
+  const fallo = consulta.isError;
   return {
     data: lectura?.opciones ?? null,
     error: consulta.error,
-    /** Todavía puede llegar algo: la primera consulta, o la espera de lo que trae el clic. */
-    esperando: clic !== null && (consulta.isPending || esperaMas(lectura)),
+    /** Todavía puede llegar algo: la primera consulta, o la espera de lo que trae el clic (si el servidor no falló). */
+    esperando: clic !== null && (consulta.isPending || (!fallo && esperaMas(lectura))),
     /** Las tarifas que se ven son de este clic (o de la hora anterior): sin marca. */
     vigentes: lectura?.vigentes ?? false,
-    /** Se esperó la consulta en vivo y no llegó nada nuevo. */
-    agotado: Boolean(lectura?.opciones.en_vivo && lectura.agotado),
+    /** Se esperó la consulta en vivo y no llegó nada nuevo, o el servidor falló mientras se esperaba. */
+    agotado: Boolean(lectura?.opciones.en_vivo && !lectura.vigentes && (lectura.agotado || fallo)),
   };
 }

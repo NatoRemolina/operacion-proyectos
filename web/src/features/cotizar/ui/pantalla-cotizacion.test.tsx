@@ -721,6 +721,46 @@ describe("Comparación de una cotización", () => {
     }
   });
 
+  it("si el servidor falla mientras espera, deja de preguntar y deja lo guardado con su nota (ronda 1)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let pedidos = 0;
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockImplementation(async () => {
+        if (pedidos++ === 0) return { ...conTarifa(588, "2026-11-11T15:00:00Z"), en_vivo: true };
+        throw new ErrorDeAplicacion("servidor");
+      });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText(/^Precios guardados del .+: actualizando con el buscador…$/)).toBeInTheDocument();
+      for (let i = 0; i < 20; i++) await vi.advanceTimersByTimeAsync(2000);
+      const llamadas = opcionesBuscador.mock.calls.length;
+      for (let i = 0; i < 40; i++) await vi.advanceTimersByTimeAsync(2000);   // hasta los 120 s, ningún pedido más
+      expect(opcionesBuscador).toHaveBeenCalledTimes(llamadas);
+      expect(within(capa).queryByText(/actualizando con el buscador/)).toBeNull();
+      expect(within(capa).getByText(/^El buscador no respondió a tiempo; los precios son del .*11.*\.$/)).toBeInTheDocument();
+      expect(within(capa).getAllByText(dinero("588.00")).length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("si el servidor falla sin nada guardado, lo dice y deja de preguntar (ronda 1)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let pedidos = 0;
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockImplementation(async () => {
+        if (pedidos++ === 0) return { ...vacio, en_vivo: true };
+        throw new ErrorDeAplicacion("servidor");
+      });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText("Consultando el buscador…")).toBeInTheDocument();
+      for (let i = 0; i < 60; i++) await vi.advanceTimersByTimeAsync(2000);
+      expect(opcionesBuscador.mock.calls.length).toBeLessThanOrEqual(21);
+      expect(within(capa).getByText("No se pudieron traer las opciones del buscador.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("con el buscador apagado hace un solo pedido y marca el respaldo «de referencia»", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
