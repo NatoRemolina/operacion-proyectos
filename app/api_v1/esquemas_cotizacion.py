@@ -376,8 +376,9 @@ class OpcionesBuscador(BaseModel):
                                                              "reintenta unos segundos mientras el enlace al vendedor las trae).")
     consultado: str | None = Field(description="Cuándo las trajo el buscador (UTC); null si vienen del respaldo del repositorio.")
     en_vivo: bool = Field(description="El buscador está encendido (hay clave): el clic que abre el desglose lo consulta en "
-                                      "vivo (tarda de 18 a 30 s) y lo nuevo llega a esta misma ruta, con `consultado` posterior "
-                                      "al clic. La web reintenta mientras tanto. Con `false`, lo guardado es todo lo que hay.")
+                                      "vivo (tarda de 18 a 30 s) y lo nuevo llega a esta misma ruta. La web reintenta hasta 40 s "
+                                      "mientras no haya tarifas con `consultado` posterior al clic o de la hora anterior (el "
+                                      "mismo pedido dentro de la hora no se guarda otra vez). Con `false`, lo guardado es todo.")
     tarifas: list[TarifaLeida]
     vendedores: list[VendedorLeido]
 
