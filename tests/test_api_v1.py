@@ -9,7 +9,7 @@ from starlette.testclient import TestClient
 
 from app import api_v1, config, db
 from app.main import app
-from app.servicios import acceso
+from app.servicios import acceso, intentos
 from datos import exportar_contrato
 
 V1 = "/api/v1"
@@ -82,16 +82,19 @@ def test_login_correcto_devuelve_persona_token_y_cookie():
     assert c.get(f"{V1}/auth/me").json()["persona"]["id"] == cuerpo["persona"]["id"]
 
 
-def test_login_incorrecto_es_generico_y_tras_el_bloqueo_responde_429(anonimo):
+def test_login_incorrecto_es_generico_y_tras_el_limite_responde_429():
+    """Sin bloqueo por cuenta (I-9): el límite es el de `intentos`, por correo y dirección, y el 429 lleva `Retry-After`."""
     acceso.crear_usuario("bloqueo-api@demo.local", "Bloqueo", "colaborador", "clave-correcta-2026")
-    inexistente = _contrato(anonimo.post(f"{V1}/auth/login", json={"correo": "nadie@demo.local", "clave": "x"}), 401, "INVALID_CREDENTIALS")
-    for _ in range(acceso.MAX_FALLOS):
-        equivocada = _contrato(anonimo.post(f"{V1}/auth/login", json={"correo": "bloqueo-api@demo.local", "clave": "equivocada"}),
+    c = TestClient(app, client=("198.51.100.202", 50000))
+    inexistente = _contrato(c.post(f"{V1}/auth/login", json={"correo": "nadie@demo.local", "clave": "x"}), 401, "INVALID_CREDENTIALS")
+    for _ in range(intentos.MAX_POR_PAR):
+        equivocada = _contrato(c.post(f"{V1}/auth/login", json={"correo": "bloqueo-api@demo.local", "clave": "equivocada"}),
                                401, "INVALID_CREDENTIALS")
         assert equivocada["error"]["message"] == inexistente["error"]["message"]   # no revela si la cuenta existe
-    r = anonimo.post(f"{V1}/auth/login", json={"correo": "bloqueo-api@demo.local", "clave": "clave-correcta-2026"})
-    _contrato(r, 429, "TOO_MANY_ATTEMPTS")                                         # bloqueada aunque la clave sea correcta
-    assert not anonimo.cookies.get(acceso.COOKIE)
+    r = c.post(f"{V1}/auth/login", json={"correo": "bloqueo-api@demo.local", "clave": "clave-correcta-2026"})
+    _contrato(r, 429, "TOO_MANY_ATTEMPTS")                                         # limitada aunque la clave sea correcta
+    assert int(r.headers["retry-after"]) > 0
+    assert not c.cookies.get(acceso.COOKIE)
 
 
 def test_login_valida_el_cuerpo_y_el_origen(anonimo):

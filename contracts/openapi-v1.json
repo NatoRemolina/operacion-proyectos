@@ -935,7 +935,7 @@
           "auth"
         ],
         "summary": "Login",
-        "description": "Pública: no lleva token CSRF. El rol y la persona salen de la cuenta, nunca del cuerpo.\nCon demasiados fallos recientes desde la dirección o con el correo, 429 antes de mirar la contraseña.",
+        "description": "Pública: no lleva token CSRF. El rol y la persona salen de la cuenta, nunca del cuerpo.\nCon demasiados fallos recientes desde la dirección o con el correo, 429 antes de mirar la contraseña, con `Retry-After`.",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {

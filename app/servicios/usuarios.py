@@ -5,10 +5,9 @@ Protecciones: nadie se quita su propio rol de administración ni desactiva su cu
 administración activa. Cambiar el permiso, desactivar o cambiar la contraseña cierra las sesiones abiertas de la cuenta.
 """
 from contextlib import contextmanager
-from datetime import timedelta
 
 from .. import db
-from . import acceso, eventos, telegram
+from . import acceso, eventos, intentos, telegram
 
 NO_QUITAR_ROL = "No puedes quitarte tu propio rol ni dejar la plataforma sin administradores."
 NO_DESACTIVAR = "No puedes desactivar tu propia cuenta ni al último administrador."
@@ -16,7 +15,9 @@ CLAVE_CORTA = "La contraseña debe tener al menos 10 caracteres."
 CLAVE_ACTUAL = "La contraseña actual no coincide."
 CLAVE_NUEVA = "La nueva contraseña debe tener al menos 10 caracteres y ser distinta."
 CLAVE_PROPIA = "Para cambiar tu propia contraseña usa «Mi cuenta»: allí se pide la actual."
-DEMASIADOS_INTENTOS = "Demasiados intentos con la contraseña actual: por seguridad cerramos tus sesiones. Ingresa de nuevo en unos minutos."
+DEMASIADOS_INTENTOS = ("Demasiados intentos con la contraseña actual: por seguridad cerramos tus sesiones. Puedes volver a ingresar; "
+                       "para cambiarla, espera unos minutos.")
+ESPERA_CLAVE_ACTUAL = "Demasiados intentos con la contraseña actual. Espera unos minutos para volver a cambiarla."
 BLOQUEO_ADMINISTRACION = 7_341_003   # bloqueo de PostgreSQL que pone en fila los cambios que pueden quitar administración
 
 _USUARIOS = """select u.id, u.correo, u.nombre, u.rol, u.activo, u.creado, u.viajero_id, v.nombre viajero, u.telegram_usuario,
@@ -29,7 +30,8 @@ class Protegido(ValueError):
 
 
 class DemasiadosIntentos(ValueError):
-    """La persona falló la contraseña actual demasiadas veces seguidas: sus sesiones se cerraron."""
+    """La persona falló la contraseña actual demasiadas veces en la ventana: al quinto fallo se cierran sus sesiones, y
+    mientras ese fallo siga en la ventana no puede volver a intentarlo."""
 
 
 class DatosInvalidos(ValueError):
@@ -182,25 +184,25 @@ def restablecer_clave(u: dict, clave: str, quien: dict) -> None:
 
 
 def _fallo_de_clave_actual(yo: dict) -> None:
-    """Cuenta el fallo con el mismo contador y bloqueo progresivo del ingreso. Al llegar al máximo cierra las sesiones:
-    seguir probando exige pasar por el ingreso, que está bloqueado unos minutos."""
-    fila = db.uno("select fallos from usuarios where id=:i", i=yo["id"])
-    fallos = (fila["fallos"] or 0) + 1
-    espera = timedelta(minutes=min(2 ** (fallos - acceso.MAX_FALLOS), 30)) if fallos >= acceso.MAX_FALLOS else None
-    db.actualizar("usuarios", yo["id"], fallos=fallos, bloqueado_hasta=acceso._fmt(acceso._ahora() + espera) if espera else None)
+    """Cuenta el fallo en la ventana de `intentos` (por cuenta). Al quinto cierra las sesiones: una sesión robada no prueba
+    sin fin. El ingreso no lo mira (I-9): la persona vuelve a entrar, pero no cambia la contraseña hasta que pase la espera."""
+    fallos = intentos.fallo_clave_actual(yo["id"])
     eventos.registrar("usuario", yo["id"], "contraseña actual equivocada", f"intento {fallos}", yo["nombre"])
-    if espera:
+    if fallos >= intentos.MAX_CLAVE_ACTUAL:
         acceso.cerrar_todas(yo["id"])
         raise DemasiadosIntentos(DEMASIADOS_INTENTOS)
 
 
 def cambiar_mi_clave(yo: dict, actual: str, nueva: str) -> None:
     """La persona cambia su propia contraseña: exige la actual. Cierra todas sus sesiones y desvincula su Telegram;
-    quien llama abre una sesión nueva."""
+    quien llama abre una sesión nueva. Tras cinco fallos con la actual, espera sin mirar la contraseña."""
+    if intentos.espera_clave_actual(yo["id"]):
+        raise DemasiadosIntentos(ESPERA_CLAVE_ACTUAL)
     hash_actual = db.uno("select clave_hash from usuarios where id=:i", i=yo["id"])["clave_hash"]
     if not acceso._coincide(hash_actual, actual or ""):
         _fallo_de_clave_actual(yo)
         raise DatosInvalidos("actual", CLAVE_ACTUAL)
+    intentos.acierto_clave_actual(yo["id"])
     if len(nueva or "") < 10 or nueva == actual:
         raise DatosInvalidos("nueva", CLAVE_NUEVA)
     db.actualizar("usuarios", yo["id"], clave_hash=acceso.hash_clave(nueva), fallos=0, bloqueado_hasta=None)

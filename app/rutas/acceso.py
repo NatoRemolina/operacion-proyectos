@@ -47,7 +47,8 @@ def entrar_enviar(request: Request, correo: str = Form(""), clave: str = Form(""
         if intentos.avisar_limite(request.state.direccion, correo):   # una vez por ventana
             eventos.registrar("acceso", None, "ingreso limitado", correo.strip().lower()[:80], "formulario")
         return plantillas.TemplateResponse(request, "entrar.html", {"error": intentos.DEMASIADOS, "siguiente": _destino_seguro(siguiente),
-                                                                    "demo": False}, status_code=429)
+                                                                    "demo": False}, status_code=429,
+                                           headers={"Retry-After": str(intentos.segundos_para_reintentar(request.state.direccion, correo))})
     usuario, mensaje = acceso.autenticar(correo, clave)
     destino = _destino_seguro(siguiente)
     if not usuario:
