@@ -396,14 +396,16 @@ Navegación en otra pestaña (la abre «Ver desglose»), no una llamada de datos
 Primera capa del desglose (aparece en 2 a 5 s, sin esperar a la lectura de la página): las opciones de reserva del buscador para el itinerario, **de lo guardado**, sin consultar ni gastar cupo. Las trae el enlace a la página oficial (`…/vendedor`) que abre el mismo clic; la respuesta guardada nunca lleva el pedido de un solo uso.
 
 ```json
-{"estado": "listo", "consultado": "2026-11-13T15:10:00Z",
+{"estado": "listo", "consultado": "2026-11-13T15:10:00Z", "en_vivo": true,
  "tarifas": [{"vendedor": "American", "nombre": "Basic Economy", "precio": 458, "equipaje": ["1 free carry-on", "1st checked bag: 110"],
               "cambios": ["No ticket changes"], "reembolso": ["No refunds"], "otras": ["Seat selection for a fee"],
               "elige": "la ida AA 1851, sale 9:48 am, y el regreso AA 3321, sale 11:06 pm"}],
  "vendedores": [{"vendedor": "American", "aerolinea": true, "precio_desde": 458}]}
 ```
 
-`elige` dice qué vuelos elegir en la página del vendedor, con su hora de salida (algunos vendedores abren la lista del día sin el vuelo elegido); con billetes separados, cada tiquete trae el suyo y su `nombre` es `ida` o `regreso`. `estado: sin_datos` mientras no haya nada guardado: la web reintenta cada segundo, hasta 5 veces. La ve quien ve la cotización; lo ajeno, 404.
+`elige` dice qué vuelos elegir en la página del vendedor, con su hora de salida (algunos vendedores abren la lista del día sin el vuelo elegido); con billetes separados, cada tiquete trae el suyo y su `nombre` es `ida` o `regreso`. `estado: sin_datos` mientras no haya nada guardado. `consultado` es null si las tarifas vienen del respaldo del repositorio (la web las marca «de referencia»).
+
+`en_vivo` dice si el buscador está encendido (hay clave). Entonces el clic que abre el desglose lo consulta en vivo (de 18 a 30 s) y lo nuevo se guarda en `busquedas`, que comparten todas las instancias, así que llega a esta misma ruta: la web recuerda el momento del clic y reintenta cada 2 s, hasta 40 s, mientras no haya tarifas con `consultado` posterior al clic (con unos segundos de margen por relojes). Mientras espera, muestra lo guardado marcado «Precios guardados del {fecha}: actualizando con el buscador…» (o «de referencia», sin `consultado`), o «Consultando el buscador…» si no hay nada; los «Ir a…» siguen funcionando y el precio final lo da la página del vendedor. Al llegar lo nuevo, lo reemplaza sin marca. A los 40 s sin nada nuevo deja lo guardado con «El buscador no respondió a tiempo; los precios son del {fecha}», o «El buscador no trajo opciones de reserva para este vuelo» si no hay nada. Con `en_vivo: false`, un solo pedido: lo guardado es todo lo que hay. La ve quien ve la cotización; lo ajeno, 404.
 
 ### `POST /cotizaciones/{id}/vuelos/{opcion_id}/ir`
 Cuerpo JSON `{"vendedor": "American", "tarifa": "Main Cabin"}` (los nombres como los muestra el desglose; «Tarifa» si el vendedor no la nombra) y `X-CSRF-Token`. Responde 200, `no-store`:

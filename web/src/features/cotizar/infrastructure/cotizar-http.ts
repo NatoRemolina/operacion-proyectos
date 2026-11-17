@@ -283,6 +283,8 @@ const tarifaSchema = z.object({
 const opcionesBuscadorSchema = z.object({
   estado: z.enum(["listo", "sin_datos"]),
   consultado: z.string().nullable(),
+  // una API anterior sin el campo: como hoy, sin esperar la consulta en vivo
+  en_vivo: z.boolean().default(false),
   tarifas: z.array(tarifaSchema),
   vendedores: z.array(z.object({ vendedor: z.string(), aerolinea: z.boolean(), precio_desde: z.number().nullable() })),
 });

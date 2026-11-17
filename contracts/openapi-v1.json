@@ -461,7 +461,7 @@
           "cotizaciones"
         ],
         "summary": "Opciones Buscador",
-        "description": "Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada\nvendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial.",
+        "description": "Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada\nvendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial. `en_vivo`\ndice si el buscador está encendido: entonces el clic que abrió el desglose lo consulta y lo nuevo llega aquí.",
         "operationId": "opciones_buscador_api_v1_cotizaciones__id__vuelos__opcion_id__reserva_get",
         "parameters": [
           {
@@ -11985,6 +11985,11 @@
             "title": "Consultado",
             "description": "Cuándo las trajo el buscador (UTC); null si vienen del respaldo del repositorio."
           },
+          "en_vivo": {
+            "type": "boolean",
+            "title": "En Vivo",
+            "description": "El buscador está encendido (hay clave): el clic que abre el desglose lo consulta en vivo (tarda de 18 a 30 s) y lo nuevo llega a esta misma ruta, con `consultado` posterior al clic. La web reintenta mientras tanto. Con `false`, lo guardado es todo lo que hay."
+          },
           "tarifas": {
             "items": {
               "$ref": "#/components/schemas/TarifaLeida"
@@ -12004,6 +12009,7 @@
         "required": [
           "estado",
           "consultado",
+          "en_vivo",
           "tarifas",
           "vendedores"
         ],

@@ -8,7 +8,7 @@ import re
 from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
-from .. import api_v1, db
+from .. import api_v1, config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, comun, escritura, formas, persona
 from ..api_v1.esquemas_cotizacion import (
     ENTERO_MAXIMO,
@@ -123,12 +123,14 @@ def texto_evidencia(id: int = Id(), captura_id: int = Id(), yo: dict = Depends(p
             responses=errores_cotizacion(401, 404, 422))
 def opciones_buscador(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
     """Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada
-    vendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial."""
+    vendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial. `en_vivo`
+    dice si el buscador está encendido: entonces el clic que abrió el desglose lo consulta y lo nuevo llega aquí."""
     _visible(yo, id)
     r = cotizacion.opciones_de_reserva(id, opcion_id)
     if r is None:
         raise _no_encontrado()
     return {"estado": "listo" if r["tarifas"] else "sin_datos", "consultado": consultas.instante(r["creado"]) if r["creado"] else None,
+            "en_vivo": config.modo()["precios"] == "en vivo",
             "tarifas": formas.con_enlaces(r["tarifas"], comun.sesion(request), id, opcion_id), "vendedores": r["vendedores"]}
 
 

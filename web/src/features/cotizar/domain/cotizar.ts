@@ -306,6 +306,11 @@ export interface OpcionesBuscador {
   readonly estado: "listo" | "sin_datos";
   /** Cuándo las trajo el buscador (UTC); null si vienen del respaldo. */
   readonly consultado: string | null;
+  /**
+   * El buscador está encendido: el clic que abrió el desglose lo consulta en vivo y lo nuevo llega a esta misma
+   * consulta en unos segundos. Sin el dato (un repositorio sin buscador), como falso: lo guardado es todo.
+   */
+  readonly en_vivo?: boolean;
   readonly tarifas: readonly TarifaLeida[];
   readonly vendedores: DetalleLeido["vendedores"];
 }
