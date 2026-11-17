@@ -412,3 +412,32 @@ def test_el_registro_de_telegram_anota_el_gasto_que_quedo_al_unir(piloto, modelo
         assert (registro["gasto_id"], registro["viaje_id"]) == (compra["gasto_id"], v["id"])   # no el gasto borrado
     finally:
         db.actualizar("usuarios", uid, telegram_chat_id=None)
+
+
+# ---------- ronda 2: la alerta de duplicado es del viaje: al cambiar de viaje se vuelve a evaluar ----------
+def _recibo_marcado(piloto: TestClient, modelo: dict) -> tuple[dict, int, Decimal]:
+    """Un recibo del viaje A marcado «Posible duplicado» con el tiquete de A (que ya tiene su soporte)."""
+    v, compra, pagado = _tiquete_con_su_recibo(piloto, modelo)
+    modelo["respuesta"] = {"comercio": "Agencia del Sur " + uuid.uuid4().hex[:6], "fecha": "2026-11-02", "total": float(pagado)}
+    otro = _subir(piloto, v["id"])
+    assert DUPLICADO.format(compra["gasto_id"]) in _gasto(otro)["alertas"]
+    return compra, otro, pagado
+
+
+def test_movido_a_un_viaje_sin_tiquete_de_ese_importe_pierde_la_alerta(piloto, modelo):
+    compra, otro, _ = _recibo_marcado(piloto, modelo)
+    _, b = _decidir(piloto)                                          # sin compra: no hay tiquete con qué compararlo
+    gastos.asignar_viaje(otro, viajes.uno(b["id"]))
+    g = _gasto(otro)
+    assert g["viaje_id"] == b["id"] and compras.DUPLICADO not in g["motivos"]
+    assert not any(a.endswith("(mismo importe)") for a in g["alertas"])
+
+
+def test_movido_a_un_viaje_con_tiquete_de_ese_importe_lleva_la_alerta_del_tiquete_nuevo(piloto, modelo):
+    compra_a, otro, _ = _recibo_marcado(piloto, modelo)
+    b, compra_b, _ = _tiquete_con_su_recibo(piloto, modelo)          # otro viaje con su tiquete del mismo importe
+    gastos.asignar_viaje(otro, viajes.uno(b["id"]))
+    g = _gasto(otro)
+    assert g["estado"] == "revision" and g["motivos"].count(compras.DUPLICADO) == 1
+    assert DUPLICADO.format(compra_b["gasto_id"]) in g["alertas"]
+    assert DUPLICADO.format(compra_a["gasto_id"]) not in g["alertas"]

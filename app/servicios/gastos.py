@@ -385,8 +385,10 @@ def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
                 return db.uno("select * from gastos where id=:i", i=_enlazar_al_tiquete(gasto_id, del_tiquete, x, None))
             r = validacion.revisar(_campos_de(g), proyecto, gasto_id, viaje)
             # Lo que no sale de las reglas (la lectura fallida, lo del tiquete comprado) sigue pidiendo revisión
+            # La alerta de duplicado nombra el tiquete del viaje: al cambiar de viaje se vuelve a evaluar con el del nuevo
+            mismo_viaje = g["viaje_id"] == viaje["id"]
             conservar = [(m, a) for m, a in zip(db.de_json(g["motivos"], []) or [], db.de_json(g["alertas"], []) or [], strict=False)
-                         if m in CONSERVAN_REVISION]
+                         if m in CONSERVAN_REVISION and (mismo_viaje or m != compras.DUPLICADO)]
             if compras.DUPLICADO not in (m for m, _ in conservar) and documento \
                     and (tiquete := _tiquete_del_mismo_importe(viaje, x)) and tiquete != gasto_id:
                 conservar.append((compras.DUPLICADO, compras.DUPLICADO_TEXTO.format(tiquete)))

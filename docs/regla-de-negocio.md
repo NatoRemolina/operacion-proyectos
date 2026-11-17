@@ -127,7 +127,7 @@ Detalles que el código hace cumplir:
 | `fuera_del_viaje` | Fecha fuera del viaje | Bloquea | La fecha cae fuera del viaje con su margen (un día antes de la ida, dos después del regreso), salvo una `compra_anticipada` |
 | `presupuesto_superado` | Presupuesto del viaje superado | Bloquea | Lo aprobado del viaje más este gasto supera el presupuesto más la tolerancia del 10 % |
 
-Además, la compra del tiquete pone cuatro códigos que bloquean y que volver a validar el gasto no quita (como `lectura_fallida`): `tiquete_sobre_cotizado` (Tiquete por encima de lo cotizado), `compra_cancelada` (Compra cancelada), `tiquete_importe_distinto` (Mismo localizador, otro importe) y `tiquete_duplicado` (Posible duplicado del tiquete: «Posible duplicado del gasto #N (mismo importe)»); ver §1. Una persona de administración los resuelve al aprobar en revisión.
+Además, la compra del tiquete pone cuatro códigos que bloquean y que volver a validar el gasto no quita (como `lectura_fallida`): `tiquete_sobre_cotizado` (Tiquete por encima de lo cotizado), `compra_cancelada` (Compra cancelada), `tiquete_importe_distinto` (Mismo localizador, otro importe) y `tiquete_duplicado` (Posible duplicado del tiquete: «Posible duplicado del gasto #N (mismo importe)»; al mover el gasto a otro viaje se vuelve a evaluar con el tiquete del nuevo); ver §1. Una persona de administración los resuelve al aprobar en revisión.
 
 En resumen: de los 20 códigos de las reglas, **17 bloquean**, **3 solo avisan** (`fecha_futura`, `sin_puntos`, `compra_anticipada`) y `ilegible` bloquea por la confianza baja, no por las dudas solas.
 
