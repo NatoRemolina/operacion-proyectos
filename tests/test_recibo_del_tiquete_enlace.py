@@ -346,3 +346,50 @@ def test_telegram_asigna_el_recibo_del_tiquete_y_responde_con_el_gasto_que_quedo
         assert f"Gasto #{compra['gasto_id']}" in texto
     finally:
         db.actualizar("usuarios", uid, telegram_chat_id=None)
+
+
+# ---------- ronda 2: lo que cuelga del recibo pasa al tiquete al unirlos ----------
+def _recibo_justificado_sin_viaje(piloto: TestClient, modelo: dict) -> tuple[dict, dict, int]:
+    """Un tiquete comprado sin soporte y su recibo subido sin viaje, con la justificación que Telegram guarda del pie de
+    la foto antes de mostrar los botones del viaje."""
+    from app.servicios import justificaciones
+    _, v = _decidir(piloto)
+    c = _por_comprar(v["id"])
+    pagado = Decimal(str(c["precio_cotizado"]))
+    compra = _registrar(c, pagado)
+    _, otro = _decidir(piloto)
+    _por_comprar(otro["id"])
+    modelo["respuesta"] = {"numero_factura": compra["localizador"], "total": float(pagado)}
+    gid = _sin_viaje(piloto)
+    u = db.uno("select * from usuarios where correo='piloto@demo.local'")
+    justificaciones.registrar(gid, u, "telegram", "tiquete del viaje a Las Vegas")
+    return v, compra, gid
+
+
+def test_un_recibo_justificado_se_une_al_tiquete_al_asignarle_el_viaje(piloto, modelo):
+    v, compra, gid = _recibo_justificado_sin_viaje(piloto, modelo)
+    hecho = gastos.asignar_viaje(gid, viajes.uno(v["id"]))
+    assert hecho["id"] == compra["gasto_id"]
+    textos = [j["texto"] for j in db.todos("select texto from justificaciones where gasto_id=:g", g=compra["gasto_id"])]
+    assert "tiquete del viaje a Las Vegas" in textos                      # la justificación queda en el tiquete
+    for tabla in ("justificaciones", "envios_soporte", "avisos_salientes", "telegram_mensajes", "compras"):
+        assert db.uno(f"select count(*) n from {tabla} where gasto_id=:g", g=gid)["n"] == 0, tabla   # nada huérfano
+
+
+def test_telegram_une_al_tiquete_un_recibo_justificado(piloto, modelo, anonimo, monkeypatch):
+    from app.servicios import telegram
+    enviados = []
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+    monkeypatch.setattr(config, "TELEGRAM_WEBHOOK_SECRETO", "secreto-de-pruebas")
+    monkeypatch.setattr(telegram, "_llamar", lambda metodo, **d: enviados.append((metodo, d)) or {})
+    v, compra, gid = _recibo_justificado_sin_viaje(piloto, modelo)
+    uid, chat = db.uno("select id from usuarios where correo='piloto@demo.local'")["id"], 770_000 + uuid.uuid4().int % 99_000
+    db.actualizar("usuarios", uid, telegram_chat_id=chat)
+    try:
+        r = anonimo.post("/telegram/webhook", headers={"X-Telegram-Bot-Api-Secret-Token": "secreto-de-pruebas"},
+                         json={"update_id": chat, "callback_query": {"id": "q", "data": f"v:{gid}:{v['id']}",
+                                                                     "message": {"chat": {"id": chat}}}})
+        assert r.status_code == 200 and r.json()["estado"] == "procesado", r.text
+        assert _gasto(compra["gasto_id"])["documento_id"] is not None
+    finally:
+        db.actualizar("usuarios", uid, telegram_chat_id=None)

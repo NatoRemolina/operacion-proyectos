@@ -300,6 +300,11 @@ def _tiquete_del_mismo_importe(viaje: dict | None, x: dict) -> int | None:
     return c["gasto_id"] if db.uno("select estado from gastos where id=:i", i=c["gasto_id"])["estado"] != "rechazado" else None
 
 
+# Las tablas con `gasto_id` que cuelgan de un gasto (con clave foránea o sin ella); `compras` no: el provisional nunca es
+# el gasto de una compra
+TABLAS_DEL_GASTO = ("envios_soporte", "justificaciones", "avisos_salientes", "telegram_mensajes")
+
+
 def _enlazar_al_tiquete(gid: int, del_tiquete: int, x: dict, op: dict | None) -> int:
     """Dentro de la decisión: el recibo es del tiquete ya comprado. Su soporte y su lectura pasan al gasto de la compra y
     el gasto provisional se borra, así el tiquete no se cuenta dos veces. Un reintento con la misma clave recibe ese gasto."""
@@ -308,7 +313,11 @@ def _enlazar_al_tiquete(gid: int, del_tiquete: int, x: dict, op: dict | None) ->
         | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
     db.actualizar("gastos", del_tiquete, documento_id=provisional["documento_id"], extraido=original)
     revision.subir_version(del_tiquete)
-    db.ejecutar("update envios_soporte set gasto_id=:t where gasto_id=:g", t=del_tiquete, g=gid)
+    # Lo que cuelga del provisional pasa al tiquete antes de borrarlo: Telegram guarda el pie de la foto como
+    # justificación antes de que se elija el viaje, y ninguna fila debe quedar apuntando a un gasto que ya no existe.
+    # La bitácora (`eventos`) y las llamadas al modelo se quedan con el número del provisional: son su historia.
+    for tabla in TABLAS_DEL_GASTO:
+        db.ejecutar(f"update {tabla} set gasto_id=:t where gasto_id=:g", t=del_tiquete, g=gid)
     db.ejecutar("delete from gastos where id=:i", i=gid)
     eventos.registrar("gasto", del_tiquete, "recibo del tiquete enlazado",
                       f"{x.get('comercio') or ''} · {x.get('total')} {x.get('moneda') or ''} · el gasto provisional #{gid} no se guarda",
