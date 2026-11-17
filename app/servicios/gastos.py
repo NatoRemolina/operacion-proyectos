@@ -21,7 +21,8 @@ FORMATOS_DE_CORREO = ("message/rfc822", "text/html")
 TIPOS_ADMITIDOS = "Se aceptan fotos (JPG, PNG, WebP), PDF, correos (.eml) y confirmaciones en HTML (.html)."
 CANALES_DE_SUBIDA = ("web", "celular")
 # Motivos que no salen de las reglas del recibo: volver a validarlo no los quita
-CONSERVAN_REVISION = ("lectura_fallida", compras.SOBRE_COTIZADO, compras.COMPRA_CANCELADA, compras.IMPORTE_DISTINTO)
+CONSERVAN_REVISION = ("lectura_fallida", compras.SOBRE_COTIZADO, compras.COMPRA_CANCELADA, compras.IMPORTE_DISTINTO,
+                      compras.DUPLICADO)
 
 
 def tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
@@ -263,7 +264,7 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
             r["alertas"].insert(0, compras.IMPORTE_DISTINTO_TEXTO)
             r["motivos"].insert(0, compras.IMPORTE_DISTINTO)
             r["estado"] = "revision"
-        elif (tiquete := _tiquete_del_mismo_importe(viaje, x)) and compras.DUPLICADO not in r["motivos"]:
+        elif (tiquete := _tiquete_del_mismo_importe(viaje, x)):
             r["alertas"].insert(0, compras.DUPLICADO_TEXTO.format(tiquete))
             r["motivos"].insert(0, compras.DUPLICADO)
             r["estado"] = "revision"
@@ -342,8 +343,10 @@ def _vigente(conexion, viaje: dict | None) -> dict | None:
 def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
     """Enlaza un gasto con su viaje y lo vuelve a validar. Lo que una persona ya aprobó o rechazó no cambia de estado.
 
+    Como al leer un recibo: si es el del tiquete comprado del viaje (sin soporte todavía, mismo importe), se une a él y
+    devuelve el gasto del tiquete; si no se une pero tiene su importe, queda en revisión como posible duplicado.
     Bloquea el viaje de antes y el de destino (en orden, para que dos asignaciones cruzadas no se esperen entre sí).
-    Lanza ValueError con un texto para la persona si el gasto no se puede mover.
+    Lanza ValueError con un texto para la persona si el gasto no se puede mover. Devuelve el gasto que quedó.
     """
     with db.transaccion() as c:
         previo = db.uno("select viaje_id from gastos where id=:i", i=gasto_id)
@@ -363,10 +366,21 @@ def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
         proyecto = db.uno("select * from proyectos where id=:i", i=viaje["proyecto_id"]) if viaje["proyecto_id"] else None
         cambios = {"viaje_id": viaje["id"], "proyecto_id": viaje["proyecto_id"], "viajero_id": viaje["viajero_id"] or g["viajero_id"]}
         if g["estado"] in ("revision", "aprobado_auto"):
+            # Lo leído, con los datos que una persona haya corregido: para unirlo al tiquete o compararlo con él
+            x = {**(db.de_json(g["extraido"], {}) or {}), **_campos_de(g), "error": None, "origen_dato": g["origen_dato"]}
+            documento = db.uno("select huella from documentos where id=:d", d=g["documento_id"]) if g["documento_id"] else None
+            if documento and not db.uno("select 1 from compras where gasto_id=:g", g=gasto_id) \
+                    and not _mismo_archivo(documento["huella"], gasto_id) \
+                    and (del_tiquete := compras.tiquete_por_enlazar(viaje, x)) and del_tiquete != gasto_id:
+                db.actualizar("documentos", g["documento_id"], viaje_id=viaje["id"])
+                return db.uno("select * from gastos where id=:i", i=_enlazar_al_tiquete(gasto_id, del_tiquete, x, None))
             r = validacion.revisar(_campos_de(g), proyecto, gasto_id, viaje)
             # Lo que no sale de las reglas (la lectura fallida, lo del tiquete comprado) sigue pidiendo revisión
             conservar = [(m, a) for m, a in zip(db.de_json(g["motivos"], []) or [], db.de_json(g["alertas"], []) or [], strict=False)
                          if m in CONSERVAN_REVISION]
+            if compras.DUPLICADO not in (m for m, _ in conservar) and documento \
+                    and (tiquete := _tiquete_del_mismo_importe(viaje, x)) and tiquete != gasto_id:
+                conservar.append((compras.DUPLICADO, compras.DUPLICADO_TEXTO.format(tiquete)))
             if conservar:
                 r["estado"] = "revision"
                 r["motivos"] = [m for m, _ in conservar] + r["motivos"]

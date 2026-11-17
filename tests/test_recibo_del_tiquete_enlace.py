@@ -17,7 +17,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from app import api_v1, config, db
-from app.servicios import acceso, compras, llm, tiempo, viajes
+from app.servicios import acceso, compras, gastos, llm, tiempo, validacion, viajes
 
 V1 = "/api/v1"
 PEDIDO = {"proyecto_id": 1, "origen": {"texto": "Miami (MIA)"}, "destino": {"texto": "Las Vegas (LAS)"},
@@ -170,7 +170,7 @@ def test_un_recibo_anterior_del_mismo_importe_que_no_se_enlaza_deja_la_compra_en
     compra = _registrar(c, pagado)                                    # dentro de lo cotizado: sin la red, aprobada
     assert compra["gasto_id"] != recibo and len(_vuelos(v["id"])) == 2
     g = _gasto(compra["gasto_id"])
-    assert g["estado"] == "revision" and DUPLICADO.format(recibo) in g["alertas"] and "duplicado" in g["motivos"]
+    assert g["estado"] == "revision" and DUPLICADO.format(recibo) in g["alertas"] and compras.DUPLICADO in g["motivos"]
 
 
 def test_un_recibo_anterior_de_otro_importe_deja_dos_gastos_sin_la_alerta(piloto, modelo):
@@ -235,3 +235,114 @@ def test_el_mismo_archivo_no_se_enlaza_al_tiquete_si_ya_sostiene_otro_gasto(pilo
     assert otra_vez["estado"] == "revision" and "duplicado" in otra_vez["motivos"]
     assert _gasto(compra["gasto_id"])["documento_id"] is None          # el tiquete no toma el soporte de otro gasto
     assert len(_aprobados_con_el_archivo(archivo)) <= 1
+
+
+# ---------- ronda 1: la red también vale al asignar el viaje después (`gastos.asignar_viaje`, lo usa Telegram) ----------
+def _sin_viaje(piloto: TestClient) -> int:
+    """Un recibo subido sin viaje: con dos viajes posibles en las mismas fechas, queda sin asignar."""
+    r = piloto.post(f"{V1}/gastos", files={"archivo": ("t.png", b"\x89PNG\r\n\x1a\n" + uuid.uuid4().bytes, "image/png")},
+                    headers=_csrf(piloto))
+    assert r.status_code in (200, 201), r.text
+    return r.json()["id"]
+
+
+def _tiquete_con_su_recibo(piloto: TestClient, modelo: dict) -> tuple[dict, dict, Decimal]:
+    _, v = _decidir(piloto)
+    c = _por_comprar(v["id"])
+    pagado = Decimal(str(c["precio_cotizado"]))
+    compra = _registrar(c, pagado)
+    modelo["respuesta"] = {"numero_factura": compra["localizador"], "total": float(pagado)}
+    assert _subir(piloto, v["id"]) == compra["gasto_id"]
+    return v, compra, pagado
+
+
+def test_la_alerta_del_mismo_importe_tiene_codigo_propio_que_volver_a_validar_no_quita():
+    assert compras.DUPLICADO == "tiquete_duplicado"
+    assert validacion.etiqueta(compras.DUPLICADO) == "Posible duplicado del tiquete"
+    assert compras.DUPLICADO in gastos.CONSERVAN_REVISION
+
+
+def test_un_recibo_sin_viaje_del_mismo_importe_asignado_despues_queda_en_revision(piloto, modelo):
+    v, compra, pagado = _tiquete_con_su_recibo(piloto, modelo)
+    _, otro = _decidir(piloto)
+    _por_comprar(otro["id"])
+    modelo["respuesta"] = {"comercio": "Agencia Única " + uuid.uuid4().hex[:6], "fecha": "2026-10-03", "total": float(pagado)}
+    gid = _sin_viaje(piloto)
+    assert _gasto(gid)["viaje_id"] is None
+    gastos.asignar_viaje(gid, viajes.uno(v["id"]))
+    g = _gasto(gid)
+    assert g["estado"] == "revision" and compras.DUPLICADO in g["motivos"]
+    assert DUPLICADO.format(compra["gasto_id"]) in g["alertas"]
+
+
+def test_un_recibo_sin_viaje_se_une_al_tiquete_sin_soporte_al_asignarlo(piloto, modelo):
+    _, v = _decidir(piloto)
+    c = _por_comprar(v["id"])
+    pagado = Decimal(str(c["precio_cotizado"]))
+    compra = _registrar(c, pagado)                     # el tiquete, todavía sin recibo
+    _, otro = _decidir(piloto)
+    _por_comprar(otro["id"])
+    modelo["respuesta"] = {"numero_factura": compra["localizador"], "total": float(pagado)}
+    gid = _sin_viaje(piloto)
+    documento = _gasto(gid)["documento_id"]
+    hecho = gastos.asignar_viaje(gid, viajes.uno(v["id"]))
+    assert hecho["id"] == compra["gasto_id"]           # devuelve el gasto que quedó: el del tiquete
+    assert db.uno("select id from gastos where id=:i", i=gid) is None
+    assert _gasto(compra["gasto_id"])["documento_id"] == documento
+    assert [f["id"] for f in _vuelos(v["id"])] == [compra["gasto_id"]]
+
+
+def test_reasignar_el_recibo_marcado_al_mismo_viaje_conserva_la_alerta(piloto, modelo):
+    v, compra, pagado = _tiquete_con_su_recibo(piloto, modelo)
+    modelo["respuesta"] = {"comercio": "Agencia del Sur", "fecha": "2026-11-02", "total": float(pagado)}
+    otro = _subir(piloto, v["id"])
+    assert _gasto(otro)["estado"] == "revision"
+    gastos.asignar_viaje(otro, viajes.uno(v["id"]))
+    g = _gasto(otro)
+    assert g["estado"] == "revision" and g["motivos"].count(compras.DUPLICADO) == 1
+    assert g["alertas"].count(DUPLICADO.format(compra["gasto_id"])) == 1
+
+
+def test_quien_registro_la_compra_no_aprueba_el_tiquete_marcado_y_otra_persona_si(piloto, modelo, cliente, revisor):
+    _, v = _decidir(piloto)
+    c = _por_comprar(v["id"])
+    # un importe propio, dentro de la tolerancia y a más del 1 % de lo cotizado: otras pruebas dejan tiquetes «American»
+    # de hoy por lo cotizado, que las reglas de duplicados verían
+    pagado = (Decimal(str(c["precio_cotizado"])) * Decimal("1.07")).quantize(Decimal("0.01")) + Decimal(uuid.uuid4().int % 90) / 100
+    modelo["respuesta"] = {"comercio": "Viajes Andinos", "total": float(pagado)}
+    recibo = _subir(piloto, v["id"])
+    compra = _registrar(c, pagado)                     # la registra admin@demo.local, la sesión de `cliente`
+    g = _gasto(compra["gasto_id"])
+    assert g["id"] != recibo and g["estado"] == "revision" and compras.DUPLICADO in g["motivos"]
+    cuerpo = {"version": g["version"], "accion": "aprobar"}
+    r = cliente.post(f"{V1}/gastos/{g['id']}/revision", json=cuerpo, headers=_csrf(cliente))
+    assert r.status_code == 403, r.text
+    r = revisor.post(f"{V1}/gastos/{g['id']}/revision", json=cuerpo, headers=_csrf(revisor))
+    assert r.status_code == 200 and r.json()["estado"] == "aprobado", r.text
+
+
+def test_telegram_asigna_el_recibo_del_tiquete_y_responde_con_el_gasto_que_quedo(piloto, modelo, anonimo, monkeypatch):
+    from app.servicios import telegram
+    enviados = []
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+    monkeypatch.setattr(config, "TELEGRAM_WEBHOOK_SECRETO", "secreto-de-pruebas")
+    monkeypatch.setattr(telegram, "_llamar", lambda metodo, **d: enviados.append((metodo, d)) or {})
+    _, v = _decidir(piloto)
+    c = _por_comprar(v["id"])
+    pagado = Decimal(str(c["precio_cotizado"]))
+    compra = _registrar(c, pagado)
+    _, otro = _decidir(piloto)
+    _por_comprar(otro["id"])
+    modelo["respuesta"] = {"numero_factura": compra["localizador"], "total": float(pagado)}
+    gid = _sin_viaje(piloto)
+    uid, chat = db.uno("select id from usuarios where correo='piloto@demo.local'")["id"], 880_000 + uuid.uuid4().int % 99_000
+    db.actualizar("usuarios", uid, telegram_chat_id=chat)
+    try:
+        r = anonimo.post("/telegram/webhook", headers={"X-Telegram-Bot-Api-Secret-Token": "secreto-de-pruebas"},
+                         json={"update_id": chat, "callback_query": {"id": "q", "data": f"v:{gid}:{v['id']}",
+                                                                     "message": {"chat": {"id": chat}}}})
+        assert r.status_code == 200 and r.json()["estado"] == "procesado", r.text
+        texto = next(d["text"] for m, d in reversed(enviados) if m == "sendMessage")
+        assert f"Gasto #{compra['gasto_id']}" in texto
+    finally:
+        db.actualizar("usuarios", uid, telegram_chat_id=None)

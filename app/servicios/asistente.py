@@ -138,6 +138,9 @@ EXPLICACION = {
     "tiquete_importe_distinto": ("El recibo trae el localizador del tiquete comprado, pero otro importe (por ejemplo, el "
                                  "equipaje).",
                                  "Si es un cargo aparte del tiquete, explícalo en la justificación."),
+    "tiquete_duplicado": ("Un recibo de vuelo del viaje y el tiquete comprado tienen el mismo importe, sin nada más que "
+                          "los ate: puede ser el mismo tiquete contado dos veces.",
+                          "Si es otro tiquete, explícalo en la justificación; administración decide."),
 }
 DEL_RECIBO = {"ilegible", "lectura_fallida", "campo_faltante", "importe_invalido", "fecha_invalida"}   # se arreglan con otra foto
 FALTA_JUSTIFICACION = "La justificación: para qué fue el gasto (es opcional y ayuda a quien revisa)."

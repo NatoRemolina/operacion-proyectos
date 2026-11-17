@@ -331,8 +331,8 @@ def _boton(c: dict, registro: dict):
         return
     registro.update(gasto_id=g["id"], viaje_id=v["id"])
     try:
-        gastos.asignar_viaje(g["id"], v)
+        quedo = gastos.asignar_viaje(g["id"], v)   # si era el recibo del tiquete, queda el gasto del tiquete
     except ValueError as e:   # la persona siempre recibe respuesta, aunque el gasto no se pueda mover
         registro["estado"] = "rechazado"
         return _responder(registro, f"No pude asignar el gasto #{g['id']} al viaje {v['codigo']}. {e}")
-    _responder(registro, _resumen_gasto(g["id"], v))
+    _responder(registro, _resumen_gasto(quedo["id"], v))

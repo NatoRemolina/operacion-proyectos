@@ -304,8 +304,9 @@ TOLERANCIA_TIQUETE = "tolerancia_tiquete_pct"   # regla editable: cuánto puede 
 SOBRE_COTIZADO, COMPRA_CANCELADA, IMPORTE_DISTINTO = "tiquete_sobre_cotizado", "compra_cancelada", "tiquete_importe_distinto"
 CANCELADA_TEXTO = "Compra cancelada: revisar reembolso"
 IMPORTE_DISTINTO_TEXTO = "Mismo localizador que el tiquete, importe distinto"
-# Un recibo de vuelo del viaje y el tiquete, sin nada que los ate salvo el importe: los dos se ven en revisión
-DUPLICADO, DUPLICADO_TEXTO = "duplicado", "Posible duplicado del gasto #{} (mismo importe)"
+# Un recibo de vuelo del viaje y el tiquete, sin nada que los ate salvo el importe: se ven en revisión. Código propio,
+# que volver a validar no quita (`gastos.CONSERVAN_REVISION`)
+DUPLICADO, DUPLICADO_TEXTO = "tiquete_duplicado", "Posible duplicado del gasto #{} (mismo importe)"
 UN_DOLAR = Decimal(1)
 
 
