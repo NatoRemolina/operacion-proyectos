@@ -143,8 +143,8 @@ def test_la_pantalla_actual_sigue_igual(anonimo):
 
 # ---------- ronda de arreglos menores ----------
 def test_cinco_intentos_con_la_actual_equivocada_cierran_las_sesiones():
-    """Con una sesión robada no se puede probar contraseñas sin fin: al quinto fallo se cierran las sesiones y el ingreso queda
-    con el mismo bloqueo progresivo que tras cinco ingresos fallidos."""
+    """Con una sesión robada no se puede probar contraseñas sin fin: al quinto fallo se cierran las sesiones. El ingreso no
+    queda bloqueado (I-9): la dueña vuelve a entrar, y el cambio espera a que esos fallos salgan de la ventana."""
     c = _cuenta()
     sesion = _sesion(c["correo"], c["clave"])
     for _ in range(4):
@@ -153,7 +153,7 @@ def test_cinco_intentos_con_la_actual_equivocada_cierran_las_sesiones():
     _error(sesion.post(f"{V1}/cuenta/clave", json={"actual": "equivocada", "nueva": "clave-nueva-456789"}, headers=_csrf(sesion)),
            429, "TOO_MANY_ATTEMPTS")
     assert sesion.get(f"{V1}/auth/me").status_code == 401
-    assert TestClient(app).post(f"{V1}/auth/login", json={"correo": c["correo"], "clave": c["clave"]}).status_code == 429
+    assert TestClient(app).post(f"{V1}/auth/login", json={"correo": c["correo"], "clave": c["clave"]}).status_code == 200
     assert _pasos(c["id"]).count("contraseña actual equivocada") == 5
 
 

@@ -19,7 +19,8 @@ MOTIVOS = {"importe_invalido": "Importe no válido", "fecha_invalida": "Fecha no
            "fuera_del_viaje": "Fecha fuera del viaje", "presupuesto_superado": "Presupuesto del viaje superado"}
 # Los que pone la compra del tiquete (`compras`), no `revisar`: siempre van a revisión
 MOTIVOS_DE_COMPRA = {"tiquete_sobre_cotizado": "Tiquete por encima de lo cotizado", "compra_cancelada": "Compra cancelada",
-                     "tiquete_importe_distinto": "Mismo localizador, otro importe"}
+                     "tiquete_importe_distinto": "Mismo localizador, otro importe",
+                     "tiquete_duplicado": "Posible duplicado del tiquete"}
 
 
 def etiqueta(codigo: str) -> str:

@@ -21,7 +21,8 @@ FORMATOS_DE_CORREO = ("message/rfc822", "text/html")
 TIPOS_ADMITIDOS = "Se aceptan fotos (JPG, PNG, WebP), PDF, correos (.eml) y confirmaciones en HTML (.html)."
 CANALES_DE_SUBIDA = ("web", "celular")
 # Motivos que no salen de las reglas del recibo: volver a validarlo no los quita
-CONSERVAN_REVISION = ("lectura_fallida", compras.SOBRE_COTIZADO, compras.COMPRA_CANCELADA, compras.IMPORTE_DISTINTO)
+CONSERVAN_REVISION = ("lectura_fallida", compras.SOBRE_COTIZADO, compras.COMPRA_CANCELADA, compras.IMPORTE_DISTINTO,
+                      compras.DUPLICADO)
 
 
 def tipo_real(contenido: bytes, nombre: str) -> tuple[str, str] | None:
@@ -249,7 +250,8 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         actual = db.uno("select estado from gastos where id=:i" + ("" if config.ES_SQLITE else " for update"), i=gid)
         if not actual or actual["estado"] != "procesando":
             return gid   # mientras se leía, alguien lo recuperó o lo decidió: la lectura tardía no lo pisa
-        if (del_tiquete := compras.tiquete_por_enlazar(viaje, x)):
+        # El mismo archivo no sostiene dos gastos: si ya es el soporte de otro, no se une al tiquete y queda aparte
+        if not _mismo_archivo(huella, gid) and (del_tiquete := compras.tiquete_por_enlazar(viaje, x)):
             return _enlazar_al_tiquete(gid, del_tiquete, x, op)
         proyecto = db.uno("select * from proyectos where id=:i", i=proyecto_id) if proyecto_id else None
         r = validacion.revisar(x, proyecto, gid, viaje)
@@ -261,6 +263,10 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
         elif compras.localizador_con_otro_importe(viaje, x):   # del mismo tiquete, pero no es el tiquete (el equipaje)
             r["alertas"].insert(0, compras.IMPORTE_DISTINTO_TEXTO)
             r["motivos"].insert(0, compras.IMPORTE_DISTINTO)
+            r["estado"] = "revision"
+        elif (tiquete := _tiquete_del_mismo_importe(viaje, x)):
+            r["alertas"].insert(0, compras.DUPLICADO_TEXTO.format(tiquete))
+            r["motivos"].insert(0, compras.DUPLICADO)
             r["estado"] = "revision"
         # La lectura original tal cual, salvo NaN e infinito, que no son JSON válido: quedan vacíos
         original = {c: None if isinstance(x.get(c), float) and not math.isfinite(x[c]) else x.get(c) for c in extraccion.CAMPOS} \
@@ -278,6 +284,27 @@ def _leer_y_decidir(gid: int, contenido: bytes, mime: str, nombre: str, viaje: d
     return gid
 
 
+def _mismo_archivo(huella: str, gid: int) -> int | None:
+    """Otro gasto vivo (no rechazado) que ya tiene este mismo archivo como soporte."""
+    fila = db.uno("""select g.id from gastos g join documentos d on d.id=g.documento_id
+                     where d.huella=:h and g.id<>:i and g.estado<>'rechazado' order by g.id limit 1""", h=huella, i=gid)
+    return fila["id"] if fila else None
+
+
+def _tiquete_del_mismo_importe(viaje: dict | None, x: dict) -> int | None:
+    """El gasto del tiquete comprado (no rechazado) cuando un recibo de vuelo que no se unió a él tiene su mismo importe:
+    puede ser el mismo tiquete contado dos veces, así que el recibo no se aprueba en silencio."""
+    c = compras._compra_del_viaje(viaje, x)
+    if not c or not c["coincide"]:
+        return None
+    return c["gasto_id"] if db.uno("select estado from gastos where id=:i", i=c["gasto_id"])["estado"] != "rechazado" else None
+
+
+# Las tablas con `gasto_id` que cuelgan de un gasto (con clave foránea o sin ella); `compras` no: el provisional nunca es
+# el gasto de una compra
+TABLAS_DEL_GASTO = ("envios_soporte", "justificaciones", "avisos_salientes", "telegram_mensajes")
+
+
 def _enlazar_al_tiquete(gid: int, del_tiquete: int, x: dict, op: dict | None) -> int:
     """Dentro de la decisión: el recibo es del tiquete ya comprado. Su soporte y su lectura pasan al gasto de la compra y
     el gasto provisional se borra, así el tiquete no se cuenta dos veces. Un reintento con la misma clave recibe ese gasto."""
@@ -286,7 +313,11 @@ def _enlazar_al_tiquete(gid: int, del_tiquete: int, x: dict, op: dict | None) ->
         | {"confianza": x["confianza"], "dudas": x.get("dudas", [])}
     db.actualizar("gastos", del_tiquete, documento_id=provisional["documento_id"], extraido=original)
     revision.subir_version(del_tiquete)
-    db.ejecutar("update envios_soporte set gasto_id=:t where gasto_id=:g", t=del_tiquete, g=gid)
+    # Lo que cuelga del provisional pasa al tiquete antes de borrarlo: Telegram guarda el pie de la foto como
+    # justificación antes de que se elija el viaje, y ninguna fila debe quedar apuntando a un gasto que ya no existe.
+    # La bitácora (`eventos`) y las llamadas al modelo se quedan con el número del provisional: son su historia.
+    for tabla in TABLAS_DEL_GASTO:
+        db.ejecutar(f"update {tabla} set gasto_id=:t where gasto_id=:g", t=del_tiquete, g=gid)
     db.ejecutar("delete from gastos where id=:i", i=gid)
     eventos.registrar("gasto", del_tiquete, "recibo del tiquete enlazado",
                       f"{x.get('comercio') or ''} · {x.get('total')} {x.get('moneda') or ''} · el gasto provisional #{gid} no se guarda",
@@ -321,8 +352,10 @@ def _vigente(conexion, viaje: dict | None) -> dict | None:
 def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
     """Enlaza un gasto con su viaje y lo vuelve a validar. Lo que una persona ya aprobó o rechazó no cambia de estado.
 
+    Como al leer un recibo: si es el del tiquete comprado del viaje (sin soporte todavía, mismo importe), se une a él y
+    devuelve el gasto del tiquete; si no se une pero tiene su importe, queda en revisión como posible duplicado.
     Bloquea el viaje de antes y el de destino (en orden, para que dos asignaciones cruzadas no se esperen entre sí).
-    Lanza ValueError con un texto para la persona si el gasto no se puede mover.
+    Lanza ValueError con un texto para la persona si el gasto no se puede mover. Devuelve el gasto que quedó.
     """
     with db.transaccion() as c:
         previo = db.uno("select viaje_id from gastos where id=:i", i=gasto_id)
@@ -342,10 +375,23 @@ def asignar_viaje(gasto_id: int, viaje: dict) -> dict:
         proyecto = db.uno("select * from proyectos where id=:i", i=viaje["proyecto_id"]) if viaje["proyecto_id"] else None
         cambios = {"viaje_id": viaje["id"], "proyecto_id": viaje["proyecto_id"], "viajero_id": viaje["viajero_id"] or g["viajero_id"]}
         if g["estado"] in ("revision", "aprobado_auto"):
+            # Lo leído, con los datos que una persona haya corregido: para unirlo al tiquete o compararlo con él
+            x = {**(db.de_json(g["extraido"], {}) or {}), **_campos_de(g), "error": None, "origen_dato": g["origen_dato"]}
+            documento = db.uno("select huella from documentos where id=:d", d=g["documento_id"]) if g["documento_id"] else None
+            if documento and not db.uno("select 1 from compras where gasto_id=:g", g=gasto_id) \
+                    and not _mismo_archivo(documento["huella"], gasto_id) \
+                    and (del_tiquete := compras.tiquete_por_enlazar(viaje, x)) and del_tiquete != gasto_id:
+                db.actualizar("documentos", g["documento_id"], viaje_id=viaje["id"])
+                return db.uno("select * from gastos where id=:i", i=_enlazar_al_tiquete(gasto_id, del_tiquete, x, None))
             r = validacion.revisar(_campos_de(g), proyecto, gasto_id, viaje)
             # Lo que no sale de las reglas (la lectura fallida, lo del tiquete comprado) sigue pidiendo revisión
+            # La alerta de duplicado nombra el tiquete del viaje: al cambiar de viaje se vuelve a evaluar con el del nuevo
+            mismo_viaje = g["viaje_id"] == viaje["id"]
             conservar = [(m, a) for m, a in zip(db.de_json(g["motivos"], []) or [], db.de_json(g["alertas"], []) or [], strict=False)
-                         if m in CONSERVAN_REVISION]
+                         if m in CONSERVAN_REVISION and (mismo_viaje or m != compras.DUPLICADO)]
+            if compras.DUPLICADO not in (m for m, _ in conservar) and documento \
+                    and (tiquete := _tiquete_del_mismo_importe(viaje, x)) and tiquete != gasto_id:
+                conservar.append((compras.DUPLICADO, compras.DUPLICADO_TEXTO.format(tiquete)))
             if conservar:
                 r["estado"] = "revision"
                 r["motivos"] = [m for m, _ in conservar] + r["motivos"]

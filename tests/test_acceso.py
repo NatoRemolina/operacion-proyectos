@@ -3,7 +3,7 @@ from starlette.testclient import TestClient
 
 from app import db
 from app.main import app
-from app.servicios import acceso
+from app.servicios import acceso, intentos
 
 FORM = dict(proyecto_id=1, viajero_id=2, origen="MIA", destino="LAS", ida="2026-12-08", regreso="2026-12-11", para_otra_persona="1")
 
@@ -22,13 +22,20 @@ def test_toda_ruta_tiene_nivel_y_sin_sesion_no_se_entra(anonimo):
     assert anonimo.get("/api/gastos").status_code == 401
 
 
-def test_ingreso_incorrecto_no_dice_que_fallo_y_bloquea(anonimo):
-    for _ in range(6):
-        r = anonimo.post("/entrar", data={"correo": "piloto@demo.local", "clave": "equivocada-123"}, follow_redirects=False)
-        assert "error=" in r.headers["location"]
-    r = anonimo.post("/entrar", data={"correo": "piloto@demo.local", "clave": "demo-piloto-2026"}, follow_redirects=False)
-    assert "Demasiados" in r.headers["location"] or "intentos" in r.headers["location"]   # bloqueada aunque la clave sea correcta
-    db.ejecutar("update usuarios set fallos=0, bloqueado_hasta=null where correo='piloto@demo.local'")
+def test_ingreso_incorrecto_no_dice_que_fallo_y_se_limita_por_direccion():
+    """Sin bloqueo por cuenta (I-9): diez fallos del correo desde una dirección la limitan allí, con `Retry-After`."""
+    direccion, correo = "198.51.100.201", "piloto@demo.local"
+    c = TestClient(app, client=(direccion, 50000))
+    try:
+        for _ in range(intentos.MAX_POR_PAR):
+            r = c.post("/entrar", data={"correo": correo, "clave": "equivocada-123"}, follow_redirects=False)
+            assert "error=" in r.headers["location"] and "Demasiados" not in r.headers["location"]
+        r = c.post("/entrar", data={"correo": correo, "clave": "demo-piloto-2026"}, follow_redirects=False)
+        assert r.status_code == 429 and "intentos" in r.text            # limitada aunque la clave sea correcta
+        assert int(r.headers["retry-after"]) > 0
+    finally:
+        db.ejecutar("delete from intentos_ingreso where clave in (:p, :d, :c)", p=intentos.clave_par(direccion, correo),
+                    d=intentos.clave_direccion(direccion), c=intentos.clave_correo(correo))
 
 
 def test_usuario_no_entra_a_administracion(piloto):

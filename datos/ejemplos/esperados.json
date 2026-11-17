@@ -89,7 +89,21 @@
     "canal_reserva": "TravelNow",
     "ciudad": "Las Vegas",
     "confianza": 0.98,
-    "dudas": []
+    "dudas": [],
+    "numero_factura": "DS-20931",
+    "id_fiscal": null,
+    "lineas": [
+      {
+        "descripcion": "Room charge 3 x 83.00",
+        "cantidad": 3,
+        "total": 249.0
+      },
+      {
+        "descripcion": "Room tax 13.38%",
+        "cantidad": null,
+        "total": 33.32
+      }
+    ]
   },
   "factura_alquiler_carro.pdf": {
     "comercio": "Canyon Car Rental",
@@ -119,7 +133,31 @@
     "canal_reserva": "directo",
     "ciudad": null,
     "confianza": 0.97,
-    "dudas": []
+    "dudas": [],
+    "numero_factura": "GQ4LZ8",
+    "id_fiscal": null,
+    "lineas": [
+      {
+        "descripcion": "MIA Miami -> LIS Lisboa · Sun 13 Dec 2026 · AG 214 · Economy",
+        "cantidad": null,
+        "total": null
+      },
+      {
+        "descripcion": "LIS Lisboa -> MIA Miami · Sat 19 Dec 2026 · AG 215 · Economy",
+        "cantidad": null,
+        "total": null
+      },
+      {
+        "descripcion": "Base fare",
+        "cantidad": null,
+        "total": 962.0
+      },
+      {
+        "descripcion": "Taxes, fees and carrier charges",
+        "cantidad": null,
+        "total": 186.3
+      }
+    ]
   },
   "compra_proyecto.pdf": {
     "comercio": "AeroParts Supply",
@@ -164,7 +202,31 @@
     "canal_reserva": "directo",
     "ciudad": null,
     "confianza": 0.96,
-    "dudas": []
+    "dudas": [],
+    "numero_factura": "QX7T2L",
+    "id_fiscal": null,
+    "lineas": [
+      {
+        "descripcion": "Miami (MIA) -> Las Vegas (LAS) · Tue, Dec 8, 2026 · AA 1851 · Main Cabin",
+        "cantidad": null,
+        "total": null
+      },
+      {
+        "descripcion": "Las Vegas (LAS) -> Miami (MIA) · Fri, Dec 11, 2026 · AA 1851 · Main Cabin",
+        "cantidad": null,
+        "total": null
+      },
+      {
+        "descripcion": "Base fare",
+        "cantidad": null,
+        "total": 521.86
+      },
+      {
+        "descripcion": "Taxes and fees",
+        "cantidad": null,
+        "total": 66.14
+      }
+    ]
   },
   "reserva_hotel.eml": {
     "comercio": "Casa do Tejo",
@@ -179,7 +241,21 @@
     "canal_reserva": "directo",
     "ciudad": "Lisboa",
     "confianza": 0.97,
-    "dudas": []
+    "dudas": [],
+    "numero_factura": "FT 2026/1187",
+    "id_fiscal": null,
+    "lineas": [
+      {
+        "descripcion": "Room 4 x 88.50",
+        "cantidad": 4,
+        "total": 354.0
+      },
+      {
+        "descripcion": "IVA 6%",
+        "cantidad": null,
+        "total": 21.24
+      }
+    ]
   },
   "confirmacion_hotel.html": {
     "comercio": "Moab Red Rock Lodge",
@@ -194,6 +270,20 @@
     "canal_reserva": "TravelNow",
     "ciudad": "Moab",
     "confianza": 0.96,
-    "dudas": []
+    "dudas": [],
+    "numero_factura": "RR-60318",
+    "id_fiscal": null,
+    "lineas": [
+      {
+        "descripcion": "Room, 2 x 179.00",
+        "cantidad": 2,
+        "total": 358.0
+      },
+      {
+        "descripcion": "Taxes and fees",
+        "cantidad": null,
+        "total": 54.86
+      }
+    ]
   }
 }

@@ -158,7 +158,7 @@ sequenceDiagram
 
 | Tema | Cómo está |
 |---|---|
-| Contraseñas e ingreso | Argon2id, mínimo 10 caracteres; espera progresiva desde el quinto fallo |
+| Contraseñas e ingreso | Argon2id, mínimo 10 caracteres. El ingreso se limita por una ventana de 15 minutos, sin bloqueo por cuenta (`intentos.py`: 10 fallos por correo y dirección, 20 por dirección, 50 por correo; 429 con `Retry-After`). El cambio de contraseña con sesión tiene su freno: desde el quinto fallo con la actual en 24 horas, cada fallo cierra las sesiones y el cambio espera 15 minutos |
 | Identidad | Token aleatorio en una cookie `HttpOnly`, `Secure` y `SameSite=Lax` (`__Host-` fuera de local); en la base solo se guarda su huella. Dura 12 horas, 2 de inactividad |
 | Escrituras | Cada escritura de la API v1 exige `X-CSRF-Token` y un origen permitido (`ORIGENES_WEB`) |
 | Permisos por registro | El alcance sale de quien ingresó, nunca del cuerpo de la petición; lo que no se puede ver responde 404 |

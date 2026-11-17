@@ -150,14 +150,17 @@ export function OpcionDeVuelo({
   cotizacionId: number;
 }) {
   const [abierto, setAbierto] = useState(false);
+  // el momento del clic que abrió el desglose: la capa del buscador espera lo que ese clic consulta en vivo
+  const [clic, setClic] = useState<number | null>(null);
   const registrarFuente = useRegistrarFuente(cotizacionId);
   const analisis = useAnalisisVuelo(cotizacionId, vuelo.id);
-  const buscador = useOpcionesBuscador(cotizacionId, vuelo.id, abierto);
+  const buscador = useOpcionesBuscador(cotizacionId, vuelo.id, abierto ? clic : null);
   // Abrir el desglose abre también la página oficial del vendedor (el mismo enlace, en otra pestaña; el servidor deja
   // el rastro del clic) y pide leer la página del vuelo en Google Flights. El servidor reutiliza una lectura de menos
   // de una hora: volver a abrir no gasta otra.
   function abrirDesglose() {
     setAbierto(true);
+    setClic(Date.now());
     if (!analisis.isPending) analisis.mutate();
   }
   const titulo = useId();
@@ -304,7 +307,13 @@ export function OpcionDeVuelo({
           {abierto ? (
             <>
               <Desglose vuelo={vuelo} />
-              <CapaBuscador esperando={buscador.esperando} error={Boolean(buscador.error)} opciones={buscador.data} />
+              <CapaBuscador
+                esperando={buscador.esperando}
+                vigentes={buscador.vigentes}
+                agotado={buscador.agotado}
+                error={Boolean(buscador.error)}
+                opciones={buscador.data}
+              />
               <DetalleGoogle
                 pendiente={analisis.isPending}
                 agotado={analisis.agotado}
@@ -323,6 +332,11 @@ export function OpcionDeVuelo({
 function horaLocal(iso: string | null): string {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+/** «11 nov, 15:10» en la hora local de quien mira: los precios guardados pueden ser de otro día. */
+function fechaLocal(iso: string): string {
+  return new Date(iso).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 const COLUMNAS: readonly { clave: "mano" | "maleta" | "cambios" | "reembolso" | "asiento"; titulo: string }[] = [
@@ -388,13 +402,21 @@ function TablaDeVendedor({ tabla }: { tabla: TablaVendedor }) {
   );
 }
 
-/** Primera capa: lo que trajo el buscador, en 2 a 5 s; no espera a la lectura de la página. */
+/**
+ * Primera capa: lo que trajo el buscador, en 2 a 5 s; no espera a la lectura de la página. Con el buscador encendido, el
+ * clic que abrió el desglose lo consulta en vivo: mientras llega, lo guardado se ve marcado con su fecha (o «de
+ * referencia», del respaldo) y los «Ir a…» siguen llevando al vendedor.
+ */
 function CapaBuscador({
   esperando,
+  vigentes,
+  agotado,
   error,
   opciones,
 }: {
   esperando: boolean;
+  vigentes: boolean;
+  agotado: boolean;
   error: boolean;
   opciones: OpcionesBuscador | null;
 }) {
@@ -403,17 +425,35 @@ function CapaBuscador({
   const juntas = listo ? opciones.tarifas.filter((t) => !esTiquete(t)) : [];
   // qué vuelos elegir en el vendedor: algunos (COPA) abren la lista del día sin el vuelo elegido
   const eligeJunta = juntas.find((t) => t.elige)?.elige ?? null;
+  const delDia = opciones?.consultado ? `del ${fechaLocal(opciones.consultado)}` : null;
+  const guardados = delDia ? `guardados ${delDia}` : "de referencia";
+  const estado = listo
+    ? vigentes && opciones.consultado
+      ? `Opciones de reserva del buscador (consultadas a las ${horaLocal(opciones.consultado)})`
+      : esperando
+        ? `Precios ${guardados}: actualizando con el buscador…`
+        : agotado
+          ? `El buscador no respondió a tiempo; los precios son ${delDia ?? "de referencia"}.`
+          : "Opciones de reserva del buscador"
+    : esperando
+      ? opciones
+        ? "Consultando el buscador…"
+        : "Buscando las opciones de reserva…"
+      : error
+        ? "No se pudieron traer las opciones del buscador."
+        : "El buscador no trajo opciones de reserva para este vuelo.";
   return (
     <section aria-label="Opciones del buscador" className="flex flex-col gap-3 border-t border-linea pt-3">
       <p role="status" className={`text-sm ${listo ? "font-semibold" : "text-texto-secundario"}`}>
-        {listo
-          ? `Opciones de reserva del buscador${opciones.consultado ? ` (consultadas a las ${horaLocal(opciones.consultado)})` : ""}`
-          : esperando
-            ? "Buscando las opciones de reserva…"
-            : error
-              ? "No se pudieron traer las opciones del buscador."
-              : "El buscador no trajo opciones de reserva para este vuelo."}
+        {estado}
       </p>
+      {listo && !vigentes ? (
+        // lo que se ve no es de este clic: el precio que vale es el de la página del vendedor
+        <p className="text-sm text-texto-secundario">
+          {esperando || agotado ? "" : `Precios ${guardados}. `}
+          «Ir a…» lleva a la página del vendedor: el precio final es el que diga esa página.
+        </p>
+      ) : null}
       {listo && tiquetes.length ? (
         <>
           <p className="text-sm">Billetes separados: un tiquete por tramo, cada uno con su vendedor.</p>

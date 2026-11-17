@@ -10,9 +10,14 @@ Estados: `solicitada` → `en_analisis` → `se_comprara` | `no_se_comprara` →
   precio cotizado, y crea el gasto del tiquete (categoría vuelo, `compras.gasto_id`): lo comprado suma en lo gastado del
   viaje y entra al Excel contable. «Aprobado si cuadra»: queda aprobado si lo pagado no supera lo cotizado al decidir en
   más de la regla `tolerancia_tiquete_pct`; si lo supera, o no hay precio cotizado, va a revisión y lo aprueba otra
-  persona de administración. Si el recibo del tiquete ya estaba cargado (mismo localizador o mismo comercio, con el
-  importe parecido), se enlaza ese gasto en vez de crear otro; si llega después, se une al del tiquete solo si el importe
-  coincide (`tiquete_por_enlazar`), y con el mismo localizador y otro importe queda aparte, en revisión.
+  persona de administración. Si el recibo del tiquete ya estaba cargado (con el importe parecido y el mismo localizador,
+  el mismo comercio o un número de vuelo del itinerario decidido), se enlaza ese gasto en vez de crear otro; si llega
+  después, se une al del tiquete solo si el importe coincide (`tiquete_por_enlazar`), y con el mismo localizador y otro
+  importe queda aparte, en revisión.
+- Red contra el doble conteo: si un recibo de vuelo del viaje y el tiquete no se atan pero tienen el mismo importe, el
+  que llega segundo queda en revisión con «Posible duplicado del gasto #N (mismo importe)» (`tiquete_duplicado`, que
+  volver a validar no quita), también al asignarle el viaje después. Un archivo que ya sostiene otro gasto no se une al
+  tiquete.
 - Cancelar el tiquete ya comprado devuelve su gasto a revisión («Compra cancelada: revisar reembolso»): volver a
   comprar no deja dos tiquetes aprobados.
 - Cuando el viaje cambia de estado (`al_cambiar_el_viaje`, desde `viajes.cambiar_estado`): «Se va a comprar» vuelve a
@@ -304,6 +309,9 @@ TOLERANCIA_TIQUETE = "tolerancia_tiquete_pct"   # regla editable: cuánto puede 
 SOBRE_COTIZADO, COMPRA_CANCELADA, IMPORTE_DISTINTO = "tiquete_sobre_cotizado", "compra_cancelada", "tiquete_importe_distinto"
 CANCELADA_TEXTO = "Compra cancelada: revisar reembolso"
 IMPORTE_DISTINTO_TEXTO = "Mismo localizador que el tiquete, importe distinto"
+# Un recibo de vuelo del viaje y el tiquete, sin nada que los ate salvo el importe: se ven en revisión. Código propio,
+# que volver a validar no quita (`gastos.CONSERVAN_REVISION`)
+DUPLICADO, DUPLICADO_TEXTO = "tiquete_duplicado", "Posible duplicado del gasto #{} (mismo importe)"
 UN_DOLAR = Decimal(1)
 
 
@@ -344,40 +352,69 @@ def _gasto_a_revision(gid: int, codigo: str, alerta: str, detalle: str, quien: d
                       f"{alerta} · {detalle}", quien["nombre"])
 
 
-def _recibo_ya_cargado(viaje_id: int, localizador: str, vendedor: str, pagado: Decimal) -> int | None:
-    """El gasto de vuelo del viaje que ya trae el recibo de este tiquete: mismo localizador o mismo comercio, con el
-    importe parecido, y sin otra compra que lo use."""
+def _recibo_ya_cargado(compra: dict, localizador: str, vendedor: str, pagado: Decimal) -> tuple[int | None, int | None]:
+    """(recibo, parecido). `recibo`: el gasto de vuelo del viaje que ya trae el recibo de este tiquete, con el importe
+    parecido y sin otra compra que lo use, y además el mismo localizador, el mismo comercio o un número de vuelo del
+    itinerario decidido (en el comercio, en las líneas o en lo leído). `parecido`: si ninguno se ata, el primero con el
+    mismo importe, que puede ser el mismo tiquete contado dos veces."""
+    def numeros(*textos) -> set[str]:   # «AA 1851», «AA1851» y «AA-1851» son el mismo vuelo
+        return {f"{a}{int(n)}" for t in textos
+                for a, n in re.findall(r"\b([A-Z][A-Z0-9]|[0-9][A-Z]) ?-? ?(\d{1,4})\b", str(t or "").upper())}
+
+    def textos(valor):   # todo lo leído del recibo, sin los nombres de los campos
+        if isinstance(valor, dict):
+            return [t for v in valor.values() for t in textos(v)]
+        return [t for v in valor for t in textos(v)] if isinstance(valor, list) else [valor] if isinstance(valor, str) else []
+
+    # Los vuelos decididos: los tramos de ida y regreso del viaje y, por si faltan, los números de la opción comprada
+    decididos = [t["numero"] for t in db.todos("select numero from tramos_vuelo where viaje_id=:v", v=compra["viaje_id"])]
+    if compra.get("opcion_id") and (opcion := db.uno("select datos from opciones where id=:i", i=compra["opcion_id"])):
+        decididos += (db.de_json(opcion["datos"], {}) or {}).get("numeros") or []
+    itinerario = numeros(*decididos)
+    parecido = None
     for g in db.todos("""select g.id, g.comercio, g.total_usd, g.extraido from gastos g
                          where g.viaje_id=:v and g.categoria='vuelo' and g.documento_id is not null
                            and g.estado not in ('rechazado', 'procesando')
-                           and not exists (select 1 from compras c where c.gasto_id=g.id) order by g.id""", v=viaje_id):
+                           and not exists (select 1 from compras c where c.gasto_id=g.id) order by g.id""", v=compra["viaje_id"]):
         importe = _importe(g["total_usd"])
-        numero = str((db.de_json(g["extraido"], {}) or {}).get("numero_factura") or "").strip().upper()
-        if importe is not None and importe_coincide(importe, pagado) \
-                and (numero == localizador or validacion.mismo_comercio(g["comercio"], vendedor)):
-            return g["id"]
-    return None
+        if importe is None or not importe_coincide(importe, pagado):
+            continue
+        leido = db.de_json(g["extraido"], {}) or {}
+        numero = str(leido.get("numero_factura") or "").strip().upper()
+        if numero == localizador or validacion.mismo_comercio(g["comercio"], vendedor) \
+                or itinerario & numeros(g["comercio"], *textos(leido)):
+            return g["id"], None
+        parecido = parecido or g["id"]
+    return None, parecido
 
 
 def _gasto_del_tiquete(compra: dict, localizador: str, precio: Decimal, vendedor: str, usuario: dict) -> int:
     """El gasto de lo comprado: aprobado si cuadra con lo cotizado; si no, en revisión para otra persona de
-    administración (lo registra quien compró, que no revisa lo suyo). Si el recibo ya estaba cargado, es ese gasto."""
+    administración (lo registra quien compró, que no revisa lo suyo). Si el recibo ya estaba cargado, es ese gasto. Si
+    hay otro gasto de vuelo con soporte y el mismo importe que no se ata a la compra, nace en revisión: nunca se aprueba
+    en silencio lo que puede ser el mismo tiquete contado dos veces."""
     viaje = viajes.uno(compra["viaje_id"])
     alerta = _frente_a_lo_cotizado(precio, compra["precio_cotizado"])
     detalle = f"compra #{compra['id']} · {localizador} · {precio:.2f} USD"
-    if (previo := _recibo_ya_cargado(viaje["id"], localizador, vendedor, precio)):
+    previo, parecido = _recibo_ya_cargado(compra, localizador, vendedor, precio)
+    if previo:
         eventos.registrar("gasto", previo, "recibo ya cargado enlazado a la compra", detalle, usuario["nombre"])
         g = db.uno("select estado from gastos where id=:i", i=previo)
         if alerta and g["estado"] in ("aprobado_auto", "revision"):   # lo que aprobó una persona no se toca
             _gasto_a_revision(previo, SOBRE_COTIZADO, alerta, detalle, usuario)
         return previo
+    alertas = [alerta] if alerta else []
+    motivos = [SOBRE_COTIZADO] if alerta else []
+    if parecido:
+        alertas.append(DUPLICADO_TEXTO.format(parecido))
+        motivos.append(DUPLICADO)
     gid = db.insertar("gastos", documento_id=None, proyecto_id=viaje["proyecto_id"], viajero_id=viaje["viajero_id"],
                       viaje_id=viaje["id"], comercio=vendedor, fecha=tiempo.hoy().isoformat(), categoria="vuelo",
                       total=float(precio), moneda="USD", total_usd=float(precio), canal_reserva=vendedor, confianza=1.0,
-                      estado="revision" if alerta else "aprobado", alertas=[alerta] if alerta else [],
-                      motivos=[SOBRE_COTIZADO] if alerta else [], origen_dato=ORIGEN_COMPRA, creado=db.ahora(),
+                      estado="revision" if motivos else "aprobado", alertas=alertas,
+                      motivos=motivos, origen_dato=ORIGEN_COMPRA, creado=db.ahora(),
                       usuario_id=usuario["id"], revisado_por=None, version=1)
-    eventos.registrar("gasto", gid, "gasto del tiquete comprado", f"{detalle}" + (f" · {alerta}" if alerta else ""),
+    eventos.registrar("gasto", gid, "gasto del tiquete comprado", f"{detalle}" + "".join(f" · {a}" for a in alertas),
                       usuario["nombre"])
     return gid
 

@@ -375,6 +375,11 @@ class OpcionesBuscador(BaseModel):
     estado: Literal["listo", "sin_datos"] = Field(description="`sin_datos`: todavía no hay opciones guardadas (la web "
                                                              "reintenta unos segundos mientras el enlace al vendedor las trae).")
     consultado: str | None = Field(description="Cuándo las trajo el buscador (UTC); null si vienen del respaldo del repositorio.")
+    en_vivo: bool = Field(description="El clic que abre el desglose consulta el buscador en vivo: hay clave y queda cupo de "
+                                      "búsquedas pagas del día (o el clic acaba de reservarlo). Tarda de 18 a 30 s y lo nuevo "
+                                      "llega a esta misma ruta. La web reintenta hasta 40 s "
+                                      "mientras no haya tarifas con `consultado` posterior al clic o de la hora anterior (el "
+                                      "mismo pedido dentro de la hora no se guarda otra vez). Con `false`, lo guardado es todo.")
     tarifas: list[TarifaLeida]
     vendedores: list[VendedorLeido]
 

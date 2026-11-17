@@ -461,7 +461,7 @@
           "cotizaciones"
         ],
         "summary": "Opciones Buscador",
-        "description": "Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada\nvendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial.",
+        "description": "Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada\nvendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial. `en_vivo`\ndice si el clic que abrió el desglose consulta el buscador en vivo: entonces lo nuevo llega aquí.",
         "operationId": "opciones_buscador_api_v1_cotizaciones__id__vuelos__opcion_id__reserva_get",
         "parameters": [
           {
@@ -935,7 +935,7 @@
           "auth"
         ],
         "summary": "Login",
-        "description": "Pública: no lleva token CSRF. El rol y la persona salen de la cuenta, nunca del cuerpo.\nCon demasiados fallos recientes desde la dirección o con el correo, 429 antes de mirar la contraseña.",
+        "description": "Pública: no lleva token CSRF. El rol y la persona salen de la cuenta, nunca del cuerpo.\nCon demasiados fallos recientes desde la dirección o con el correo, 429 antes de mirar la contraseña, con `Retry-After`.",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -2189,7 +2189,7 @@
           "cuenta"
         ],
         "summary": "Cambiar Clave",
-        "description": "Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.\nTambién desvincula su Telegram. Cinco fallos seguidos con la actual cierran sus sesiones: 429 `TOO_MANY_ATTEMPTS`.",
+        "description": "Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.\nTambién desvincula su Telegram. Desde el quinto fallo con la actual en 24 horas, cada fallo cierra sus sesiones: 429\n`TOO_MANY_ATTEMPTS`, y durante los 15 minutos siguientes al último fallo responde 429 sin mirar la contraseña. El\n429 lleva `Retry-After`. El ingreso no se bloquea.",
         "operationId": "cambiar_clave_api_v1_cuenta_clave_post",
         "requestBody": {
           "content": {
@@ -11985,6 +11985,11 @@
             "title": "Consultado",
             "description": "Cuándo las trajo el buscador (UTC); null si vienen del respaldo del repositorio."
           },
+          "en_vivo": {
+            "type": "boolean",
+            "title": "En Vivo",
+            "description": "El clic que abre el desglose consulta el buscador en vivo: hay clave y queda cupo de búsquedas pagas del día (o el clic acaba de reservarlo). Tarda de 18 a 30 s y lo nuevo llega a esta misma ruta. La web reintenta hasta 40 s mientras no haya tarifas con `consultado` posterior al clic o de la hora anterior (el mismo pedido dentro de la hora no se guarda otra vez). Con `false`, lo guardado es todo."
+          },
           "tarifas": {
             "items": {
               "$ref": "#/components/schemas/TarifaLeida"
@@ -12004,6 +12009,7 @@
         "required": [
           "estado",
           "consultado",
+          "en_vivo",
           "tarifas",
           "vendedores"
         ],

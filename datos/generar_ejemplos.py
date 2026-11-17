@@ -261,10 +261,20 @@ Confirmation number RR-60318.</p>
 
 
 def esperado(comercio, fecha, categoria, subtotal, impuesto, propina, total, moneda, metodo_pago, canal_reserva, ciudad,
-             confianza, dudas=()):
-    return {"comercio": comercio, "fecha": fecha, "categoria": categoria, "subtotal": subtotal, "impuesto": impuesto,
-            "propina": propina, "total": total, "moneda": moneda, "metodo_pago": metodo_pago,
-            "canal_reserva": canal_reserva, "ciudad": ciudad, "confianza": confianza, "dudas": list(dudas)}
+             confianza, dudas=(), factura=None):
+    """`factura`: (número, líneas) de los soportes de vuelo y hotel, tal como los dice el archivo. Ninguno trae
+    identificación tributaria del proveedor: `id_fiscal` queda vacío."""
+    datos = {"comercio": comercio, "fecha": fecha, "categoria": categoria, "subtotal": subtotal, "impuesto": impuesto,
+             "propina": propina, "total": total, "moneda": moneda, "metodo_pago": metodo_pago,
+             "canal_reserva": canal_reserva, "ciudad": ciudad, "confianza": confianza, "dudas": list(dudas)}
+    if factura:
+        numero, lineas = factura
+        datos |= {"numero_factura": numero, "id_fiscal": None, "lineas": lineas}
+    return datos
+
+
+def linea(descripcion, cantidad, total):
+    return {"descripcion": descripcion, "cantidad": cantidad, "total": total}
 
 
 esperados = {
@@ -279,21 +289,31 @@ esperados = {
     "recibo_taxi.png": esperado("Desert Cab Co.", "2026-12-11", "transporte_terrestre", 23.40, None, 4.00, 27.40, "USD",
                                 "Visa 4417", None, "Las Vegas", 0.95),
     "factura_hotel.pdf": esperado("Desert Sky Hotel & Suites", "2026-12-11", "hotel", 249.00, 33.32, None, 282.32, "USD",
-                                  "Visa 4417", "TravelNow", "Las Vegas", 0.98),
+                                  "Visa 4417", "TravelNow", "Las Vegas", 0.98, factura=("DS-20931", [
+                                      linea("Room charge 3 x 83.00", 3, 249.0), linea("Room tax 13.38%", None, 33.32)])),
     "factura_alquiler_carro.pdf": esperado("Canyon Car Rental", "2026-12-11", "alquiler_carro", 174.00, 41.76, None,
                                            215.76, "USD", "Visa 4417", "directo", "Las Vegas", 0.98),
     "confirmacion_vuelo.pdf": esperado("Atlantic Gull Airways", "2026-11-25", "vuelo", 962.00, 186.30, None, 1148.30,
-                                       "USD", "Visa 4417", "directo", None, 0.97),
+                                       "USD", "Visa 4417", "directo", None, 0.97, factura=("GQ4LZ8", [
+                                           linea("MIA Miami -> LIS Lisboa · Sun 13 Dec 2026 · AG 214 · Economy", None, None),
+                                           linea("LIS Lisboa -> MIA Miami · Sat 19 Dec 2026 · AG 215 · Economy", None, None),
+                                           linea("Base fare", None, 962.0),
+                                           linea("Taxes, fees and carrier charges", None, 186.3)])),
     "compra_proyecto.pdf": esperado("AeroParts Supply", "2026-12-09", "compras_proyecto", 208.98, 17.50, None, 226.48,
                                     "USD", "Visa 4417", None, "Las Vegas", 0.97),
     "factura_dos_paginas.pdf": esperado("Tejo Car Hire", "2026-12-18", "alquiler_carro", 210.00, 48.30, None, 258.30,
                                         "EUR", "Visa 4417", "directo", "Lisboa", 0.96),
     "correo_tiquete.eml": esperado("Aerolínea (AA 1851)", "2026-11-20", "vuelo", 521.86, 66.14, None, 588.00, "USD",
-                                   "Visa 4417", "directo", None, 0.96),
+                                   "Visa 4417", "directo", None, 0.96, factura=("QX7T2L", [
+                                       linea("Miami (MIA) -> Las Vegas (LAS) · Tue, Dec 8, 2026 · AA 1851 · Main Cabin", None, None),
+                                       linea("Las Vegas (LAS) -> Miami (MIA) · Fri, Dec 11, 2026 · AA 1851 · Main Cabin", None, None),
+                                       linea("Base fare", None, 521.86), linea("Taxes and fees", None, 66.14)])),
     "reserva_hotel.eml": esperado("Casa do Tejo", "2026-12-17", "hotel", 354.00, 21.24, None, 375.24, "EUR",
-                                  "Visa 4417", "directo", "Lisboa", 0.97),
+                                  "Visa 4417", "directo", "Lisboa", 0.97, factura=("FT 2026/1187", [
+                                      linea("Room 4 x 88.50", 4, 354.0), linea("IVA 6%", None, 21.24)])),
     "confirmacion_hotel.html": esperado("Moab Red Rock Lodge", "2026-11-28", "hotel", 358.00, 54.86, None, 412.86, "USD",
-                                        "Mastercard 9021", "TravelNow", "Moab", 0.96),
+                                        "Mastercard 9021", "TravelNow", "Moab", 0.96, factura=("RR-60318", [
+                                            linea("Room, 2 x 179.00", 2, 358.0), linea("Taxes and fees", None, 54.86)])),
 }
 (DIR / "esperados.json").write_text(json.dumps(esperados, ensure_ascii=False, indent=2) + "\n")
 print("Generados", len(esperados), "soportes en", DIR)

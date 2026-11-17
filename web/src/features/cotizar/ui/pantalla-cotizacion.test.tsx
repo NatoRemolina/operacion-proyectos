@@ -612,20 +612,178 @@ describe("Comparación de una cotización", () => {
     }
   });
 
-  it("si el buscador todavía no trajo opciones, reintenta cada segundo y, si no llegan, lo dice", async () => {
+  // ---------- I-8 (QA del 16 nov): la capa del buscador espera la consulta en vivo que dispara el clic ----------
+  const vacio = { estado: "sin_datos" as const, consultado: null, tarifas: [], vendedores: [] };
+  const conTarifa = (precio: number, consultado: string | null) => ({
+    estado: "listo" as const, consultado,
+    tarifas: [{ vendedor: "American", nombre: "Main Cabin", precio, equipaje: [], cambios: [], reembolso: [], otras: [],
+      ir_url: `/api/v1/ir/American/Main%20Cabin/${precio}` }],
+    vendedores: [{ vendedor: "American", aerolinea: true, precio_desde: precio }],
+  });
+  const ahora = () => new Date().toISOString();
+
+  async function abrirCapa(opcionesBuscador: CotizarRepository["opcionesBuscador"]) {
+    const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { opcionesBuscador }) });
+    const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
+    await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
+    return within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
+  }
+
+  it("con el buscador encendido muestra lo guardado marcado y lo reemplaza cuando llega lo consultado tras el clic", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      const vacio = { estado: "sin_datos" as const, consultado: null, tarifas: [], vendedores: [] };
-      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue(vacio);
-      renderizarConFuente(<PantallaCotizacion id={12} />, { cotizar: repositorio(COTIZACION_MOAB, { opcionesBuscador }) });
-      const tarjeta = await screen.findByRole("group", { name: /UA 1047 \+ UA 6077/ });
-      await usuario.click(within(tarjeta).getByRole("link", { name: /^Ver desglose/ }));
-      const capa = within(tarjeta).getByRole("region", { name: "Opciones del buscador" });
-      expect(await within(capa).findByText("Buscando las opciones de reserva…")).toBeInTheDocument();
-      for (let i = 0; i < 7; i++) await vi.advanceTimersByTimeAsync(1000);
+      let pedidos = 0;
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockImplementation(async () =>
+        pedidos++ < 2 ? { ...conTarifa(588, "2026-11-11T15:00:00Z"), en_vivo: true } : { ...conTarifa(694, ahora()), en_vivo: true });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText(/^Precios guardados del .+: actualizando con el buscador…$/)).toBeInTheDocument();
+      expect(within(capa).getAllByText(dinero("588.00")).length).toBeGreaterThan(0);
+      expect(within(capa).getByRole("link", { name: /^Ir a American/ })).toBeInTheDocument();   // «Ir a…» sigue funcionando
+      expect(within(capa).getByText(/el precio final es el que diga esa página/)).toBeInTheDocument();
+      for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(2000);
+      expect(await within(capa).findByText(/^Opciones de reserva del buscador \(consultadas a las \d{2}:\d{2}\)$/)).toBeInTheDocument();
+      expect(within(capa).getAllByText(dinero("694.00")).length).toBeGreaterThan(0);
+      expect(within(capa).queryByText(dinero("588.00"))).toBeNull();
+      expect(within(capa).queryByText(/actualizando con el buscador/)).toBeNull();
+      expect(within(capa).queryByText(/el precio final es el que diga esa página/)).toBeNull();
+      const llamadas = opcionesBuscador.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(opcionesBuscador).toHaveBeenCalledTimes(llamadas);                // con lo nuevo deja de preguntar
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("el respaldo sin fecha se marca «de referencia» mientras espera", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue({ ...conTarifa(588, null), en_vivo: true });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText("Precios de referencia: actualizando con el buscador…")).toBeInTheDocument();
+      for (let i = 0; i < 21; i++) await vi.advanceTimersByTimeAsync(2000);
+      expect(await within(capa).findByText("El buscador no respondió a tiempo; los precios son de referencia.")).toBeInTheDocument();
+      expect(within(capa).getAllByText(dinero("588.00")).length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sin nada guardado dice «Consultando el buscador…» y nunca «no trajo opciones» antes de que lleguen", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const inicio = Date.now();
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockImplementation(async () =>
+        Date.now() - inicio < 10_000 ? { ...vacio, en_vivo: true } : { ...conTarifa(336, ahora()), en_vivo: true });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText("Consultando el buscador…")).toBeInTheDocument();
+      for (let i = 0; i < 6; i++) {
+        expect(within(capa).queryByText("El buscador no trajo opciones de reserva para este vuelo.")).toBeNull();
+        await vi.advanceTimersByTimeAsync(2000);
+      }
+      expect(await within(capa).findByText(/^Opciones de reserva del buscador \(consultadas a las/)).toBeInTheDocument();
+      expect(within(capa).getAllByText(dinero("336.00")).length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("si en 40 s no llega nada y no hay nada guardado, dice «no trajo opciones» y deja de preguntar", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue({ ...vacio, en_vivo: true });
+      const capa = await abrirCapa(opcionesBuscador);
+      for (let i = 0; i < 19; i++) await vi.advanceTimersByTimeAsync(2000);
+      expect(within(capa).getByText("Consultando el buscador…")).toBeInTheDocument();      // a los 38 s todavía espera
+      for (let i = 0; i < 4; i++) await vi.advanceTimersByTimeAsync(2000);
       expect(await within(capa).findByText("El buscador no trajo opciones de reserva para este vuelo.")).toBeInTheDocument();
-      expect(opcionesBuscador).toHaveBeenCalledTimes(5);
+      const llamadas = opcionesBuscador.mock.calls.length;
+      expect(llamadas).toBeGreaterThanOrEqual(20);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(opcionesBuscador).toHaveBeenCalledTimes(llamadas);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("si en 40 s no llega nada nuevo, deja lo guardado con su fecha y lo dice", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>()
+        .mockResolvedValue({ ...conTarifa(588, "2026-11-11T15:00:00Z"), en_vivo: true });
+      const capa = await abrirCapa(opcionesBuscador);
+      for (let i = 0; i < 21; i++) await vi.advanceTimersByTimeAsync(2000);
+      expect(await within(capa).findByText(/^El buscador no respondió a tiempo; los precios son del .*11.*\.$/)).toBeInTheDocument();
+      expect(within(capa).getAllByText(dinero("588.00")).length).toBeGreaterThan(0);
+      expect(within(capa).getByRole("link", { name: /^Ir a American/ })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("si el servidor falla mientras espera, deja de preguntar y deja lo guardado con su nota (ronda 1)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let pedidos = 0;
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockImplementation(async () => {
+        if (pedidos++ === 0) return { ...conTarifa(588, "2026-11-11T15:00:00Z"), en_vivo: true };
+        throw new ErrorDeAplicacion("servidor");
+      });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText(/^Precios guardados del .+: actualizando con el buscador…$/)).toBeInTheDocument();
+      for (let i = 0; i < 20; i++) await vi.advanceTimersByTimeAsync(2000);
+      const llamadas = opcionesBuscador.mock.calls.length;
+      for (let i = 0; i < 40; i++) await vi.advanceTimersByTimeAsync(2000);   // hasta los 120 s, ningún pedido más
+      expect(opcionesBuscador).toHaveBeenCalledTimes(llamadas);
+      expect(within(capa).queryByText(/actualizando con el buscador/)).toBeNull();
+      expect(within(capa).getByText(/^El buscador no respondió a tiempo; los precios son del .*11.*\.$/)).toBeInTheDocument();
+      expect(within(capa).getAllByText(dinero("588.00")).length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("si el servidor falla sin nada guardado, lo dice y deja de preguntar (ronda 1)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let pedidos = 0;
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockImplementation(async () => {
+        if (pedidos++ === 0) return { ...vacio, en_vivo: true };
+        throw new ErrorDeAplicacion("servidor");
+      });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText("Consultando el buscador…")).toBeInTheDocument();
+      for (let i = 0; i < 60; i++) await vi.advanceTimersByTimeAsync(2000);
+      expect(opcionesBuscador.mock.calls.length).toBeLessThanOrEqual(21);
+      expect(within(capa).getByText("No se pudieron traer las opciones del buscador.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("con el buscador apagado hace un solo pedido y marca el respaldo «de referencia»", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue({ ...conTarifa(588, null), en_vivo: false });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText("Opciones de reserva del buscador")).toBeInTheDocument();
+      expect(within(capa).getByText(/^Precios de referencia\. «Ir a…» lleva a la página del vendedor/)).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(opcionesBuscador).toHaveBeenCalledTimes(1);
+      expect(within(capa).queryByText(/actualizando con el buscador/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("con el buscador apagado y sin nada guardado lo dice enseguida, con un solo pedido", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const opcionesBuscador = vi.fn<CotizarRepository["opcionesBuscador"]>().mockResolvedValue({ ...vacio, en_vivo: false });
+      const capa = await abrirCapa(opcionesBuscador);
+      expect(await within(capa).findByText("El buscador no trajo opciones de reserva para este vuelo.")).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(opcionesBuscador).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }

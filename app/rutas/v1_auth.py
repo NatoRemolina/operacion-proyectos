@@ -1,31 +1,28 @@
 """API v1: ingreso, sesión actual y salida. Contrato en `contracts/api-v1.md`."""
 from fastapi import APIRouter, Depends, Request, Response
 
-from ..api_v1 import PREFIJO, ErrorApi, datos_demostracion, escritura, persona, token_csrf
+from ..api_v1 import PREFIJO, ErrorApi, datos_demostracion, escritura, persona, respuesta_error, token_csrf
 from ..api_v1.esquemas import Ingreso, Sesion, errores
 from ..servicios import acceso, consultas, eventos, intentos
 
 router = APIRouter(prefix=PREFIJO + "/auth", tags=["auth"])
 
-# Lo que responde `acceso.autenticar` cuando el correo o la contraseña no coinciden; cualquier otro mensaje es un bloqueo
-_CREDENCIALES = "Correo o contraseña incorrectos."
-
 
 @router.post("/login", response_model=Sesion, responses=errores(401, 403, 422, 429))
 def login(datos: Ingreso, request: Request, response: Response):
     """Pública: no lleva token CSRF. El rol y la persona salen de la cuenta, nunca del cuerpo.
-    Con demasiados fallos recientes desde la dirección o con el correo, 429 antes de mirar la contraseña."""
+    Con demasiados fallos recientes desde la dirección o con el correo, 429 antes de mirar la contraseña, con `Retry-After`."""
     if intentos.limitado(request.state.direccion, datos.correo):
         if intentos.avisar_limite(request.state.direccion, datos.correo):   # una vez por ventana
             eventos.registrar("acceso", None, "ingreso limitado", datos.correo.strip().lower()[:80], "api v1")
-        raise ErrorApi(429, "TOO_MANY_ATTEMPTS", intentos.DEMASIADOS)
+        r = respuesta_error(request, 429, "TOO_MANY_ATTEMPTS", intentos.DEMASIADOS)
+        r.headers["Retry-After"] = str(intentos.segundos_para_reintentar(request.state.direccion, datos.correo))
+        return r
     usuario, mensaje = acceso.autenticar(datos.correo, datos.clave)
     if not usuario:
         intentos.anotar_fallo(request.state.direccion, datos.correo)
         eventos.registrar("acceso", None, "ingreso fallido", datos.correo.strip().lower()[:80], "api v1")
-        if mensaje != _CREDENCIALES:
-            raise ErrorApi(429, "TOO_MANY_ATTEMPTS", mensaje)
-        raise ErrorApi(401, "INVALID_CREDENTIALS", _CREDENCIALES)
+        raise ErrorApi(401, "INVALID_CREDENTIALS", mensaje)
     intentos.anotar_exito(request.state.direccion, datos.correo)
     acceso.fijar(usuario)
     eventos.registrar("acceso", usuario["id"], "ingreso", usuario["correo"], "api v1")

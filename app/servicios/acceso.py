@@ -21,7 +21,6 @@ from . import eventos
 COOKIE = "sesion" if config.LOCAL else "__Host-sesion"
 VIDA = timedelta(hours=12)
 INACTIVIDAD = timedelta(hours=2)
-MAX_FALLOS = 5
 ROLES = ("colaborador", "gestor", "admin")
 NOMBRE_ROL = {"colaborador": "colaborador", "gestor": "gestor de proyecto", "admin": "administrador"}
 PERFIL_SIN_CARGO = "Viajero"
@@ -184,22 +183,15 @@ def crear_usuario(correo: str, nombre: str, rol: str, clave: str, viajero_id: in
 
 
 def autenticar(correo: str, clave: str) -> tuple[dict | None, str]:
-    """Devuelve (usuario, mensaje). El mensaje es el mismo para correo o contraseña equivocados."""
+    """Devuelve (usuario, mensaje). El mensaje es el mismo para correo o contraseña equivocados.
+    No hay bloqueo por cuenta: los fallos los limita `intentos` por dirección y por correo, antes de llegar aquí (I-9)."""
     generico = "Correo o contraseña incorrectos."
     u = db.uno("select * from usuarios where correo=:c", c=correo.strip().lower())
     if not u:
         _coincide(_HASH_FICTICIO, clave)  # mismo trabajo aunque la cuenta no exista
         return None, generico
-    ahora = _fmt(_ahora())
-    if u["bloqueado_hasta"] and u["bloqueado_hasta"] > ahora:
-        return None, "Demasiados intentos. Espera unos minutos y vuelve a intentar."
     if not u["activo"] or not _coincide(u["clave_hash"], clave):
-        fallos = (u["fallos"] or 0) + 1
-        # Bloqueo progresivo por cuenta: 1, 2, 4... minutos a partir del quinto fallo
-        espera = timedelta(minutes=min(2 ** (fallos - MAX_FALLOS), 30)) if fallos >= MAX_FALLOS else None
-        db.actualizar("usuarios", u["id"], fallos=fallos, bloqueado_hasta=_fmt(_ahora() + espera) if espera else None)
         return None, generico
-    db.actualizar("usuarios", u["id"], fallos=0, bloqueado_hasta=None)
     return u, ""
 
 

@@ -283,32 +283,66 @@ export function useEvidencia(id: number, activo: boolean) {
 }
 
 
-export const OPCIONES_REINTENTO_MS = 1000;
-export const OPCIONES_INTENTOS = 5;
+export const OPCIONES_REINTENTO_MS = 2000;
+/** Lo que se espera la consulta en vivo que dispara el clic: tarda de 18 a 30 s. */
+export const OPCIONES_ESPERA_MS = 40_000;
+/**
+ * Lo consultado hasta una hora antes del clic vale como lo de este clic: el mismo pedido dentro de la hora el buscador lo
+ * sirve de su caché y el servidor no guarda otra copia, así que nada más nuevo va a llegar. Cubre de sobra la diferencia
+ * de relojes entre el navegador y el servidor.
+ */
+export const OPCIONES_VIGENCIA_MS = 60 * 60_000;
+
+/** Una lectura de la capa: las opciones y, calculado al recibirlas, si ya son de este clic o si se acabó la espera. */
+interface LecturaOpciones {
+  readonly opciones: OpcionesBuscador;
+  readonly vigentes: boolean;
+  readonly agotado: boolean;
+}
+
+function esperaMas(l: LecturaOpciones | undefined): boolean {
+  return l !== undefined && l.opciones.en_vivo === true && !l.vigentes && !l.agotado;
+}
 
 /**
  * Primera capa del desglose: lo que trajo el buscador. El mismo clic que abre el desglose abre la página oficial, que
- * consulta el buscador; mientras tanto la respuesta es `sin_datos` y se reintenta cada segundo, 5 veces.
+ * consulta el buscador en vivo; lo nuevo llega a esta misma consulta. `clic` es el momento de ese clic (null: cerrado).
+ * Con el buscador encendido (`en_vivo`) se reintenta cada 2 s, hasta 40 s, mientras no haya tarifas consultadas después
+ * del clic (o en la hora anterior); mientras tanto se ve lo guardado, marcado. Con el buscador apagado, un solo pedido.
  */
-export function useOpcionesBuscador(id: number, vueloId: number, activo: boolean) {
+export function useOpcionesBuscador(id: number, vueloId: number, clic: number | null) {
   const repositorio = useCotizarRepository();
   const personaId = usePersonaId();
-  const queryClient = useQueryClient();
-  const clave = claveDePersona(personaId, "cotizar", "opciones", id, vueloId);
-  const consulta = useQuery<OpcionesBuscador, ErrorDeAplicacion>({
-    queryKey: clave,
-    queryFn: ({ signal }) => repositorio.opcionesBuscador(id, vueloId, signal),
-    enabled: activo,
+  const consulta = useQuery<LecturaOpciones, ErrorDeAplicacion>({
+    // cada apertura del desglose tiene su propia espera
+    queryKey: claveDePersona(personaId, "cotizar", "opciones", id, vueloId, clic),
+    queryFn: async ({ signal }) => {
+      const opciones = await repositorio.opcionesBuscador(id, vueloId, signal);
+      const desde = clic ?? Date.now();
+      const vigentes = opciones.estado === "listo" && opciones.tarifas.length > 0 && opciones.consultado !== null
+        && Date.parse(opciones.consultado) >= desde - OPCIONES_VIGENCIA_MS;
+      return { opciones, vigentes, agotado: !vigentes && Date.now() - desde >= OPCIONES_ESPERA_MS };
+    },
+    enabled: clic !== null,
     retry: false,
+    // Se deja de preguntar al llegar lo nuevo, al pasar los 40 s (más un intento, que marca el agotado) o si el servidor
+    // falla: con error, TanStack conserva la lectura anterior y, sin este corte, la espera no terminaría nunca.
     refetchInterval: (q) =>
-      q.state.data?.estado === "sin_datos" && q.state.dataUpdateCount < OPCIONES_INTENTOS ? OPCIONES_REINTENTO_MS : false,
+      q.state.status !== "error" && esperaMas(q.state.data) && clic !== null
+        && Date.now() - clic < OPCIONES_ESPERA_MS + OPCIONES_REINTENTO_MS
+        ? OPCIONES_REINTENTO_MS
+        : false,
   });
-  const buscando = consulta.isFetching;
-  const intentos = queryClient.getQueryState(clave)?.dataUpdateCount ?? 0;
+  const lectura = consulta.data;
+  const fallo = consulta.isError;
   return {
-    data: consulta.data ?? null,
+    data: lectura?.opciones ?? null,
     error: consulta.error,
-    /** Todavía puede llegar: primera consulta o reintentos en curso. */
-    esperando: activo && (consulta.isPending || (consulta.data?.estado === "sin_datos" && (intentos < OPCIONES_INTENTOS || buscando))),
+    /** Todavía puede llegar algo: la primera consulta, o la espera de lo que trae el clic (si el servidor no falló). */
+    esperando: clic !== null && (consulta.isPending || (!fallo && esperaMas(lectura))),
+    /** Las tarifas que se ven son de este clic (o de la hora anterior): sin marca. */
+    vigentes: lectura?.vigentes ?? false,
+    /** Se esperó la consulta en vivo y no llegó nada nuevo, o el servidor falló mientras se esperaba. */
+    agotado: Boolean(lectura?.opciones.en_vivo && !lectura.vigentes && (lectura.agotado || fallo)),
   };
 }

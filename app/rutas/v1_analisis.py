@@ -4,11 +4,12 @@ La lectura la hace el analizador (`app/servicios/analizador.py`); aquí solo el 
 quien ve la cotización (`acceso.puede_ver`); lo demás responde 404.
 """
 import re
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
-from .. import api_v1, db
+from .. import api_v1, config, db
 from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, comun, escritura, formas, persona
 from ..api_v1.esquemas_cotizacion import (
     ENTERO_MAXIMO,
@@ -19,7 +20,7 @@ from ..api_v1.esquemas_cotizacion import (
     PedidoIrA,
     errores_cotizacion,
 )
-from ..servicios import acceso, almacen, analizador, capturas, consultas, cotizacion, enlaces
+from ..servicios import acceso, almacen, analizador, capturas, consultas, cotizacion, enlaces, tiempo
 
 router = APIRouter(prefix=PREFIJO, tags=["cotizaciones"])
 
@@ -123,12 +124,29 @@ def texto_evidencia(id: int = Id(), captura_id: int = Id(), yo: dict = Depends(p
             responses=errores_cotizacion(401, 404, 422))
 def opciones_buscador(request: Request, id: int = Id(), opcion_id: int = Id(), yo: dict = Depends(persona)):
     """Las opciones de reserva del buscador para el itinerario, de lo guardado (sin consultar ni gastar cupo): cada
-    vendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial."""
+    vendedor con su precio, tarifa, equipaje, cambios y reembolso. Las trae el enlace a la página oficial. `en_vivo`
+    dice si el clic que abrió el desglose consulta el buscador en vivo: entonces lo nuevo llega aquí."""
     _visible(yo, id)
     r = cotizacion.opciones_de_reserva(id, opcion_id)
     if r is None:
         raise _no_encontrado()
+
+    def consulta_en_vivo() -> bool:
+        """Lo mismo que decide si el clic consulta (`cotizacion._destino_vendedor`): la clave y el cupo de búsquedas pagas
+        del día de la persona (con el tope en 0, apagado). El clic reserva su cupo antes de buscar: una reserva de hace
+        un momento es la de este clic, aunque con ella se haya llegado al tope."""
+        if config.modo()["precios"] != "en vivo":
+            return False
+        reservas = db.todos("""select unidades, creado from cupos_buscador where tipo='enlace_vendedor' and usuario_id=:u
+                               and creado>=:h""", u=yo["id"], h=tiempo.inicio_del_dia())
+        hace_poco = (datetime.now(UTC) - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M:%S")
+        if any(f["creado"] >= hace_poco for f in reservas):
+            return True
+        unidades = analizador.unidades_busqueda(cotizacion.solicitud(id), cotizacion.vuelo_de(id, opcion_id))
+        return sum(f["unidades"] for f in reservas) + unidades <= analizador.tope_enlace_vendedor()
+
     return {"estado": "listo" if r["tarifas"] else "sin_datos", "consultado": consultas.instante(r["creado"]) if r["creado"] else None,
+            "en_vivo": consulta_en_vivo(),
             "tarifas": formas.con_enlaces(r["tarifas"], comun.sesion(request), id, opcion_id), "vendedores": r["vendedores"]}
 
 
