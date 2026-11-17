@@ -45,7 +45,7 @@ Siempre JSON, nunca HTML ni redirecciones:
 | 413 | `PAYLOAD_TOO_LARGE` | Archivo de más de 4,5 MB |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | El contenido no es JPG, PNG, WebP, PDF, correo (.eml) ni confirmación HTML (.html); en la voz, no es WAV |
 | 422 | `VALIDATION_ERROR` | Campos inválidos; detalle por campo en `fields` |
-| 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso (con `Retry-After`), o cinco fallos en 15 minutos con la contraseña actual en `POST /cuenta/clave` |
+| 429 | `TOO_MANY_ATTEMPTS` | Demasiados intentos de ingreso (con `Retry-After`), o cinco fallos en 24 horas con la contraseña actual en `POST /cuenta/clave` |
 | 429 | `TOO_MANY_REQUESTS` | Tope de cotizaciones nuevas del día por persona (regla `tope_cotizaciones_persona_dia`, 20 en la semilla) |
 | 500 | `INTERNAL_ERROR` | Fallo interno, ya registrado |
 
@@ -734,7 +734,7 @@ interface MiCuenta {
 200 `MiCuenta`. En producción el bot de Telegram está apagado: `canal_activo: false`.
 
 ### `POST /cuenta/clave`
-Cuerpo `{"actual", "nueva"}` y `X-CSRF-Token`. La actual que no coincide: 422 `fields.actual`; cada fallo cuenta en una ventana de 15 minutos propia de la cuenta (evento `contraseña actual equivocada`) y al quinto se cierran sus sesiones y responde 429 `TOO_MANY_ATTEMPTS`. El ingreso no queda bloqueado: la persona vuelve a entrar, pero mientras ese quinto fallo siga en la ventana el cambio responde 429 sin mirar la contraseña. Acertar la actual borra esos fallos. La nueva de menos de 10 caracteres o igual a la actual: 422 `fields.nueva`. Al cambiarla se desvincula su Telegram, se anulan los códigos de vínculo pendientes, se cierran todas las sesiones de la persona y esta se renueva: 200 `{"csrf_token", "mensaje"}` con la cookie nueva; el token CSRF anterior deja de servir. Deja el evento `contraseña cambiada por la persona`. La contraseña nunca sale en la respuesta.
+Cuerpo `{"actual", "nueva"}` y `X-CSRF-Token`. La actual que no coincide: 422 `fields.actual`; cada fallo cuenta para la cuenta durante 24 horas (evento `contraseña actual equivocada`) y, desde el quinto, cada fallo cierra sus sesiones y responde 429 `TOO_MANY_ATTEMPTS`. El ingreso no queda bloqueado: la persona vuelve a entrar, pero durante los 15 minutos siguientes al último fallo el cambio responde 429 sin mirar la contraseña. Acertar la actual borra esos fallos. La nueva de menos de 10 caracteres o igual a la actual: 422 `fields.nueva`. Al cambiarla se desvincula su Telegram, se anulan los códigos de vínculo pendientes, se cierran todas las sesiones de la persona y esta se renueva: 200 `{"csrf_token", "mensaje"}` con la cookie nueva; el token CSRF anterior deja de servir. Deja el evento `contraseña cambiada por la persona`. La contraseña nunca sale en la respuesta.
 
 ### `POST /cuenta/telegram/vinculo`
 Con `X-CSRF-Token`, sin cuerpo. 200 `{"codigo", "enlace": string | null, "minutos"}`: un código de un solo uso (en la base queda solo su huella) para escribir `/start <codigo>` en el chat del bot, o el enlace que lo abre si el bot tiene nombre configurado. Con el canal apagado: 409 `INVALID_STATE` con el motivo.

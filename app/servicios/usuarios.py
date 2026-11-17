@@ -30,8 +30,8 @@ class Protegido(ValueError):
 
 
 class DemasiadosIntentos(ValueError):
-    """La persona falló la contraseña actual demasiadas veces en la ventana: al quinto fallo se cierran sus sesiones, y
-    mientras ese fallo siga en la ventana no puede volver a intentarlo."""
+    """La persona falló la contraseña actual cinco veces en 24 horas: se cierran sus sesiones y no puede volver a
+    intentarlo hasta 15 minutos después del último fallo."""
 
 
 class DatosInvalidos(ValueError):
@@ -184,8 +184,9 @@ def restablecer_clave(u: dict, clave: str, quien: dict) -> None:
 
 
 def _fallo_de_clave_actual(yo: dict) -> None:
-    """Cuenta el fallo en la ventana de `intentos` (por cuenta). Al quinto cierra las sesiones: una sesión robada no prueba
-    sin fin. El ingreso no lo mira (I-9): la persona vuelve a entrar, pero no cambia la contraseña hasta que pase la espera."""
+    """Cuenta el fallo en `intentos` (por cuenta, 24 horas). Desde el quinto, cada fallo cierra las sesiones: una sesión
+    robada no prueba sin fin. El ingreso no lo mira (I-9): la persona vuelve a entrar, pero no cambia la contraseña hasta
+    15 minutos después del último fallo."""
     fallos = intentos.fallo_clave_actual(yo["id"])
     eventos.registrar("usuario", yo["id"], "contraseña actual equivocada", f"intento {fallos}", yo["nombre"])
     if fallos >= intentos.MAX_CLAVE_ACTUAL:

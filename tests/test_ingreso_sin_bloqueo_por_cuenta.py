@@ -135,3 +135,45 @@ def test_acertar_la_actual_borra_sus_fallos():
     r = sesion.post(f"{V1}/cuenta/clave", json={"actual": clave, "nueva": "clave-nueva-456789"}, headers=_csrf(sesion))
     assert r.status_code == 200, r.text
     assert db.uno("select count(*) n from intentos_ingreso where clave=:c", c=intentos.clave_cuenta(uid))["n"] == 0
+
+
+# ---------- ronda 1: el freno de la clave actual cuenta 24 horas ----------
+def _envejecer(uid: int, minutos: float):
+    """Los fallos de la clave actual de la cuenta pasan a ser de hace `minutos` (como si hubiera pasado ese tiempo)."""
+    hace = (datetime.now(UTC) - timedelta(minutes=minutos)).strftime("%Y-%m-%d %H:%M:%S")
+    db.ejecutar("update intentos_ingreso set momento=:m where clave=:c", m=hace, c=intentos.clave_cuenta(uid))
+
+
+def _cambiar(c: TestClient, actual: str):
+    return c.post(f"{V1}/cuenta/clave", json={"actual": actual, "nueva": "clave-nueva-456789"}, headers=_csrf(c))
+
+
+def test_cuatro_fallos_cada_15_minutos_no_sirven_para_adivinar_la_actual():
+    """Con una ventana de 15 minutos, 4 fallos cada 15 minutos nunca llegaban al quinto: unos 190 en 12 horas."""
+    uid, correo, clave = _cuenta()
+    sesion = _cliente()
+    assert _login(sesion, correo, clave).status_code == 200
+    assert [_cambiar(sesion, "equivocada").status_code for _ in range(4)] == [422] * 4
+    _envejecer(uid, 16)
+    r = _cambiar(sesion, "equivocada")
+    assert r.status_code == 429 and r.json()["error"]["code"] == "TOO_MANY_ATTEMPTS", r.text
+    assert sesion.get(f"{V1}/auth/me").status_code == 401                    # el quinto en 24 h cierra las sesiones
+
+
+def test_tras_el_quinto_se_esperan_15_minutos_y_cada_fallo_vuelve_a_cerrar_las_sesiones():
+    uid, correo, clave = _cuenta()
+    sesion = _cliente()
+    assert _login(sesion, correo, clave).status_code == 200
+    assert [_cambiar(sesion, "equivocada").status_code for _ in range(5)] == [422] * 4 + [429]
+    otra = _cliente()
+    assert _login(otra, correo, clave).status_code == 200                    # el ingreso no se bloquea
+    _envejecer(uid, 14)
+    assert _cambiar(otra, clave).status_code == 429                         # a los 14 minutos, todavía espera
+    _envejecer(uid, 16)
+    assert _cambiar(otra, "equivocada").status_code == 429                  # pasada la espera, un fallo más vuelve a cerrar
+    assert otra.get(f"{V1}/auth/me").status_code == 401
+    tercera = _cliente()
+    assert _login(tercera, correo, clave).status_code == 200
+    _envejecer(uid, 16)
+    assert _cambiar(tercera, clave).status_code == 200                      # y acertar después de la espera la cambia
+    assert db.uno("select count(*) n from intentos_ingreso where clave=:c", c=intentos.clave_cuenta(uid))["n"] == 0
