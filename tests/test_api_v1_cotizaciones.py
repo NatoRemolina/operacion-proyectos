@@ -182,6 +182,15 @@ def test_formulario_segun_el_permiso(piloto, cliente):
     assert len(admin["viajeros"]) >= 2 and sum(v["soy_yo"] for v in admin["viajeros"]) == 1
 
 
+def _sin_firma(x):
+    """La respuesta sin la firma de sus enlaces de un solo uso (`?t=<vence>.<firma>`), que cambia con el segundo."""
+    if isinstance(x, dict):
+        return {k: _sin_firma(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_sin_firma(v) for v in x]
+    return re.sub(r"\?t=\d+\.[0-9a-f]+", "?t=…", x) if isinstance(x, str) else x
+
+
 def test_cotizar_miami_moab_por_la_api(piloto):
     r = _cotizar(piloto)
     assert r.status_code == 201, r.text
@@ -213,7 +222,8 @@ def test_cotizar_miami_moab_por_la_api(piloto):
     assert c["recomendacion"]
     ev = db.uno("select fuente from eventos where entidad='solicitud' and entidad_id=:i and paso='solicitud recibida'", i=c["id"])
     assert ev["fuente"] == "api v1 · Andrés Molina"
-    assert piloto.get(f"{V1}/cotizaciones/{c['id']}").json() == c
+    # Los enlaces firmados («Ir a…», «Ver desglose») vencen en segundos desde ahora: cada respuesta trae el suyo
+    assert _sin_firma(piloto.get(f"{V1}/cotizaciones/{c['id']}").json()) == _sin_firma(c)
 
 
 def test_cada_quien_ve_solo_sus_cotizaciones(piloto, piloto2, gestor, cliente, anonimo):
