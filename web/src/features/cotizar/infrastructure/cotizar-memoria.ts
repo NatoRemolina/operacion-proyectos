@@ -239,7 +239,9 @@ export function crearCotizarMemoria(opciones: {
         throw new ErrorDeAplicacion("no_encontrado");
       }
       const datos = ANALISIS_EJEMPLO.datos!;
-      return { estado: "listo" as const, consultado: null, tarifas: conIrA(id, vueloId, datos.tarifas), vendedores: datos.vendedores };
+      // en memoria no hay buscador: lo guardado es todo, sin esperar ninguna consulta en vivo
+      return { estado: "listo" as const, consultado: null, en_vivo: false, tarifas: conIrA(id, vueloId, datos.tarifas),
+        vendedores: datos.vendedores };
     },
     async evidencia(id, signal) {
       await esperar(latenciaMs, signal);

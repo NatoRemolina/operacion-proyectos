@@ -194,3 +194,18 @@ def test_quien_espera_justo_retry_after_ya_no_esta_limitado():
     pasado = (datetime.strptime(borde, formato) - timedelta(seconds=espera)).strftime(formato)
     db.ejecutar("update intentos_ingreso set momento=:m where clave=:c", m=pasado, c=par)
     assert not intentos.limitado(direccion, correo)
+
+
+def test_el_429_del_cambio_de_contrasena_lleva_retry_after():
+    uid, correo, clave = _cuenta()
+    sesion = _cliente()
+    assert _login(sesion, correo, clave).status_code == 200
+    for _ in range(4):
+        _cambiar(sesion, "equivocada")
+    r = _cambiar(sesion, "equivocada")                                       # el quinto: cierra y espera
+    assert r.status_code == 429 and 0 < int(r.headers["retry-after"]) <= intentos.VENTANA.total_seconds() + 1, r.headers
+    otra = _cliente()
+    assert _login(otra, correo, clave).status_code == 200
+    _envejecer(uid, 10)
+    r = _cambiar(otra, clave)                                                # en la espera: 429 sin mirar la contraseña
+    assert r.status_code == 429 and 290 <= int(r.headers["retry-after"]) <= 302, r.headers

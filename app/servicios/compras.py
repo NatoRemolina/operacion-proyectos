@@ -10,9 +10,14 @@ Estados: `solicitada` → `en_analisis` → `se_comprara` | `no_se_comprara` →
   precio cotizado, y crea el gasto del tiquete (categoría vuelo, `compras.gasto_id`): lo comprado suma en lo gastado del
   viaje y entra al Excel contable. «Aprobado si cuadra»: queda aprobado si lo pagado no supera lo cotizado al decidir en
   más de la regla `tolerancia_tiquete_pct`; si lo supera, o no hay precio cotizado, va a revisión y lo aprueba otra
-  persona de administración. Si el recibo del tiquete ya estaba cargado (mismo localizador o mismo comercio, con el
-  importe parecido), se enlaza ese gasto en vez de crear otro; si llega después, se une al del tiquete solo si el importe
-  coincide (`tiquete_por_enlazar`), y con el mismo localizador y otro importe queda aparte, en revisión.
+  persona de administración. Si el recibo del tiquete ya estaba cargado (con el importe parecido y el mismo localizador,
+  el mismo comercio o un número de vuelo del itinerario decidido), se enlaza ese gasto en vez de crear otro; si llega
+  después, se une al del tiquete solo si el importe coincide (`tiquete_por_enlazar`), y con el mismo localizador y otro
+  importe queda aparte, en revisión.
+- Red contra el doble conteo: si un recibo de vuelo del viaje y el tiquete no se atan pero tienen el mismo importe, el
+  que llega segundo queda en revisión con «Posible duplicado del gasto #N (mismo importe)» (`tiquete_duplicado`, que
+  volver a validar no quita), también al asignarle el viaje después. Un archivo que ya sostiene otro gasto no se une al
+  tiquete.
 - Cancelar el tiquete ya comprado devuelve su gasto a revisión («Compra cancelada: revisar reembolso»): volver a
   comprar no deja dos tiquetes aprobados.
 - Cuando el viaje cambia de estado (`al_cambiar_el_viaje`, desde `viajes.cambiar_estado`): «Se va a comprar» vuelve a

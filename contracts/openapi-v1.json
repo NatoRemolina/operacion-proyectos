@@ -2189,7 +2189,7 @@
           "cuenta"
         ],
         "summary": "Cambiar Clave",
-        "description": "Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.\nTambién desvincula su Telegram. Cinco fallos seguidos con la actual cierran sus sesiones: 429 `TOO_MANY_ATTEMPTS`.",
+        "description": "Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.\nTambién desvincula su Telegram. Desde el quinto fallo con la actual en 24 horas, cada fallo cierra sus sesiones: 429\n`TOO_MANY_ATTEMPTS`, y durante los 15 minutos siguientes al último fallo responde 429 sin mirar la contraseña. El\n429 lleva `Retry-After`. El ingreso no se bloquea.",
         "operationId": "cambiar_clave_api_v1_cuenta_clave_post",
         "requestBody": {
           "content": {

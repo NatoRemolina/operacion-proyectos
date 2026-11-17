@@ -3,13 +3,13 @@
 Contrato en `contracts/api-v1.md`, sección «Mi cuenta». La cuenta sale siempre de la sesión: nadie toca la de otra persona
 por aquí. La regla vive en `app/servicios/usuarios.py` y `telegram.py`, las mismas que usa la pantalla actual `/mi-cuenta`.
 """
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 
 from .. import db
-from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona, token_csrf
+from ..api_v1 import MENSAJE_HTTP, PREFIJO, ErrorApi, escritura, persona, respuesta_error, token_csrf
 from ..api_v1.esquemas import errores
 from ..api_v1.esquemas_usuarios import CambioMiClave, ClaveCambiada, MiCuenta, VinculoTelegram
-from ..servicios import acceso, consultas, telegram, usuarios
+from ..servicios import acceso, consultas, intentos, telegram, usuarios
 
 router = APIRouter(prefix=PREFIJO + "/cuenta", tags=["cuenta"])
 
@@ -30,15 +30,19 @@ def mi_cuenta(yo: dict = Depends(persona)):
 
 
 @router.post("/clave", response_model=ClaveCambiada, responses=errores(401, 403, 422, 429))
-def cambiar_clave(datos: CambioMiClave, response: Response, yo: dict = Depends(escritura)):
+def cambiar_clave(datos: CambioMiClave, request: Request, response: Response, yo: dict = Depends(escritura)):
     """Exige la actual. Cierra todas las sesiones de la persona y abre una nueva en esta: la cookie y el token CSRF cambian.
-    También desvincula su Telegram. Cinco fallos seguidos con la actual cierran sus sesiones: 429 `TOO_MANY_ATTEMPTS`."""
+    También desvincula su Telegram. Desde el quinto fallo con la actual en 24 horas, cada fallo cierra sus sesiones: 429
+    `TOO_MANY_ATTEMPTS`, y durante los 15 minutos siguientes al último fallo responde 429 sin mirar la contraseña. El
+    429 lleva `Retry-After`. El ingreso no se bloquea."""
     try:
         usuarios.cambiar_mi_clave(yo, datos.actual, datos.nueva)
     except usuarios.DatosInvalidos as e:
         raise ErrorApi(422, "VALIDATION_ERROR", MENSAJE_HTTP[422], {e.campo: str(e)}) from None
     except usuarios.DemasiadosIntentos as e:
-        raise ErrorApi(429, "TOO_MANY_ATTEMPTS", str(e)) from None
+        r = respuesta_error(request, 429, "TOO_MANY_ATTEMPTS", str(e))
+        r.headers["Retry-After"] = str(max(1, intentos.espera_clave_actual(yo["id"])))
+        return r
     acceso.abrir_sesion(response, yo["id"])
     return {"csrf_token": token_csrf(response.token_sesion),
             "mensaje": "Contraseña cambiada. Se cerraron tus otras sesiones; si tenías Telegram vinculado, vuelve a vincularlo."}
