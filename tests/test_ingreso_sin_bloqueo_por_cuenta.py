@@ -67,7 +67,7 @@ def test_diez_fallos_desde_una_direccion_dan_429_con_retry_after():
     assert [_login(a, correo, "equivocada-i9").status_code for _ in range(intentos.MAX_POR_PAR)] == [401] * intentos.MAX_POR_PAR
     r = _login(a, correo, clave)                                    # desde la misma dirección, aunque sea la buena
     assert r.status_code == 429 and r.json()["error"]["code"] == "TOO_MANY_ATTEMPTS", r.text
-    assert 0 < int(r.headers["retry-after"]) <= intentos.VENTANA.total_seconds()
+    assert 0 < int(r.headers["retry-after"]) <= intentos.VENTANA.total_seconds() + 1   # un segundo de más por el truncado
     assert _login(_cliente(), correo, clave).status_code == 200     # desde otra dirección entra
 
 
@@ -88,7 +88,7 @@ def test_el_formulario_entrar_responde_429_con_retry_after():
         assert r.status_code == 303 and "Demasiados" not in r.headers["location"]
     r = a.post("/entrar", data={"correo": correo, "clave": clave}, follow_redirects=False)
     assert r.status_code == 429 and "intentos" in r.text
-    assert 0 < int(r.headers["retry-after"]) <= intentos.VENTANA.total_seconds()
+    assert 0 < int(r.headers["retry-after"]) <= intentos.VENTANA.total_seconds() + 1   # un segundo de más por el truncado
 
 
 def test_retry_after_cuenta_desde_el_fallo_que_deja_la_clave_en_su_maximo():
@@ -97,10 +97,10 @@ def test_retry_after_cuenta_desde_el_fallo_que_deja_la_clave_en_su_maximo():
     par = intentos.clave_par(direccion, correo)
     # 10 fallos: el más antiguo hace 14 minutos sale de la ventana en unos 60 s
     db.insertar_varios("intentos_ingreso", [{"clave": par, "momento": hace(14)}] + [{"clave": par, "momento": hace(2)}] * 9)
-    assert 50 <= intentos.segundos_para_reintentar(direccion, correo) <= 61
+    assert 50 <= intentos.segundos_para_reintentar(direccion, correo) <= 62
     # con 11 (más del máximo) no basta con que salga el más antiguo: cuenta el segundo
     db.insertar("intentos_ingreso", clave=par, momento=hace(14.5))
-    assert 50 <= intentos.segundos_para_reintentar(direccion, correo) <= 61
+    assert 50 <= intentos.segundos_para_reintentar(direccion, correo) <= 62
     # fuera de la ventana no cuentan; y nunca menos de 1
     db.ejecutar("delete from intentos_ingreso")
     assert intentos.segundos_para_reintentar(direccion, correo) == 1
@@ -177,3 +177,20 @@ def test_tras_el_quinto_se_esperan_15_minutos_y_cada_fallo_vuelve_a_cerrar_las_s
     _envejecer(uid, 16)
     assert _cambiar(tercera, clave).status_code == 200                      # y acertar después de la espera la cambia
     assert db.uno("select count(*) n from intentos_ingreso where clave=:c", c=intentos.clave_cuenta(uid))["n"] == 0
+
+
+# ---------- ronda 1: esperar justo `Retry-After` basta ----------
+def test_quien_espera_justo_retry_after_ya_no_esta_limitado():
+    """Los momentos se guardan truncados al segundo y el corte compara con `>=`: sin un segundo de más, quien esperaba
+    exactamente `Retry-After` podía recibir otro 429."""
+    formato = "%Y-%m-%d %H:%M:%S"
+    direccion, correo = "192.0.2.60", f"borde-{uuid.uuid4().hex[:6]}@{DOMINIO}"
+    par = intentos.clave_par(direccion, correo)
+    borde = (datetime.now(UTC) - intentos.VENTANA + timedelta(seconds=5)).strftime(formato)
+    db.insertar_varios("intentos_ingreso", [{"clave": par, "momento": borde}] * intentos.MAX_POR_PAR)
+    assert intentos.limitado(direccion, correo)
+    espera = intentos.segundos_para_reintentar(direccion, correo)
+    # pasan exactamente `espera` segundos: los fallos quedan `espera` segundos más viejos
+    pasado = (datetime.strptime(borde, formato) - timedelta(seconds=espera)).strftime(formato)
+    db.ejecutar("update intentos_ingreso set momento=:m where clave=:c", m=pasado, c=par)
+    assert not intentos.limitado(direccion, correo)

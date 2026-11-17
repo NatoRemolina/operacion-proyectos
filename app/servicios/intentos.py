@@ -66,6 +66,12 @@ def limitado(direccion: str, correo: str) -> bool:
         or _fallos(clave_correo(correo)) >= MAX_POR_CORREO
 
 
+def _segundos_hasta(sale: datetime) -> int:
+    """Segundos hasta `sale`, con uno de más: los momentos se guardan truncados al segundo y el corte compara con `>=`,
+    así que quien espera justo lo que dice `Retry-After` ya no está limitado."""
+    return math.ceil((sale - datetime.now(UTC)).total_seconds()) + 1
+
+
 def _espera(clave: str, maximo: int) -> int:
     """Segundos hasta que la clave baje de su máximo: lo que le falta para salir de la ventana al fallo que hoy la deja en
     el máximo (con más fallos que el máximo, el que la dejaría por debajo). 0 si no está en el máximo."""
@@ -73,8 +79,7 @@ def _espera(clave: str, maximo: int) -> int:
                                                c=clave, d=_momento(VENTANA))]
     if len(momentos) < maximo:
         return 0
-    sale = datetime.strptime(momentos[len(momentos) - maximo], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC) + VENTANA
-    return math.ceil((sale - datetime.now(UTC)).total_seconds())
+    return _segundos_hasta(datetime.strptime(momentos[len(momentos) - maximo], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC) + VENTANA)
 
 
 def segundos_para_reintentar(direccion: str, correo: str) -> int:
@@ -118,8 +123,7 @@ def espera_clave_actual(usuario_id: int) -> int:
                   c=clave_cuenta(usuario_id), d=_momento(CONSERVAR))
     if fila["n"] < MAX_CLAVE_ACTUAL:
         return 0
-    sale = datetime.strptime(fila["ultimo"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC) + VENTANA
-    return max(0, math.ceil((sale - datetime.now(UTC)).total_seconds()))
+    return max(0, _segundos_hasta(datetime.strptime(fila["ultimo"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC) + VENTANA))
 
 
 def fallo_clave_actual(usuario_id: int) -> int:
