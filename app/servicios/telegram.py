@@ -335,4 +335,5 @@ def _boton(c: dict, registro: dict):
     except ValueError as e:   # la persona siempre recibe respuesta, aunque el gasto no se pueda mover
         registro["estado"] = "rechazado"
         return _responder(registro, f"No pude asignar el gasto #{g['id']} al viaje {v['codigo']}. {e}")
+    registro["gasto_id"] = quedo["id"]   # el registro apunta al gasto que existe, no al recibo unido al tiquete
     _responder(registro, _resumen_gasto(quedo["id"], v))

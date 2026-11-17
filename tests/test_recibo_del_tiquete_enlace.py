@@ -393,3 +393,22 @@ def test_telegram_une_al_tiquete_un_recibo_justificado(piloto, modelo, anonimo, 
         assert _gasto(compra["gasto_id"])["documento_id"] is not None
     finally:
         db.actualizar("usuarios", uid, telegram_chat_id=None)
+
+
+def test_el_registro_de_telegram_anota_el_gasto_que_quedo_al_unir(piloto, modelo, anonimo, monkeypatch):
+    from app.servicios import telegram
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "clave-de-pruebas")
+    monkeypatch.setattr(config, "TELEGRAM_WEBHOOK_SECRETO", "secreto-de-pruebas")
+    monkeypatch.setattr(telegram, "_llamar", lambda metodo, **d: {})
+    v, compra, gid = _recibo_justificado_sin_viaje(piloto, modelo)
+    uid, chat = db.uno("select id from usuarios where correo='piloto@demo.local'")["id"], 660_000 + uuid.uuid4().int % 99_000
+    db.actualizar("usuarios", uid, telegram_chat_id=chat)
+    try:
+        r = anonimo.post("/telegram/webhook", headers={"X-Telegram-Bot-Api-Secret-Token": "secreto-de-pruebas"},
+                         json={"update_id": chat, "callback_query": {"id": "q", "data": f"v:{gid}:{v['id']}",
+                                                                     "message": {"chat": {"id": chat}}}})
+        assert r.json()["estado"] == "procesado", r.text
+        registro = db.uno("select gasto_id, viaje_id from telegram_mensajes where update_id=:u", u=chat)
+        assert (registro["gasto_id"], registro["viaje_id"]) == (compra["gasto_id"], v["id"])   # no el gasto borrado
+    finally:
+        db.actualizar("usuarios", uid, telegram_chat_id=None)
